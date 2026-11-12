@@ -14,11 +14,11 @@ from types import FunctionType, MethodType
 
 from merlin.common import invocation_record
 from merlin.common.digest import sha256_file
-from merlin.llvmlower import borrowed_buffer_calls as K
-from merlin.llvmlower import descriptor_result_identity as R
-from merlin.llvmlower import device_build as B
-from merlin.llvmlower import device_shim as D
-from merlin.llvmlower.host_transform_chain import HostLLVMArtifact
+from merlin.compiler.lower.model import borrowed_buffer_calls as K
+from merlin.compiler.lower.model import descriptor_result_identity as R
+from merlin.compiler.lower.model import device_build as B
+from merlin.compiler.lower.model import device_shim as D
+from merlin.compiler.lower.model.host_transform_chain import HostLLVMArtifact
 
 
 def _selection(identities):
@@ -125,16 +125,26 @@ class DeviceDescriptorResults:
             raise ValueError("descriptor identity requires the original typed device routing")
         if getattr(routing, "granularity", "contraction") not in ("contraction", "group") or any(
             getattr(routing, name, None) is not None
-            for name in ("catalog_manifest", "catalog_object", "catalog_builder", "post_offload_transform",
-                         "connected_spatial")
+            for name in (
+                "catalog_manifest",
+                "catalog_object",
+                "catalog_builder",
+                "post_offload_transform",
+                "connected_spatial",
+            )
         ):
-            raise ValueError("descriptor identity requires the original generated contraction or logical group shim route")
+            raise ValueError(
+                "descriptor identity requires the original generated contraction or logical group shim route"
+            )
         if routing.sibling_source is not None:
-            from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
-            from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+            from merlin.compiler.lower.model.head_source_route import HeadBatchSourceRoute
+            from merlin.compiler.lower.model.sibling_source_route import SiblingSourceRoute
 
-            if routing.granularity != 'group' or type(routing.sibling_source) not in (HeadBatchSourceRoute, SiblingSourceRoute):
-                raise ValueError('mixed descriptor identity requires its original typed logical sibling route')
+            if routing.granularity != "group" or type(routing.sibling_source) not in (
+                HeadBatchSourceRoute,
+                SiblingSourceRoute,
+            ):
+                raise ValueError("mixed descriptor identity requires its original typed logical sibling route")
             routing.sibling_source.record()
         if routing.descriptor_effects is None:
             raise ValueError(
@@ -142,7 +152,7 @@ class DeviceDescriptorResults:
                 "descriptor equality does not establish no retention, no releases or completion"
             )
         factory_source = _callback_source(routing.descriptor_effects)
-        from merlin.llvmlower.descriptor_result_preparation import implementation_paths
+        from merlin.compiler.lower.model.descriptor_result_preparation import implementation_paths
 
         directory = Path(B.__file__).parent
         self._owners = tuple(
@@ -205,17 +215,26 @@ class DeviceDescriptorResults:
         policy = json.dumps(route.numeric_policy, sort_keys=True, allow_nan=False)
         if len(policy.encode()) > 65536:
             raise ValueError("descriptor route numerical policy exceeds its byte budget")
-        return scalar, str(route.package_dir), objects, callbacks, policy, (
-            None if route.quantized_sum is None else json.dumps(route.quantized_sum.record(),sort_keys=True,allow_nan=False)
+        return (
+            scalar,
+            str(route.package_dir),
+            objects,
+            callbacks,
+            policy,
+            (
+                None
+                if route.quantized_sum is None
+                else json.dumps(route.quantized_sum.record(), sort_keys=True, allow_nan=False)
+            ),
         )
 
     @staticmethod
     def _entrypoints():
-        from merlin.frontends.linalg_mlir import parse_mlir_text, layout_to_buffer_type
-        from merlin.llvmlower import descriptor_result_preparation as P
-        from merlin.llvmlower import device_input_views as V
-        from merlin.llvmlower import quantized_sum_route as Q
-        from merlin.llvmlower import quantized_sum_source as QS
+        from merlin.compiler.frontend.linalg_mlir import layout_to_buffer_type, parse_mlir_text
+        from merlin.compiler.lower.model import descriptor_result_preparation as P
+        from merlin.compiler.lower.model import device_input_views as V
+        from merlin.compiler.lower.model import quantized_sum_route as Q
+        from merlin.compiler.lower.model import quantized_sum_source as QS
 
         return (
             Q.QuantizedSumRoute.record,
@@ -372,8 +391,11 @@ class DeviceDescriptorResults:
         if not {str(path) for path in D.descriptor_result_dependencies(unit)} <= owners:
             raise ValueError("descriptor shim compilation omitted its implementation owners")
         for value in unit.result_identities:
-            forwarder = (D._logical_borrowed_result_wrapper(value) if self.routing.granularity == "group"
-                         else D._borrowed_result_wrapper(value.symbol, 2, value.borrowed_symbol))
+            forwarder = (
+                D._logical_borrowed_result_wrapper(value)
+                if self.routing.granularity == "group"
+                else D._borrowed_result_wrapper(value.symbol, 2, value.borrowed_symbol)
+            )
             if unit.text.count(forwarder) != 1:
                 raise ValueError("generated shim lost its checked descriptor forwarder")
         self._unit, self._roster = unit, _selection(unit.result_identities)
@@ -408,7 +430,8 @@ class DeviceDescriptorResults:
 
     def _bind_effects(self, compilation):
         from xdsl.dialects.builtin import NoneAttr
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         self.revalidate()
         owner = self.routing.descriptor_effects(self._inputs[0].path, self._build)
@@ -434,8 +457,11 @@ class DeviceDescriptorResults:
         if set(calls) != {(v.wrapper_symbol, v.borrowed_symbol) for v in identities}:
             raise ValueError("borrowed effects owner differs from actual emitted descriptor calls")
         selected = []
-        declarations = {op.sym_name.data: op for op in parse_mlir_text(source.path.read_text()).body.block.ops
-                        if op.name == "func.func"}
+        declarations = {
+            op.sym_name.data: op
+            for op in parse_mlir_text(source.path.read_text()).body.block.ops
+            if op.name == "func.func"
+        }
         for value in identities:
             call = calls[value.wrapper_symbol, value.borrowed_symbol]
             declaration = declarations.get(value.symbol)
@@ -477,17 +503,22 @@ class DeviceDescriptorResults:
 
     def prepare_dense_input_views(self, built, work, compilation, *, sibling_source=None):
         """Own the existing checked derivation, retaining its original input pins."""
-        from merlin.llvmlower.device_input_views import prepare
+        from merlin.compiler.lower.model.device_input_views import prepare
 
         self.revalidate()
-        if (not self.selected or not self._input_bound or self._unit is not None
-                or self._views_prepared or len(self._inputs) != 2):
+        if (
+            not self.selected
+            or not self._input_bound
+            or self._unit is not None
+            or self._views_prepared
+            or len(self._inputs) != 2
+        ):
             raise ValueError("descriptor views require the original pre-build input")
         source, sidecar = self._inputs
         if (sibling_source is None) != (self.routing.sibling_source is None):
-            raise ValueError('mixed descriptor views require the original sibling source owner')
+            raise ValueError("mixed descriptor views require the original sibling source owner")
         if sibling_source is not None and sibling_source[0] is not self.routing.sibling_source:
-            raise ValueError('mixed descriptor views changed the original sibling selection')
+            raise ValueError("mixed descriptor views changed the original sibling selection")
         selected = prepare(source.path, sidecar.path, built, work, compilation, sibling_source=sibling_source)
         self.revalidate()
         product = HostLLVMArtifact.capture(selected)
@@ -500,10 +531,14 @@ class DeviceDescriptorResults:
 
     def options(self):
         self.revalidate()
-        return {} if not self.identities else {
-            "descriptor_result_identities": self.identities,
-            "descriptor_result_effects": self._effects,
-        }
+        return (
+            {}
+            if not self.identities
+            else {
+                "descriptor_result_identities": self.identities,
+                "descriptor_result_effects": self._effects,
+            }
+        )
 
     def consumed(self, result, compilation):
         self.revalidate()
@@ -526,8 +561,11 @@ class DeviceDescriptorResults:
             for v in self.identities
         ]:
             raise ValueError("ordinary lowering did not consume original emitted descriptor identities")
-        if (record.get("borrowed_calls") != self._effects.record()
-                or record.get("rewrites") and getattr(result, "borrowed_arena_lifetime", None) is None):
+        if (
+            record.get("borrowed_calls") != self._effects.record()
+            or record.get("rewrites")
+            and getattr(result, "borrowed_arena_lifetime", None) is None
+        ):
             raise ValueError("ordinary descriptor rewrite lost its original native lifetime owner")
         paths = [
             record["report"]["path"],
@@ -591,5 +629,8 @@ class DeviceDescriptorResults:
         self.revalidate()
         if not self.selected:
             return None
-        return {"selected": True, "lowering": self._report,
-                "borrowed_calls": None if self._effects is None else self._effects.record()}
+        return {
+            "selected": True,
+            "lowering": self._report,
+            "borrowed_calls": None if self._effects is None else self._effects.record(),
+        }

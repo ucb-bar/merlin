@@ -2,8 +2,8 @@
 
 ## How the grader runs the opt tool
 
-These rules come from `merlin.targetgen.package_runtime` (`load_package`, `_resolve_argv`,
-`run_entrypoint`, `analysis_emission_entrypoints`) and `merlin.targetgen.capsule_common.lower_interface`.
+These rules come from `merlin.development.targetgen.package_runtime` (`load_package`, `_resolve_argv`,
+`run_entrypoint`, `analysis_emission_entrypoints`) and `merlin.development.targetgen.capsule_common.lower_interface`.
 
 - **Tool path.** It is `build.tool_output` if the manifest has a `build` block, else
   `entrypoints.tool`. Either is resolved against the package directory (`submission/` or
@@ -33,12 +33,12 @@ argv.
 
 | Stage | Where it comes from | How to read or print it |
 |---|---|---|
-| interface input | the case's `capsule.interface.mlir` | `merlin.targetgen.contract.interface_emit.parse_interface_mlir(text)` gives tensors and commands; `undefined_op_mnemonics(text)` lists ops the grammar lacks |
-| linalg-on-tensors source | `public_sources/*.mlir`, model cases | `merlin.targetgen.contract.linalg_iface`: `is_linalg_on_tensors(text)`, `parse_linalg_mlir(text)` gives `{level, entry, args, results, returns, ops[]}`; `matmul_records(parsed)`; `make_linalg_context()` |
-| dense contraction IR | your planner | `merlin.transforms.dense_ir.DenseScheduleOp` (`schedule.block_contraction`) and `dense_schedule_op(...)`; `merlin.transforms.dense_planning` (`dense_blocks`, `choose_dense_block`, `verify_dense_emission`) |
+| interface input | the case's `capsule.interface.mlir` | `merlin.development.targetgen.contract.interface_emit.parse_interface_mlir(text)` gives tensors and commands; `undefined_op_mnemonics(text)` lists ops the grammar lacks |
+| linalg-on-tensors source | `public_sources/*.mlir`, model cases | `merlin.development.targetgen.contract.linalg_iface`: `is_linalg_on_tensors(text)`, `parse_linalg_mlir(text)` gives `{level, entry, args, results, returns, ops[]}`; `matmul_records(parsed)`; `make_linalg_context()` |
+| dense contraction IR | your planner | `merlin.compiler.transforms.dense_ir.DenseScheduleOp` (`schedule.block_contraction`) and `dense_schedule_op(...)`; `merlin.compiler.transforms.dense_planning` (`dense_blocks`, `choose_dense_block`, `verify_dense_emission`) |
 | schedule plan | your scheduler | `merlin.compiler.schedule.schedule_ir.dense_schedule_text(plan)` prints it; `parse_dense_schedule_plan(text)` parses it back |
 | loop-nest kernel | `merlin.compiler.kernel_ir.ir` | `Kernel.text()`, `Kernel.digest()`; `merlin.compiler.kernel_ir.parse.parse_kernel(text)`; `merlin.compiler.kernel_ir.ir.check_structure(kernel)` gives the problems found |
-| any xDSL module | your passes | `merlin.xdsl_dialects._common.make_context(*dialects)`, `text(module, generic=True)` (generic form keeps every attribute); `merlin.xdsl_dialects.ir_inspection.compact_text(module, elements_limit=64)` elides large constants |
+| any xDSL module | your passes | `merlin.compiler.dialects._common.make_context(*dialects)`, `text(module, generic=True)` (generic form keeps every attribute); `merlin.compiler.dialects.ir_inspection.compact_text(module, elements_limit=64)` elides large constants |
 | target IR | stdout of `lower_interface_to_target` | parse with an xDSL `Context(allow_unregistered=True)` plus the upstream dialects, or with your own dialect loaded |
 | lowered artifact | stdout of the artifact command | see the `inspect-kernel` skill |
 

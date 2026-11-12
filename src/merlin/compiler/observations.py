@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import is_sha256
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 
 
 def _section(module):
@@ -33,8 +33,8 @@ def packing(module, requests=()):
     cross-invocation invariance is guessed. Packed byte counts require an actual
     selected representation/producer, so remain absent at this analysis boundary.
     """
-    from merlin.llvmlower.prepared_operand_effects import validate_prepared_source_lifetime
-    from merlin.llvmlower.tensor_preparation_identity import find_tensor_preparation_opportunities
+    from merlin.compiler.lower.model.prepared_operand_effects import validate_prepared_source_lifetime
+    from merlin.compiler.lower.model.tensor_preparation_identity import find_tensor_preparation_opportunities
 
     requests = tuple(requests)
     if len(requests) > 10000:
@@ -90,9 +90,9 @@ def lifetimes(outlined, *, weight_args=(), entry="forward"):
     binding proves no cross-invocation prepack. Arena capacity is never renamed
     to peak-live bytes, and no planned reuse is reported as emitted reuse.
     """
-    from merlin.xdsl_dialects.lowering.arena_plan import _live_ranges, plan_arena
-    from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program, verify_program
-    from merlin.xdsl_dialects.lowering.stream_plan import plan as stream_plan
+    from merlin.compiler.dialects.lowering.arena_plan import _live_ranges, plan_arena
+    from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program, verify_program
+    from merlin.compiler.dialects.lowering.stream_plan import plan as stream_plan
 
     result = _section(outlined.module)
     program = build_dispatch_program(outlined, entry=entry)
@@ -255,7 +255,7 @@ def install_prepared_observed(module, plan, writer_reports, **selection):
     """
     from xdsl.dialects import func
 
-    from merlin.llvmlower.prepared_operand_schedule import install_prepared_borrows
+    from merlin.compiler.lower.model.prepared_operand_schedule import install_prepared_borrows
 
     before = ir_digest(module)
     report = install_prepared_borrows(module, plan, writer_reports, **selection)
@@ -290,7 +290,7 @@ def bind_arena_observed(llvm_ir, *, entry="forward"):
     peak memory nor proof that a source-level last-use plan reached the binary.
     Native refusals and original free/CFG lifetime checks remain unchanged.
     """
-    from merlin.llvmlower.arena_bind import bind_arena
+    from merlin.compiler.lower.model.arena_bind import bind_arena
 
     lowered, report = bind_arena(llvm_ir, entry=entry)
     observation = {

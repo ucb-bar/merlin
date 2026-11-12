@@ -14,7 +14,7 @@ across grades), current-source completed selfchecks and the response being built
   :func:`..operation_optimizations.families_of`; the staged ``OPTIMIZATION_BY_OPERATION.json`` names
   its panel, e.g. ``dense`` or ``conv``) and a shape class (:func:`.shape_classes.classes`, against the
   tile edge the target's RTL facts state -- the classes ``--panel FAMILY`` and
-  :mod:`merlin.transforms.shape_policy` report). One representative -- a large or connected case with
+  :mod:`merlin.compiler.transforms.shape_policy` report). One representative -- a large or connected case with
   the largest headroom above its structural bound, else the largest declared work -- is the case to
   optimize; its siblings are the held-out check set for the A/B (``--panel``);
 * **finish-correctness work per family**: the failing or unchecked cases and the construction route --

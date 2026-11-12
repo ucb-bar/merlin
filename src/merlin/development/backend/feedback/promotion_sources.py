@@ -220,7 +220,7 @@ def _src_suffixes() -> frozenset:
     """Suffixes the runner's own integrity scan READS. A violation in one of these fails the run even
     when nothing imports the file, so such a file is never inert. Taken from the runner, not restated."""
     try:
-        from merlin.targetgen.package_runtime import _SRC_SUFFIXES
+        from merlin.development.targetgen.package_runtime import _SRC_SUFFIXES
 
         return frozenset(_SRC_SUFFIXES)
     except Exception:  # noqa: BLE001 -- runner not importable here: the closure's own suffixes still apply

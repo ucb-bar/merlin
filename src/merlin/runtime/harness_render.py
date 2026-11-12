@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
-from merlin.targetgen.contract.readback_policy import (
+from merlin.development.targetgen.contract.readback_policy import (
     COHERENT_DUMP_V1,
     COHERENT_PACKET_V1,
     COHERENT_PACKET_V2,
@@ -238,9 +238,12 @@ def _payload(value, spec, shape, dtype, extent):
         if value is None:
             raise ValueError("neutral harness requires every exact logical input value")
         packed = None
-        if (not dtype.is_float and type(value) in (list, tuple)
-                and len(value) == extent // width
-                and all(type(scalar) is int for scalar in value)):
+        if (
+            not dtype.is_float
+            and type(value) in (list, tuple)
+            and len(value) == extent // width
+            and all(type(scalar) is int for scalar in value)
+        ):
             code = {1: "b", 2: "h", 4: "i", 8: "q"}.get(width)
             if code is not None:
                 code = code if dtype.signed else code.upper()
@@ -335,11 +338,11 @@ def _prepared_immutable_storage(cb, inputs, authorizations, budget):
     """
     import copy
 
-    from .storage_binding import resolve_storage_bindings
-    from merlin.perf.storage_encoding import GroupedAxesStorage
+    from merlin.analysis.perf.storage_encoding import GroupedAxesStorage
 
-    bindings = resolve_storage_bindings(cb, inputs, max_storage_bytes=budget,
-                                       prepack_authorizations=authorizations)
+    from .storage_binding import resolve_storage_bindings
+
+    bindings = resolve_storage_bindings(cb, inputs, max_storage_bytes=budget, prepack_authorizations=authorizations)
     if bindings is None:
         raise ValueError("neutral prepack requires the existing explicit storage contract")
     if type(inputs) is not dict or set(inputs) != {name for name, b in bindings.items() if b.access != "write"}:
@@ -351,9 +354,13 @@ def _prepared_immutable_storage(cb, inputs, authorizations, budget):
         if declared is not None and GroupedAxesStorage.from_dict(declared) != encoding:
             raise ValueError("source tensor and caller storage encodings differ")
         if binding.access != "read":
-            if (binding.access != "write" or tuple(spec["shape"]) != encoding.logical_shape
-                    or encoding.offset_elements != 0 or encoding.storage_elements != math.prod(encoding.logical_shape)
-                    or any(n > 1 and d != s for d, n, s in encoding.linear_index_terms())):
+            if (
+                binding.access != "write"
+                or tuple(spec["shape"]) != encoding.logical_shape
+                or encoding.offset_elements != 0
+                or encoding.storage_elements != math.prod(encoding.logical_shape)
+                or any(n > 1 and d != s for d, n, s in encoding.linear_index_terms())
+            ):
                 raise ValueError("neutral immutable preparation requires unchanged dense output storage")
             continue
         if binding.logical_values is None:
@@ -362,8 +369,15 @@ def _prepared_immutable_storage(cb, inputs, authorizations, budget):
             raise ValueError("neutral immutable preparation requires independently supplied logical source bytes")
         dtype = get(encoding.dtype)
         logical = {"shape": list(encoding.logical_shape), "dtype": encoding.dtype}
-        raw = base64.b64decode(_payload(binding.logical_values, logical, encoding.logical_shape, dtype,
-                                       math.prod(encoding.logical_shape) * (dtype.element_bits // 8)))
+        raw = base64.b64decode(
+            _payload(
+                binding.logical_values,
+                logical,
+                encoding.logical_shape,
+                dtype,
+                math.prod(encoding.logical_shape) * (dtype.element_bits // 8),
+            )
+        )
         if binding.prepack_authorization is not None:
             binding.prepack_authorization.validate_payload(raw)
         payloads[name] = encoding.pack_bytes(raw, max_storage_bytes=budget)
@@ -402,13 +416,14 @@ def render_harness(
     engine_policies = {
         ReadbackPolicy(block["readback_transport"])
         for engine, block in (contract.get("runner", {}).get("chipyard_rocc", {}).get("engines", {})).items()
-        if engine == "gsim" and type(block) is dict
+        if engine == "gsim"
+        and type(block) is dict
         and block.get("readback_transport") in {COHERENT_DUMP_V1, COHERENT_PACKET_V1, COHERENT_PACKET_V2}
     }
-    if (
-        type(readback_policy) is not ReadbackPolicy
-        or readback_policy not in {selected.readback_policy, *engine_policies}
-    ):
+    if type(readback_policy) is not ReadbackPolicy or readback_policy not in {
+        selected.readback_policy,
+        *engine_policies,
+    }:
         raise ValueError("neutral harness readback differs from its selected contract")
     if type(max_storage_bytes) is not int or not 0 < max_storage_bytes < 1 << 64:
         raise ValueError("neutral harness requires a positive complete storage budget")
@@ -432,7 +447,7 @@ def render_harness(
 
         total += 8 + out_packet_v2_capacity(packet_output_roster_v2(normalized))
     if original_abi is not None:
-        from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi
+        from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi
 
         if type(original_abi) is not CompileOnlySourceAbi:
             raise ValueError("neutral harness original ABI must be an exact typed declaration")
@@ -485,7 +500,7 @@ def render_harness(
                 else:
                     import numpy as np
 
-                    from merlin.llvmlower.weight_payload import WeightPayload
+                    from merlin.compiler.lower.model.weight_payload import WeightPayload
 
                     # Freeze the exact bytes just compared, rather than read
                     # a caller's lazy provider again after source validation.
@@ -493,8 +508,10 @@ def render_harness(
                     streamed[name] = TensorPayload(shape, spec["dtype"], frozen)
             else:
                 tensors[name]["preload_b64"] = _payload(inputs[name], spec, shape, dtype, extent)
-                if ("data" in spec
-                        and _payload(spec["data"], spec, shape, dtype, extent) != tensors[name]["preload_b64"]):
+                if (
+                    "data" in spec
+                    and _payload(spec["data"], spec, shape, dtype, extent) != tensors[name]["preload_b64"]
+                ):
                     raise ValueError("neutral explicit input differs from declared source values")
         elif "data" in spec or "preload_b64" in spec:
             raise ValueError("neutral output-only storage cannot carry precomputed data")

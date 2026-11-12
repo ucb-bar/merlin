@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
+from merlin.compiler.dialects.lowering.outline import DispatchInfo, OutlineResult
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.runtime.dispatch_runtime import execute
-from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program
-from merlin.xdsl_dialects.lowering.outline import DispatchInfo, OutlineResult
 
 
 def _outline(source):
@@ -34,7 +34,7 @@ def _outline(source):
 
 
 def _native_tools():
-    from merlin.llvmlower.toolchain import clang
+    from merlin.compiler.lower.model.toolchain import clang
 
     selected = os.environ.get("MERLIN_COMPILER_PYTHON")
     if not selected or not Path(selected).is_file() or (not clang().is_file()):

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
-from merlin.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 
 
 def _sha(path: Path) -> str:
@@ -47,7 +47,7 @@ def _source(path: Path) -> str:
 
 
 def _retained_program(artifacts) -> bool:
-    from merlin.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
+    from merlin.development.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
 
     for path, _ in artifacts:
         if path.name.endswith(PROGRAM_ARTIFACT_SUFFIX):
@@ -64,7 +64,7 @@ def _retained_program(artifacts) -> bool:
 def _binding(inputs, run_dir: Path, public: Path) -> dict:
     from merlin.common.provenance import source_digest
     from merlin.development.backend.feedback.compiler_profile_runtime import compiler_profile_binding
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     if inputs.compiler_profile_service is None or inputs.verify_grade_inputs is None:
         raise ValueError("no original host admission")
@@ -123,8 +123,8 @@ def retain_driver_grade(
 ):
     """Retain a complete ordinary grade, never a screen or a redacted claim."""
     from merlin.development.backend.feedback.compiler_profile_child import _original_executor
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import expected_refusal as ER
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen import expected_refusal as ER
 
     try:
         if verdict.get("all_pass") is not True or verdict.get("gradeable") is not True:

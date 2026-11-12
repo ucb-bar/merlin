@@ -12,16 +12,16 @@ loop showing it. This module states, from a case's own declaration:
 * ``extents`` -- ``(M, K, N)`` of the contraction (a window's implicit GEMM: output pixels, window
   depth, output channels), or ``(rows, None, cols)`` of the leading operand for other families;
 * ``classes`` relative to the tile edge the target's RTL facts state
-  (:func:`merlin.targetgen.op_form_regimes.bounds_for_target`), in the vocabulary the author's
-  schedule-specialization guidance and :mod:`merlin.transforms.shape_policy` reports use (square,
+  (:func:`merlin.development.targetgen.op_form_regimes.bounds_for_target`), in the vocabulary the author's
+  schedule-specialization guidance and :mod:`merlin.compiler.transforms.shape_policy` reports use (square,
   tall, wide, thin, ragged; that module takes author-declared classes and imposes no taxonomy):
 
   - ``square`` / ``tall`` (long M) / ``wide`` (long N) -- the aspect rule of
-    :mod:`~merlin.targetgen.op_form_regimes`: one side is lopsided when it exceeds the other by at
+    :mod:`~merlin.development.targetgen.op_form_regimes`: one side is lopsided when it exceeds the other by at
     least one array edge;
   - ``thin`` -- a single output row (M = 1, decode);
   - ``ragged`` -- some extent is not a whole number of tiles
-    (:func:`merlin.targetgen.conformance.classify_alignment`);
+    (:func:`merlin.development.targetgen.conformance.classify_alignment`);
   - ``model_layer`` -- the declaration says it was derived from a model (``source_role``).
 
 and, from ``qa/perf_history.jsonl`` (:mod:`.perf_history`), the best earlier cycles of the same case
@@ -74,7 +74,7 @@ def _by_role(declaration: dict, role: str) -> list[tuple[int, ...]]:
 
 
 def _window(declaration: dict) -> bool:
-    from merlin.targetgen.op_form_regimes import has_window
+    from merlin.development.targetgen.op_form_regimes import has_window
 
     return has_window(declaration)
 
@@ -141,7 +141,7 @@ def describe(declaration: dict) -> dict | None:
         return None
     operation = declaration.get("operation") if isinstance(declaration.get("operation"), dict) else {}
     attrs = operation.get("attributes") if isinstance(operation.get("attributes"), dict) else {}
-    from merlin.targetgen import semantic_families as sf
+    from merlin.development.targetgen import semantic_families as sf
 
     semantic = declaration.get("semantic") if isinstance(declaration.get("semantic"), dict) else {}
     family = semantic.get("semantic_family") or sf.from_op(operation.get("op"))
@@ -186,7 +186,7 @@ def classes(description: dict | None, edge: int | None) -> tuple[str, ...]:
     """The shape classes of one described case relative to the tile edge (empty without an edge)."""
     if not description or not isinstance(edge, int) or edge <= 0:
         return ()
-    from merlin.targetgen.conformance import classify_alignment
+    from merlin.development.targetgen.conformance import classify_alignment
 
     m, k, n = (description["extents"][axis] for axis in ("m", "k", "n"))
     out = []
@@ -214,8 +214,8 @@ def tile_edge(target: str | None) -> tuple[int | None, str | None]:
     key = (target, os.environ.get("MERLIN_RTL_FACTS"))
     if key not in _TILE:
         try:
-            from merlin.targetgen.op_form_regimes import bounds_for_target
-            from merlin.targetgen.rtl.facts import load_facts
+            from merlin.development.targetgen.op_form_regimes import bounds_for_target
+            from merlin.development.targetgen.rtl.facts import load_facts
 
             # Selected facts only: advisory feedback never regenerates RTL facts.
             bounds = bounds_for_target(target, facts=load_facts(target, regenerate=False))

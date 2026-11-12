@@ -39,7 +39,7 @@ What is checked per executed program:
   compared bit for bit. A capture that binds none is recorded ``not_available`` unless the declaration
   requires one;
 * **end to end** -- the output against the declared capture-bound reference within ``atol``/``rtol``
-  (:func:`merlin.perf.float_accuracy.compare`); every element must be within.
+  (:func:`merlin.analysis.perf.float_accuracy.compare`); every element must be within.
 
 The linked saved-model program prints one complete output and carries no per-group check, so
 per-group exactness is not observable here and the result says so rather than implying it.
@@ -181,7 +181,7 @@ def _program_entry(entry: Any, where: str) -> dict[str, Any]:
         raise ExecutionGateError(f"{where}: host_llvm_bitcode is a boolean")
     budget = entry.get("device_ir_budget")
     if budget is not None:
-        from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+        from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget
 
         if type(budget) is not dict:
             raise ExecutionGateError(f"{where}: device_ir_budget is explicit original-caller policy data")
@@ -321,9 +321,9 @@ def run_engine(
     from merlin.common.execution_deadline import ExecutionDeadline
     from merlin.development.backend.joint_control import require_full_model
     from merlin.development.backend.joint_control import selected as joint_campaign
+    from merlin.development.targetgen.contract.compile import _selected_run_timeout
     from merlin.runtime import modelinputs as MI
     from merlin.runtime.backends import base as backends
-    from merlin.targetgen.contract.compile import _selected_run_timeout
 
     if joint_campaign() is not None:
         timeout_s = min(timeout_s, require_full_model(engine=engine))

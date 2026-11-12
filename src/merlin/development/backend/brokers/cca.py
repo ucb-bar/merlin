@@ -3,7 +3,7 @@ Common-Compute-Abstraction introspection tools, WITHOUT full merlin having to im
 
 The arm-4 prompt MANDATES ``cca_contract.check_bijection(target)`` and
 ``action_catalog.escalation_ladder(axis, target)``, but neither can run in the bwrap sandbox:
-``merlin/kernels/types.py`` shadows Python's stdlib ``types`` when the kernels dir is flat on
+``merlin/analysis/kernels/types.py`` shadows Python's stdlib ``types`` when the kernels dir is flat on
 ``sys.path`` (a circular-import crash), and ``regions.py`` needs the unstaged ``merlin.common.paths``.
 A driver-side broker running OUTSIDE the sandbox — with the whole of merlin legitimately on the path —
 sidesteps both, exactly like :mod:`isa_tools_broker`.
@@ -57,7 +57,7 @@ def _handle(req: dict) -> dict:
         target = (req.get("target") or "").strip()
         if not target:
             return {"error": "check_bijection needs a target (the backend to diff)"}
-        from merlin.kernels import cca_contract
+        from merlin.analysis.kernels import cca_contract
 
         return _bijection_to_dict(cca_contract.check_bijection(target))
 
@@ -66,7 +66,7 @@ def _handle(req: dict) -> dict:
         axis = (req.get("axis") or "").strip()
         if not target or not axis:
             return {"error": "escalation_ladder needs both axis and target"}
-        from merlin.kernels import action_catalog
+        from merlin.analysis.kernels import action_catalog
 
         # escalation_ladder already returns a list of plain dicts (action_class/target_seam/forkable_now/
         # seam_file/seam_kind/needs_new_code) — JSON-clean as-is. Wrap so an empty ladder is still an

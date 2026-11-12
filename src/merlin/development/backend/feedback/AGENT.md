@@ -674,7 +674,7 @@ self-check child: one representative per shape class (`shape_classes`, derived
 from declarations against the RTL tile edge, never names), graded as ordinary
 subsets. Compare cycles like with like only: gSIM measurements and a qualified
 model are cycle evidence; Spike counts and provisional estimates never form a
-ratio. Panel records use `merlin.transforms.shape_policy` field names and leave
+ratio. Panel records use `merlin.compiler.transforms.shape_policy` field names and leave
 the author's session pins to the author. `capacity_use` relates addressed local
 rows and device reads to RTL-derived capacity; it is structural and advisory,
 never reads cycles, and reports unresolved run-time addresses as UNKNOWN.

@@ -45,6 +45,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import attempts as A
 from merlin.development.backend.optimization.whole_model_measured import batch as B
 from merlin.development.backend.optimization.whole_model_measured import gates as G
@@ -63,7 +64,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
     sha256_file,
     write_json_atomic,
 )
-from merlin.perf import whole_model_verdict as V
 
 WORKER_MODULE = "merlin.development.backend.optimization.whole_model_measured"
 #: A job whose worker died without writing a result lost its MEASUREMENT, not its verdict: re-queued
@@ -209,7 +209,7 @@ class MeasurementService:
         #: every result, carries it.
         self.machine_capabilities = dict(machine_capabilities) if machine_capabilities else None
         #: The exactness contract (by value) and the launch's group forms every verdict is graded under
-        #: (:func:`merlin.perf.exactness.apply_to_verdict`); None is the default, every form exact.
+        #: (:func:`merlin.analysis.perf.exactness.apply_to_verdict`); None is the default, every form exact.
         self.exactness = dict(exactness) if exactness else None
 
     def _reference_binding(self) -> dict[str, Any] | None:

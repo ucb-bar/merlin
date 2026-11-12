@@ -18,7 +18,7 @@ Workspace: `--facts FILE` (else synthetic), `--library DIR` (default
 | `shared_rhs_epoch_recipe.py --describe` | immutable shared RHS | V24 `schedule_dense_shared_rhs`; consume `schedule.plan` | script; `ab-library-pass` |
 | `composition_routes.py --case NAME` | pool, epilogue, residual, siblings or heads | `composition_catalog` routes; `source_composition.json` options | `reference/source-composition.md` |
 | `spatial_chain_recipe.py` | a convolution feeding a pool | `composition_catalog` -> `rolling_spatial` | `reference/composition.md` |
-| `library_pipeline_policy.py` | pipeline choice per shape | `PipelineVariant` + `merlin.transforms.shape_policy` | `reference/pipeline-policy.md` |
+| `library_pipeline_policy.py` | pipeline choice per shape | `PipelineVariant` + `merlin.compiler.transforms.shape_policy` | `reference/pipeline-policy.md` |
 | `counted_emission_recipe.py` | reuse encoder | checked `.emit_index_program`: same effects/completion, counted loops | `reference/dense-recipes.md` |
 | `parallel_schedule_recipe.py --output DIR` | shape variants | registered heavy passes -> unique emission -> bounded `evaluate_emitted` | `reference/parallel-evaluation.md` |
 

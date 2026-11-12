@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifacts-root", type=Path, help="artifact root containing targets/<target>/champions")
     args = parser.parse_args(argv)
 
-    from merlin.targetgen.champions import ChampionError, export_champion
+    from merlin.development.targetgen.champions import ChampionError, export_champion
 
     try:
         records = {

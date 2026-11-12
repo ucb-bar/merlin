@@ -1,0 +1,183 @@
+"""Explicitly selected, installed target binding for native compilation.
+
+The binding owns target facts and physical emission. Merlin owns selection,
+extraction, allocation, and checking; an entry point is never a second engine.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from importlib.metadata import entry_points
+from pathlib import Path
+from typing import Protocol
+
+from merlin.common.content_store import digest_file
+from merlin.compiler.semantic.model import KernelRequest
+from merlin.compiler.semantic.search import SearchLimits
+from merlin.compiler.semantic.snapshot import NativeSnapshot, NativeTargetProfile
+
+
+class NativeCompilationError(RuntimeError):
+    """A target binding's diagnosed native search failure, without fallback."""
+
+    _STATUSES = {
+        "unsupported_semantics",
+        "unqualified_target",
+        "infeasible_candidate",
+        "search_timeout",
+        "resource_limit",
+        "tool_unavailable",
+        "numerical_mismatch",
+        "execution_failure",
+        "compile_error",
+    }
+
+    def __init__(self, status: str, reason: str) -> None:
+        if status not in self._STATUSES or not reason:
+            raise ValueError("native compilation failure needs a known status and reason")
+        self.status = status
+        self.reason = reason
+        super().__init__(f"{status}: {reason}")
+
+
+class NativeTargetBinding(Protocol):
+    # Providers may additionally implement plan_boundary_abi(request) for
+    # explicit --abi auto requests. It returns fixed_inputs/fixed_outputs in
+    # provider units and must check its storage/layout requirements.
+    @staticmethod
+    def profile() -> NativeTargetProfile: ...
+
+    @staticmethod
+    def compile(
+        snapshot: NativeSnapshot,
+        request: KernelRequest,
+        *,
+        fixed_inputs: dict[str, int],
+        fixed_outputs: tuple[int, ...],
+        target_source: Path,
+        destination: Path,
+        limits: SearchLimits,
+    ) -> dict[str, object]: ...
+
+
+def verify_native_publication(
+    staged: Path,
+    manifest: dict[str, object],
+    *,
+    engine: str,
+    request_digest: str,
+    target_identity: str,
+) -> None:
+    """Check the immutable identity of files before publishing a target result."""
+    persisted_path = staged / "manifest.json"
+    if not persisted_path.is_file():
+        raise ValueError("selected target did not emit a native manifest")
+    persisted = json.loads(persisted_path.read_text())
+    if (
+        persisted != json.loads(json.dumps(manifest))
+        or manifest.get("engine") != engine
+        or (manifest.get("request_digest") != request_digest or manifest.get("target_identity") != target_identity)
+    ):
+        raise ValueError("native emitted artifact identity differs from checked request or target")
+    stage_artifacts = manifest.get("stage_artifacts")
+    if stage_artifacts is not None:
+        if not isinstance(stage_artifacts, dict) or not stage_artifacts:
+            raise ValueError("native stage artifacts need a nonempty path-to-digest map")
+        for relative, digest in stage_artifacts.items():
+            if not isinstance(relative, str) or not relative:
+                raise ValueError("native stage artifact has an unsafe path")
+            path = Path(relative)
+            if (
+                path.is_absolute()
+                or not path.parts
+                or path.as_posix() != relative
+                or "\\" in relative
+                or ".." in path.parts
+                or relative == "manifest.json"
+            ):
+                raise ValueError("native stage artifact has an unsafe path")
+            artifact = staged / path
+            if (
+                not isinstance(digest, str)
+                or artifact.is_symlink()
+                or not artifact.is_file()
+                or not artifact.resolve().is_relative_to(staged.resolve())
+                or digest_file(artifact)[0] != digest
+            ):
+                raise ValueError(f"native stage artifact changed or is missing: {relative}")
+    if manifest.get("artifact_kind") == "program_set":
+        if (staged / "program.bin").exists() or (staged / "execution_plan.json").exists():
+            raise ValueError("program set must not masquerade as one native binary")
+        rows = manifest.get("segments")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("native program set has no segment identities")
+        seen: set[str] = set()
+        for index, row in enumerate(rows):
+            if not isinstance(row, dict) or row.get("index") != index:
+                raise ValueError("native program set has invalid segment order")
+            relative = row.get("path")
+            if (
+                not isinstance(relative, str)
+                or not relative.startswith("segments/")
+                or relative != f"segments/{Path(relative).name}"
+                or Path(relative).is_absolute()
+                or ".." in Path(relative).parts
+                or relative in seen
+            ):
+                raise ValueError("native program set has an unsafe or repeated segment path")
+            seen.add(relative)
+            segment = staged / relative
+            if not segment.is_dir() or segment.is_symlink() or not segment.resolve().is_relative_to(staged.resolve()):
+                raise ValueError("native program set segment is missing or escapes its package")
+            segment_manifest = segment / "manifest.json"
+            if (
+                not segment_manifest.is_file()
+                or row.get("manifest_sha256") != hashlib.sha256(segment_manifest.read_bytes()).hexdigest()
+            ):
+                raise ValueError("native program set segment manifest changed")
+            if not isinstance(row.get("request_digest"), str) or not row["request_digest"]:
+                raise ValueError("native program set segment has no request identity")
+            detail = json.loads(segment_manifest.read_text())
+            if detail.get("artifact_kind") == "program_set" or row.get("binary_sha256") != detail.get("binary_sha256"):
+                raise ValueError("native program set segment binary identity changed")
+            verify_native_publication(
+                segment,
+                detail,
+                engine=engine,
+                request_digest=row["request_digest"],
+                target_identity=target_identity,
+            )
+        if not (staged / "segments").is_dir() or (staged / "segments").is_symlink():
+            raise ValueError("native program set segment root is missing or linked")
+        if {item.name for item in (staged / "segments").iterdir()} != {Path(relative).name for relative in seen}:
+            raise ValueError("native program set has an unaccounted segment")
+        return
+    if manifest.get("artifact_kind") not in {None, "program"}:
+        raise ValueError("unknown native publication kind")
+    binary = staged / "program.bin"
+    if (
+        not binary.is_file()
+        or binary.stat().st_size == 0
+        or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
+    ):
+        raise ValueError("native emitted binary differs from checked manifest")
+    plan = staged / "execution_plan.json"
+    expected_plan_digest = manifest.get("execution_plan_sha256")
+    if plan.exists() != (expected_plan_digest is not None):
+        raise ValueError("native execution plan and manifest identity disagree")
+    if plan.exists() and (not plan.is_file() or hashlib.sha256(plan.read_bytes()).hexdigest() != expected_plan_digest):
+        raise ValueError("native execution plan differs from checked manifest identity")
+
+
+def load_native_target_binding(name: str) -> NativeTargetBinding:
+    """Load one named installed provider; never infer a target from a request."""
+    if not name or not name.isidentifier():
+        raise ValueError("native target support needs one explicit entry point name")
+    matches = [point for point in entry_points(group="merlin.native_target_compilers") if point.name == name]
+    if len(matches) != 1:
+        raise ValueError(f"expected one installed native target support named {name!r}, found {len(matches)}")
+    binding = matches[0].load()
+    if not callable(getattr(binding, "profile", None)) or not callable(getattr(binding, "compile", None)):
+        raise TypeError("native target support lacks profile or compile interface")
+    return binding

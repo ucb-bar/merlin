@@ -13,8 +13,8 @@ assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.mo
 sys.path[:0] = [str(bundle), *config["dependencies"]]
 
 for name in (
-    "merlin.llvmlower.direct_source_contraction",
-    "merlin.targetgen.common_transforms",
+    "merlin.compiler.lower.model.direct_source_contraction",
+    "merlin.development.targetgen.common_transforms",
     "merlin.development.testgen.connected_integer_bounds",
     "merlin.runtime.reference",
 ):

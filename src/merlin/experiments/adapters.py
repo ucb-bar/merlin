@@ -14,8 +14,8 @@ from functools import lru_cache
 from importlib.resources import files
 from pathlib import Path
 
+from merlin.development.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 from merlin.experiments.definition import SpecError
-from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
 PHASE0_MODULE = "merlin.development.testgen"
 PHASE1_MODULE = "merlin.development.backend"
@@ -63,7 +63,7 @@ def phase0_startup_inputs() -> dict[str, Path]:
         "spec_definition": module_source_path("merlin.experiments.definition"),
         "experiment_schema": initializer.parent / "resources/experiment.schema.json",
         "specir_integration": module_source_path("merlin.integrations.specir"),
-        "capsule_description": module_source_path("merlin.targetgen.contract.description"),
+        "capsule_description": module_source_path("merlin.development.targetgen.contract.description"),
         "provenance_binding": initializer.parent / "resources/legacy_entrypoints.json",
     }
     if any(path.is_symlink() or not path.is_file() for path in inputs.values()):

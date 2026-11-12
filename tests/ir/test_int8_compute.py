@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from merlin.llvmlower import toolchain
+from merlin.compiler.lower.model import toolchain
 
 
 def _i8_matmul_src(m, k, n):
@@ -11,8 +11,8 @@ def _i8_matmul_src(m, k, n):
 
 
 def _run_i8_matmul(src, A, B, M, N, tmp_path):
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.lower import lower_model
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.lower import lower_model
 
     res = lower_model(src, tmp_path / "i8", targets=("host",))
     model = HostModel.load(str(res.host_so))
@@ -65,11 +65,11 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
     from xdsl.parser import Parser
     from xdsl.utils.exceptions import ParseError, VerifyException
 
-    from merlin.frontends.linalg_mlir import make_context, parse_mlir_file
-    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
-    from merlin.targetgen.contract.linalg_iface import make_linalg_context
-    from merlin.xdsl_dialects._common import make_context as core_context
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.dialects._common import make_context as core_context
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.frontend.linalg_mlir import make_context, parse_mlir_file
+    from merlin.compiler.lower.model.passes_quant_int import lower_matmul_int8
+    from merlin.development.targetgen.contract.linalg_iface import make_linalg_context
 
     source = _i8_matmul_src(2, 4, 3)
     for context in (make_context(), core_context(Arith, Linalg, Tensor), make_linalg_context()):
@@ -120,11 +120,11 @@ def test_dynamic_matmul_quantization_is_bit_exact_torchao(case, tmp_path):
     and code come from TorchAO itself, not from another transcription in this test.
     """
     from merlin.common.paths import repo_root
-    from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.lower import lower_model
-    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
-    from merlin.xdsl_dialects._common import text as to_text
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.lower import lower_model
+    from merlin.compiler.lower.model.passes_quant_int import lower_matmul_int8
 
     ref = np.load(repo_root() / "tests" / "data" / "torchao_affine" / "reference.npz")
     act = np.ascontiguousarray(ref[f"{case}::x"])
@@ -164,12 +164,12 @@ def test_zero_activation_stays_finite_after_quant_round_fusion(tmp_path):
     A zero activation must quantize to integer zero and requantize to finite float zero even after
     the round/clamp/convert chain is inlined for vectorization.
     """
-    from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.lower import lower_model
-    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
-    from merlin.llvmlower.quant_round import fuse_round_clamp_convert
-    from merlin.xdsl_dialects._common import text as to_text
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.lower import lower_model
+    from merlin.compiler.lower.model.passes_quant_int import lower_matmul_int8
+    from merlin.compiler.lower.model.quant_round import fuse_round_clamp_convert
 
     m, k, n = (2, 8, 4)
     src = tmp_path / "zero_matmul.mlir"

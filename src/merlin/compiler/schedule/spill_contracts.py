@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from merlin.compiler.kernel_ir.ir import Call
 from merlin.compiler.schedule.spill_conformance import SpillClass, validate_spill_classes
-from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 
 def _fields(value, keys, label):

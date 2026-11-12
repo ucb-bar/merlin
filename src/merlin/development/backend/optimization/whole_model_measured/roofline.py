@@ -54,8 +54,8 @@ def _sha256(path: Path) -> str:
 def engine_memory_path(target: str, *, emulator: str | Path | None = None) -> dict[str, Any]:
     """The memory path of the elaboration the dump-capable emulator was built from (its receipt names the
     FIRRTL and its digest; a file that no longer hashes to it is refused, never read as if it did)."""
-    from merlin.perf import whole_model_gsim as G
-    from merlin.targetgen.rtl import introspect
+    from merlin.analysis.perf import whole_model_gsim as G
+    from merlin.development.targetgen.rtl import introspect
 
     try:
         engine = G._engine(target, emulator)
@@ -81,7 +81,7 @@ def engine_memory_path(target: str, *, emulator: str | Path | None = None) -> di
 
 def roofline_machine(target: str, *, emulator: str | Path | None = None) -> dict[str, Any]:
     """``{"array_rows", "array_cols", "memory", "provenance", "unresolved"}`` -- every value derived."""
-    from merlin.perf.capsule_roofline import machine_bounds
+    from merlin.analysis.perf.capsule_roofline import machine_bounds
 
     bounds = machine_bounds(target)
     unresolved = {key: value for key, value in bounds["unresolved"].items() if key != "movement"}
@@ -107,7 +107,7 @@ def roofline_machine(target: str, *, emulator: str | Path | None = None) -> dict
 
 
 def _tensor_bytes(tensor: Mapping[str, Any] | None) -> int | None:
-    from merlin.perf.derived_bound import _width_bits
+    from merlin.analysis.perf.derived_bound import _width_bits
 
     if not isinstance(tensor, Mapping):
         return None
@@ -152,8 +152,8 @@ def _extents(op: str, entry: Mapping[str, Any]) -> dict[str, int] | None:
 def group_shapes(model_capsule: str | Path, *, target: str) -> dict[str, dict[str, Any]]:
     """``{group: {"op", "form_text", "extents", "reads", "writes", "omitted"}}`` from the capture's own
     buffer: each read/write is a tensor the group names, at the size and dtype the buffer declares."""
+    from merlin.analysis.perf import whole_model_build as W
     from merlin.development.backend.optimization.whole_model_measured import forms as PC
-    from merlin.perf import whole_model_build as W
 
     buffer = W.state(W.load_model_capsule(model_capsule), target=target)
     tensors = buffer.get("tensors") or {}
@@ -190,7 +190,7 @@ def group_shapes(model_capsule: str | Path, *, target: str) -> dict[str, dict[st
 
 def compute_floor(m: int, k: int, n: int, *, peak_macs_per_cycle: int) -> dict[str, Any]:
     """The shared useful-work floor, without assumptions about instruction mapping."""
-    from merlin.perf.capsule_roofline import compute_floor as _floor
+    from merlin.analysis.perf.capsule_roofline import compute_floor as _floor
 
     return _floor(m, k, n, peak_macs_per_cycle=peak_macs_per_cycle)
 

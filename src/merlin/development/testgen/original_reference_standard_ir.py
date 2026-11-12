@@ -84,9 +84,9 @@ def ordered_abi(source, metadata, budget):
     from xdsl.parser import Parser
 
     from merlin.common.quant_formats import machine_bits
-    from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
-    from merlin.targetgen.contract.tensor_types import match_tensor_spec
-    from merlin.xdsl_dialects._common import make_context
+    from merlin.compiler.dialects._common import make_context
+    from merlin.development.targetgen.contract.mlir_source_admission import admit_mlir_source
+    from merlin.development.targetgen.contract.tensor_types import match_tensor_spec
 
     if R._plain(source).stat().st_size > budget["max_source_bytes"]:
         raise ValueError("standard IR exceeds its explicit source byte budget")
@@ -161,12 +161,12 @@ def _tool_pin(path, pin_replay=None):
 def _pin_sources(selection, capture, pin_replay=None):
     modules = [
         *_READERS,
-        "merlin.targetgen.frontend_trace",
+        "merlin.development.targetgen.frontend_trace",
         "merlin.common.jsonio",
-        "merlin.targetgen.contract.mlir_source_admission",
-        "merlin.targetgen.contract.tensor_types",
-        "merlin.xdsl_dialects._common",
-        "merlin.xdsl_dialects.fp8",
+        "merlin.development.targetgen.contract.mlir_source_admission",
+        "merlin.development.targetgen.contract.tensor_types",
+        "merlin.compiler.dialects._common",
+        "merlin.compiler.dialects.fp8",
     ]
     selected = loads(Path(selection).read_bytes())
     if selected["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
@@ -345,7 +345,7 @@ def _evaluate(original, selected, owner, returncode, *, references, run_parse=Tr
         metadata = loads(Path(original["products"]["metadata"]["path"]).read_bytes())
         abi = ordered_abi(paths["source"], metadata, budget)
         trace = loads(paths["trace"].read_bytes())
-        from merlin.targetgen.frontend_trace import original_operation_semantics
+        from merlin.development.targetgen.frontend_trace import original_operation_semantics
 
         original_operation_semantics(trace)
         if (
@@ -393,9 +393,12 @@ def _evaluate(original, selected, owner, returncode, *, references, run_parse=Tr
 
 
 def _contract(original, references):
+    from merlin.development.targetgen.original_operator_reference import (
+        OriginalReferenceBudget,
+        prepare_original_reference,
+    )
+    from merlin.development.targetgen.original_operator_sources import OriginalOperatorSource
     from merlin.development.testgen import original_reference_plan
-    from merlin.targetgen.original_operator_reference import OriginalReferenceBudget, prepare_original_reference
-    from merlin.targetgen.original_operator_sources import OriginalOperatorSource
 
     source = OriginalOperatorSource(
         Path(original["products"]["source"]["path"]).read_text(),

@@ -278,7 +278,7 @@ def prove_generic_copy_source(
     module: Any, inventory: Mapping[str, Any], *, raw_sha256: str, normalized_sha256: str
 ) -> dict[str, Any]:
     """Join every movement-family generic copy to exactly one source inventory ordinal."""
-    from merlin.xdsl_dialects.lowering.contraction_coverage import classify_generic
+    from merlin.compiler.dialects.lowering.contraction_coverage import classify_generic
 
     parsed = tuple(mq.walk(module))
     _check_source_inventory(parsed, inventory, raw_sha256, normalized_sha256)

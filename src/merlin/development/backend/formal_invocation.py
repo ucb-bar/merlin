@@ -10,8 +10,8 @@ from typing import TYPE_CHECKING
 from merlin.development.backend import run_inputs
 from merlin.development.backend.context import context_argv
 from merlin.development.backend.session import task_scope
-from merlin.targetgen.sandbox import bwrap
-from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.sandbox import bwrap
+from merlin.development.targetgen.target_experiment import load_target_experiment
 
 if TYPE_CHECKING:
     from merlin.development.backend.session import PreparedRun

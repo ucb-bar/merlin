@@ -14,11 +14,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common import invocation_record
+from merlin.compiler.lower.model.counted_copy_check import check_counted_copy
+from merlin.compiler.lower.model.layout_observation import LLVMLayoutObservation, observe_compiled_layout
 from merlin.development.backend.component_pointer_storage import IndependentPointerStorageSelection
 from merlin.development.backend.optimization import contracts as C
-from merlin.llvmlower.counted_copy_check import check_counted_copy
-from merlin.llvmlower.layout_observation import LLVMLayoutObservation, observe_compiled_layout
-from merlin.targetgen.compile_only_execution import verify_compile_only_report
+from merlin.development.targetgen.compile_only_execution import verify_compile_only_report
 
 _ISSUED = weakref.WeakKeyDictionary()
 

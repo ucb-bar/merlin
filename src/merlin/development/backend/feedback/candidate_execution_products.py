@@ -12,8 +12,8 @@ from pathlib import Path, PurePosixPath
 
 from merlin.common import invocation_record as I
 from merlin.common.tree_hash import hash_tree
-from merlin.targetgen import executed_program as E
-from merlin.targetgen.contract.readback_policy import canonical_sha256
+from merlin.development.targetgen import executed_program as E
+from merlin.development.targetgen.contract.readback_policy import canonical_sha256
 
 
 def _mapping(value):

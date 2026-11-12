@@ -1,5 +1,5 @@
 /* Per-op whole-model profiler shim (default-OFF; only linked when the K1 build is made with
- * op_profile=True, which also instruments the IR — see merlin/llvmlower/op_profile.py).
+ * op_profile=True, which also instruments the IR — see merlin/compiler/lower/model/op_profile.py).
  *
  * The instrumented `@forward` calls merlin_prof_mark(id) immediately BEFORE each top-level op,
  * plus a sentinel mark before `func.return`. Each mark samples `rdtime` and credits the elapsed

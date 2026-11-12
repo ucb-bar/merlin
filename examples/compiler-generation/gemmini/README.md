@@ -28,7 +28,7 @@ uses diagnostic mode until evidence, semantics and coverage are qualified.
 | backend generation: functional compiler generation | [`phase1/`](backend-generation/README.md): prompts and public runtime harness | Frozen compiler submission and separately attributed certification |
 | backend optimization: performance optimization | [`phase2/`](backend-generation/optimization/README.md): selecting frozen inputs and the shared templates | Optimization runs and evidence tied to the exact functional compiler |
 | Whole-model inspection | [`whole-model/`](whole-model/README.md): lowering an existing capture and inspecting IR | Lowering stages and tensor inspection payloads; not accelerator certification |
-| Numerics | [`numerics/`](numerics/README.md): inputs, models and guides for full-model correctness checks | `python -m merlin.model_check` reports; frozen bundles and sealed inputs stay private |
+| Numerics | [`numerics/`](numerics/README.md): inputs, models and guides for full-model correctness checks | `python -m merlin.evaluation.model` reports; frozen bundles and sealed inputs stay private |
 | Artifact navigation | [`artifacts/`](artifacts/README.md): map each generated file to its input and next phase | Nothing generated is stored or committed in the example |
 | Published compiler smoke | This page, below: run the pinned OOT compiler away from the Merlin checkout | Parsed interface, Gemmini lowering, command buffer and LLVM-dialect artifact; not simulator or whole-model qualification |
 

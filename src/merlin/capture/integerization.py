@@ -205,7 +205,7 @@ def _report_only_quality(selection: dict) -> dict:
     """Project an explicit validated numerical selection without publishing recipe details."""
     from merlin.common.digest import is_sha256
     from merlin.compiler.quantization.recipe import digest
-    from merlin.targetgen.quant_recipe_policy import validate
+    from merlin.development.targetgen.quant_recipe_policy import validate
 
     identities = ("source_recipe_sha256", "source_methodology_sha256", "source_output_path_sha256")
     if (

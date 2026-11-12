@@ -249,14 +249,14 @@ def attribute(calls, *, unwrap, tokenize):
     return tuple(result)
 
 
-_FACTS = {"merlin.targetgen.rtl.facts.load_facts", "rtl.facts.load_facts"}
-_LEVERS = {"merlin.targetgen.rtl_backend.derived_levers", "rtl_backend.derived_levers"}
-_PROFILES = {"merlin.targetgen.rtl_backend.target_profile", "rtl_backend.target_profile"}
-_BIJECTIONS = {"merlin.kernels.cca_contract.check_bijection", "cca_contract.check_bijection"}
-_LADDERS = {"merlin.kernels.action_catalog.escalation_ladder", "action_catalog.escalation_ladder"}
+_FACTS = {"merlin.development.targetgen.rtl.facts.load_facts", "rtl.facts.load_facts"}
+_LEVERS = {"merlin.development.targetgen.rtl_backend.derived_levers", "rtl_backend.derived_levers"}
+_PROFILES = {"merlin.development.targetgen.rtl_backend.target_profile", "rtl_backend.target_profile"}
+_BIJECTIONS = {"merlin.analysis.kernels.cca_contract.check_bijection", "cca_contract.check_bijection"}
+_LADDERS = {"merlin.analysis.kernels.action_catalog.escalation_ladder", "action_catalog.escalation_ladder"}
 _GENERATORS = {
     f"{prefix}.{module}.{operation}"
-    for prefix in ("merlin.targetgen.generate", "generate")
+    for prefix in ("merlin.development.targetgen.generate", "generate")
     for module, operation in (
         ("mlir_scaffold", "generate"),
         ("xdsl", "generate"),
@@ -337,7 +337,7 @@ def discovery(source, context=None):
                 opaque = True
                 return None
             target = argument(node, "target")
-            backend_parameter = "backend" if name.startswith("merlin.kernels.") else "target"
+            backend_parameter = "backend" if name.startswith("merlin.analysis.kernels.") else "target"
             backend = argument(node, backend_parameter)
             if name in _BIJECTIONS and backend is not None and target_ok(backend):
                 found.add("cca_bijection")

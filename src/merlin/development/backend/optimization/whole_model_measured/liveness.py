@@ -37,13 +37,13 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured.identity import (
     epoch_of,
     now,
     read_json,
     write_json_atomic,
 )
-from merlin.perf import whole_model_verdict as V
 
 HEARTBEAT = "heartbeat.json"
 HEARTBEAT_SCHEMA = "merlin.phase2.whole_model_measured.heartbeat.v1"

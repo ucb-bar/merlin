@@ -36,7 +36,7 @@ REFUSED = "REFUSED"
 
 def declaration_module(declaration: Mapping[str, Any], family: str) -> Any:
     """Import the analyzer module a sealed declaration itself names."""
-    from merlin.perf import claim_reach
+    from merlin.analysis.perf import claim_reach
 
     try:
         identity = claim_reach.analyzer_identity({"acceptance": declaration})
@@ -130,7 +130,7 @@ def resolve(descriptors: Sequence[Mapping[str, Any]]) -> ResolvedAnalyzer:
     code has never heard of is dispatched by what it froze, and one that declares nothing is refused
     by name instead of falling through to whichever analyzer happened to be imported.
     """
-    from merlin.perf import claim_reach
+    from merlin.analysis.perf import claim_reach
 
     if not isinstance(descriptors, Sequence) or isinstance(descriptors, str) or not descriptors:
         raise DispatchError("no capsule descriptors were supplied")
@@ -201,7 +201,7 @@ def _registry() -> dict[str, Callable[..., dict]]:
         # Generated comparison-group members are separate programs, not two emitter settings of one
         # capsule. The analyzer lives in the shared perf package and is target-neutral; dispatch still
         # keys only on the frozen analyzer identity.
-        from merlin.perf import comparison_group_claim as CG
+        from merlin.analysis.perf import comparison_group_claim as CG
 
         table[CG.ANALYZER] = CG.analyze_comparison_group_claim
     except Exception:  # noqa: BLE001
@@ -219,9 +219,9 @@ def _registry() -> dict[str, Callable[..., dict]]:
         # they have no arms and no fitted cohort. They register like any other: dispatch still keys
         # only on the identity each contract froze, which is what keeps a new claim SHAPE from needing
         # a new caller.
-        from merlin.perf import load_state_claim as LS
-        from merlin.perf import movein_claim as MI
-        from merlin.perf import stationary_claim as ST
+        from merlin.analysis.perf import load_state_claim as LS
+        from merlin.analysis.perf import movein_claim as MI
+        from merlin.analysis.perf import stationary_claim as ST
 
         table[LS.ANALYZER] = LS.analyze_load_state_claim
         table[ST.ANALYZER] = ST.analyze_stationary_claim

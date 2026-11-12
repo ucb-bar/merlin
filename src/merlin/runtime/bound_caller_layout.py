@@ -19,8 +19,13 @@ def _canonical(value):
 
 def _source(path):
     path = Path(path)
-    if (not path.is_absolute() or path.resolve() != path or path.is_symlink()
-            or not path.is_file() or not 0 < path.stat().st_size <= 16 << 20):
+    if (
+        not path.is_absolute()
+        or path.resolve() != path
+        or path.is_symlink()
+        or not path.is_file()
+        or not 0 < path.stat().st_size <= 16 << 20
+    ):
         raise ValueError("bound caller-layout source is absent, indirect or exceeds its budget")
     raw = path.read_bytes()
     return hashlib.sha256(raw).hexdigest()
@@ -28,9 +33,9 @@ def _source(path):
 
 def _binding(backend, *, target, facts):
     from merlin.common import quant_formats
+    from merlin.development.targetgen import target_registry
     from merlin.runtime import direct_kernel_harness, harness_render
     from merlin.runtime.backends import base, chipyard_rocc_bound
-    from merlin.targetgen import target_registry
 
     if type(backend) is not chipyard_rocc_bound.BoundRoCCBackend or backend.target != target:
         raise ValueError("caller layout needs the exact selected core data-bound runtime")
@@ -46,9 +51,14 @@ def _binding(backend, *, target, facts):
         raise ValueError("bound caller-layout contract or facts differ from the original runtime")
     harness_render.validate_contract(contract)
     contract_path = selected.capability_contract_path
-    modules = dict(bound_runtime=chipyard_rocc_bound, registry=base, target_selection=target_registry,
-                   logical_renderer=harness_render, pointer_renderer=direct_kernel_harness,
-                   scalar_formats=quant_formats)
+    modules = dict(
+        bound_runtime=chipyard_rocc_bound,
+        registry=base,
+        target_selection=target_registry,
+        logical_renderer=harness_render,
+        pointer_renderer=direct_kernel_harness,
+        scalar_formats=quant_formats,
+    )
     return {
         "schema": "merlin.bound_logical_caller_layout_identity.v1",
         "target": target,
@@ -56,8 +66,10 @@ def _binding(backend, *, target, facts):
         "selected_contract_file_sha256": _source(contract_path),
         "selected_contract_sha256": hashlib.sha256(_canonical(contract)).hexdigest(),
         "selected_facts_sha256": hashlib.sha256(_canonical(facts)).hexdigest(),
-        "sources": {**{role: _source(module.__file__) for role, module in modules.items()},
-                    "layout_inspector": _source(__file__)},
+        "sources": {
+            **{role: _source(module.__file__) for role, module in modules.items()},
+            "layout_inspector": _source(__file__),
+        },
     }, contract
 
 
@@ -99,17 +111,27 @@ def inspect(backend, cb, *, target, facts):
         # The original source-pinned pointer renderer declares and passes this
         # ordinal symbol (including streamed sidecars). Actual ELF size/address
         # checks remain mandatory; no logical tensor name selects an address.
-        rows.append({"tensor": name, "symbol": f"tensor_{ordinal}",
-                     "dtype": spec["dtype"], "logical_shape": list(shape),
-                     "physical_extents": list(shape),
-                     "logical_strides_elements": [prod(shape[axis + 1:]) for axis in range(len(shape))],
-                     "storage_elements": prod(shape), "offset_elements": 0})
+        rows.append(
+            {
+                "tensor": name,
+                "symbol": f"tensor_{ordinal}",
+                "dtype": spec["dtype"],
+                "logical_shape": list(shape),
+                "physical_extents": list(shape),
+                "logical_strides_elements": [prod(shape[axis + 1 :]) for axis in range(len(shape))],
+                "storage_elements": prod(shape),
+                "offset_elements": 0,
+            }
+        )
     after, _ = _binding(backend, target=target, facts=facts)
     if before != after:
         raise ValueError("bound caller-layout selection or original source changed during inspection")
     return {
-        "layout": {"schema": "caller_storage_layout_v2", "policy": {"mode": "logical_dense_row_major_v2"},
-                   "tensors": rows},
+        "layout": {
+            "schema": "caller_storage_layout_v2",
+            "policy": {"mode": "logical_dense_row_major_v2"},
+            "tensors": rows,
+        },
         "binding": before,
         "provider_sha256": hashlib.sha256(_canonical(before)).hexdigest(),
     }

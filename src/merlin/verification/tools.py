@@ -25,7 +25,7 @@ def _llvm_bin() -> Path:
 def find_filecheck() -> str | None:
     """Reuse the RTL screen's resolver; fall back to our own candidates if it is unavailable."""
     try:
-        from merlin.targetgen.rtl_check_runner import find_filecheck as _fc
+        from merlin.development.targetgen.rtl_check_runner import find_filecheck as _fc
 
         found = _fc()
         if found:

@@ -10,6 +10,8 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.rtl.hw_graph import parse_generic_hw
+from merlin.development.targetgen.rtl.hw_packing import equal_partitions
 from merlin.development.testgen.rtl_intake import (
     IndependentHardwareIntake,
     RtlIntakePin,
@@ -20,8 +22,6 @@ from merlin.development.testgen.rtl_intake import (
     _pin,
     _plain,
 )
-from merlin.targetgen.rtl.hw_graph import parse_generic_hw
-from merlin.targetgen.rtl.hw_packing import equal_partitions
 
 SCHEMA = "merlin.independent_local_packing_intake.v1"
 MEMORY_SCHEMA = "merlin.independent_local_packing_intake.v2"
@@ -30,10 +30,10 @@ _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _ENVIRONMENT = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 _READERS = (
     __name__,
-    "merlin.targetgen.rtl.hw_packing",
-    "merlin.targetgen.rtl.hw_graph",
-    "merlin.targetgen.rtl.hw_observations",
-    "merlin.targetgen.rtl.ports",
+    "merlin.development.targetgen.rtl.hw_packing",
+    "merlin.development.targetgen.rtl.hw_graph",
+    "merlin.development.targetgen.rtl.hw_observations",
+    "merlin.development.targetgen.rtl.ports",
     "xdsl.parser",
 )
 _UNKNOWN = (
@@ -45,21 +45,21 @@ _UNKNOWN = (
 _MEMORY_UNKNOWN = (*_UNKNOWN, "conditional_memory_binding_definedness_events_and_history")
 _MEMORY_READERS = (
     *_READERS,
-    "merlin.targetgen.rtl.hw_partition_memory_bindings",
-    "merlin.targetgen.rtl.hw_hierarchy_bindings",
-    "merlin.targetgen.rtl.hw_memory_ports",
-    "merlin.targetgen.rtl.hw_instance_inputs",
-    "merlin.targetgen.rtl.hw_combinational",
-    "merlin.targetgen.contract.mlir_source_admission",
+    "merlin.development.targetgen.rtl.hw_partition_memory_bindings",
+    "merlin.development.targetgen.rtl.hw_hierarchy_bindings",
+    "merlin.development.targetgen.rtl.hw_memory_ports",
+    "merlin.development.targetgen.rtl.hw_instance_inputs",
+    "merlin.development.targetgen.rtl.hw_combinational",
+    "merlin.development.targetgen.contract.mlir_source_admission",
     "merlin.common.jsonio",
 )
 
 
 def validate_memory_selection(selection):
     """Close metadata budgets only; callers cannot supply roots or mappings."""
-    from merlin.targetgen.rtl.hw_hierarchy_bindings import HierarchyBindingLimits
-    from merlin.targetgen.rtl.hw_memory_ports import MemoryPortLimits
-    from merlin.targetgen.rtl.hw_partition_memory_bindings import PartitionMemoryLimits
+    from merlin.development.targetgen.rtl.hw_hierarchy_bindings import HierarchyBindingLimits
+    from merlin.development.targetgen.rtl.hw_memory_ports import MemoryPortLimits
+    from merlin.development.targetgen.rtl.hw_partition_memory_bindings import PartitionMemoryLimits
 
     fields = {
         "memory_limits": MemoryPortLimits,
@@ -87,10 +87,13 @@ def validate_memory_selection(selection):
 
 
 def _memory_bindings(path, hardware, selection):
-    from merlin.targetgen.contract.mlir_source_admission import admit_mlir_source
-    from merlin.targetgen.rtl.hw_hierarchy_bindings import HierarchyBindingLimits
-    from merlin.targetgen.rtl.hw_memory_ports import MemoryPortLimits
-    from merlin.targetgen.rtl.hw_partition_memory_bindings import PartitionMemoryLimits, partition_memory_bindings
+    from merlin.development.targetgen.contract.mlir_source_admission import admit_mlir_source
+    from merlin.development.targetgen.rtl.hw_hierarchy_bindings import HierarchyBindingLimits
+    from merlin.development.targetgen.rtl.hw_memory_ports import MemoryPortLimits
+    from merlin.development.targetgen.rtl.hw_partition_memory_bindings import (
+        PartitionMemoryLimits,
+        partition_memory_bindings,
+    )
 
     selected = validate_memory_selection(selection)
     if path.stat().st_size > selected["source_bytes"]:

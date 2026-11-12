@@ -106,7 +106,7 @@ finish all uses before the next frontier transport overwrites cache or Q1 rows.
 
 The recipe's host callbacks implement these on Python lists and compare the pooled output with an
 independent source evaluation (conv, Q1, max over valid cells, Q2), and fail if any output element
-is written twice. The catalog row also names `merlin.llvmlower.convolution_packing` (the host LLVM
+is written twice. The catalog row also names `merlin.compiler.lower.model.convolution_packing` (the host LLVM
 packer); when your roster lacks it, your backend supplies `pack_cached_input_panel` itself.
 
 ## Other chains

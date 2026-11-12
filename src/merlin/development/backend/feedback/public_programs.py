@@ -17,7 +17,7 @@ from merlin.experiments.corpus import public_program_suite as S
 
 
 def selected(context):
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     return S.selected(load_target_experiment(context.descriptor))
 
@@ -37,10 +37,10 @@ def _grade(submission, *, context, output, timeout, contract=None, names=None, m
     from merlin.development.backend.feedback.public_scalability import _observed_result
     from merlin.development.backend.feedback.selfcheck import _adapters
     from merlin.development.backend.joint_model_activation import admit_grade
+    from merlin.development.targetgen.capsule_common import load_capsule, tier_status
     from merlin.evaluation.capsule import runner as CR
     from merlin.experiments.corpus.preparation import copy_input
     from merlin.experiments.runner import fingerprint
-    from merlin.targetgen.capsule_common import load_capsule, tier_status
 
     choice = selected(context)
     if choice is None:
@@ -147,7 +147,7 @@ def _grade(submission, *, context, output, timeout, contract=None, names=None, m
 
 
 def _sim_via(context):
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     return load_target_experiment(context.descriptor).sim_via
 

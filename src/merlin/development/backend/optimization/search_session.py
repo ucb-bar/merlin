@@ -8,10 +8,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.search_guidance import ADAPTIVE_SCOPE
 from merlin.development.backend.optimization.transcript_audit import audit_codex_transcript
+from merlin.evaluation.harness import hash_tree
 
 CONTINUATION = (
     "Continue this Phase2 campaign in the same workspace and thread. Read search-status. "

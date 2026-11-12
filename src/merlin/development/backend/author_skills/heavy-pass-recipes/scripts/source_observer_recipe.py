@@ -69,23 +69,23 @@ def producer_source(rows, columns):
 
 
 def recipe(rows=3, columns=5, output=None):
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.llvmlower.bounded_rne_word_cells import (
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+    from merlin.compiler.lower.model.bounded_rne_word_cells import (
         binary32_word_in_rne_cell,
         prepare_bounded_rne_word_cells,
     )
-    from merlin.llvmlower.late_quant_rne import rewrite
-    from merlin.llvmlower.scaled_integer_finite import (
+    from merlin.compiler.lower.model.late_quant_rne import rewrite
+    from merlin.compiler.lower.model.scaled_integer_finite import (
         emit_finite_scale_scan,
         prove_broadcast_scaled_integer_finite,
     )
-    from merlin.llvmlower.source_expression_interval import (
+    from merlin.compiler.lower.model.source_expression_interval import (
         IntervalEffectContract,
         build_source_interval_table,
         close_scalar_i8_observer,
         emit_source_interval_i8_lookup,
     )
-    from merlin.llvmlower.source_expression_interval_llvm import rewrite_source_interval_i8_lookup
+    from merlin.compiler.lower.model.source_expression_interval_llvm import rewrite_source_interval_i8_lookup
 
     if min(rows, columns) <= 0 or rows <= 1:
         raise ValueError("nonempty repeated broadcast domain required")

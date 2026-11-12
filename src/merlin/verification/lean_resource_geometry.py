@@ -15,8 +15,8 @@ from pathlib import Path
 from xdsl.dialects import builtin
 
 from merlin.common.paths import module_source_path
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.resource_allocation import ATTRIBUTE, _project, validate_allocated_ir
+from merlin.compiler.transforms.certificates import ir_digest
+from merlin.compiler.transforms.resource_allocation import ATTRIBUTE, _project, validate_allocated_ir
 
 SCHEMA = "merlin.resource_geometry_obligations.v1"
 SCOPE = (
@@ -29,14 +29,14 @@ SCOPE = (
 )
 _SOURCE_MODULES = (
     "merlin.verification.lean_resource_geometry",
-    "merlin.transforms.resource_allocation",
-    "merlin.transforms.analysis_memory",
-    "merlin.transforms.analysis_types",
-    "merlin.transforms.certificates",
-    "merlin.semantic_compiler.allocate",
-    "merlin.semantic_compiler.allocation_types",
-    "merlin.semantic_compiler.rules",
-    "merlin.semantic_compiler.model",
+    "merlin.compiler.transforms.resource_allocation",
+    "merlin.compiler.transforms.analysis_memory",
+    "merlin.compiler.transforms.analysis_types",
+    "merlin.compiler.transforms.certificates",
+    "merlin.compiler.semantic.allocate",
+    "merlin.compiler.semantic.allocation_types",
+    "merlin.compiler.semantic.rules",
+    "merlin.compiler.semantic.model",
 )
 
 
@@ -113,7 +113,7 @@ def project_resource_geometry(
     No placement solver is run. A host checker must call this function freshly
     and bind its identities; accepting a caller-supplied object is insufficient.
     """
-    from merlin.semantic_compiler.allocate import instruction_schedule, live_ranges
+    from merlin.compiler.semantic.allocate import instruction_schedule, live_ranges
 
     if type(max_obligations) is not int or max_obligations < 1:
         raise ValueError("resource verification requires a positive obligation budget")

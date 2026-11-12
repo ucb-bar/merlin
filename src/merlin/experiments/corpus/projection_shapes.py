@@ -35,28 +35,50 @@ def contractions(record: dict) -> list[dict]:
         rhs = incoming[(node["id"], "args/1")]
         results = node["results"]
         a, b = lhs["shape"], rhs["shape"]
-        if (lhs["dtype"] != "int8" or rhs["dtype"] != "int8"
-                or len(a) != 2 or len(b) != 2 or a[1] != b[0]
-                or any(type(x) is not int or x <= 0 for x in [*a, *b])
-                or len(results) != 1 or results[0]["dtype"] != "int32"
-                or results[0]["shape"] != [a[0], b[1]]):
+        if (
+            lhs["dtype"] != "int8"
+            or rhs["dtype"] != "int8"
+            or len(a) != 2
+            or len(b) != 2
+            or a[1] != b[0]
+            or any(type(x) is not int or x <= 0 for x in [*a, *b])
+            or len(results) != 1
+            or results[0]["dtype"] != "int32"
+            or results[0]["shape"] != [a[0], b[1]]
+        ):
             raise ValueError("selected source contraction has no exact integer matrix contract")
         shape = (a[0], a[1], b[1])
-        row = groups.setdefault(shape, {
-            "shape_mkn": list(shape), "model": record["model"], "program": record["program"],
-            "trace_sha256": record["source_sha256"], "graph_sha256": graph.get("graph_sha256"),
-            "operation": node["target"], "source_node_ids": [], "occurrences": [],
-        })
+        row = groups.setdefault(
+            shape,
+            {
+                "shape_mkn": list(shape),
+                "model": record["model"],
+                "program": record["program"],
+                "trace_sha256": record["source_sha256"],
+                "graph_sha256": graph.get("graph_sha256"),
+                "operation": node["target"],
+                "source_node_ids": [],
+                "occurrences": [],
+            },
+        )
         row["source_node_ids"].append(node["id"])
         row["occurrences"].append({"node": node["id"], "inputs": [lhs, rhs], "result": results[0]})
     return list(groups.values())
 
 
-def write_sources(projection: Path, *, sha256: str, shapes: list[tuple[int, int, int]],
-                  template: Path, destination: Path, name_prefix: str) -> list[Path]:
+def write_sources(
+    projection: Path,
+    *,
+    sha256: str,
+    shapes: list[tuple[int, int, int]],
+    template: Path,
+    destination: Path,
+    name_prefix: str,
+) -> list[Path]:
     """Render only requested, actually observed shapes through the native IR API."""
     import yaml
-    from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+
+    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
     raw = projection.read_bytes()
     if hashlib.sha256(raw).hexdigest() != sha256 or projection.is_symlink():
@@ -69,8 +91,12 @@ def write_sources(projection: Path, *, sha256: str, shapes: list[tuple[int, int,
     cap0 = yaml.safe_load((template / "capsule.yaml").read_text())
     cb0 = parse_interface_mlir((template / cap0["interface_mlir"]).read_text())
     attrs = cap0["operation"]["attributes"]
-    if (cap0["operation"]["op"] != "matmul" or attrs.get("epilogue") != []
-            or attrs.get("output_dtype") != "i32" or cap0["numeric_policy"] != {"compare": "exact_int", "dtype": "i32"}):
+    if (
+        cap0["operation"]["op"] != "matmul"
+        or attrs.get("epilogue") != []
+        or attrs.get("output_dtype") != "i32"
+        or cap0["numeric_policy"] != {"compare": "exact_int", "dtype": "i32"}
+    ):
         raise ValueError("template must be the independent raw int8-to-int32 matrix contract")
     destination.mkdir(parents=True)
     output = []
@@ -78,15 +104,26 @@ def write_sources(projection: Path, *, sha256: str, shapes: list[tuple[int, int,
         m, k, n = shape
         cap, cb = copy.deepcopy(cap0), copy.deepcopy(cb0)
         name = f"{name_prefix}_m{m}k{k}n{n}_raw"
-        binding = {**groups[shape], "projection_sha256": sha256,
-                   "numerical_scope": "exact int32 product of independent deterministic int8 inputs",
-                   "captured_boundary_values": False, "connected_cut": False, "full_model": False,
-                   "execution_status": "not_executed", "development_engine": "spike"}
-        cap.update(name=name, source_role="handauthored_compiler_test",
-                   source_reference=(f"Approved {binding['model']}/{binding['program']} graph shape; "
-                       f"trace SHA256 {binding['trace_sha256']}; all occurrences in source-shape-binding.json. "
-                       "Independent integer contraction contract, not captured model-boundary equivalence."),
-                   required_oracle_tiers=["L0", "L1", "L2"])
+        binding = {
+            **groups[shape],
+            "projection_sha256": sha256,
+            "numerical_scope": "exact int32 product of independent deterministic int8 inputs",
+            "captured_boundary_values": False,
+            "connected_cut": False,
+            "full_model": False,
+            "execution_status": "not_executed",
+            "development_engine": "spike",
+        }
+        cap.update(
+            name=name,
+            source_role="handauthored_compiler_test",
+            source_reference=(
+                f"Approved {binding['model']}/{binding['program']} graph shape; "
+                f"trace SHA256 {binding['trace_sha256']}; all occurrences in source-shape-binding.json. "
+                "Independent integer contraction contract, not captured model-boundary equivalence."
+            ),
+            required_oracle_tiers=["L0", "L1", "L2"],
+        )
         for key in ("software_screen", "integer_partial_sum_bound", "extends", "max_oracle_tier", "performance"):
             cap.pop(key, None)
         for item in cap["inputs"]:

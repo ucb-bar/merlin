@@ -7,11 +7,11 @@ def source_structure(raw, *, pin, reduction_lanes=None):
     from xdsl.dialects.builtin import TensorType
     from xdsl.utils.exceptions import ParseError, VerifyException
 
+    from merlin.analysis.kernels.kernel_evidence import semantic_region_from_ir
+    from merlin.analysis.kernels.mechanism_inference import source_mechanisms
+    from merlin.analysis.perf.candidate_source import source_observation
     from merlin.common.ir_lock import IR_LOCK
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.kernels.kernel_evidence import semantic_region_from_ir
-    from merlin.kernels.mechanism_inference import source_mechanisms
-    from merlin.perf.candidate_source import source_observation
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     try:
         with IR_LOCK:

@@ -13,7 +13,7 @@ required_top_level_fields:
 producer: selected OOT support provider
 consumers:
   - merlin.target.spec.instructions
-  - merlin.targetgen.semantic_search
+  - merlin.development.targetgen.semantic_search
 validation_notes: >-
   Use merlin.target.spec.instructions.normalize_instruction_semantics for
   nested validation and deterministic input identities. Missing computations,

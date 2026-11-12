@@ -99,7 +99,7 @@ def bind(
     manifest = launch.path(document["inputs"]["bundle_manifest"])
     bundle = yaml.safe_load(manifest.read_text())
     sdk = bundle.get("compiler_tool_profile") if isinstance(bundle, dict) else None
-    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+    from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
 
     if not isinstance(sdk, dict) or sdk.get("common_substrate") != CURRENT_COMMON_SUBSTRATE:
         raise ValueError("selected successor corpus requires the current compiler tool profile")

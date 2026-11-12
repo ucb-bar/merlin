@@ -54,10 +54,10 @@ python examples/compiler-generation/gemmini/reference-kernels/prepare_inputs.py 
   --contract "$SELECTED_CONTRACT" --facts "$SELECTED_FACTS" \
   --out "$TMPDIR/expert-reference-inputs.json"
 CORPUS_ROOT="$(python -c 'from merlin.common.artifacts import new_product; print(new_product("kernel-mining", version=2, target="gemmini", update_latest=False).path)')"
-python -m merlin.mining.reference_database build \
+python -m merlin.analysis.mining.reference_database build \
   --spec "$TMPDIR/expert-reference-inputs.json" \
   --out "$CORPUS_ROOT"
-python -m merlin.mining.reference_database verify "$CORPUS_ROOT"
+python -m merlin.analysis.mining.reference_database verify "$CORPUS_ROOT"
 ```
 
 ### Optional ahead-of-time machine products

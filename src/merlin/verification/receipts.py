@@ -82,7 +82,7 @@ def _cb_signature(cb: dict) -> dict[str, Any]:
 def _verifier_digest() -> str:
     root = Path(__file__).parent
     data = b"".join(name.encode() + b"\0" + (root / name).read_bytes() + b"\0" for name in _SEMANTIC_FILES)
-    bridge = root.parent / "targetgen" / "contract" / "interface_emit.py"
+    bridge = root.parent / "development" / "targetgen" / "contract" / "interface_emit.py"
     data += b"targetgen/contract/interface_emit.py\0" + bridge.read_bytes() + b"\0"
     return _sha(data)
 

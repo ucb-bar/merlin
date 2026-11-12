@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [04-planning, 06-lowering, 11-optimization]
-code_refs: [src/merlin/transforms/pipeline.py, src/merlin/transforms/pipeline_state.py, src/merlin/transforms/validation.py, src/merlin/compiler/passes, src/merlin/compiler/schedule, src/merlin/compiler/optimizations, src/merlin/xdsl_dialects/schedule.py, src/merlin/compiler/kernel_ir/ir.py]
+code_refs: [src/merlin/compiler/transforms/pipeline.py, src/merlin/compiler/transforms/pipeline_state.py, src/merlin/compiler/transforms/validation.py, src/merlin/compiler/passes, src/merlin/compiler/schedule, src/merlin/compiler/optimizations, src/merlin/compiler/dialects/schedule.py, src/merlin/compiler/kernel_ir/ir.py]
 ---
 
 # 5. Transform and schedule the program
@@ -22,7 +22,7 @@ the algorithm.
 
 | Work | Implementation owner |
 | --- | --- |
-| Generic IR rewrites and ordered pipelines | `src/merlin/transforms/` |
+| Generic IR rewrites and ordered pipelines | `src/merlin/compiler/transforms/` |
 | Common frontend normalization and graph transforms | `src/merlin/compiler/frontend/`, `compiler/transforms/` |
 | Registered optimization strategies | `src/merlin/compiler/optimizations/` |
 | Tiling, operand retention, transfer merging and command ordering | `src/merlin/compiler/schedule/` |
@@ -40,7 +40,7 @@ splits the loop into ordered segments and optionally unrolls it. The notebook
 shows the changed IR and calls the independent change checker.
 
 The public pipeline uses `PipelineOptions` and `apply_common_pipeline` from
-`merlin.transforms.pipeline`. `PipelineSession` tracks pass results and analysis
+`merlin.compiler.transforms.pipeline`. `PipelineSession` tracks pass results and analysis
 invalidation. An analysis computed for the previous IR cannot silently stand in
 for a fresh result after a modifying pass.
 

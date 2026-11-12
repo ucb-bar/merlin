@@ -119,7 +119,7 @@ def entry_refusal_is_final(entry: dict, decision: dict) -> bool:
     probe = entry.get("generalization") or {}
     host_probe = probe.get("must_accelerate") is False and probe.get("eligible") is False
     # A MUST-REFUSE member is refused by the declarations on purpose: that refusal is what it grades,
-    # so it is never moved out of the graded cohort for it (merlin.targetgen.expected_refusal).
+    # so it is never moved out of the graded cohort for it (merlin.development.targetgen.expected_refusal).
     if entry.get("outcome") == "refuse":
         return False
     return decision.get("status") == "unsupported" and not host_probe
@@ -148,8 +148,8 @@ def summarize(entries: list[dict], *, host_only: bool = False, scope: str) -> di
 
 def account_program(program: Path, *, name: str, target: str, evidence, source_context=None) -> list[dict]:
     """Per-operation admission entries of one Linalg/source program, as for a captured application."""
-    from merlin.targetgen.application_inventory import application_demand_inventory
-    from merlin.targetgen.operation_accounting import build_operation_accounting
+    from merlin.development.targetgen.application_inventory import application_demand_inventory
+    from merlin.development.targetgen.operation_accounting import build_operation_accounting
 
     inventory = application_demand_inventory(
         {name: program},
@@ -175,8 +175,8 @@ def _join_source_admissions(
 ) -> None:
     """Re-screen exact inventoried source bodies; serialized signatures are insufficient."""
     from merlin.common import mlir_query as mq
-    from merlin.frontends.capture_normalization import normalize_capture_mlir
-    from merlin.targetgen.operation_accounting import admit_operation_row
+    from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+    from merlin.development.targetgen.operation_accounting import admit_operation_row
 
     if set(captures) != set(accounting["applications"]):
         raise ValueError("source admission captures must cover the exact application roster")
@@ -238,9 +238,9 @@ def account_interface_text(
     mlir: str, *, target: str, evidence, numeric_screens: list[dict] | None = None
 ) -> list[dict]:
     """Screen builder-emitted interface bytes before a capsule or golden is written."""
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.targetgen.interface_observations import command_rows
-    from merlin.targetgen.operation_accounting import admit_operation_row
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.interface_observations import command_rows
+    from merlin.development.targetgen.operation_accounting import admit_operation_row
 
     parsed = parse_interface_mlir(mlir)
     if parsed.get("target") != target:
@@ -287,8 +287,8 @@ def _operand_sum_numeric_screens_text(mlir: str, evidence) -> list[dict]:
         (row.get("derived_from_facts") or {}).get("form") == "fused_operand_sum" for row in spec.get("operations") or ()
     ):
         return []
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.targetgen.operand_sum_numeric import audit_i8_operand_sum
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.operand_sum_numeric import audit_i8_operand_sum
 
     facets = [
         facet.to_dict() if hasattr(facet, "to_dict") else facet for facet in getattr(evidence, "readout_facets", ())
@@ -418,7 +418,7 @@ def derive_inventory(
     judged once more with the selected declarations. Selected captures additionally
     establish parsed source-body requirements against the exact inventoried bytes.
     """
-    from merlin.targetgen.operation_accounting import build_operation_accounting
+    from merlin.development.targetgen.operation_accounting import build_operation_accounting
 
     accounting = build_operation_accounting(
         inventory,

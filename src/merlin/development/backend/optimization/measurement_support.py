@@ -10,10 +10,10 @@ from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
+from merlin.analysis.perf.dma_volume import physical_volume_from_counters
+from merlin.analysis.perf.work_volume import work_from_command_buffer
 from merlin.development.backend.optimization import campaign as PC
-from merlin.perf.dma_volume import physical_volume_from_counters
-from merlin.perf.work_volume import work_from_command_buffer
-from merlin.targetgen.rtl import mlc_bridge
+from merlin.development.targetgen.rtl import mlc_bridge
 
 _COUNTER_ENV = ("MERLIN_HW_COUNTERS", "MERLIN_HW_COUNTER_UNIT")
 
@@ -439,7 +439,7 @@ def raw_command_buffer(artifact) -> Mapping | None:
 
     A stored buffer whose bytes no longer match its digest is refused (treated as absent), so every
     axis that needs it stays unestablished rather than priced from changed bytes."""
-    from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
+    from merlin.analysis.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
 
     try:
         return load_command_buffer(artifact)
@@ -705,9 +705,9 @@ def probe_counter_byte_bindings(rtl_identity: Mapping, *, target: str) -> dict:
 
 def executed_profile(workspace: Path, *, target: str, timeout_s: int) -> dict:
     """What the measured program EXECUTED: its functional run replayed with a commit log
-    (:func:`merlin.perf.executed_trace.profile_elf`) on the exact image the arm built."""
-    from merlin.perf import executed_trace as ET  # noqa: PLC0415
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME  # noqa: PLC0415
+    (:func:`merlin.analysis.perf.executed_trace.profile_elf`) on the exact image the arm built."""
+    from merlin.analysis.perf import executed_trace as ET  # noqa: PLC0415
+    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME  # noqa: PLC0415
 
     images = {}
     for path in sorted(Path(workspace).rglob(PACKAGE_ELF_NAME)):

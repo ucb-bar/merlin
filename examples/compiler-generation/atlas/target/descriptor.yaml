@@ -29,7 +29,7 @@ preflight:
   smoke_program: MatmulProgram
   capability_probes:
     - capability: control_flow.relative_branch
-      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      adapter: merlin.development.targetgen.inline_assembly_probe:run_capability_probe
       fixture:
         kind: inline_assembly_memory
         source: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/taken_backward_branch.S
@@ -43,7 +43,7 @@ preflight:
         operations:
           - {domain: instruction, dialect: atlas, operation: BNE}
     - capability: scalar_memory.load_store_roundtrip
-      adapter: merlin.targetgen.inline_assembly_probe:run_capability_probe
+      adapter: merlin.development.targetgen.inline_assembly_probe:run_capability_probe
       fixture:
         kind: inline_assembly_memory
         source: examples/compiler-generation/atlas/backend-generation/contracts/hwbringup_atlas_v0/preflight/scalar_memory_nonzero.S
@@ -98,4 +98,4 @@ host_lane:
   read_only:
     - out/artifacts/targets/rvv/rvv_tuned_v1_d1_vfmacc_outerproduct/
   deny_modification:
-    - merlin/python/merlin/llvmlower/
+    - merlin/python/merlin/compiler/lower/model/

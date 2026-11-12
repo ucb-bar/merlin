@@ -21,7 +21,7 @@ derives where the hardware already orders them:
 4. Each route's effect stream runs on host integers under an ordering model built from the same facts
    (every command pending until a drain, loads landing newest first, only the facts' waits ordering
    commands) and is compared with the source product; the stream, encoded as accelerator commands from
-   the facts, goes through ``merlin.targetgen.completion_order.check_commands`` plus the
+   the facts, goes through ``merlin.development.targetgen.completion_order.check_commands`` plus the
    read-then-write supplement (``conv_epoch_recipe.Commands``).
 
 Prints JSON: the flag table and, per shape, drains and commands of both routes. Laws and admissions
@@ -191,7 +191,7 @@ def entries(structure, queue, default):
 
 def two_window(p, s, r, max_blocks):
     """Resources bounded to ``max_blocks`` tiles per side, and the two-window block with fewest bytes."""
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     mt, _, nt = p.tiles
     bounded = replace(r, max_m_blocks=min(max_blocks, mt), max_n_blocks=min(max_blocks, nt), max_k_blocks=1)
@@ -462,7 +462,7 @@ def run_route(kernel, adapter, p, s, record, r, masks, *, numerics, check_order)
             problems.append("does not reproduce the source product under the ordering facts")
     if cmds:
         try:
-            from merlin.targetgen import completion_order as checker
+            from merlin.development.targetgen import completion_order as checker
         except ImportError as exc:
             row["order_check"] = {"verdict": "unknown", "detail": f"unavailable here ({exc})"}
         else:

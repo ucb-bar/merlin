@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 
 from merlin.development.backend.optimization.contracts import document_sha256
-from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
 
 def verify(evidence, *, members):

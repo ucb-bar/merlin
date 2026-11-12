@@ -13,7 +13,7 @@ already in both roles.
 FOUR CHECKS, because "disjoint" alone is not the property that matters:
 
 1. **Disjointness** -- no bundle both derives and is claimed. Structural, from
-   `merlin.targetgen.claim_models.partition`.
+   `merlin.development.targetgen.claim_models.partition`.
 2. **Every claim model is captured.** A claim measured over a model nobody captured is a claim about
    nothing, and reads identically to a passing one.
 3. **The derivation set is non-empty.** Holding out everything would trivially satisfy check 1 and
@@ -56,7 +56,7 @@ for _p in (_REPO / "merlin" / "python",):
         sys.path.insert(0, str(_p))
 
 from merlin.common.paths import artifacts_dir  # noqa: E402
-from merlin.targetgen import claim_models as CM  # noqa: E402
+from merlin.development.targetgen import claim_models as CM  # noqa: E402
 
 
 def _bundles() -> dict[str, Path]:
@@ -72,7 +72,7 @@ def _bundles() -> dict[str, Path]:
 
 
 def audit(target: str, bundles: dict[str, Path] | None = None) -> dict:
-    from merlin.targetgen import conformance as CF
+    from merlin.development.targetgen import conformance as CF
 
     bundles = bundles if bundles is not None else _bundles()
     if not bundles:

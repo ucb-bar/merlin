@@ -14,11 +14,15 @@ from typing import Any
 from merlin.common.digest import is_sha256, sha256_file
 from merlin.compiler.backend.host import load_host_package as load_rvv_package
 from merlin.compiler.backend.isa import require_host_isa_dts
-from merlin.llvmlower.compilation_recipe import verify_completed_recipe
-from merlin.llvmlower.link_supplier_trace import trace_symbol_flags
+from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+from merlin.compiler.lower.model.link_supplier_trace import trace_symbol_flags
+from merlin.development.targetgen.host_linkage_contract import (
+    RUNTIME_SUPPLIER,
+    runtime_recipe,
+    validate_source_linkage_contract,
+)
 from merlin.runtime.backends import spike, spike_model
 from merlin.runtime.modelinputs import strict_tree_sha256
-from merlin.targetgen.host_linkage_contract import RUNTIME_SUPPLIER, runtime_recipe, validate_source_linkage_contract
 
 FIELD = "host_linkage_support"
 PENDING = "reviewed_source_linkage_requirement_pending_build"

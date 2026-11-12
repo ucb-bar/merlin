@@ -20,7 +20,7 @@ from types import MethodType
 from merlin.common.cpu_pool import current_thread_owns_cpu_lease, shared_compute_pool
 from merlin.development.backend.optimization.contracts import StageGateError, write_json
 from merlin.development.backend.optimization.retained_revisions import source_inventory
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, restore_original_factory
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection, restore_original_factory
 
 SCHEMA = "merlin.public_diagnostic_launch.v1"
 NATIVE_CLOCK_SCHEMA = "phase2.public_native_diagnostic_infrastructure_packet.v2"
@@ -82,7 +82,7 @@ def require_current_native_contract(target, expected=None):
         raise StageGateError("native contract preflight requires an exact target and ordinary leaf pin")
     pin = dict(expected)
     before = read_pin(pin)
-    from merlin.targetgen.target_registry import resolve
+    from merlin.development.targetgen.target_registry import resolve
 
     selected = resolve(target).capability_contract_path
     if str(selected) != pin["path"]:
@@ -238,7 +238,7 @@ def run_plan(
 
     scope = executing_resource_boundary(external_boundary) if external_boundary is not None else nullcontext()
     if native_execution_protocol is not None:
-        from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+        from merlin.development.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
 
         if type(native_execution_protocol) is not str or native_execution_protocol != POINTER_PROTOCOL:
             raise StageGateError("native execution requires its exact explicit pointer protocol")
@@ -341,7 +341,7 @@ def _prepare_diagnostic_sources(plan, *, output, selection, preparation, library
     """Use the existing original preparer; keep raw parent and compared bytes distinct."""
     from merlin.development.backend.optimization import campaign
     from merlin.development.backend.optimization.compiler_pass_preparation import prepare_pair, verify_pair
-    from merlin.targetgen.compiler_pass_selection import copy_compiler_source
+    from merlin.development.targetgen.compiler_pass_selection import copy_compiler_source
 
     _validate_preparation(selection, preparation)
     if selection.binding.library != library.contract.sha256 or selection.factory.record() != factory.record():
@@ -427,17 +427,17 @@ def _execute_plan(
     native_execution_protocol=None,
     diagnostic_pair_protocol=None,
 ):
+    from merlin.analysis.perf.phase2_edit_contract import validate_against_package
     from merlin.development.backend.optimization import campaign
     from merlin.development.backend.optimization.compiler_library_state import restore_selection
     from merlin.development.backend.optimization.edit_authority import FrozenEditAuthority
     from merlin.development.backend.optimization.public_diagnostic_corpus import freeze_public_diagnostic_corpus
     from merlin.development.backend.optimization.public_source_diagnostic import prepare_public_source_diagnostic
     from merlin.development.backend.optimization.retained_revisions import RetainedRevisionStore
+    from merlin.development.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
+    from merlin.development.targetgen.common_transforms import CommonTransformService
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen import operator_exclusion as E
-    from merlin.perf.phase2_edit_contract import validate_against_package
-    from merlin.targetgen.checked_source_model_diagnostic import select_checked_source_diagnostic
-    from merlin.targetgen.common_transforms import CommonTransformService
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     output = Path(output).absolute()
     if output.exists() or output.resolve() != output or any(p.is_symlink() for p in output.parents):
@@ -648,7 +648,7 @@ def main(argv=None, *, native_exploration=None, external_boundary=None):
     from merlin.development.backend.optimization import compiler_pass_state as PASSES
     from merlin.development.backend.optimization.diagnostic_pair_check import PROTOCOL as PAIR_PROTOCOL
     from merlin.development.backend.optimization.native_development_decision import POLICY as DECISION_POLICY
-    from merlin.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
+    from merlin.development.targetgen.checked_source_model_diagnostic import POINTER_PROTOCOL
 
     parser = argparse.ArgumentParser(description=__doc__)
     PASSES.add_selection_arguments(parser)

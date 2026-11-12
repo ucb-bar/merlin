@@ -235,7 +235,7 @@ def _undeclared_shared_design(rid: str, forced: list[str], grouped: dict[str, st
     held by a test instead.
     """
     try:
-        from merlin.targetgen.rtl.facts import facts_alias
+        from merlin.development.targetgen.rtl.facts import facts_alias
     except Exception:  # noqa: BLE001 — no merlin on the path is not a coverage problem
         return []
     designs: dict[str, list[str]] = {}

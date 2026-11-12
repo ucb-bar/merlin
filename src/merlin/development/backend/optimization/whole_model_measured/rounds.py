@@ -296,7 +296,7 @@ def outer_policy_argv(
 ) -> list[str]:
     """The agent's filesystem boundary: its workspace, the broker control directory read-only, the
     driver's runtime binds, and every declared answer surface masked.  A coverage gap refuses."""
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     inputs = AW._sandbox_inputs(target_experiment, None)
     repo = inputs.paths.repo.resolve()
@@ -325,7 +325,7 @@ def codex_agent(profile: Mapping[str, Any], *, target_experiment: Any, codex_bin
 
     def run(*, workspace, candidate, control_dir, prompt, round_index, timeout_s, stage_root):
         from merlin.development.backend.providers import codex_agent as CA
-        from merlin.targetgen.sandbox import bwrap as BW
+        from merlin.development.targetgen.sandbox import bwrap as BW
 
         def sandbox_command(inner: str, ws: Path, _bundle: dict, extra_binds: list[str] | None = None) -> str:
             argv = outer_policy_argv(ws, control_dir, target_experiment, extra_binds or ())
@@ -621,7 +621,7 @@ def round_driver(
     ``edit_authority`` (``whole-package``, or ``frozen-contract`` with the config's ``edit_contract``)."""
     config = getattr(objective, "config", None) or {}
     if target_experiment is None:
-        from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
+        from merlin.development.targetgen.target_experiment import descriptor_for, load_target_experiment
 
         descriptor = config.get("descriptor") or descriptor_for(str(objective.screen.target))
         if descriptor is None:

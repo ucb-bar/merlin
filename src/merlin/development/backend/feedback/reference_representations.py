@@ -10,9 +10,9 @@ def emitted_view(raw, pin, *, decoder, symbol=""):
     from xdsl.parser import Parser
     from xdsl.utils.exceptions import ParseError, VerifyException
 
+    from merlin.analysis.perf.emitted_work import assembly_site_kind, summarize_emitted_work
     from merlin.common.ir_lock import IR_LOCK
-    from merlin.perf.emitted_work import assembly_site_kind, summarize_emitted_work
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
     if len(raw) > 32 << 20:
         raise ValueError("analysis_emitted_invalid")
@@ -38,7 +38,7 @@ def emitted_view(raw, pin, *, decoder, symbol=""):
             if isinstance(operation, llvm.FuncOp) and operation.sym_name.data != symbol:
                 subject.body.block.erase_op(operation)
     sites = Counter(assembly_site_kind(op) for op in subject.walk() if op.name == "llvm.inline_asm")
-    from merlin.kernels.consumer_structure import consumer_structure
+    from merlin.analysis.kernels.consumer_structure import consumer_structure
 
     report = dict(
         kind="emitted_ir_analysis",
@@ -52,9 +52,9 @@ def emitted_view(raw, pin, *, decoder, symbol=""):
         performance="unknown",
     )
     if decoder.get("semantics") is not None:
-        from merlin.kernels.instruction_comparison import OperandSummary
-        from merlin.kernels.machine_evidence import _finite
-        from merlin.targetgen.rocc.decode import decode_module
+        from merlin.analysis.kernels.instruction_comparison import OperandSummary
+        from merlin.analysis.kernels.machine_evidence import _finite
+        from merlin.development.targetgen.rocc.decode import decode_module
 
         trace = _finite(decode_module(subject, target=decoder["target"], semantics=decoder["semantics"]))
         operands = OperandSummary()
@@ -84,8 +84,8 @@ def emitted_view(raw, pin, *, decoder, symbol=""):
 
 
 def compare_bundles(reference, candidate, expert, ours, *, compare_machine):
+    from merlin.analysis.kernels.kernel_evidence import SemanticRegion, compare_regions
     from merlin.development.backend.feedback.reference_mechanisms import align_questions
-    from merlin.kernels.kernel_evidence import SemanticRegion, compare_regions
 
     left, right = reference["views"], candidate["views"]
     a, b = left.get("source", {}).get("semantic_region"), right.get("source", {}).get("semantic_region")

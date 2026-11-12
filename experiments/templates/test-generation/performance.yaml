@@ -114,7 +114,7 @@ sweeps:
         layout: target_native_direct_corpus_builder
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axis: K
@@ -192,7 +192,7 @@ sweeps:
         layout: identical_kernel_and_operands
       emitter:
         status: new:settle_sweep_materializer
-        entry: merlin.perf.workload_gen.plan_matmul
+        entry: merlin.analysis.perf.workload_gen.plan_matmul
         knobs:
           varied_parameter: settle_by_instruction_class
       cost:
@@ -283,7 +283,7 @@ sweeps:
         layout: real_producer_consumer_dependence
       emitter:
         status: existing
-        entry: merlin.perf.command_stream_gen.pair_from_interface
+        entry: merlin.analysis.perf.command_stream_gen.pair_from_interface
         knobs:
           transformation: hoist_a_command_above_ones_it_does_not_depend_on
       cost:
@@ -360,13 +360,13 @@ sweeps:
         layout: fused_member_and_all_parts_share_inputs
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs: {members: [fused_matmul_bias, matmul, bias_add]}
       # Declared HERE, not on the capsules: a PF capsule is generated, so a contract written into it
       # by hand is deleted by the next regeneration and the family silently loses its analyzer.
       acceptance:
         schema_version: 1
-        analyzer: merlin.perf.group_arithmetic_claim.analyze_group_arithmetic_claim/v1
+        analyzer: merlin.analysis.perf.group_arithmetic_claim.analyze_group_arithmetic_claim/v1
         program_arm: candidate
         group_field: comparison_group
         whole_role: fused
@@ -474,7 +474,7 @@ sweeps:
         layout: identical_lever_with_looped_layer_emission
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           promotion: passing_tile_member_to_layer_sibling
       cost:
@@ -579,7 +579,7 @@ sweeps:
         layout: both_members_share_every_extent
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           encodings:
           - encoding0
@@ -688,7 +688,7 @@ sweeps:
         layout: deep_k_contraction_at_fixed_parallel_extents_so_every_point_drains_one_output_tile
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axis: K
@@ -751,7 +751,7 @@ sweeps:
             zero by measurement, so agreement means exact rational equality. A member with one replicate
             has an UNDETERMINABLE dispersion and its band is refused rather than assumed noiseless'
         transient_guard:
-          module: merlin.perf.fill_transient.transient_verdict
+          module: merlin.analysis.perf.fill_transient.transient_verdict
           applied: per_residency_band
           on_in_fill_transient: refuse_the_band_and_quote_no_rate
           why: the sibling reduction-depth family was refuted because every one of its depths lay inside
@@ -838,7 +838,7 @@ sweeps:
         layout: identical_operands_and_identical_command_stream_plus_the_removed_barriers
       emitter:
         status: existing
-        entry: merlin.perf.barrier_arms.pair_from_emitter
+        entry: merlin.analysis.perf.barrier_arms.pair_from_emitter
         knobs:
           # THE TWO ARMS ARE TWO EMISSIONS OF ONE CAPSULE, which is what this family's own `regime`
           # and `negative_control` above already declare. Both halves resolve in this tree and each
@@ -1051,7 +1051,7 @@ sweeps:
         layout: target_native_direct_corpus_builder
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axes:
@@ -1177,7 +1177,7 @@ sweeps:
         separation: input_channel_count_is_the_only_varied_axis
         layout: target_native_direct_corpus_builder
       # WHAT THE EMITTED PROGRAM MUST CONTAIN for this member's cycles to be about its lever.
-      # Decided by merlin.perf.lowering_obligation against the buffer the compiler emits; a member
+      # Decided by merlin.analysis.perf.lowering_obligation against the buffer the compiler emits; a member
       # whose program contracts over an operand the HARNESS built is failed, not measured.
       lowering_obligation:
         id: operands_materialized_by_emitted_program
@@ -1194,7 +1194,7 @@ sweeps:
           device still materialize one tensor from one command all three execute.
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: conv2d
           varied_axes:
@@ -1324,7 +1324,7 @@ sweeps:
         layout: members_share_all_extents_and_external_tensors_and_differ_only_in_host_scalar_map
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           surface: linalg-on-tensors
           operation: host_island_seam
@@ -1337,7 +1337,7 @@ sweeps:
         basis: one_island_member_and_one_matched_no_island_member_under_the_same_counter
       acceptance:
         schema_version: 1
-        analyzer: merlin.perf.comparison_group_claim.analyze_comparison_group_claim/v1
+        analyzer: merlin.analysis.perf.comparison_group_claim.analyze_comparison_group_claim/v1
         # These members compare two workloads produced by the newly authored compiler. The frozen
         # functional seed is ancestry, not an additional semantic member of this comparison group.
         program_arm: candidate
@@ -1429,7 +1429,7 @@ sweeps:
         layout: standard_linalg_on_tensors_whole_program
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs: {operation: scope_chain, varied_axis: K}
       cost:
         tier: 1
@@ -1529,7 +1529,7 @@ sweeps:
         layout: identical_interface_operands_and_numeric_policy_for_both_arms
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs: {operation: derived_from_form_scope, extents: observed_iteration_group_or_derived_window_member}
       arms:
         candidate:
@@ -1570,7 +1570,7 @@ sweeps:
 # cycle measurement is about the MACHINE: it is silent about whether the compiler under test used the
 # mechanism that makes the machine fast. These three are decided from the candidate's own decoded
 # instruction stream against a property derived from the target, by the analyzer each acceptance block
-# names (merlin.perf.{load_state,stationary,movein}_claim, dispatched by
+# names (merlin.analysis.perf.{load_state,stationary,movein}_claim, dispatched by
 # merlin.experiments.phase2.claims.dispatch). Passing says redundant or exposed work is ABSENT; none of
 # them is a speedup claim. They read no cycles, so their members cap at the correctness tier and owe no
 # ceiling (`not_a_cycle_observable`).
@@ -1641,7 +1641,7 @@ sweeps:
         layout: one_tiled_contraction_whose_two_operands_move_at_their_own_pitches
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axes: N_and_K
@@ -1656,9 +1656,9 @@ sweeps:
           pays for, so the family adds no cycle-accurate cell at all
       acceptance:
         schema_version: 1
-        analyzer: merlin.perf.load_state_claim.analyze_load_state_claim/v1
+        analyzer: merlin.analysis.perf.load_state_claim.analyze_load_state_claim/v1
         property:
-          module: merlin.perf.load_state_residency
+          module: merlin.analysis.perf.load_state_residency
           decides: residency_verdict
           predicate: issued_load_configurations_must_not_exceed_distinct_load_configurations_used
           admission: distinct_configurations_must_be_within_the_targets_derived_addressable_state_count
@@ -1683,7 +1683,7 @@ sweeps:
         evidence:
           correctness_simulator: $target_oracle:L2
           correctness_tier: L2
-          structural_instrument: merlin.targetgen.rocc.decode
+          structural_instrument: merlin.development.targetgen.rocc.decode
           structural_tier: L1
           # DELIBERATELY ABSENT: no timing simulator, timing tier or timing oracle kind -- this family's
           # observable is the emitted stream, so it buys no cycle-accurate cell and owes none.
@@ -1771,7 +1771,7 @@ sweeps:
         layout: one_tiled_contraction_whose_stationary_block_serves_a_run_of_output_row_positions
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axes: M_and_K
@@ -1784,9 +1784,9 @@ sweeps:
           pays for, so the family adds no cycle-accurate cell at all
       acceptance:
         schema_version: 1
-        analyzer: merlin.perf.stationary_claim.analyze_stationary_claim/v1
+        analyzer: merlin.analysis.perf.stationary_claim.analyze_stationary_claim/v1
         property:
-          module: merlin.perf.stationary_residency
+          module: merlin.analysis.perf.stationary_residency
           decides: residency_verdict
           predicate: staging_commands_naming_a_block_must_not_exceed_the_floor_the_stream_computes
           floors:
@@ -1818,7 +1818,7 @@ sweeps:
         evidence:
           correctness_simulator: $target_oracle:L2
           correctness_tier: L2
-          structural_instrument: merlin.targetgen.rocc.decode
+          structural_instrument: merlin.development.targetgen.rocc.decode
           structural_tier: L1
         overclaim_guard:
           passing_means: the_redundant_stationary_shift_in_work_is_absent
@@ -1900,7 +1900,7 @@ sweeps:
         layout: one_tiled_contraction_whose_operand_transfers_may_be_hoisted_or_placed_at_first_use
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs:
           operation: matmul
           varied_axes: M_and_K
@@ -1913,9 +1913,9 @@ sweeps:
           pays for, so the family adds no cycle-accurate cell at all
       acceptance:
         schema_version: 1
-        analyzer: merlin.perf.movein_claim.analyze_movein_claim/v1
+        analyzer: merlin.analysis.perf.movein_claim.analyze_movein_claim/v1
         property:
-          module: merlin.perf.movein_placement
+          module: merlin.analysis.perf.movein_placement
           decides: placement_verdict
           predicate: transfers_issued_before_the_first_compute_must_not_exceed_what_the_admitted_positions_read
           # The depth at which movement and compute can first be CONCURRENT at all: one position in flight
@@ -1957,7 +1957,7 @@ sweeps:
         evidence:
           correctness_simulator: $target_oracle:L2
           correctness_tier: L2
-          structural_instrument: merlin.targetgen.rocc.decode
+          structural_instrument: merlin.development.targetgen.rocc.decode
           structural_tier: L1
         overclaim_guard:
           passing_means: the_nest_does_not_stand_a_transfer_burst_in_front_of_itself_where_that_is_measured_to_cost
@@ -2179,7 +2179,7 @@ sweeps:
         layout: target_native_direct_corpus_builder
       emitter:
         status: existing
-        entry: merlin.targetgen.corpus_spec.build
+        entry: merlin.development.targetgen.corpus_spec.build
         knobs: {operation: derived_from_capacity_scope, extents: derived_from_rtl_facts}
       cost:
         tier: 1
@@ -2294,11 +2294,11 @@ blocked_unimplemented:
         quantity: realised_over_available_overlap
         eta_band_per_axis_doubling: 0.01
         confirming_steps: 2
-        decided_by: merlin.perf.fill_transient.settling_depth
+        decided_by: merlin.analysis.perf.fill_transient.settling_depth
         cohort_self_check: overlap_is_not_rising_across_the_cohorts_own_measured_points
         on_probe_absent: skip_with_evidence
         marginal_constancy_band: 0.03
-        marginal_constancy_decided_by: merlin.perf.fill_transient.marginal_settling_depth
+        marginal_constancy_decided_by: merlin.analysis.perf.fill_transient.marginal_settling_depth
         window_upper_edge: the_depth_at_which_the_marginal_cost_leaves_its_band_again
         cohort_must_fit_inside: one_contiguous_within_band_marginal_window
     gate:

@@ -51,11 +51,11 @@ def run_whole_model_on_mesh(
 
     import numpy as np
 
-    from ..targetgen import compute_units as _cu
-    from ..targetgen import mesh_program_run as mp
-    from ..targetgen import routing as _routing
-    from ..targetgen import target_registry as tr
-    from ..xdsl_dialects.lowering import execute, lower_module
+    from merlin.compiler.dialects.lowering import execute, lower_module
+    from merlin.development.targetgen import compute_units as _cu
+    from merlin.development.targetgen import mesh_program_run as mp
+    from merlin.development.targetgen import routing as _routing
+    from merlin.development.targetgen import target_registry as tr
 
     fn = next(op for op in module.walk() if op.name == "func.func")
     args = list(fn.body.blocks[0].args)

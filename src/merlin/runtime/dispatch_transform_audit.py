@@ -59,8 +59,9 @@ def record_model_transform_audit(
     if enabled == "compact":
         raise ValueError("compact model transform audit keeps hashes but not exact IR, so it cannot be replayed")
 
+    from merlin.compiler.dialects._common import text as to_text
+
     from ..common.ir_audit import IrAudit
-    from ..xdsl_dialects._common import text as to_text
 
     source_text = source.read_text(encoding="utf-8")
     if (
@@ -97,9 +98,9 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
     This checks archival integrity, MLIR validity, and deterministic pass output.
     It does not prove that a pass preserves values.
     """
-    from ..frontends.linalg_mlir import parse_mlir_text
-    from ..xdsl_dialects._common import text as to_text
-    from ..xdsl_dialects.lowering.outline import outline_dispatches
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.dialects.lowering.outline import outline_dispatches
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     index_path = Path(index_path)
     if index_path.is_symlink() or not index_path.is_file() or index_path.name != "index.json":
@@ -187,7 +188,8 @@ def qualify_model_transform_audit(index_path: Path) -> dict[str, Any]:
         if recipe["selection_policy"] == "all":
             # The replay invokes the same runtime normalizer, but only on
             # independently re-parsed captured bytes, never on archived IR.
-            from ..llvmlower.quant_passes import known
+            from merlin.compiler.lower.model.quant_passes import known
+
             from .dispatch_runtime import _normalize_model_module
 
             replay_normalized = parse_mlir_text(contents[0])

@@ -32,8 +32,8 @@ from merlin.compiler.schedule.compact_dense_group_check import (
 )
 from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.transforms.dense_planning import DenseGroupChoice, DenseProblem, DenseResources, choose_dense_group
-from merlin.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.dense_planning import DenseGroupChoice, DenseProblem, DenseResources, choose_dense_group
+from merlin.compiler.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
 
 
 def implementation_paths() -> tuple[Path, ...]:

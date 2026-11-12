@@ -18,7 +18,7 @@ from xdsl.parser import Parser
 from xdsl.printer import Printer
 
 from merlin.compiler.backend.cabi import CRegionABI, TensorPort
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 
 @dataclass(frozen=True)
@@ -81,8 +81,8 @@ def prepare(source, entry, namespace, *, workspace_bytes=0):
     from merlin.common.dense_float_ir import DenseFloatPrinter
     from merlin.compiler.artifact import digest
     from merlin.compiler.lower.llvm import workspace as workspace_owner
+    from merlin.compiler.lower.model import prov_cse
     from merlin.compiler.transforms import initialization
-    from merlin.llvmlower import prov_cse
 
     workspace_path = Path(workspace_owner.__file__)
     workspace_digest = digest(workspace_path)

@@ -33,7 +33,7 @@ def verify_artifact_image(expected, artifact):
     """Independently join actual function operand DAG and actual encoded calls."""
     from xdsl.dialects import llvm
 
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
     module = Parser(make_llvm_context(), artifact).parse_module()
     module.verify()
@@ -69,7 +69,7 @@ def verify_artifact_image(expected, artifact):
 def artifact_image(artifact):
     from xdsl.dialects import llvm
 
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
     module = Parser(make_llvm_context(), artifact).parse_module()
     module.verify()

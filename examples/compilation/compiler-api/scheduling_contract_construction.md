@@ -28,7 +28,7 @@ report = inspect_scheduling_draft(
 formats, resources, instruction bindings, effects, support and completion. Null
 configuration is deliberate: `{}` would assert no configuration effects. Fill
 fields using explicit facts references and authored semantics; inspect again.
-`resolve_fact_integer` in `merlin.targetgen.isa_spec` resolves a supplied reference
+`resolve_fact_integer` in `merlin.development.targetgen.isa_spec` resolves a supplied reference
 against those exact facts. The aid never picks a fact by name similarity, chooses
 scratch space, inserts a preferred schedule or changes the ISA's facts hash.
 

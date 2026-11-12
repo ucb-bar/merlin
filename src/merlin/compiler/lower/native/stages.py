@@ -4,21 +4,21 @@ Pass algorithms remain in their declared legacy owners during staged migration."
 
 from __future__ import annotations
 
+from merlin.compiler.lower.model import fusion_guard
+from merlin.compiler.lower.model.alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
+from merlin.compiler.lower.model.broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
+from merlin.compiler.lower.model.concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
+from merlin.compiler.lower.model.contiguous_suffix_copy import MID_STAGE_SRC as _CONTIGUOUS_COPY_MID_SRC
+from merlin.compiler.lower.model.contiguous_suffix_copy import RUNNER_PRELUDE as _CONTIGUOUS_COPY_PRELUDE
+from merlin.compiler.lower.model.copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
+from merlin.compiler.lower.model.copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
+from merlin.compiler.lower.model.dealloc_lifetime import DEALLOC_CHECK_PRELUDE
+from merlin.compiler.lower.model.int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
+from merlin.compiler.lower.model.sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
+from merlin.compiler.lower.model.sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
+from merlin.compiler.lower.model.uniform_fill_copy import MID_STAGE_SRC as _UNIFORM_FILL_COPY_MID_SRC
+from merlin.compiler.lower.model.uniform_fill_copy import RUNNER_PRELUDE as _UNIFORM_FILL_COPY_PRELUDE
 from merlin.compiler.passes.fragments import DEALLOC_CHECK_RUNNER
-from merlin.llvmlower import fusion_guard
-from merlin.llvmlower.alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
-from merlin.llvmlower.broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
-from merlin.llvmlower.concat_dps import RUNNER_PRELUDE as _CONCAT_DPS_PRELUDE
-from merlin.llvmlower.contiguous_suffix_copy import MID_STAGE_SRC as _CONTIGUOUS_COPY_MID_SRC
-from merlin.llvmlower.contiguous_suffix_copy import RUNNER_PRELUDE as _CONTIGUOUS_COPY_PRELUDE
-from merlin.llvmlower.copy_expand import MID_STAGE_SRC as _MID_STAGE_SRC
-from merlin.llvmlower.copy_expand import RUNNER_PRELUDE as _COPY_EXPAND_PRELUDE
-from merlin.llvmlower.dealloc_lifetime import DEALLOC_CHECK_PRELUDE
-from merlin.llvmlower.int_softmax_table import RUNNER_PRELUDE as _INT_SOFTMAX_TABLE_PRELUDE
-from merlin.llvmlower.sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
-from merlin.llvmlower.sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
-from merlin.llvmlower.uniform_fill_copy import MID_STAGE_SRC as _UNIFORM_FILL_COPY_MID_SRC
-from merlin.llvmlower.uniform_fill_copy import RUNNER_PRELUDE as _UNIFORM_FILL_COPY_PRELUDE
 
 # The normal runner already reserves argv[17] for the target data layout.
 # Compose the optional copy stages with their new trailing slots rather than
@@ -31,32 +31,32 @@ _CONTIGUOUS_COPY_MID_SRC = _CONTIGUOUS_COPY_MID_SRC.replace(
     'if len(sys.argv) > 18 and sys.argv[18] == "1":',
     'if len(sys.argv) > 19 and sys.argv[19] == "1":',
 )
-from merlin.llvmlower.adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
-from merlin.llvmlower.automatic_host_features import RUNNER_PRELUDE as _AUTOMATIC_HOST_FEATURES_PRELUDE
-from merlin.llvmlower.broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
-from merlin.llvmlower.fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
-from merlin.llvmlower.guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
-from merlin.llvmlower.masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
-from merlin.llvmlower.masked_contraction import STAGE_RUNNER as _MASKED_CONTRACTION_STAGE_RUNNER
-from merlin.llvmlower.named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
-from merlin.llvmlower.panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
-from merlin.llvmlower.panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
-from merlin.llvmlower.parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
-from merlin.llvmlower.parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
-from merlin.llvmlower.parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
-from merlin.llvmlower.parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
-from merlin.llvmlower.parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
-from merlin.llvmlower.parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
-from merlin.llvmlower.rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
-from merlin.llvmlower.roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
-from merlin.llvmlower.scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
-from merlin.llvmlower.scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
-from merlin.llvmlower.scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
-from merlin.llvmlower.scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
-from merlin.llvmlower.scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
-from merlin.llvmlower.selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
-from merlin.llvmlower.transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
-from merlin.llvmlower.transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
+from merlin.compiler.lower.model.adjacent_exp import RUNNER_PRELUDE as _ADJACENT_EXP_PRELUDE
+from merlin.compiler.lower.model.automatic_host_features import RUNNER_PRELUDE as _AUTOMATIC_HOST_FEATURES_PRELUDE
+from merlin.compiler.lower.model.broadcast_math_hoist import RUNNER_PRELUDE as _BROADCAST_MATH_HOIST_PRELUDE
+from merlin.compiler.lower.model.fma_intrinsic import RUNNER_PRELUDE as _FMA_INTRINSIC_PRELUDE
+from merlin.compiler.lower.model.guarded_zero_contraction import RUNNER_PRELUDE as _GUARDED_ZERO_CONTRACTION_PRELUDE
+from merlin.compiler.lower.model.masked_contraction import RUNNER_PRELUDE as _MASKED_CONTRACTION_PRELUDE
+from merlin.compiler.lower.model.masked_contraction import STAGE_RUNNER as _MASKED_CONTRACTION_STAGE_RUNNER
+from merlin.compiler.lower.model.named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
+from merlin.compiler.lower.model.panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
+from merlin.compiler.lower.model.panel_parallel import RUNNER_PRELUDE as _PANEL_PARALLEL_PRELUDE
+from merlin.compiler.lower.model.parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
+from merlin.compiler.lower.model.parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
+from merlin.compiler.lower.model.parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
+from merlin.compiler.lower.model.parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
+from merlin.compiler.lower.model.parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
+from merlin.compiler.lower.model.parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
+from merlin.compiler.lower.model.rhs_column_reuse import RUNNER_PRELUDE as _RHS_COLUMN_REUSE_PRELUDE
+from merlin.compiler.lower.model.roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
+from merlin.compiler.lower.model.scalar_contraction import RUNNER_PRELUDE as _SCALAR_CONTRACTION_PRELUDE
+from merlin.compiler.lower.model.scalar_ordered_reduction import RUNNER_PRELUDE as _SCALAR_ORDERED_REDUCTION_PRELUDE
+from merlin.compiler.lower.model.scalar_pointwise_packet import RUNNER_PRELUDE as _SCALAR_POINTWISE_PACKET_PRELUDE
+from merlin.compiler.lower.model.scalar_pointwise_unroll import RUNNER_PRELUDE as _SCALAR_POINTWISE_UNROLL_PRELUDE
+from merlin.compiler.lower.model.scalar_squared_sum import RUNNER_PRELUDE as _SCALAR_SQUARED_SUM_PRELUDE
+from merlin.compiler.lower.model.selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
+from merlin.compiler.lower.model.transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
+from merlin.compiler.lower.model.transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 
 #: Runner glue: wrap ``_run_stages`` so the placement check runs on the IR the sinking stage
 #: produced, in EVERY runner variant, without any of them having to know about it. The wrapper

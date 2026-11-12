@@ -6,11 +6,11 @@ target's stores are much larger") and shape cutoffs, and one large dense case re
 Nothing in the feedback related the kernel's footprint to the capacity. This block does, per case:
 
 * ``scratchpad`` / ``accumulator`` -- rows (and bytes) the kernel's commands address, against the
-  capacity derived from the target's RTL facts (:func:`merlin.targetgen.address_space.operand_store` /
+  capacity derived from the target's RTL facts (:func:`merlin.development.targetgen.address_space.operand_store` /
   ``accumulator_store``). The rows come from the executed local-address activity of a dynamic census
   when the row carries one, else from the case's copied static instruction trace decoded through the
-  generic fact-driven RoCC decoder (:mod:`merlin.targetgen.rocc.semantics`) and the target contract's
-  local-address protocol (:func:`merlin.perf.executed_trace.local_high_water`). A static trace states
+  generic fact-driven RoCC decoder (:mod:`merlin.development.targetgen.rocc.semantics`) and the target contract's
+  local-address protocol (:func:`merlin.analysis.perf.executed_trace.local_high_water`). A static trace states
   only the addresses that are constants in the emitted code: when some addressed commands carry run-time
   addresses (loop-emitted code) the count is a lower bound and says so, and a store none of whose
   commands resolve is UNKNOWN, never zero;
@@ -56,8 +56,8 @@ def capacity(target: str | None) -> dict | None:
     key = (target, os.environ.get("MERLIN_RTL_FACTS"))
     if key not in _CAPACITY:
         try:
-            from merlin.targetgen import address_space as AS
-            from merlin.targetgen.rtl.facts import load_facts
+            from merlin.development.targetgen import address_space as AS
+            from merlin.development.targetgen.rtl.facts import load_facts
 
             # Selected facts only: advisory feedback never regenerates RTL facts.
             space = AS.derive_address_space(target, facts=load_facts(target, regenerate=False))
@@ -83,7 +83,7 @@ def capacity(target: str | None) -> dict | None:
 
 def decode(trace: dict, target: str) -> dict:
     """``trace`` with every RoCC instruction (re)decoded by the generic fact-driven decoder."""
-    from merlin.targetgen.rocc import semantics
+    from merlin.development.targetgen.rocc import semantics
 
     isa = semantics.isa_constants(target)
     out = []
@@ -100,7 +100,7 @@ def decode(trace: dict, target: str) -> dict:
 
 def _addressed(trace: dict, target: str) -> tuple[int, int]:
     """``(addressed commands, of which statically resolved)`` under the contract's local-address protocol."""
-    from merlin.targetgen import rtl_checks_generic as G
+    from merlin.development.targetgen import rtl_checks_generic as G
 
     protocol = G.protocol_for(target)
     total = resolved = 0
@@ -145,7 +145,7 @@ def _store_use(rows, cap: dict | None, *, lower_bound: bool) -> dict | None:
 
 def footprint(row: dict, folder: Path | None, target: str, cap: dict) -> dict | None:
     """Rows each store's commands address, with the basis they were read from."""
-    from merlin.perf.executed_trace import local_high_water
+    from merlin.analysis.perf.executed_trace import local_high_water
 
     executed = _census_trace(row)
     if executed is not None:
@@ -179,7 +179,7 @@ def footprint(row: dict, folder: Path | None, target: str, cap: dict) -> dict | 
 
 
 def _bytes(shape, dtype) -> int | None:
-    from merlin.targetgen.address_space import element_bits
+    from merlin.development.targetgen.address_space import element_bits
 
     bits = element_bits(dtype) if isinstance(dtype, str) else None
     if not bits or not isinstance(shape, (list, tuple)) or any(type(v) is not int or v <= 0 for v in shape):

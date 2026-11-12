@@ -8,11 +8,11 @@ import os
 import time
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend import joint_calibration as C
 from merlin.development.backend import joint_control
 from merlin.development.backend.feedback import joint_performance as PERF
 from merlin.development.backend.optimization.contracts import document_sha256
+from merlin.evaluation.harness import hash_tree
 from merlin.runtime import _native_files as F
 
 

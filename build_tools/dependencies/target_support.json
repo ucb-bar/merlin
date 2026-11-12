@@ -150,7 +150,7 @@
       "contract_sha256": "1eefe1d5941869b3063a09e82944fbb765934f50a93f27b78ebde86bddd98af0",
       "program_emitter_provenance": "merlin-support/program_emitter_migration.json",
       "removed_canonical_owners": [
-        "merlin.targetgen.oracle_helpers.npu_emit"
+        "merlin.development.targetgen.oracle_helpers.npu_emit"
       ],
       "required_capabilities": {
         "runner.program_emitter": "Named-program assembly and explicit tensor layout require the selected support helper. Encoding options are target-owned; no in-tree fallback remains."
@@ -178,7 +178,7 @@
       "qualification_scope": "Data-only provider: reviewed contract copy + plugin pointers to generic core modules (runtime backend, RoCC semantics, RTL checks) + an ISA-headers spec that references the pinned gemmini-rocc-tests bare-metal runtime by per-file sha256. The include path holds only that runtime and a header generated from RTL facts; the vendor kernel library (include/gemmini.h) is excluded and refused. Historical record at 41788c72c reports execution of a hand-written mvin/mvout ELF bit-exact on spike and GSIM through run_elf. That record named tree d858e65967f358d7e85875ce161fa39ace1314f2 while the commit retained support tree 738f6119c54042979d2cb630df1716bcc64de55a; the execution claim is retained as historical evidence only, not qualification of the current regenerated tree. The current closure establishes source parity only, with no new hardware execution.",
       "blockers": [
         "plugin.rocc_semantics and plugin.rtl_checks name generic core modules that land separately; until then RoCC decoding and EL4 RTL checks refuse with a clear error.",
-        "plugin.backend re-exports the generic harness renderer (merlin.targetgen.contract.harness_render); until it lands, render_harness refuses.",
+        "plugin.backend re-exports the generic harness renderer (merlin.development.targetgen.contract.harness_render); until it lands, render_harness refuses.",
         "The upstream syscalls.c has no printbuf(); the binary full-value readback transport needs the harness to supply its own write path.",
         "No compiler candidate or Phase 1/2 run has been executed against this provider."
       ]

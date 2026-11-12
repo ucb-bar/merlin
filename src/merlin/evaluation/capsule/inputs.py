@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 
 from merlin.development.backend.feedback import setup_timing as _host_timing
+from merlin.development.targetgen import capsule_golden as CG
+from merlin.development.targetgen.capsule_common import _cat, run_entrypoints
+from merlin.development.targetgen.package_runtime import CertFailure
 from merlin.evaluation.capsule.cpu import _grade_cpu_step
 from merlin.evaluation.capsule.numerics import _bind_positional_output_name, _readout_epilogue_capabilities
 from merlin.evaluation.capsule.source import _capture_compiler_source
 from merlin.runtime import commandbuffer as _CB
-from merlin.targetgen import capsule_golden as CG
-from merlin.targetgen.capsule_common import _cat, run_entrypoints
-from merlin.targetgen.package_runtime import CertFailure
 
 
 def emit_program(capsule, package_dir, paths, cfg, contract, timeout, eff_target, pkg, evidence):
@@ -86,7 +86,7 @@ def emit_program(capsule, package_dir, paths, cfg, contract, timeout, eff_target
     # evaluate is refused too -- never silently satisfied. Judged HERE, right after the compiler's
     # own entrypoints and before the golden and the oracle ladder: a member measuring a program
     # that never did the work is refused before anything is spent measuring it.
-    from merlin.perf import lowering_obligation as _LOB
+    from merlin.analysis.perf import lowering_obligation as _LOB
 
     _lowering = _LOB.assess(capsule, evidence.command_buffer)
     if _lowering.get("status") in _LOB.REFUSING_STATUSES:
@@ -104,7 +104,7 @@ def emit_program(capsule, package_dir, paths, cfg, contract, timeout, eff_target
     # own declaration. A backend that declares no readouts leaves the check UNAVAILABLE rather
     # than refusing every capsule -- an undeclared target is not a broken one, and the reason is
     # recorded so "not checked" never reads as "checked and fine".
-    from merlin.targetgen.readout_facet import epilogue_stage_routes
+    from merlin.development.targetgen.readout_facet import epilogue_stage_routes
     from merlin.verification import epilogue_applicability as _EPI
 
     _declared = _readout_epilogue_capabilities(eff_target)
@@ -244,9 +244,9 @@ def bind_program_inputs(capsule, paths, eff_target, evidence, inputs):
     # Fixed-address oracles need a shared canonical layout. A selected
     # logical-pointer harness instead allocates the original tensors and
     # passes their actual addresses, without competing fixed-base metadata.
-    from merlin.targetgen import capsule_dram as _dram
-    from merlin.targetgen.dram_facts import dram_base_for
-    from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.development.targetgen import capsule_dram as _dram
+    from merlin.development.targetgen.dram_facts import dram_base_for
+    from merlin.development.targetgen.target_experiment import load_capability_manifest
 
     # Place any harness-assigned canonical base INSIDE the target's DRAM region [dram_base, +size):
     # a self-hosted-ISA target maps DRAM at a nonzero region base (derived from its facts; 0 for a

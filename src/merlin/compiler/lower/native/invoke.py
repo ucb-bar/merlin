@@ -7,11 +7,11 @@ import tempfile
 from pathlib import Path
 
 from merlin.common import compile_trace
+from merlin.compiler.lower.model import fusion_guard
+from merlin.compiler.lower.model.dealloc_lifetime import DEALLOC_CHECK_PRELUDE
+from merlin.compiler.lower.model.optional_passes import child_environment
+from merlin.compiler.lower.model.toolchain import m2m_python
 from merlin.compiler.passes.contract import PipelineError
-from merlin.llvmlower import fusion_guard
-from merlin.llvmlower.dealloc_lifetime import DEALLOC_CHECK_PRELUDE
-from merlin.llvmlower.optional_passes import child_environment
-from merlin.llvmlower.toolchain import m2m_python
 
 
 def apply_passes(mlir_text: str, pipeline: str, timeout: int = 600) -> str:
@@ -58,7 +58,7 @@ def dealloc_placement_violations(mlir_text: str, timeout: int = 600, *, borrowed
     """
     import json
 
-    from merlin.llvmlower.borrowed_buffer_calls import bind_native
+    from merlin.compiler.lower.model.borrowed_buffer_calls import bind_native
 
     prelude = bind_native(DEALLOC_CHECK_PRELUDE, borrowed_calls)
 

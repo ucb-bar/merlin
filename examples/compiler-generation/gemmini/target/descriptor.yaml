@@ -231,4 +231,4 @@ host_lane:
   read_only:
     - out/artifacts/targets/host/gemmini_rocket_scalar_int8_v0/
   deny_modification:
-    - merlin/python/merlin/llvmlower/
+    - merlin/python/merlin/compiler/lower/model/

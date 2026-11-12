@@ -46,11 +46,11 @@ def audit(wheels: list[Path]) -> list[str]:
                         commands[command].append(distribution)
                 if distribution != "merlin" and name in {
                     "merlin/__init__.py",
-                    "merlin/mining/__init__.py",
-                    "merlin/targetgen/__init__.py",
-                    "merlin/targetgen/rtl/__init__.py",
-                    "merlin/perf/__init__.py",
-                    "merlin/kernels/__init__.py",
+                    "merlin/analysis/mining/__init__.py",
+                    "merlin/development/targetgen/__init__.py",
+                    "merlin/development/targetgen/rtl/__init__.py",
+                    "merlin/analysis/perf/__init__.py",
+                    "merlin/analysis/kernels/__init__.py",
                 }:
                     errors.append(f"extension overwrites core namespace initializer: {distribution}:{name}")
     for label, entries in (("file", files), ("command", commands)):

@@ -307,12 +307,12 @@ def inspect(case, *, record, plan, backend, model):
 def _inspect(case, *, record, plan, backend, model):
     import numpy as np
 
-    from merlin.benchharness import hash_tree
     from merlin.development.backend import joint_calibration as C
     from merlin.development.backend import joint_control
     from merlin.development.backend.feedback.candidate_execution_products import reopen_operator_tier_products
     from merlin.development.backend.joint_calibration_admission import assert_allowed
     from merlin.development.backend.joint_calibration_eligibility import require
+    from merlin.evaluation.harness import hash_tree
 
     assert_allowed(plan)  # Runtime denial also applies to retained labels.
     _require(

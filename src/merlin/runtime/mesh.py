@@ -17,7 +17,7 @@ from merlin.compiler.selection.capacity import (
     capacity_fit,
     declared_primitive_tile,
 )
-from merlin.targetgen.operation_numerics import integer_split_k_limit
+from merlin.development.targetgen.operation_numerics import integer_split_k_limit
 from merlin.verification.mesh_reference import _accum_rel_tolerance as _accum_rel_tolerance
 from merlin.verification.mesh_reference import _reference_on_datapath as _reference_on_datapath
 
@@ -82,10 +82,10 @@ def run_matmul_on_mesh(
     this tool only builds the merlin_iface interface, injects the operands, and reads the output back.
     Fail-closed (``None``) on an unavailable oracle or an endpoint with no mesh path (never a fabricated
     result)."""
-    from ..targetgen import corpus_spec as CS
-    from ..targetgen.oracle_policy import _SIM_ORACLES
-    from ..targetgen.oracle_policy import selected_endpoint as _endpoint_of
-    from ..targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.oracle_policy import _SIM_ORACLES
+    from merlin.development.targetgen.oracle_policy import selected_endpoint as _endpoint_of
+    from merlin.development.targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
 
     endpoint, model_ext = _endpoint_of(target)
     M, K, N = len(A), len(A[0]), len(W[0])

@@ -19,12 +19,12 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf.mechanism_probe import ProbeBinding
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import broker_evidence as BE
 from merlin.development.backend.optimization import contracts
 from merlin.development.backend.optimization import emission_analysis as EA
 from merlin.development.backend.optimization.stage_inputs import StageE2ESentinel, sentinel_identity
-from merlin.perf.mechanism_probe import ProbeBinding
 
 
 class RevisionJournal:

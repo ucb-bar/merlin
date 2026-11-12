@@ -162,7 +162,7 @@ Paired workers carry the same live owner and library. The original full grade,
 source/native/issue check and timing gates remain required for both treatments.
 
 `agent_workspace` projects capsule inputs using frozen reference roles in
-`merlin.targetgen.capsule_privacy` and the central answer registry. Live-source
+`merlin.development.targetgen.capsule_privacy` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
 Projection grants no numerical, runtime or isolation qualification.
 

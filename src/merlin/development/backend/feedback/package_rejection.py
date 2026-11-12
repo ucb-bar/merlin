@@ -4,7 +4,7 @@ A package that fails its integrity scan runs no test case. Background grades pub
 ``qa/verdict.json`` only while their snapshot is still the current source, and an author who keeps
 editing rarely leaves a rejected snapshot current, so the rejection was archived but never shown.
 Measured: an editable module created under a namespace the full-compiler selection does not
-contain (``merlin/frontend/`` beside the selected ``merlin/frontends``) gated all 252 test cases of
+contain (``merlin/frontend/`` beside the selected ``merlin/compiler/frontend``) gated all 252 test cases of
 two grades while the author's verdict showed only the model gate. Self-checks did report the
 failure, but under a note about cmake builds, which does not describe a namespace violation.
 

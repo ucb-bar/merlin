@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 
 from merlin.common.paths import module_source_path
-from merlin.targetgen.rtl import introspect, source_selection
+from merlin.development.targetgen.rtl import introspect, source_selection
 
 SCHEMA = "merlin.independent_rtl_intake.v1"
 FACTS_SCHEMA = "merlin.independent_structural_facts.v1"
@@ -208,11 +208,11 @@ def bind_component_hardware(evidence, intake) -> dict:
 def _reader_pins(forbidden: tuple[Path, ...]) -> tuple[RtlIntakePin, ...]:
     names = (
         "merlin.development.testgen.rtl_intake",
-        "merlin.targetgen.rtl.source_selection",
-        "merlin.targetgen.rtl.extract_module",
-        "merlin.targetgen.rtl.introspect",
-        "merlin.targetgen.rtl.firrtl_memory_lines",
-        "merlin.targetgen.rtl.extraction_contract",
+        "merlin.development.targetgen.rtl.source_selection",
+        "merlin.development.targetgen.rtl.extract_module",
+        "merlin.development.targetgen.rtl.introspect",
+        "merlin.development.targetgen.rtl.firrtl_memory_lines",
+        "merlin.development.targetgen.rtl.extraction_contract",
         "merlin.common.paths",
     )
     return tuple(_pin("derivation-source", module_source_path(name), forbidden) for name in names)

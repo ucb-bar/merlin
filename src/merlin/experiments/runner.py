@@ -46,7 +46,7 @@ def _corpus_closure(command: dict) -> dict:
     Native bundle snapshots and cohort admission remain the grading authority.
     """
     from merlin.common.paths import repo_root
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     expected_root = Path(command["env"]["MERLIN_REPO_ROOT"]).resolve()
     if repo_root().resolve() != expected_root:
@@ -83,7 +83,7 @@ def _verify_corpus_closures(plan: dict) -> None:
             )
         if seal:
             from merlin.development.backend.corpus_inputs import require_reviewed_bundle
-            from merlin.targetgen.target_experiment import load_target_experiment
+            from merlin.development.targetgen.target_experiment import load_target_experiment
 
             from .corpus.release import verify
 
@@ -99,7 +99,7 @@ def _verify_corpus_closures(plan: dict) -> None:
                 raise SpecError(str(exc)) from exc
             if command.get("requires_reviewed_corpus"):
                 from merlin.common.paths import resolve_grant as source_grant
-                from merlin.targetgen.sandbox.bwrap import resolve_grant
+                from merlin.development.targetgen.sandbox.bwrap import resolve_grant
 
                 source_root = Path(command["env"]["MERLIN_REPO_ROOT"]).resolve()
                 legacy = source_grant("merlin/contract/capsules", root=source_root).absolute()
@@ -371,8 +371,8 @@ def _phase1_operator_inputs(command: dict) -> dict[str, str | None]:
 
 
 def _phase1_operator_paths(command: dict) -> dict[str, str | None]:
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
-    from merlin.targetgen.target_experiment import (
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.target_experiment import (
         declared_contracts_root,
         declared_resources_root,
         declared_task_root,
@@ -420,7 +420,7 @@ def _phase1_operator_paths(command: dict) -> dict[str, str | None]:
             paths[f"{kind}:{index}"] = resolve_grant(row["path"], root)
     chipyard_timing = False
     if descriptor.is_file():
-        from merlin.targetgen.target_experiment import declared_vs_resolved_contract, load_target_experiment
+        from merlin.development.targetgen.target_experiment import declared_vs_resolved_contract, load_target_experiment
 
         selected = load_target_experiment(descriptor)
         if selected.sim_via == "chipyard":
@@ -652,12 +652,15 @@ def resolve_plan(
             ):
                 if key in os.environ:
                     command["env"][key] = os.environ[key]
-            from merlin.targetgen.target_registry import effective_target_path
+            from merlin.development.targetgen.target_registry import effective_target_path
 
             # An unset selection is the checkout's in-repo support default. Spell it out, so a
             # resume after the vendored support changed cannot pick up different support code.
             command["env"]["MERLIN_TARGET_PATH"] = effective_target_path()
-            from merlin.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
+            from merlin.development.targetgen.target_experiment import (
+                load_target_experiment,
+                selected_experiment_contract,
+            )
 
             descriptor_path = Path(command["inputs"]["descriptor"])
             if descriptor_path.is_file():
@@ -668,7 +671,7 @@ def resolve_plan(
                     raise SpecError(f"invalid Phase 1 capability selection: {error}") from error
                 if contract is not None:
                     command["env"]["MERLIN_TARGET_CONTRACT"] = str(contract)
-            from merlin.llvmlower.toolchain import clang_for
+            from merlin.compiler.lower.model.toolchain import clang_for
 
             selected_clang = clang_for(root, dict(os.environ, **command["env"]))
             if selected_clang.is_absolute() and selected_clang.is_file():
@@ -846,7 +849,7 @@ def _verify_toolchain(plan: dict) -> list[str]:
     """
     import shutil
 
-    from merlin.llvmlower.toolchain import clang_for
+    from merlin.compiler.lower.model.toolchain import clang_for
 
     from .measured_launch import execution_environment
 
@@ -878,7 +881,7 @@ def _verify_rtlcheck_support(plan: dict) -> list[str]:
     support contract and its declared file.  Native startup still validates that
     the module loads and implements the complete check capability.
     """
-    from merlin.targetgen.plugins import core_module_path, resolve_support, validate
+    from merlin.development.targetgen.plugins import core_module_path, resolve_support, validate
 
     for command in plan["phases"].values():
         if command.get("module") != PHASE1_MODULE or "--treatment" not in command["argv"]:
@@ -1172,7 +1175,7 @@ def _verify_completed_phase1(command: dict, attempt: dict) -> None:
 
 def _installed_phase2_output(command: dict, attempt: dict) -> dict[str, dict[str, str]]:
     """Bind terminal evidence without hashing mutable Phase 2 work areas."""
-    from merlin.benchharness import hash_tree
+    from merlin.evaluation.harness import hash_tree
 
     output = Path(attempt["engine_output"])
     if output.is_symlink() or output.resolve() != output or not output.is_dir():

@@ -3,12 +3,12 @@ import ctypes
 import numpy as np
 import pytest
 
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower import kernel_backend
+from merlin.compiler.dialects.lowering.compute_groups import Group
+from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
+from merlin.compiler.dialects.lowering.outline import outline_dispatches
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.lower.model import kernel_backend
 from merlin.runtime import dispatch_runtime as runtime
-from merlin.xdsl_dialects.lowering.compute_groups import Group
-from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program
-from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
 COPY = "builtin.module {\n  func.func @forward(%x: tensor<2x3xi32>, %dst: tensor<2x3xi32>) -> tensor<2x3xi32> {\n    %y = linalg.copy ins(%x : tensor<2x3xi32>) outs(%dst : tensor<2x3xi32>) -> tensor<2x3xi32>\n    func.return %y : tensor<2x3xi32>\n  }\n}"
 

@@ -29,7 +29,7 @@ class FastPortfolioEvaluation:
         self.portfolio_sentinels = tuple(portfolio_sentinels)
         member_hashes = [member.capsule_sha256 for member in self.portfolio_sentinels]
         self._lock = threading.Lock()
-        from merlin.perf.phase2_portfolio import (
+        from merlin.analysis.perf.phase2_portfolio import (
             PORTFOLIO_MEMBER_COUNT,
             FastEvaluationPolicy,
             QualityBudget,
@@ -150,7 +150,7 @@ class FastPortfolioEvaluation:
         portfolio_sha256: str,
     ) -> dict[str, Any]:
         """Run the optional bounded host analytical adapter and apply the shared gate."""
-        from merlin.perf.phase2_portfolio import (
+        from merlin.analysis.perf.phase2_portfolio import (
             evaluate_fast_portfolio,
             unavailable_fast_evaluation,
         )

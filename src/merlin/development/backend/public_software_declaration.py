@@ -6,7 +6,7 @@ import hashlib
 import os
 from pathlib import Path
 
-from merlin.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import bwrap as BW
 
 KEY = "public_software_declaration"
 _MEMBER = "public_declarations/software-spec.yaml"
@@ -57,7 +57,7 @@ def _selection(workspace, bundle, repo):
         raise ValueError("public software alias differs from original selected semantics")
     import yaml
 
-    from merlin.targetgen.software_spec import validate_software_spec
+    from merlin.development.targetgen.software_spec import validate_software_spec
 
     if validate_software_spec(yaml.safe_load(raw), source=frozen).get("status") != "reviewed":
         raise ValueError("public software alias requires a reviewed data declaration")

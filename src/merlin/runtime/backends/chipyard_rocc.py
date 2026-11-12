@@ -8,16 +8,16 @@ merlin.runtime.backends.chipyard_rocc``) instead of shipping its own backend. Di
 
 * the selected capability contract (``runner.toolchain``, ``runner.sim_via``, ``runtime.rtl_sim_config``,
   ``harness_abi``, ``execution_capabilities``, ``readout_semantics``, ``counter_semantics``);
-* the provider's ISA-headers spec (``plugin.isa_headers``, :mod:`merlin.targetgen.isa_headers_spec`):
+* the provider's ISA-headers spec (``plugin.isa_headers``, :mod:`merlin.development.targetgen.isa_headers_spec`):
   the upstream header checkout by pin and per-file digest, its include roots, CRT and flags;
-* the shared engine resolvers: :mod:`merlin.targetgen.gsim_emulator` (emulator + build receipt),
-  :mod:`merlin.targetgen.spike_extension` (functional model), :mod:`merlin.targetgen.runtime_build`
-  (memory map, sim config) and :mod:`merlin.targetgen.rtl_engine_policy` (GSIM runtime slots).
+* the shared engine resolvers: :mod:`merlin.development.targetgen.gsim_emulator` (emulator + build receipt),
+  :mod:`merlin.development.targetgen.spike_extension` (functional model), :mod:`merlin.development.targetgen.runtime_build`
+  (memory map, sim config) and :mod:`merlin.development.targetgen.rtl_engine_policy` (GSIM runtime slots).
 
 Plumbing only. It runs an ELF someone else built (spike = functional bootstrap, verilator/gsim = the
 elaborated design), parses the shared ``OUT``/``OUT_ND``/``METRIC``/``DONE`` console, and describes
 how a runner-owned harness is compiled and linked. It contains no compiler: the harness renderer is
-the generic :func:`merlin.targetgen.contract.harness_render.render_harness`, and RoCC semantics / RTL
+the generic :func:`merlin.development.targetgen.contract.harness_render.render_harness`, and RoCC semantics / RTL
 checks are whatever generic modules the provider's ``plugin.rocc_semantics`` / ``plugin.rtl_checks``
 name. Imported under its own name (in-tree discovery does this) it registers nothing: it is a
 template until a provider selects it.
@@ -123,7 +123,7 @@ HARNESS_DIR_ENV = _env_name("HARNESS_DIR")
 # --- data ---------------------------------------------------------------------------------------------
 def _contract() -> dict[str, Any]:
     """The selected capability contract (honoring an experiment's observed/selected view)."""
-    from merlin.targetgen import target_registry
+    from merlin.development.targetgen import target_registry
 
     contract = target_registry.resolve(_target()).load_contract()
     if not isinstance(contract, dict):
@@ -145,13 +145,13 @@ def _toolchain() -> dict[str, Any]:
 
 
 def _plugin() -> dict[str, Any]:
-    from merlin.targetgen.plugins import resolve_support
+    from merlin.development.targetgen.plugins import resolve_support
 
     return resolve_support(_target()).plugin()
 
 
 def _provider_root() -> Path:
-    from merlin.targetgen.plugins import provider_root, resolve_support
+    from merlin.development.targetgen.plugins import provider_root, resolve_support
 
     selected = resolve_support(_target())
     return provider_root(selected.base, selected.plugin().get("path"))
@@ -168,7 +168,7 @@ def _isa_headers_spec() -> Path:
 
 def isa_headers(*, verify: bool = True):
     """The provider's content-pinned ISA-header environment (raises when it cannot be produced)."""
-    from merlin.targetgen import isa_headers_spec
+    from merlin.development.targetgen import isa_headers_spec
 
     try:
         return isa_headers_spec.load(_target(), _isa_headers_spec(), override_env=HARNESS_DIR_ENV, verify=verify)
@@ -210,7 +210,7 @@ def _oracle() -> dict[str, dict[str, Any]]:
 
 def readout_metadata(contract):
     """Read only explicitly selected readout data; no execution binding or discovery."""
-    from merlin.targetgen.readout_facet import validated_stage_routes
+    from merlin.development.targetgen.readout_facet import validated_stage_routes
 
     _require(type(contract) is dict, "selected readout contract is not a data mapping")
     runner = contract.get("runner")
@@ -252,7 +252,7 @@ def _rocc_semantics():
     reads ``rocc_semantics.rtl_checks`` from it. A provider that also declares ``plugin.rtl_checks``
     must name the same module the semantics module serves, so the two declarations cannot diverge.
     """
-    from merlin.targetgen.plugins import load_declared
+    from merlin.development.targetgen.plugins import load_declared
 
     plugin = _plugin()
     if not plugin.get("rocc_semantics"):
@@ -270,9 +270,9 @@ def _rocc_semantics():
 
 # --- the harness renderer (generic, owned by contract/harness_render) ---------------------------------
 try:
-    from merlin.targetgen.contract.harness_render import render_harness  # noqa: F401 -- re-exported
+    from merlin.development.targetgen.contract.harness_render import render_harness  # noqa: F401 -- re-exported
 except ModuleNotFoundError as _missing:
-    if _missing.name != "merlin.targetgen.contract.harness_render":
+    if _missing.name != "merlin.development.targetgen.contract.harness_render":
         raise
     _RENDER_MISSING = str(_missing)
 
@@ -280,7 +280,7 @@ except ModuleNotFoundError as _missing:
         """Placeholder until the generic renderer lands; refuses with the reason rather than guessing."""
         raise NotImplementedError(
             "the generic chipyard RoCC backend renders harnesses with "
-            "merlin.targetgen.contract.harness_render.render_harness, which is not installed in this "
+            "merlin.development.targetgen.contract.harness_render.render_harness, which is not installed in this "
             f"checkout ({_RENDER_MISSING}); no target-specific renderer is substituted"
         )
 
@@ -294,8 +294,8 @@ def complete_call_timing():
 
 def build_source_paths():
     """Original caller and optional clock bytes consumed by pure build services."""
+    from merlin.development.targetgen.contract import harness_render
     from merlin.runtime import complete_call_timing as timing
-    from merlin.targetgen.contract import harness_render
 
     plan = complete_call_timing()
     clocks = () if plan is None else tuple(Path(p["path"]) for p in plan.record()["counter_semantics"]["source_pins"])
@@ -357,10 +357,10 @@ def spike_extension() -> tuple[tuple[str, ...], Path]:
     """``(spike flags, LD_LIBRARY_PATH dir)`` for this target's functional model.
 
     A contract ``runner.spike_extension`` (digest-pinned) wins; otherwise the toolchain's library
-    directory and the declared extension name, exactly as :mod:`merlin.targetgen.spike_extension`
+    directory and the declared extension name, exactly as :mod:`merlin.development.targetgen.spike_extension`
     defines the additive default.
     """
-    from merlin.targetgen.spike_extension import spike_invocation
+    from merlin.development.targetgen.spike_extension import spike_invocation
 
     return spike_invocation(
         _target(), default_library_dir=spike_library_dir(), default_extension_name=__getattr__("SPIKE_EXTENSION_NAME")
@@ -392,14 +392,14 @@ def simulator_identity(simulator: str) -> dict | None:
 
 def platform_dram_base() -> int:
     """The bare-metal load address, derived from the RTL build's memory map for the declared sim."""
-    from merlin.targetgen import runtime_build
+    from merlin.development.targetgen import runtime_build
 
     return runtime_build.platform_dram_base(_target(), _block("runner").get("sim_via"))
 
 
 def _rtl_sim_config() -> str:
     from merlin.common.paths import env
-    from merlin.targetgen import runtime_build
+    from merlin.development.targetgen import runtime_build
 
     if VERILATOR_CONFIG_ENV and env(VERILATOR_CONFIG_ENV):
         return str(env(VERILATOR_CONFIG_ENV))
@@ -415,14 +415,14 @@ def verilator_path() -> Path:
 
 def gsim_path() -> Path:
     """The GSIM emulator (env override, else the derived engine home). Existence is not checked."""
-    from merlin.targetgen import gsim_emulator
+    from merlin.development.targetgen import gsim_emulator
 
     return gsim_emulator.emulator_path(_target(), env_var=GSIM_EMU_ENV)
 
 
 def gsim_status() -> tuple[bool, str]:
     """``(available, reason)`` for GSIM, including a refused build receipt's reason."""
-    from merlin.targetgen import gsim_emulator
+    from merlin.development.targetgen import gsim_emulator
 
     return gsim_emulator.probe(_target(), env_var=GSIM_EMU_ENV)
 
@@ -575,7 +575,7 @@ def run_elf(
 ) -> str | bytes:
     """Run ``elf`` on ``simulator``; an explicit memory export never changes the default command."""
     preexec = None
-    from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
+    from merlin.development.targetgen.rtl_engine_policy import simulation_runtime_slot
 
     slot = simulation_runtime_slot(simulator, wait_timeout_s=timeout)
     export = prepare_memory_readback(elf, simulator, memory_readback) if memory_readback is not None else None
@@ -590,7 +590,7 @@ def run_elf(
         cmd = [str(verilator_path()), str(elf), f"+loadmem={elf}"]
         preexec = _unlimited_stack
     elif simulator == "gsim":
-        from merlin.targetgen import rtl_engine_policy
+        from merlin.development.targetgen import rtl_engine_policy
 
         if getattr(rtl_engine_policy, "GSIM_RUNTIME_SLOT_PROTOCOL", None) != "reentrant_per_thread_v1":
             raise ChipyardRoccError("GSim requires Merlin runtime slot protocol reentrant_per_thread_v1")
@@ -737,7 +737,7 @@ def describe_caller_layout(cb: dict, *, target: str, facts: dict) -> dict:
     projection is the legacy row-major policy with a row alignment of one element. A buffer declaring
     its own ``storage_encodings`` is refused rather than described approximately.
     """
-    from merlin.targetgen.contract.harness_render import logical_interface, resolve
+    from merlin.development.targetgen.contract.harness_render import logical_interface, resolve
 
     if (
         not isinstance(cb, dict)
@@ -772,7 +772,7 @@ def describe_caller_layout(cb: dict, *, target: str, facts: dict) -> dict:
 
 def caller_layout_source_paths() -> tuple[Path, ...]:
     """The installed core sources whose bytes define :func:`describe_caller_layout`."""
-    from merlin.targetgen.contract import harness_render
+    from merlin.development.targetgen.contract import harness_render
 
     return (Path(__file__).resolve(), Path(harness_render.__file__).resolve())
 
@@ -780,7 +780,7 @@ def caller_layout_source_paths() -> tuple[Path, ...]:
 def generated_isa_header() -> Path | None:
     """The minimal hardware-facts ISA header (RTL facts + contract encodings), written once per
     content under ``out/build/isa_headers``; None when the spec declares no generated header."""
-    from merlin.targetgen import isa_header_gen
+    from merlin.development.targetgen import isa_header_gen
 
     name = isa_headers(verify=False).generated_header
     if name is None:
@@ -800,10 +800,10 @@ def harness_build_recipe():
     bare-metal runtime and the GENERATED facts header only, and the build is refused if any header
     the spec excludes (an upstream kernel library) is reachable from it.
     """
+    from merlin.development.targetgen.contract.build_recipe import KernelStackFramePolicy
+    from merlin.development.targetgen.contract.harness_abi import for_target
+    from merlin.development.targetgen.isa_headers_spec import IsaHeadersError
     from merlin.runtime.backends import base as backend_base
-    from merlin.targetgen.contract.build_recipe import KernelStackFramePolicy
-    from merlin.targetgen.contract.harness_abi import for_target
-    from merlin.targetgen.isa_headers_spec import IsaHeadersError
 
     headers = isa_headers(verify=True)
     generated = generated_isa_header()
@@ -847,7 +847,7 @@ def _readout_provenance() -> dict[str, Any]:
     evidence = _readout("evidence_header")
     if not isinstance(evidence, dict) or not evidence.get("file") or not evidence.get("sha256"):
         raise ChipyardRoccError(f"{_target()}: readout_semantics.evidence_header needs file and sha256")
-    from merlin.targetgen import isa_headers_spec
+    from merlin.development.targetgen import isa_headers_spec
 
     try:
         declared = isa_headers_spec.declared_files(_target(), _isa_headers_spec()).get(str(evidence["file"]))
@@ -910,7 +910,7 @@ def counter_engine_kinds() -> dict[str, Any]:
 
 def counter_partition_inputs() -> dict[str, Any]:
     """The elaborated-artifact boundary for the generic counter occupancy-partition verifier."""
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     partition = _block("counter_semantics").get("partition")
     if not isinstance(partition, dict) or not partition.get("module") or not partition.get("counter_module"):

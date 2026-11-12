@@ -29,7 +29,7 @@ def publish_operation(
     _defer_result_publication,
     evidence,
 ):
-    from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+    from merlin.analysis.perf.work_volume import command_buffer_evidence as _cb_evidence
 
     _work_volume, _cb_artifact = _grade_cpu_step(  # raw buffer stored beside the result, referenced
         _cb_evidence,
@@ -46,8 +46,8 @@ def publish_operation(
         try:
             import hashlib as _hashlib
 
-            from merlin.benchharness import hash_tree as _hash_tree
-            from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+            from merlin.analysis.perf.compiler_plan_evidence import verify_compiler_global_plan
+            from merlin.evaluation.harness import hash_tree as _hash_tree
 
             _source_name = capsule.get("linalg_mlir") or capsule.get("interface_mlir")
             _source_path = Path(str(capsule.get("__dir__") or "")) / str(_source_name or "")
@@ -88,7 +88,7 @@ def publish_operation(
     # rides beside the work total under the artifact digest they share. Emitted for every graded
     # capsule for the same reason the work total is: an absent key reads as "no movement axis applies",
     # a zero reads as "this program moved no data", and on a roofline that means infinite intensity.
-    from merlin.perf.movement_volume import movement_evidence as _mv_evidence
+    from merlin.analysis.perf.movement_volume import movement_evidence as _mv_evidence
 
     _movement_volume = _grade_cpu_step(
         _mv_evidence, evidence.command_buffer, compiler_provenance="submission command-buffer contract entrypoint"

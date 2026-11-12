@@ -11,10 +11,10 @@ required_top_level_fields:
   - types
   - lowering
   - tests
-producer: merlin.targetgen.synthesize.dialect_plan
+producer: merlin.development.targetgen.synthesize.dialect_plan
 consumers:
-  - merlin.targetgen.generate.xdsl
-  - merlin.targetgen.generate.mlir_scaffold
+  - merlin.development.targetgen.generate.xdsl
+  - merlin.development.targetgen.generate.mlir_scaffold
 validation_notes: >-
   Ops/types/lowerings are a human-review decision; do not auto-generate dialect ops directly
   from instruction names. Conservative targets emit empty ops/types flagged requires_human_review.

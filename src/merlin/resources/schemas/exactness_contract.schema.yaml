@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=none
-# merlin schema (not yet formal JSON Schema; merlin.perf.exactness checks every field strictly).
+# merlin schema (not yet formal JSON Schema; merlin.analysis.perf.exactness checks every field strictly).
 title: Exactness Contract
 purpose: >-
   Per form, how far a program's output may differ from its reference: exact (the default and the only

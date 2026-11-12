@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from merlin.common import compile_trace as T
-from merlin.llvmlower import toolchain
+from merlin.compiler.lower.model import toolchain
 
 native = pytest.mark.skipif(
     not toolchain.compiler_python().is_file(), reason="the compiler's Python (native MLIR pass manager) is absent"
@@ -15,7 +15,7 @@ _MODULE = "\nfunc.func @forward(%a: tensor<4xf32>, %b: tensor<4xf32>) -> tensor<
 
 
 def _lower(work: Path):
-    from merlin.llvmlower.lower import lower_model
+    from merlin.compiler.lower.model.lower import lower_model
 
     return lower_model(_MODULE, work, targets=())
 
@@ -49,8 +49,8 @@ def test_stop_after_writes_that_stages_ir_and_nothing_after_it(tmp_path, stage, 
 
 @native
 def test_dump_ir_after_all_indexes_every_stage_in_route_order(tmp_path):
+    from merlin.compiler.lower.model import lower as L
     from merlin.compiler.lower.native import pipeline as P
-    from merlin.llvmlower import lower as L
 
     trace = tmp_path / "trace"
     with T.session(T.Request(directory=str(trace), dump_after=(T.ALL,))):

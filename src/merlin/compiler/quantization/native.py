@@ -12,8 +12,8 @@ from pathlib import Path
 
 def prepare_graph_request(source, *, entry, policy, binding, target_identity, mode, original_source_sha256=None):
     """Preserve the original selected graph hook and its diagnostic boundary."""
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
-    from merlin.semantic_compiler.model import KernelRequest
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.model import KernelRequest
 
     if mode != "diagnostic" or binding is None:
         raise LinalgBridgeError("graph precision policy requires diagnostic mode and target support")
@@ -54,7 +54,7 @@ def prepare_tile_request(
     correspondence must still describe the caller's actual staged program.
     """
     from merlin.compiler.quantization.contraction.contract import DiagnosticMatmulTile
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
 
     if mode != "diagnostic" or binding is None:
         raise LinalgBridgeError(

@@ -26,7 +26,7 @@ endpoints:
     engine: spatial
     exposure: rocc
     encoding:
-      source: rtl_facts                  # merlin.targetgen.rtl.facts.load_facts(target)
+      source: rtl_facts                  # merlin.development.targetgen.rtl.facts.load_facts(target)
       opcode_from: funct_decode_table.custom_opcode
       table: funct_decode_table          # legal_funct + names, both RTL-derived
       names_from: names
@@ -263,7 +263,7 @@ endpoints:
     engine: spatial
     exposure: external_backend
     encoding:
-      source: isa_model                  # merlin.targetgen.isa_model.isa_model_for_target(target)
+      source: isa_model                  # merlin.development.targetgen.isa_model.isa_model_for_target(target)
       roles_from: isa_model.roles
       # The corpus and the derived model spell the same instruction differently — the corpus writes
       # VMATPUSH.W.MXU0 where the model has vmatpush.weight.mxu0, an ABBREVIATION rather than a

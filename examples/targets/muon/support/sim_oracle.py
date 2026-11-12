@@ -17,7 +17,7 @@ the registry (``get_backend("muon")``).
 
 from __future__ import annotations
 
-from merlin.targetgen.oracle_policy import register_sim_oracle
+from merlin.development.targetgen.oracle_policy import register_sim_oracle
 
 
 def _cyclotron_tier_plan(target: str):

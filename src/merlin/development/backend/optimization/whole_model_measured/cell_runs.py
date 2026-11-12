@@ -140,7 +140,7 @@ def champion_seed(loop_run: Path, *, target: str, destination: Path) -> dict[str
             "evidence": str(evidence) if evidence is not None and evidence.is_file() else None,
         }
     from merlin.common.paths import out_dir
-    from merlin.targetgen.champions import champions_root, read_champion
+    from merlin.development.targetgen.champions import champions_root, read_champion
 
     root = champions_root(target)
     found = sorted(p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")) if root.is_dir() else []

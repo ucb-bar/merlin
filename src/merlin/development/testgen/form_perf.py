@@ -20,8 +20,8 @@ is the owner-side, after-freeze claim-model check -- a
 statistic, never a capsule.
 
 Nothing here names a target or a model. Array geometry comes from the RTL facts
-(:func:`merlin.perf.derived_bound.machine_from_facts`), the issue count from the sequencer's own loop
-(:func:`merlin.perf.mesh_occupancy.tile_issue_cycles`); an unpriceable form is recorded as such and
+(:func:`merlin.analysis.perf.derived_bound.machine_from_facts`), the issue count from the sequencer's own loop
+(:func:`merlin.analysis.perf.mesh_occupancy.tile_issue_cycles`); an unpriceable form is recorded as such and
 shares fall back to MACs, said so, rather than to an invented rate.
 """
 
@@ -91,7 +91,7 @@ def class_label(key: Mapping[str, Any]) -> str:
 
 def gemm_extents(entry: Mapping[str, Any]) -> tuple[int, int, int]:
     """``(rows, depth, cols)`` the unit streams, reduces and holds for one device-form entry."""
-    from merlin.xdsl_dialects.lowering import group_command as GC
+    from merlin.compiler.dialects.lowering import group_command as GC
 
     if str(entry.get("op")) == "conv2d":
         positions, features = GC.device_output_shape(entry)
@@ -105,8 +105,8 @@ def predict(
     entry: Mapping[str, Any], machine, *, placement: str | None = None, batch_slices: int = 1
 ) -> dict[str, Any]:
     """Price every disjoint slice of a group, retaining the one-slice device form."""
-    from merlin.perf.derived_bound import is_unknown
-    from merlin.perf.mesh_occupancy import tile_issue_cycles
+    from merlin.analysis.perf.derived_bound import is_unknown
+    from merlin.analysis.perf.mesh_occupancy import tile_issue_cycles
 
     rows, depth, cols = gemm_extents(entry)
     if type(batch_slices) is not int or batch_slices < 1:
@@ -135,7 +135,7 @@ def predict(
         rows, depth, cols, array_rows=int(machine.array_rows), array_cols=int(machine.array_cols)
     )
     out["predicted_cycles"] = per_slice_cycles * batch_slices
-    out["pricing"] = "merlin.perf.mesh_occupancy.tile_issue_cycles over the RTL-derived array geometry"
+    out["pricing"] = "merlin.analysis.perf.mesh_occupancy.tile_issue_cycles over the RTL-derived array geometry"
     return out
 
 
@@ -144,9 +144,9 @@ def predict(
 # ------------------------------------------------------------------------------------------------
 def application_members(target: str, module, binding, *, weight_args=None, oracle=None, machine=None) -> dict:
     """Every group of one capture that has a device form, priced, with the groups that have none counted."""
-    from merlin.targetgen import group_capsule_entries as G
-    from merlin.xdsl_dialects.lowering import compute_groups as CG
-    from merlin.xdsl_dialects.lowering import group_command as GC
+    from merlin.compiler.dialects.lowering import compute_groups as CG
+    from merlin.compiler.dialects.lowering import group_command as GC
+    from merlin.development.targetgen import group_capsule_entries as G
 
     groups = CG.form_groups(module, target, oracle=oracle)
     members: list[dict[str, Any]] = []
@@ -212,7 +212,7 @@ def _host_placed(member: Mapping[str, Any]) -> bool:
 
 def _output_elements(entry: Mapping[str, Any]) -> int | None:
     """Elements the device writes for ``entry`` (``group_command.device_output_shape``), or None."""
-    from merlin.xdsl_dialects.lowering import group_command as GC
+    from merlin.compiler.dialects.lowering import group_command as GC
 
     try:
         shape = GC.device_output_shape(entry)
@@ -353,10 +353,10 @@ def derive_form_scope(
     phases get deliberately different cohorts. They are refused exactly like any other source when
     they name a held-out model, and may not reuse an iteration label.
     """
+    from merlin.analysis.perf.derived_bound import machine_from_facts
     from merlin.common import mlir_query as mq
+    from merlin.compiler.dialects.lowering import stream_plan
     from merlin.development.testgen.claim_boundary import is_held_out
-    from merlin.perf.derived_bound import machine_from_facts
-    from merlin.xdsl_dialects.lowering import stream_plan
 
     if set(captures) != set(iteration_roster):
         raise ValueError(
@@ -393,7 +393,7 @@ def derive_form_scope(
     summary = aggregate(applications, tolerance_graded=str(getattr(binding, "compare", "")) != "exact_int")
     return {
         "schema": SCHEMA,
-        "grouping": "merlin.xdsl_dialects.lowering.compute_groups.form_groups + group_command.program",
+        "grouping": "merlin.compiler.dialects.lowering.compute_groups.form_groups + group_command.program",
         "workload_role": "iteration_and_performance_scale" if scale else "iteration",
         "applications": {
             label: {
@@ -1020,8 +1020,8 @@ def claim_model_form_statistics(
     not a freeze. Returns aggregate numbers only: nothing here can write, name or propose a
     capsule, so a claim model can be measured against the corpus without ever shaping it.
     """
+    from merlin.analysis.perf.derived_bound import machine_from_facts
     from merlin.common import mlir_query as mq
-    from merlin.perf.derived_bound import machine_from_facts
 
     freeze_digest = _verified_phase1_freeze_digest(Path(phase1_freeze_receipt))
     if not isinstance(scope, Mapping) or scope.get("schema") != SCHEMA:

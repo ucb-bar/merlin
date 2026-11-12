@@ -29,7 +29,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from merlin.common import strict_json
-from merlin.targetgen.application_inventory import verify_capture_receipt
+from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
 SCHEMA = "merlin.capture_execution_attestation.v1"
 SCHEMA_V2 = "merlin.capture_execution_attestation.v2"

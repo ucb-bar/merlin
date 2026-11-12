@@ -75,7 +75,7 @@ def _source_pair():
     from xdsl.dialects.builtin import IntegerAttr, i32
     from xdsl.dialects.linalg import ops as linalg_ops
 
-    from merlin.xdsl_dialects.lowering.pipeline import build_input_module, lower_module
+    from merlin.compiler.dialects.lowering.pipeline import build_input_module, lower_module
 
     source = build_input_module(reuse=2, m=2, k=2, n=2)
     func = next((op for op in source.walk() if op.name == "func.func"))
@@ -92,7 +92,7 @@ def _source_pair():
 
 
 def _backend_pair():
-    from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
+    from merlin.development.targetgen.families import DEFAULT_EXAMPLE_TARGET
     from merlin.verification.evaluate import _finish_lowering, _lower_to_interface
 
     (interface, contract) = _lower_to_interface(2, 2, 2, 2, target=DEFAULT_EXAMPLE_TARGET)

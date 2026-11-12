@@ -62,7 +62,7 @@ def funct_table_for(target: str) -> dict[str, Any]:
     Fail-closed by returning empty rather than a default table: a decoder with no derived table must
     report that it decoded nothing, not decode against a guess.
     """
-    from merlin.targetgen.rtl import facts as _F
+    from merlin.development.targetgen.rtl import facts as _F
 
     body = _F.body_if_present(target)
     return _facts_interface(body, "funct_decode_table") or {}

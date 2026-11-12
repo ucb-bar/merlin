@@ -21,7 +21,7 @@ def roster():
 
 def _split_l3_prerequisites(row, source_sha256):
     """Recognize a completed cheap stage, not a certificate or complete result."""
-    from merlin.targetgen.trace_check import requirements_complete
+    from merlin.development.targetgen.trace_check import requirements_complete
 
     tiers = row.get("tiers") or {}
     failure = row.get("failure") or {}

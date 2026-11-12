@@ -544,7 +544,7 @@ def _capsule_workers(requested: object, *, sim: str, n_capsules: int) -> int:
     The grade's own selection names no engine, so it takes the tightest elaborated-RTL cap: its cert
     tier runs on one of those engines, and each engine's native slots still admit the actual runs.
     """
-    from merlin.targetgen.rtl_engine_policy import capsule_worker_cap
+    from merlin.development.targetgen.rtl_engine_policy import capsule_worker_cap
 
     if sim == REQUIRED_SIM:
         limit = min(capsule_worker_cap(engine) for engine in _rtl_engines())
@@ -641,7 +641,7 @@ def _rtl_engines() -> tuple[str, ...]:
     engines that were always there.
     """
     try:
-        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+        from merlin.development.targetgen.rtl_engine_policy import ENGINE_PRIORITY
     except Exception:  # noqa: BLE001 -- no policy module: keep the historical ladder
         return ("vcs", "verilator")
     return tuple(ENGINE_PRIORITY)
@@ -665,7 +665,7 @@ def _cert_budget_s(target: str) -> tuple[int | None, str]:
     returns None and the caller keeps its historical default rather than inventing a cost law.
     """
     try:
-        from merlin.targetgen import cert_cost
+        from merlin.development.targetgen import cert_cost
     except Exception as exc:  # noqa: BLE001
         return None, f"cert_cost not importable ({type(exc).__name__}: {exc})"
     pinned = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()

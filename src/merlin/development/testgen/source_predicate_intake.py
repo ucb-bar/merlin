@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.rtl.source_predicates import SourcePredicateError, source_predicate
 from merlin.development.testgen.command_intake import IndependentCommandIntake, _tracked_source
 from merlin.development.testgen.rtl_intake import RtlIntakePin, RtlIntakeRefusal, _json, _outside, _pin, _plain
-from merlin.targetgen.rtl.source_predicates import SourcePredicateError, source_predicate
 
 SCHEMA = "merlin.independent_source_predicates.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()

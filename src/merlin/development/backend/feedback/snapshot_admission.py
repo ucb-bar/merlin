@@ -17,7 +17,7 @@ from pathlib import Path
 
 def identity(service, candidate):
     from merlin.development.backend.optimization.retained_revisions import source_inventory
-    from merlin.targetgen.compiler_library import active_compiler_library
+    from merlin.development.targetgen.compiler_library import active_compiler_library
 
     library = active_compiler_library()
     return hashlib.sha256(

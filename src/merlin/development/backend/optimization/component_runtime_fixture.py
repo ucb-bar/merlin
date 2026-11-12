@@ -94,7 +94,7 @@ def prepare_source_control(*, name, root, build_service, contract_root, target_d
     if direction == "negative" and mechanism == "original_numeric_gate":
         declaration["numeric_policy"]["atol"] = 100.0
     write_json(capsule / "capsule.yaml", declaration)
-    from merlin.targetgen.golden_store import write_golden
+    from merlin.development.targetgen.golden_store import write_golden
 
     write_golden(
         capsule,

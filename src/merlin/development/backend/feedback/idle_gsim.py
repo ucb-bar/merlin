@@ -233,7 +233,7 @@ def _spike_seconds(run_dir: Path) -> dict:
     """Each case's measured Spike-tier seconds in this run's runs roots (ordering history only)."""
     try:
         from merlin.development.backend.feedback.loop_grading import _history_runs_roots
-        from merlin.targetgen.capsule_scheduling import measured_costs
+        from merlin.development.targetgen.capsule_scheduling import measured_costs
 
         costs, _ = measured_costs(_history_runs_roots(run_dir), requested_tiers={"L2"}, engine="spike")
         return dict(costs)

@@ -32,11 +32,16 @@ NAMES = (
     *RAW_RTL_NAMES,
 )
 RECORD = "AUTHOR_PROFILE.json"
-CPP_ENTRIES = tuple("merlin.targetgen.generate." + name for name in ("mlir_scaffold", "llvm_plan", "target_repo"))
+CPP_ENTRIES = tuple(
+    "merlin.development.targetgen.generate." + name for name in ("mlir_scaffold", "llvm_plan", "target_repo")
+)
 LIGHT_ENTRIES = (
     *CPP_ENTRIES,
-    "merlin.targetgen.generate.xdsl",
-    *("merlin.targetgen.oot_starterkit." + name for name in ("iface", "dialect", "llvm_context", "cmdbuf", "verify")),
+    "merlin.development.targetgen.generate.xdsl",
+    *(
+        "merlin.development.targetgen.oot_starterkit." + name
+        for name in ("iface", "dialect", "llvm_context", "cmdbuf", "verify")
+    ),
 )
 # Exact reviewed support modules, not compiler-directory grants. Component preparation
 # computes dependencies first, then fails if a future edit crosses this copy boundary.
@@ -51,26 +56,26 @@ LIGHT_SUPPORT = frozenset(
         "merlin.common.ir_lock",
         "merlin.common.dense_float_ir",
         "merlin.common.stimulus",
-        "merlin.targetgen",
-        "merlin.targetgen.generate",
-        "merlin.targetgen.generate.typed_mlir",
-        "merlin.targetgen.oot_starterkit",
-        "merlin.targetgen.contract",
-        "merlin.targetgen.contract.interface_emit",
-        "merlin.targetgen.contract.linalg_iface",
+        "merlin.development.targetgen",
+        "merlin.development.targetgen.generate",
+        "merlin.development.targetgen.generate.typed_mlir",
+        "merlin.development.targetgen.oot_starterkit",
+        "merlin.development.targetgen.contract",
+        "merlin.development.targetgen.contract.interface_emit",
+        "merlin.development.targetgen.contract.linalg_iface",
         "merlin.compiler.ir.logical_abi",
         "merlin.runtime",
         "merlin.runtime.commandbuffer",
         "merlin.runtime.tensor",
-        "merlin.xdsl_dialects",
-        "merlin.xdsl_dialects._common",
-        "merlin.xdsl_dialects.fp8",
-        "merlin.xdsl_dialects.interface",
+        "merlin.compiler.dialects",
+        "merlin.compiler.dialects._common",
+        "merlin.compiler.dialects.fp8",
+        "merlin.compiler.dialects.interface",
         # Interface tensors may carry a physical storage map; its checker is pure layout arithmetic.
-        "merlin.perf",
-        "merlin.perf.storage_encoding",
-        "merlin.perf.strided_layout",
-        "merlin.perf.factored_storage",
+        "merlin.analysis.perf",
+        "merlin.analysis.perf.storage_encoding",
+        "merlin.analysis.perf.strided_layout",
+        "merlin.analysis.perf.factored_storage",
     )
 )
 CPP_SUPPORT = frozenset(
@@ -81,9 +86,9 @@ CPP_SUPPORT = frozenset(
         "merlin.common.artifacts",
         "merlin.common.paths",
         "merlin.common.yaml",
-        "merlin.targetgen",
-        "merlin.targetgen.generate",
-        "merlin.targetgen.generate.typed_mlir",
+        "merlin.development.targetgen",
+        "merlin.development.targetgen.generate",
+        "merlin.development.targetgen.generate.typed_mlir",
     )
 )
 
@@ -581,7 +586,7 @@ def _verify_bank_grant(bundle, row, raw, pin, *, content):
     if any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in root.rglob("*")):
         raise ValueError("coverage bank grant contains an indirect path")
     try:
-        from merlin.mining.reference_subsets import verify_bank
+        from merlin.analysis.mining.reference_subsets import verify_bank
     except ImportError as error:
         raise ValueError(
             "coverage bank verification requires Merlin's mining workflow "
@@ -631,7 +636,7 @@ def materialize_bundle(bundle, *, profile, common_allowed, source_selection=None
     """
     profile = resolve(profile) if isinstance(profile, str) else profile
     verify_sources(profile, source_selection)
-    from merlin.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.tool_profile import verify_tool_profile
 
     verify_tool_profile(bundle)
     if not isinstance(common_allowed, (list, tuple)) or not common_allowed:
@@ -852,7 +857,7 @@ def _mounted_python_packages(argv, names):
     their Python/path hooks. The ordinary mask owner projects these sources
     through every bind alias and skips destinations already hidden.
     """
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     found = set()
     for state, source, _destination in BW._mounts(argv):
@@ -900,7 +905,7 @@ def withheld_simulator_roots(target, bundle):
         return ()
     if target is None:
         raise ValueError("raw-only profile requires its declared target for simulator asset masks")
-    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin.development.targetgen.sandbox import toolchain as TC
 
     roots = set()
     harness = TC.curated_harness_dir(target)
@@ -921,8 +926,8 @@ def runtime_masks(argv, bundle, *, target=None):
     """
     import importlib.util
 
-    from merlin.targetgen.sandbox import bwrap as BW
-    from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+    from merlin.development.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox.answer_surfaces import AnswerSurface
 
     selected = bundle.get("author_profile")
     if selected is None:
@@ -970,7 +975,7 @@ def canonical_common(bundle, te, variant):
     Use the release-local descriptor, then take actual generated rows so ordinary
     LLVM/facts/public-input relocation stays authoritative. No SDK-directory guess.
     """
-    from merlin.targetgen.generate_bundles import _shared_allow
+    from merlin.development.targetgen.generate_bundles import _shared_allow
 
     legacy_task = te.experiment_resource("task").rstrip("/")
     wanted = {row["path"] for row in _shared_allow(te, variant) if row["path"].rstrip("/") != legacy_task}

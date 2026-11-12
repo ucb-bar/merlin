@@ -122,7 +122,7 @@ class StagedPreparation:
 
     def revalidate_ir(self, source):
         """Bind normalized discovery IR to the actual immutable argument substitution."""
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         self.revalidate()
         source.revalidate()

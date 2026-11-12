@@ -6,7 +6,7 @@ from pathlib import Path
 
 from merlin.capture.artifacts import _shape_of
 from merlin.capture.spec import SpecRefSource
-from merlin.targetgen.golden_store import write_golden
+from merlin.development.targetgen.golden_store import write_golden
 
 
 def write_spec_capsule(entry: dict, binding, out_root, *, source: SpecRefSource | None = None):
@@ -18,7 +18,7 @@ def write_spec_capsule(entry: dict, binding, out_root, *, source: SpecRefSource 
 
     import yaml
 
-    from merlin.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import corpus_spec as CS
 
     src = source or SpecRefSource()
     D = binding.tile_dim

@@ -27,8 +27,8 @@ from merlin.common import invocation_record as I
 from merlin.common import read_lease_digest as leases
 from merlin.common.digest import sha256_file
 from merlin.common.paths import build_dir, module_source_path
+from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
 from merlin.experiments import source_snapshot as S
-from merlin.llvmlower.compilation_recipe import verify_completed_recipe
 
 SCHEMA = "merlin.phase1.completed_build_reuse.v1"
 ENTRY = "merlin.phase1.completed_build_production.v1"
@@ -344,8 +344,8 @@ def _executing_release(snapshot, seal, release):
 def _route(device):
     if device is None:
         return None
+    from merlin.compiler.lower.model.device_build import DeviceRouting
     from merlin.compiler.planning.complete import select_complete_group
-    from merlin.llvmlower.device_build import DeviceRouting
 
     if type(device) is not DeviceRouting or device.select is not select_complete_group:
         raise ValueError("completed-build reuse requires canonical complete-group routing")
@@ -379,9 +379,9 @@ def _route(device):
 
 def _material(kwargs, context, selection, producer, owner):
     from merlin.common.paths import contract_dir, schemas_dir
-    from merlin.llvmlower import toolchain
-    from merlin.model_check.full_build import BuildSettings
-    from merlin.model_check.full_build_identity import build_material
+    from merlin.compiler.lower.model import toolchain
+    from merlin.evaluation.model.full_build import BuildSettings
+    from merlin.evaluation.model.full_build_identity import build_material
     from merlin.runtime.modelinputs import strict_tree_sha256
 
     allowed = {
@@ -543,7 +543,7 @@ def _produce(*, kwargs, result):
 
 
 def _admit(receipt, kwargs, directory):
-    from merlin.llvmlower.device_build import admit_linked_device_elf, freeze_device_elf_admission
+    from merlin.compiler.lower.model.device_build import admit_linked_device_elf, freeze_device_elf_admission
 
     device = kwargs.get("device")
     if device is not None:

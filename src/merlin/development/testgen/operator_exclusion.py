@@ -14,7 +14,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen import component_program
+from merlin.development.targetgen import component_program
 
 SCHEMA = "merlin.phase0.operator_private_exclusion.v1"
 SCHEMA_V2 = "merlin.phase0.operator_private_exclusion.v2"

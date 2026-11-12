@@ -18,8 +18,8 @@ from pathlib import Path
 from merlin.development.backend.compiler_library import child_arguments, join_background, library_thread, selected_child
 from merlin.development.backend.context import add_context_arguments, context_argv, resolve_context
 from merlin.development.backend.run_inputs import strip_build_state
-from merlin.model_check.bundle import Bundle
-from merlin.model_check.models import default_models_path, target_from_contract
+from merlin.evaluation.model.bundle import Bundle
+from merlin.evaluation.model.models import default_models_path, target_from_contract
 
 PROGRAMS = {
     "resnet50": ("model",),
@@ -32,7 +32,7 @@ def _valid_group(value):
     return bool(value) and value.isascii() and all(char.isalnum() or char in "_.@-" for char in value)
 
 
-REPORT_SCHEMA = "merlin.model_check.report.v1"
+REPORT_SCHEMA = "merlin.evaluation.model.report.v1"
 
 
 #: Modules the full-mode child loads under the model2MLIR capture interpreter. Package manifest
@@ -51,7 +51,7 @@ def import_probe() -> None:
         importlib.import_module(name)
     # The child classifies a kernel's gate failure in this interpreter too. A classification that
     # needs a package this interpreter lacks replaces every such failure with an import error.
-    from merlin.targetgen.capsule_common import _cat
+    from merlin.development.targetgen.capsule_common import _cat
 
     _cat("TOOL_CRASH")
 
@@ -188,7 +188,7 @@ def execute_visible(
         # A subprocess cannot inherit context-local compiler owners. Carry the
         # original reviewed library and profile explicitly, as selfcheck does.
         from merlin.development.backend.feedback.compiler_profile_runtime import active_profile_service
-        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin.development.targetgen.compiler_library import active_compiler_library
 
         service = active_profile_service() if compiler_bundle_manifest is None else None
         if service is not None:

@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass
 
 from merlin.common.quant_formats import get
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi
 
 
 def _identifier(value):

@@ -10,11 +10,11 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.analysis.perf.component_applicability import ComponentApplicabilityCoordinates, ComponentApplicabilityDomain
+from merlin.analysis.perf.component_screen import qualify_component_screen, validate_component_screen_report
 from merlin.common import invocation_record
 from merlin.development.backend.optimization.component_runtime_qualification import _evidence_file
 from merlin.development.backend.optimization.contracts import StageGateError, mapping_file, sha256_file
-from merlin.perf.component_applicability import ComponentApplicabilityCoordinates, ComponentApplicabilityDomain
-from merlin.perf.component_screen import qualify_component_screen, validate_component_screen_report
 
 
 @dataclass(frozen=True)

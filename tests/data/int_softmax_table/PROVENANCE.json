@@ -3,7 +3,7 @@
   "generator": "merlin/tests/fixtures/capture_integer_softmax_ir.py",
   "capture_sources": {
     "merlin_commit": "6547ee31f2eea47e77a306003e795c9242148256",
-    "modules": ["src/merlin/targetgen/_integer_nonlinear.py", "src/merlin/targetgen/_activation_contractions.py"]
+    "modules": ["src/merlin/development/targetgen/_integer_nonlinear.py", "src/merlin/development/targetgen/_activation_contractions.py"]
   },
   "model2mlir": {
     "pin": "model2mlir_capture (merlin/contract/software_pins.yaml)",

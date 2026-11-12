@@ -28,7 +28,7 @@ class SnapshotError(RuntimeError):
 
 def selected_provider(target: str) -> dict:
     """Resolve source ownership once, in the trusted creating process."""
-    from merlin.targetgen.target_registry import resolve
+    from merlin.development.targetgen.target_registry import resolve
 
     info = resolve(target)
     if info.kind not in {"reference", "external"} or not info.base.is_dir():

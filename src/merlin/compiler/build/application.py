@@ -14,19 +14,19 @@ from pathlib import Path
 from typing import Protocol
 
 from merlin.common.content_store import digest_file
+from merlin.compiler.dialects.lowering.arena_plan import ArenaPlanError, MemoryPlan
+from merlin.compiler.dialects.lowering.global_plan import GlobalPlan
+from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
 from merlin.compiler.lower.c.application import emit_application_c
 from merlin.compiler.lower.c.dispatch import DispatchCall, emit_program_c
 from merlin.compiler.lower.c.sources import c_source_pair
 from merlin.compiler.partition.semantic import outline_semantic_regions
 from merlin.compiler.planning.application import application_plan
 from merlin.compiler.schedule.arena import ArenaRequirements
+from merlin.compiler.semantic.model import KernelRequest
+from merlin.compiler.semantic.source_preparation import preparation_filename, verify_source_preparation
+from merlin.compiler.semantic.target_binding import NativeCompilationError, verify_native_publication
 from merlin.runtime.program import build_program
-from merlin.semantic_compiler.model import KernelRequest
-from merlin.semantic_compiler.source_preparation import preparation_filename, verify_source_preparation
-from merlin.semantic_compiler.target_binding import NativeCompilationError, verify_native_publication
-from merlin.xdsl_dialects.lowering.arena_plan import ArenaPlanError, MemoryPlan
-from merlin.xdsl_dialects.lowering.global_plan import GlobalPlan
-from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
 
 @dataclass(frozen=True)

@@ -45,7 +45,7 @@ def declared(env_var: str) -> ToolchainDeclaration | None:
     them. A registry or contract that cannot be read declares nothing.
     """
     try:
-        from merlin.targetgen import target_registry
+        from merlin.development.targetgen import target_registry
 
         names = list(target_registry.all_targets())
     except Exception:  # noqa: BLE001 — no registry, no declaration

@@ -29,6 +29,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
+from merlin.analysis.perf.whole_model_capsules import resolve_capsules
 from merlin.development.backend.optimization.whole_model_measured import batch as BATCH
 from merlin.development.backend.optimization.whole_model_measured import feedback as F
 from merlin.development.backend.optimization.whole_model_measured import gates as G
@@ -42,8 +44,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
 )
 from merlin.development.backend.optimization.whole_model_measured.jobs import ROLE_CANDIDATE, TIMING_PENDING
 from merlin.development.backend.optimization.whole_model_measured.service import MeasurementService
-from merlin.perf import whole_model_verdict as V
-from merlin.perf.whole_model_capsules import resolve_capsules
 
 SCHEMA = "merlin_whole_model_objective_v1"
 
@@ -240,7 +240,7 @@ class WholeModelObjective:
         if not capsule or not Path(str(capsule)).is_dir() or not target:
             return {"why": "the screen names no model capsule to derive each group's roofline from"}
         try:
-            from merlin.perf.whole_model_capsule import load_model_capsule
+            from merlin.analysis.perf.whole_model_capsule import load_model_capsule
 
             interface = Path(load_model_capsule(capsule).interface)
             machine = ROOF.roofline_machine(target)
@@ -841,7 +841,7 @@ class WholeModelObjective:
     # ---- coverage: the objective is what the PACKAGE compiles
     def transfer_check(self, digest: str, primary_result: Mapping[str, Any] | None) -> dict[str, Any] | None:
         """Whether this candidate's gains on the primary model carry to every configured held-out
-        model, on the same op kind (:mod:`merlin.perf.transfer_check`). ``None`` when no held-out
+        model, on the same op kind (:mod:`merlin.analysis.perf.transfer_check`). ``None`` when no held-out
         model is configured for this run (the default) or the primary result carries no verdict yet
         -- never a guess from a partial measurement.
         """
@@ -970,7 +970,7 @@ class WholeModelObjective:
         """Why ``result`` was graded under a different exactness contract than this run holds, or None.  A
         result graded under another contract -- looser or stricter -- is shown and never the best: its
         correctness answered a different question (re-measuring grades it under this one)."""
-        from merlin.perf import exactness as EX
+        from merlin.analysis.perf import exactness as EX
 
         verdict = (result or {}).get("verdict")
         if not verdict:
@@ -1154,7 +1154,7 @@ class WholeModelObjective:
         if not roles:
             return None
         try:
-            from merlin.perf.isa_prohibition import prohibited_instructions
+            from merlin.analysis.perf.isa_prohibition import prohibited_instructions
 
             names = sorted(prohibited_instructions(str(self.screen.target), roles).values())
         except Exception as exc:  # noqa: BLE001 -- stated as unknown, never dropped

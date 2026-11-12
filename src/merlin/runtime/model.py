@@ -54,7 +54,7 @@ def _spike_extension_backend(target: str):
 
 
 def _native_engine(target: str, run: str, facts: dict[str, str]):
-    from merlin.targetgen.oracle_policy import selected_l3_engine_report
+    from merlin.development.targetgen.oracle_policy import selected_l3_engine_report
 
     selection = selected_l3_engine_report(target)
     if not selection.get("available") or selection.get("engine") != run:
@@ -189,7 +189,7 @@ def launch_saved(
                 "max_cycles": command_evidence["max_cycles"],
             }
         if run == "gsim":
-            from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+            from merlin.development.targetgen.rtl_engine_policy import gsim_runtime_slot
 
             slot = gsim_runtime_slot(wait_timeout_s=timeout_s)
         else:

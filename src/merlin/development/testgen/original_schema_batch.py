@@ -12,10 +12,10 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
 from merlin.common.strict_json import loads
+from merlin.development.targetgen import torch_schema_batch_observer as B
+from merlin.development.targetgen.frontend_typed_add import defaults_request
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 from merlin.development.testgen.operator_schema_intake import _selection
-from merlin.targetgen import torch_schema_batch_observer as B
-from merlin.targetgen.frontend_typed_add import defaults_request
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 ENVIRONMENT = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 TRANSPORT = "batch.v1"
@@ -25,9 +25,9 @@ def readers():
     return [
         module_source_path(name)
         for name in (
-            "merlin.targetgen.torch_schema_batch_observer",
-            "merlin.targetgen.torch_schema_observer",
-            "merlin.targetgen.torch_schema_defaults_observer",
+            "merlin.development.targetgen.torch_schema_batch_observer",
+            "merlin.development.targetgen.torch_schema_observer",
+            "merlin.development.targetgen.torch_schema_defaults_observer",
             __name__,
         )
     ]

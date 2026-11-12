@@ -8,7 +8,7 @@ Open the function itself for the exact code.
 
 | What fuses | `discover` route | Realizer | Works on |
 |---|---|---|---|
-| Contraction + epilogue chain (convert, scale, bias, residual, relu, pool, quantize) | `epilogue` | `merlin.xdsl_dialects.lowering.output_fusion.decide`, `merlin.xdsl_dialects.lowering.output_fusion.decisions`, consumed by `merlin.xdsl_dialects.lowering.compute_groups.form_groups(fusion)` | linalg on tensors |
+| Contraction + epilogue chain (convert, scale, bias, residual, relu, pool, quantize) | `epilogue` | `merlin.compiler.dialects.lowering.output_fusion.decide`, `merlin.compiler.dialects.lowering.output_fusion.decisions`, consumed by `merlin.compiler.dialects.lowering.compute_groups.form_groups(fusion)` | linalg on tensors |
 | Two adjacent elementwise calls | `adjacent_elementwise` | `merlin.compiler.planning.explore.realize_adjacent`, which calls `merlin.compiler.schedule.fusion.plan_fusion`; or `merlin.compiler.schedule.schedule_pipeline.compile_schedule(fusion_capabilities)` | schedule `Kernel` of `Call`s |
 | One pointwise producer feeding two pointwise consumers (two live outputs) | `multioutput` | `merlin.compiler.planning.explore.realize_multioutput`, which calls `merlin.compiler.transforms.multioutput.compile_source_multioutput` | linalg, then guarded images |
 | Sibling contractions sharing one input | `shared_input` | `merlin.compiler.planning.explore.realize_shared_input`, which calls `merlin.compiler.schedule.shared_input_schedule.schedule_shared_input` | logical schedule |
@@ -25,14 +25,14 @@ Supporting calls:
   the status with its reason.
 - `merlin.compiler.planning.explore.evaluate_fusions(source, alternatives, emit)` runs the unfused
   build plus up to 15 `FusionAlternative`s. Each runs on its own clone through
-  `merlin.transforms.pipeline_policy.evaluate_variants`, and `emit` must be your ordinary emission.
+  `merlin.compiler.transforms.pipeline_policy.evaluate_variants`, and `emit` must be your ordinary emission.
 
 ## Whole-graph epilogue grouping (two passes over the same module)
 
 ```python
-from merlin.targetgen import output_path as OP
-from merlin.xdsl_dialects.lowering import compute_groups as CG
-from merlin.xdsl_dialects.lowering import output_fusion as OF
+from merlin.development.targetgen import output_path as OP
+from merlin.compiler.dialects.lowering import compute_groups as CG
+from merlin.compiler.dialects.lowering import output_fusion as OF
 
 def fused_groups(module, target, declared_path, oracle=None, values=None):
     values = values or OF.Values()
@@ -42,7 +42,7 @@ def fused_groups(module, target, declared_path, oracle=None, values=None):
 ```
 
 `decisions` keys each decision by `id(root)`, so do not mutate or re-parse the module between
-the two calls. By default `form_groups` asks `merlin.xdsl_dialects.lowering.group_target_admission.TargetOracle`,
+the two calls. By default `form_groups` asks `merlin.compiler.dialects.lowering.group_target_admission.TargetOracle`,
 which reads your selected target contract. If your workspace states those facts differently,
 pass an `oracle` that answers the same questions (`unit_for`, `absorbs`, `ask`, `readout`). Each
 group's `fusion` record holds the cut, the stages, every refusal and the proof. A refusal does

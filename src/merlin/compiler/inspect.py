@@ -67,11 +67,11 @@ def add_arguments(ap: argparse.ArgumentParser, *, list_stages: bool = True) -> N
 
 def _load_pipelines() -> None:
     """Import every module that declares a pipeline, so the declarations are present."""
+    import merlin.analysis.perf.whole_model_build  # noqa: F401 -- whole-model builder
     import merlin.cli.compile_workload  # noqa: F401 -- frontend
-    import merlin.llvmlower.codegen  # noqa: F401 -- object, link
-    import merlin.llvmlower.lower  # noqa: F401 -- llvm route (with its xDSL rewrites)
-    import merlin.perf.whole_model_build  # noqa: F401 -- whole-model builder
-    import merlin.xdsl_dialects.lowering.pipeline  # noqa: F401 -- staged route
+    import merlin.compiler.dialects.lowering.pipeline  # noqa: F401 -- staged route
+    import merlin.compiler.lower.model.codegen  # noqa: F401 -- object, link
+    import merlin.compiler.lower.model.lower  # noqa: F401 -- llvm route (with its xDSL rewrites)
 
 
 def native_pipelines(features: frozenset[str] | None = None) -> dict[str, list[str]]:
@@ -81,9 +81,9 @@ def native_pipelines(features: frozenset[str] | None = None) -> dict[str, list[s
     are reached as ``mlir:<pass>`` stages all the same."""
     from pathlib import PurePath
 
+    from merlin.compiler.lower.model.optional_passes import selected_features
     from merlin.compiler.lower.native import pipeline as P
     from merlin.compiler.optimizations.registry import normalize
-    from merlin.llvmlower.optional_passes import selected_features
 
     feats = normalize(selected_features(features)) or frozenset()
     return {
@@ -231,7 +231,7 @@ def request_from_options(options: Mapping[str, Any], *, target: str, workload: s
 def _install_pass_log(request: T.Request) -> dict[str, Any]:
     """Record xDSL pass invocations into the trace's pass log (the existing ``MERLIN_PASS_LOG`` recorder)."""
     try:
-        from merlin.xdsl_dialects.lowering import passes
+        from merlin.compiler.dialects.lowering import passes
 
         passes.install_pass_recorder()
     except ImportError as exc:

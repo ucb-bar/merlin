@@ -1,22 +1,22 @@
 """The ``saturn`` reference target dialect (xDSL) — the OUT-OF-TREE package home.
 
-Evicted from the shared library (``merlin/python/merlin/xdsl_dialects/targets/saturn.py``): a
+Evicted from the shared library (``merlin/python/merlin/compiler/dialects/targets/saturn.py``): a
 reference target's dialect is now DATA its own package contributes, not a hardcoded entry in shared
 lowering. Loaded by :func:`merlin.runtime.backends.base._load_oot_backend` as
 ``merlin._oot_dialects.saturn`` because the saturn target contract declares ``plugin.dialect: dialect``
 and the dialect-discovery pass walks curated reference targets (see
-:func:`merlin.xdsl_dialects.lowering.target_lowering._ensure_dialects_discovered`). Importing this
+:func:`merlin.compiler.dialects.lowering.target_lowering._ensure_dialects_discovered`). Importing this
 module runs its module-level self-registration (:func:`register_dialect_spec`) so the lowering registry
 picks up saturn without shared code naming it.
 
 Data + one factory call: the op/type shape (pack / matmul / commit / release over packed_tensor /
-accumulator) is synthesized by :func:`merlin.xdsl_dialects.targets.factory.build_dialect` from the
+accumulator) is synthesized by :func:`merlin.compiler.dialects.targets.factory.build_dialect` from the
 committed ``merlin/targets/saturn/contracts/dialect_plan.yaml`` — no hand-written IRDL classes. Saturn
 is the chipyard RVV vector unit modeled as a multicore RV64GCV CPU: residency is a packed weight kept
 live in memory, its matmul RHS may be plain (not type-constrained) and carries an optional vl-policy
 prop.
 
-Parent imports are ABSOLUTE (``merlin.xdsl_dialects.*``) so the module resolves out-of-tree, loaded by
+Parent imports are ABSOLUTE (``merlin.compiler.dialects.*``) so the module resolves out-of-tree, loaded by
 file path under a synthetic package name.
 """
 
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import sys
 
-from merlin.xdsl_dialects._common import HAS_XDSL
+from merlin.compiler.dialects._common import HAS_XDSL
 
 DIALECT_NAME = "saturn"
 OPS = ["pack", "matmul", "commit", "release", "vector_map", "vector_reduce"]
@@ -43,7 +43,7 @@ OPCODES = {
 }
 
 if HAS_XDSL:
-    from merlin.xdsl_dialects.targets.factory import build_dialect
+    from merlin.compiler.dialects.targets.factory import build_dialect
 
     _BUILT = build_dialect("saturn", matmul_vl_policy=True)
     # exported op/type classes (names preserved for target_lowering._specs and dialect round-trip)
@@ -63,7 +63,7 @@ if HAS_XDSL:
     # Self-register the reference TargetSpec (and its op->opcode map) into the shared lowering registry.
     # This is the seam that makes saturn a DISCOVERED plugin: target_lowering._specs() ends up with the
     # built-in toynpu spec PLUS this one, without a saturn literal in shared lowering.
-    from merlin.xdsl_dialects.lowering.target_lowering import TargetSpec, register_dialect_spec
+    from merlin.compiler.dialects.lowering.target_lowering import TargetSpec, register_dialect_spec
 
     _SPEC = TargetSpec(
         "saturn",

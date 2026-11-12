@@ -4,7 +4,7 @@ Register-block tables, panel-packed weight layouts, fused requantization epilogu
 widths and the accumulator micro-kernel runner are owned by a support provider, not by Merlin.
 Merlin reaches each component through the selected provider's ``<component>_api()`` accessor and
 resolves the features they implement from the provider's ``feature_definitions()``; it imports no
-provider module by name. Selection is the rule :func:`merlin.mining.from_strategy._codegen` applies.
+provider module by name. Selection is the rule :func:`merlin.analysis.mining.from_strategy._codegen` applies.
 
 With no provider selected these components and features are unavailable. A caller that needs one
 gets :class:`ProviderUnavailable` naming what it asked for; a caller that only needs to know whether
@@ -25,7 +25,7 @@ class ProviderUnavailable(LookupError):
 
 
 def _selected() -> bool:
-    from merlin.mining.from_strategy import _codegen_selected
+    from merlin.analysis.mining.from_strategy import _codegen_selected
 
     return _codegen_selected()
 
@@ -37,7 +37,7 @@ def provider(*, purpose: str) -> Any:
             f"{purpose} is implemented by a vector support provider and none is selected: name one on "
             "MERLIN_TARGET_PATH (a provider declaring plugin.rvv_codegen) or install its backend package"
         )
-    from merlin.mining.from_strategy import _codegen
+    from merlin.analysis.mining.from_strategy import _codegen
 
     return _codegen()
 
@@ -46,7 +46,7 @@ def optional_provider() -> Any | None:
     """The selected provider, or ``None`` exactly when no provider is selected."""
     if not _selected():
         return None
-    from merlin.mining.from_strategy import _codegen
+    from merlin.analysis.mining.from_strategy import _codegen
 
     return _codegen()
 

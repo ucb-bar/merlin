@@ -1,14 +1,14 @@
 # The gemmini bare-metal software environment, by REFERENCE: which upstream checkout, which commit,
 # which files at which bytes. Nothing here is copied from that checkout; the generic chipyard RoCC
 # backend (merlin.runtime.backends.chipyard_rocc) resolves the root on this host, verifies every
-# file below by SHA-256 and refuses to build when any differs (merlin.targetgen.isa_headers_spec).
+# file below by SHA-256 and refuses to build when any differs (merlin.development.targetgen.isa_headers_spec).
 # MERLIN_GEMMINI_HARNESS_DIR may relocate the tree; it cannot authorize different bytes.
 #
 # ONLY the bare-metal runtime is taken from that checkout: startup (crt.S), syscalls/printf, the
 # link script and the util/encoding headers they include. The accelerator's own software headers
 # (include/gemmini.h is a kernel library, not only an ISA description) are deliberately NOT on the include
 # path of a fresh experiment's build; their place is taken by a minimal header GENERATED from the
-# RTL facts and the contract's encoding anchors (merlin.targetgen.isa_header_gen).
+# RTL facts and the contract's encoding anchors (merlin.development.targetgen.isa_header_gen).
 schema: merlin.isa_headers.v1
 target: gemmini
 source:

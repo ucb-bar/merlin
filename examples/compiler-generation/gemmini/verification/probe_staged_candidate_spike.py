@@ -17,12 +17,12 @@ from pathlib import Path
 
 from merlin.common.digest import sha256_text
 from merlin.common.paths import out_dir
-from merlin.llvmlower.device_build import _nm, verify_object_symbol_binding
-from merlin.llvmlower.exact_offload import _package_sha256
+from merlin.compiler.lower.model.device_build import _nm, verify_object_symbol_binding
+from merlin.compiler.lower.model.exact_offload import _package_sha256
+from merlin.development.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
+from merlin.development.targetgen.operation_numerics import integer_partial_sum_bound
+from merlin.development.targetgen.runtime_build import derived_link_script
 from merlin.runtime.backends.base import get_backend, harness_build_recipe
-from merlin.targetgen.contract.resident_interface_abi import bind_single_resident_matmul
-from merlin.targetgen.operation_numerics import integer_partial_sum_bound
-from merlin.targetgen.runtime_build import derived_link_script
 
 
 def digest(path: Path) -> str:

@@ -36,6 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
 from merlin.common.paths import capsules_dir, repo_root, runs_dir
+from merlin.development.targetgen.corpora import descriptor_paths  # noqa: E402
 from merlin.runtime.route_partition import (  # noqa: E402
     ROUTE_ACCEPT,
     ROUTE_DECLINE,
@@ -43,7 +44,6 @@ from merlin.runtime.route_partition import (  # noqa: E402
     VIOLATION_KINDS,
     route_of,
 )
-from merlin.targetgen.corpora import descriptor_paths  # noqa: E402
 
 BUFFER_NAME = "command_buffer.json"
 
@@ -56,7 +56,7 @@ UNATTRIBUTED = "?"
 
 def known_targets() -> list[str]:
     """Declared descriptor identities, independently of generated test requirements."""
-    from merlin.targetgen.target_experiment import _declared_target
+    from merlin.development.targetgen.target_experiment import _declared_target
 
     return sorted({name for path in descriptor_paths() if (name := _declared_target(path))})
 

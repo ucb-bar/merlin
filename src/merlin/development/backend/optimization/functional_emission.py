@@ -14,8 +14,8 @@ from merlin.development.backend.optimization import contracts as CONTRACTS
 from merlin.development.backend.optimization import functional_inputs as FI
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import sha256_file as _sha256_file
+from merlin.development.targetgen.target_experiment import TargetExperiment
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen.target_experiment import TargetExperiment
 
 _GUARD_UNCHANGED = "unchanged"
 _GUARD_CHANGED = "changed"
@@ -45,9 +45,9 @@ def functional_emission_guard(
     """
     from merlin.development.backend import corpus_inputs
     from merlin.development.backend.optimization import functional_guard_execution as guard_execution
-    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
-    from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
-    from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
+    from merlin.development.targetgen import package_runtime as OR  # noqa: PLC0415
+    from merlin.development.targetgen import trace_check as TCK  # noqa: PLC0415
+    from merlin.development.targetgen.rocc import decode as RD  # noqa: PLC0415
 
     if frozen_functional.host_provenance is None:
         raise StageGateError("functional emission guard requires admitted V4 host provenance")
@@ -200,7 +200,7 @@ def functional_emission_guard(
 
     regrade = None
     if any(row.get("status") == _GUARD_CHANGED for row in rows):
-        from merlin.targetgen import capsule_grade as CG  # noqa: PLC0415
+        from merlin.development.targetgen import capsule_grade as CG  # noqa: PLC0415
 
         # Grade the complete admitted public cohort: a changed shared producer,
         # runtime or host publication routine can affect consumers elsewhere.

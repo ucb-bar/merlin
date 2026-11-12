@@ -16,7 +16,7 @@ from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, linalg, tensor
 from xdsl.parser import Parser
 
-from merlin.transforms.dense_ir import recognize_signed_integer_matmul
+from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
 
 
 def bind_direct_source_contraction(source: Path, command_buffer: dict, proof: dict) -> dict:

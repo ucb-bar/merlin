@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization import broker_policy as BP
 from merlin.development.backend.optimization import prompt as PP
@@ -17,8 +18,7 @@ from merlin.development.backend.optimization.broker_evidence import _is_sha256
 from merlin.development.backend.optimization.claims import dispatch as CD
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.search_guidance import ADAPTIVE_SCOPE
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.targetgen.generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
+from merlin.development.targetgen.generalization_prompt import GENERAL_COMPILER_CONTRACT_V1
 
 QUEUED_AUTHOR_CONTINUATION = (
     "Continue the same queued compiler search with the existing candidate and session history. "
@@ -426,7 +426,7 @@ def render_stage_prompt(inputs: StagePromptInputs) -> str:
 
     rendered += prompt_text(inputs.additional_compiler_library)
     if inputs.compiler_tool_profile is not None:
-        from merlin.targetgen.tool_profile import tool_profile_prompt
+        from merlin.development.targetgen.tool_profile import tool_profile_prompt
 
         profile = dict(inputs.compiler_tool_profile)
         rendered += tool_profile_prompt(

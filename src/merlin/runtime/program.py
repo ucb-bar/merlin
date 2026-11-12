@@ -1,11 +1,11 @@
 """``MerlinProgram`` — the target-independent, lean whole-model PROGRAM the HW-agnostic runtime
 replays.
 
-This is the superset of :class:`~merlin.xdsl_dialects.lowering.dispatch_program.DispatchProgram`
+This is the superset of :class:`~merlin.compiler.dialects.lowering.dispatch_program.DispatchProgram`
 (the DAG-verified command buffer of dispatch/view nodes over stable buffer ids) plus the two things
 a LEAN runtime needs that the bare dispatch program lacks:
 
-* a compile-time **static memory plan** (:mod:`~merlin.xdsl_dialects.lowering.arena_plan`) — one
+* a compile-time **static memory plan** (:mod:`~merlin.compiler.dialects.lowering.arena_plan`) — one
   arena + per-intermediate-buffer offsets, so the runtime binds ``arena_base()+offset`` with ZERO
   per-op allocation (vs the ~4391 per-op mallocs today); and
 * **target/dispatch metadata** — a kernel table (id → compiled symbol + fused roots + required
@@ -19,7 +19,7 @@ and compiled wrappers. It supplies no operator interpreter or automatic target
 lowering. The ordinary monolithic model path remains separate.
 
 The arena the measured whole-model build actually gets does NOT come through here. It is planned
-directly over the emitted LLVM IR by :mod:`merlin.llvmlower.arena_bind`, which shares this module's
+directly over the emitted LLVM IR by :mod:`merlin.compiler.lower.model.arena_bind`, which shares this module's
 placement core (``arena_plan.pack_disjoint``) but derives liveness from the ``malloc``/``free`` pairs
 the build emits rather than from a dispatch DAG.
 Default-off and additive — the existing monolithic/outlined paths are untouched.
@@ -32,16 +32,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from merlin.compiler.schedule.arena import ArenaRequirements, check_bounded_arena, plan_bounded_arena
-
-from ..xdsl_dialects.lowering.arena_plan import MemoryPlan, plan_arena
-from ..xdsl_dialects.lowering.dispatch_program import DispatchProgram
-from ..xdsl_dialects.lowering.global_plan import GlobalPlan, verify_global_plan
-from ..xdsl_dialects.lowering.global_plan_emission import (
+from merlin.compiler.dialects.lowering.arena_plan import MemoryPlan, plan_arena
+from merlin.compiler.dialects.lowering.dispatch_program import DispatchProgram
+from merlin.compiler.dialects.lowering.global_plan import GlobalPlan, verify_global_plan
+from merlin.compiler.dialects.lowering.global_plan_emission import (
     GlobalPlanEmission,
     GlobalPlanEmitter,
     emit_global_plan,
 )
+from merlin.compiler.schedule.arena import ArenaRequirements, check_bounded_arena, plan_bounded_arena
 
 PROGRAM_ABI_VERSION = "0.1"
 

@@ -19,7 +19,7 @@ from pathlib import Path
 
 from merlin.common.guarded_file_digest import GuardedDigests
 from merlin.development.backend.feedback import sandbox_pool, setup_timing
-from merlin.targetgen import package_runtime as P
+from merlin.development.targetgen import package_runtime as P
 
 ENV = "MERLIN_COMPILER_EXECUTION_MODE"
 STRICT = "profile_strict_v1"
@@ -259,7 +259,7 @@ class SnapshotExecutor:
     def build_package(self, pkg, *, timeout=1800):
         import time
 
-        from merlin.targetgen.contract import toolchain
+        from merlin.development.targetgen.contract import toolchain
 
         self._package(pkg)
         with self._lock:
@@ -377,7 +377,7 @@ class SnapshotExecutor:
 @contextlib.contextmanager
 def execution(service, *, target_experiment, candidate, work_root, sandbox_inputs=None):
     from merlin.development.backend.feedback.snapshot_inputs import SnapshotInputs
-    from merlin.targetgen.common_transforms import CommonTransformService
+    from merlin.development.targetgen.common_transforms import CommonTransformService
 
     if type(service) is CommonTransformService:
         service = SnapshotInputs(

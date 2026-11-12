@@ -9,7 +9,7 @@ Capture one case with the existing worker and a selected model2MLIR interpreter:
 
 ```bash
 M2M_HOST_PROBE_CASE=integer_to_float "$CAPTURE_PYTHON" \
-  src/merlin/targetgen/_m2m_capture_worker.py \
+  src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/host_control_math/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \

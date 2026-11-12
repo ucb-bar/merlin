@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import math
 
-from merlin.targetgen import golden_store
-from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
+from merlin.development.targetgen import golden_store
+from merlin.development.targetgen.capsule_inputs import materialize_capsule_leaves
 
 
 def _scalars(value):

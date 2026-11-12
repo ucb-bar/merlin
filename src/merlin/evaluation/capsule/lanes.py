@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen import tier_cache as _TC
+from merlin.development.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
+from merlin.development.targetgen.elf_lanes import EXECUTED_LANE_EVIDENCE
 from merlin.evaluation.capsule.certificates import run_executables
 from merlin.evaluation.capsule.diagnostics import _engine_token as _engine_token
 from merlin.evaluation.capsule.diagnostics import _oracle_kind as _oracle_kind
 from merlin.evaluation.capsule.lanes_evidence import lane_report as _lane_report
-from merlin.targetgen import tier_cache as _TC
-from merlin.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
-from merlin.targetgen.elf_lanes import EXECUTED_LANE_EVIDENCE
 
 _LANE_COUNTERS: dict[str, tuple[str, str]] = {
     "on_mesh": ("mesh", "matmul_layers_on_mesh"),
@@ -69,7 +69,7 @@ def accelerator_lane_violated(capsule: dict, trace) -> bool:
     silent, and reading that silence as "the host carried it" would hand a forbidding capsule a free
     pass. Violated, or unmeasured -- never satisfied.
     """
-    from merlin.targetgen import trace_check as _TCK
+    from merlin.development.targetgen import trace_check as _TCK
 
     if not forbids_accelerator(capsule):
         return False
@@ -89,7 +89,7 @@ def _tier_field(record, key, default=None):
 def carried_verdict_is_attributed(record, execution_identity) -> bool:
     """Does this CARRIED tier verdict belong to the bytes being graded right now?
 
-    A carried verdict is not a guess and not stale by construction. :mod:`merlin.targetgen.tier_cache`
+    A carried verdict is not a guess and not stale by construction. :mod:`merlin.development.targetgen.tier_cache`
     keys a certificate on :func:`tier_cache.execution_identity` -- a content digest of the executables
     this run produced, the target, and the toolchain pins -- and ``lookup`` re-verifies the stored
     record's own copy of that key before returning it, so a hit is a statement about exactly these
@@ -106,7 +106,7 @@ def carried_verdict_is_attributed(record, execution_identity) -> bool:
     mismatch, a malformed digest, or no identity at all is refused -- fail closed, because an
     unattributable verdict is exactly the stale-certificate case the strict rule was protecting against.
     """
-    from merlin.targetgen.oracle_schedule import valid_execution_digest
+    from merlin.development.targetgen.oracle_schedule import valid_execution_digest
 
     carried = _tier_field(record, "carried")
     if not isinstance(carried, dict):
@@ -182,7 +182,7 @@ def operator_path_lane_execution(
       from an earlier run counts only when its certificate is attributed to the same
       ``execution_identity`` as the bytes under grade.
     * **What ran drove the accelerator.** The decoded instruction stream carries instructions of THIS
-      target's accelerator classes, counted by :func:`merlin.targetgen.trace_check.accelerator_instruction_count`
+      target's accelerator classes, counted by :func:`merlin.development.targetgen.trace_check.accelerator_instruction_count`
       -- membership is the target's own RTL decode table claiming the opcode, never a list written here.
 
     Neither half alone says anything. A passing oracle tier with no accelerator instruction is a program
@@ -191,7 +191,7 @@ def operator_path_lane_execution(
     assertion claims. With either half missing this returns ``None`` and the capsule stays unmeasured --
     ``lane_report`` is never handed a fabricated count, and a routing plan is never consulted.
     """
-    from merlin.targetgen import trace_check as _TCK
+    from merlin.development.targetgen import trace_check as _TCK
 
     lanes = capsule.get("lanes") or {}
     if _ACCELERATOR_LANE not in [str(x) for x in (lanes.get("require") or ())]:

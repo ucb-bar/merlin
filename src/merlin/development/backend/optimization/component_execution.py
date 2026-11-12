@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.component_cost import ComponentCostScope
 from merlin.development.backend.component_package_execution import (
     qualified_package_execution,
     selected_compiler_transport,
@@ -41,7 +41,7 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
 )
 from merlin.development.backend.optimization.edit_authority import FrozenEditAuthority
-from merlin.perf.component_cost import ComponentCostScope
+from merlin.evaluation.harness import hash_tree
 
 _ISSUER = object()
 _DEFAULT_VERIFICATION = object()

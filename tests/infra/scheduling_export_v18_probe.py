@@ -6,6 +6,7 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
 from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Var, as_expr
+from merlin.compiler.lower.model.host_builder import FnBuilder
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.dense_panel_pipeline import (
@@ -27,8 +28,7 @@ from merlin.compiler.schedule.scf_commands import (
     verify_scf_commands,
 )
 from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.llvmlower.host_builder import FnBuilder
-from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
+from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
 
 
 def encode(op):

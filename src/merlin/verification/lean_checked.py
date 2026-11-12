@@ -44,7 +44,7 @@ def _unsupported(before: str, after: str, domain: str, reason: str) -> LeanTrans
 
 
 def _resource_projection(before: str, after: str, model: dict):
-    from merlin.transforms.certificates import parse_ir
+    from merlin.compiler.transforms.certificates import parse_ir
 
     from .lean_resource_geometry import project_resource_geometry
 

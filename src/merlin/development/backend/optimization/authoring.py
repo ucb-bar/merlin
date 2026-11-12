@@ -25,7 +25,11 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
+from merlin.analysis.perf.execution_policy import (
+    FIRESIM_LIFECYCLE,
+    ITERATION_MAX_SECONDS,
+)
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization import agent_workspace as AW
 from merlin.development.backend.optimization import authoring_selections as SELECTIONS
@@ -89,15 +93,11 @@ from merlin.development.backend.optimization.contracts import (
     write_json as _write_json,
 )
 from merlin.development.backend.optimization.transcript_audit import audit_codex_transcript as audit_codex_transcript
-from merlin.perf.agent_guidance import inspect_compiler_package
-from merlin.perf.execution_policy import (
-    FIRESIM_LIFECYCLE,
-    ITERATION_MAX_SECONDS,
-)
-from merlin.targetgen.compiler_library import active_compiler_library
-from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
-from merlin.targetgen.sandbox.answer_surfaces import absent_declaration_coverage, dropped_declarations
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.compiler_library import active_compiler_library
+from merlin.development.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
+from merlin.development.targetgen.sandbox.answer_surfaces import absent_declaration_coverage, dropped_declarations
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 
 
 def _require_stage_containment(bwrap_binary: Path, target_experiment: TargetExperiment, *, external_boundary=None):

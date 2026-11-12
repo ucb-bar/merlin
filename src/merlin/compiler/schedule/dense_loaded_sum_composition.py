@@ -372,7 +372,7 @@ class DenseLoadedSumComposition:
             raise ValueError("connected loaded sum requires an original checked producer result")
         self.producer.revalidate()
         self.admission.require()
-        from merlin.llvmlower.quantized_sum_source import QuantizedSumCommandSource, QuantizedSumSource
+        from merlin.compiler.lower.model.quantized_sum_source import QuantizedSumCommandSource, QuantizedSumSource
 
         if type(self.source) not in (QuantizedSumSource, QuantizedSumCommandSource):
             raise ValueError("connected loaded sum requires its current original quantized source edge")

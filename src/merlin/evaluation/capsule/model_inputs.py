@@ -22,8 +22,8 @@ def _resolve_model_host_lane(target: str, dtype: str):
     Kept as a small seam because descriptor resolution, package-content validation and datatype
     compatibility are one fail-closed decision; callers must not independently recreate part of it.
     """
-    from merlin.targetgen.corpora import descriptor_path
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.corpora import descriptor_path
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     snapshot_repo, snapshot_identity = _verified_model_host_lane_snapshot()
     descriptor = _model_frozen_input(descriptor_path(target), snapshot_identity)
@@ -73,9 +73,9 @@ def resolve_numeric_policy(
     if target is None:
         return None, None, None
     from merlin.common.paths import repo_root
+    from merlin.development.targetgen.corpora import descriptor_path
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.experiments.corpus.numeric_policy import load_declared_numeric_policy, numeric_profile_path
-    from merlin.targetgen.corpora import descriptor_path
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     _, snapshot = _verified_model_host_lane_snapshot()
     source = Path(descriptor) if descriptor is not None else descriptor_path(target)
@@ -100,7 +100,7 @@ def _model_frozen_input(source: Path, snapshot: dict | None) -> Path:
     """Map only declared frozen bytes after rechecking the host's expected marker."""
     if snapshot is None:
         return source
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     root = Path(snapshot["root"])
     marker = root / "snapshot.json"
@@ -158,7 +158,7 @@ def _verified_model_host_lane_snapshot() -> tuple[Path | None, dict[str, Any] | 
         manifest = json.loads(marker.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ValueError(f"model host-lane run snapshot marker is unreadable at {marker}") from exc
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     BW.require_snapshot_ownership(manifest)
     try:

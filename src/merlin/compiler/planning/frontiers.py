@@ -8,7 +8,7 @@ from math import prod
 
 from merlin.common.digest import is_sha256
 from merlin.compiler.ir.boundary import live_values
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 from merlin.verification.lean_contract import document_digest
 
 
@@ -219,7 +219,7 @@ def _structural_family(op):
         return "elementwise_map"
     from xdsl.dialects.linalg.ops import GenericOp
 
-    from merlin.transforms.dense_ir import recognize_signed_integer_matmul
+    from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
 
     # Parser subclasses are normalized only at this read-only observation
     # boundary, retaining exact scalar operations, maps and unknown attributes.

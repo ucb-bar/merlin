@@ -35,7 +35,7 @@ def lower_region(
     ``target_kind`` selects the existing configuration or schedule protocol;
     without it the ordinary package lowering protocol is unchanged.
     """
-    from merlin.targetgen import capsule_common
+    from merlin.development.targetgen import capsule_common
 
     started = time.monotonic()
     directory = Path(directory)

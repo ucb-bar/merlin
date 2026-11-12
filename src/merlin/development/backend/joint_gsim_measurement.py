@@ -109,7 +109,7 @@ def validate(section) -> None:
 
 def _slot_capacity() -> int | None:
     try:
-        from merlin.targetgen.rtl_engine_policy import CAPSULE_WORKER_CAP
+        from merlin.development.targetgen.rtl_engine_policy import CAPSULE_WORKER_CAP
 
         value = CAPSULE_WORKER_CAP.get("gsim")
         return value if type(value) is int and value > 0 else None

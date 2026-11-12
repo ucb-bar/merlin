@@ -16,17 +16,17 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.jsonio import strict_json_equal as _same_json_value
-from merlin.development.backend.feedback import private_control_support as control
-from merlin.development.backend.feedback import private_linked_source_preparation as preparation
-from merlin.development.backend.feedback.private_literal_arange import _range, prove_literal_arange_source
-from merlin.frontends.capture_normalization import normalize_capture_mlir
-from merlin.frontends.linalg_integer_reductions import recognize_static_integer_reduction
-from merlin.frontends.linalg_patterns import (
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+from merlin.compiler.frontend.linalg_integer_reductions import recognize_static_integer_reduction
+from merlin.compiler.frontend.linalg_patterns import (
     _checked_static_linalg_shell,
     recognize_static_projected_pointwise,
 )
-from merlin.frontends.prepared_index_source_body import PROOF_SCHEMA, PROOF_SCOPE, PROOF_STATUS
-from merlin.targetgen.application_inventory import verify_capture_receipt
+from merlin.compiler.frontend.prepared_index_source_body import PROOF_SCHEMA, PROOF_SCOPE, PROOF_STATUS
+from merlin.development.backend.feedback import private_control_support as control
+from merlin.development.backend.feedback import private_linked_source_preparation as preparation
+from merlin.development.backend.feedback.private_literal_arange import _range, prove_literal_arange_source
+from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
 PENDING = PROOF_STATUS
 SCOPE = PROOF_SCOPE

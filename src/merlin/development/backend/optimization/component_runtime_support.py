@@ -51,13 +51,13 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
     write_json,
 )
+from merlin.development.targetgen import compiler_library as library_owner
+from merlin.development.targetgen import package_runtime
+from merlin.development.targetgen.contract import readback_policy as RB
+from merlin.development.targetgen.contract.build_service import BuildOnlyService
+from merlin.development.targetgen.contract.execution_service import FunctionalExecutionService
+from merlin.development.targetgen.native_component_execution import execute_component
 from merlin.experiments.execution.container_transport import PreparedContainerTransport
-from merlin.targetgen import compiler_library as library_owner
-from merlin.targetgen import package_runtime
-from merlin.targetgen.contract import readback_policy as RB
-from merlin.targetgen.contract.build_service import BuildOnlyService
-from merlin.targetgen.contract.execution_service import FunctionalExecutionService
-from merlin.targetgen.native_component_execution import execute_component
 
 _PREPARED = WeakKeyDictionary()
 _GRADED = WeakKeyDictionary()
@@ -278,7 +278,7 @@ class PreparedIndependentRuntimeContext:
             required.update(path for path, _ in self.copy_control_support.source_pins)
         required.add(self.target_descriptor)
         if self.source_observation is not None:
-            from merlin.targetgen.contract import source_observation
+            from merlin.development.targetgen.contract import source_observation
 
             required.add(Path(source_observation.__file__))
             required.update(Path(path) for path, _ in self.source_observation.source_pins)
@@ -567,7 +567,7 @@ class PreparedIndependentRuntimeContext:
             except Exception as error:
                 # An output-roster defect is rejected before source validation,
                 # so re-open its actual emitted buffer to attribute that failure.
-                from merlin.targetgen.native_component_execution import (
+                from merlin.development.targetgen.native_component_execution import (
                     NativeComponentAdmissionRefusal,
                     NativeComponentExecutionError,
                 )

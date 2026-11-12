@@ -10,13 +10,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from merlin.analysis.perf.component_cost import ComponentCostScope, ComponentFeatureObservation
 from merlin.development.backend.component_witness import ComponentStageWitness
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization.component_applicability import ComponentApplicabilityObservation
 from merlin.development.backend.optimization.component_runtime_qualification import _argument_binding
 from merlin.development.backend.optimization.component_variants import ComponentVariantSnapshot
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256
-from merlin.perf.component_cost import ComponentCostScope, ComponentFeatureObservation
 
 MEASUREMENT_ROLES = ("feature_provider", "cca_provider", "rtl_executor")
 MEASUREMENT_MECHANISMS = (

@@ -43,12 +43,12 @@ def test_public_export_system_compilation_plans_bound_weights_runs_and_refuses_u
 
     from merlin.compiler.artifact import Artifact, Compilation, Deployment
     from merlin.compiler.build.image import CImageLink
+    from merlin.compiler.lower.model import toolchain
+    from merlin.compiler.lower.model.target_data_layout import observe_index_width
     from merlin.compiler.system import SystemCompiler, scalar_cpu
     from merlin.integrations.model2mlir import capture_pin, capture_python_path, root
-    from merlin.llvmlower import toolchain
-    from merlin.llvmlower.target_data_layout import observe_index_width
     from merlin.runtime import linux
-    from merlin.system.topology import select_topology
+    from merlin.target.system.topology import select_topology
 
     checkout = root()
     producer = capture_python_path(checkout=checkout)

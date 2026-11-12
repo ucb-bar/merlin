@@ -10,7 +10,7 @@ from merlin.development.backend.telemetry.token_budget import guidance as token_
 
 
 def _public_codegen_policy_line(selection):
-    from merlin.targetgen.public_codegen_budget import validate_policy
+    from merlin.development.targetgen.public_codegen_budget import validate_policy
 
     policy = validate_policy(selection)
     limits = ", ".join(
@@ -55,7 +55,7 @@ def render_resource_block(
         if not set((*manager, *author, *compute, *preparation)) <= set(boundary.cpu_ids):
             raise ValueError("task CPU selections exceed the verified resource boundary")
     if grade_workers is None:
-        from merlin.targetgen.capsule_grade import default_grade_workers
+        from merlin.development.targetgen.capsule_grade import default_grade_workers
 
         grade_workers = default_grade_workers()
     workers = min(grade_workers, len(compute)) if compute else grade_workers
@@ -147,7 +147,7 @@ def render_resource_block(
     else:
         lines.append("- Public object-build advisory probes are unselected; current scalability feedback is emit-only.")
     if device_ir_budget is not None:
-        from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+        from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget
 
         if type(device_ir_budget) is not DeviceIRBudget:
             raise ValueError("task device IR limits require the exact operator-selected budget")
@@ -188,7 +188,7 @@ def append_resource_guidance(
                 _shared_pass_record,
                 verify_shared_pass_prompt,
             )
-            from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+            from merlin.development.targetgen.generate_prompt import shared_pass_prompt_block
 
             if type(task_staging_config) is not TaskStagingConfig:
                 raise ValueError("resource guidance requires the original task staging configuration")

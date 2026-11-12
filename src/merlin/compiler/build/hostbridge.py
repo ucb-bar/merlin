@@ -11,9 +11,9 @@ from xdsl.dialects import builtin, func
 from xdsl.ir import Block, Region
 from xdsl.printer import Printer
 
+from merlin.compiler.dialects.lowering.outline import externalize_dispatches, outline_dispatches
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.ir.graph import _program_graph
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.xdsl_dialects.lowering.outline import externalize_dispatches, outline_dispatches
 
 
 def implementation_paths() -> tuple[Path, ...]:

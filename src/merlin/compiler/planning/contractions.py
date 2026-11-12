@@ -22,7 +22,7 @@ def catalog_source_contractions(
     tensors are natively consumed by the device. Without native device facts,
     even an explicit catalog has no grounded target to route to.
     """
-    from merlin.system.offload import device_dtype_triples
+    from merlin.target.system.offload import device_dtype_triples
 
     if len(source_dtypes) != 3 or not all(isinstance(value, str) and value for value in source_dtypes):
         raise ValueError("catalog source dtypes must be an explicit triple")
@@ -33,7 +33,7 @@ def catalog_source_contractions(
 
 def contractions_for_dtypes(module, device_name, triples, *, require_zero_init: bool):
     from merlin.compiler.ir.contraction_shapes import observe_contractions
-    from merlin.system.offload import device_contraction_ranks, why_not
+    from merlin.target.system.offload import device_contraction_ranks, why_not
 
     ranks = device_contraction_ranks(device_name)
 

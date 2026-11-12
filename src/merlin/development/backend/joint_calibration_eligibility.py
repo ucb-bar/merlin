@@ -10,7 +10,7 @@ from __future__ import annotations
 def eligible(result, capsule=None, *, compiler_sha256=None):
     from merlin.development.backend.feedback.joint_curriculum import _structural_prerequisites
     from merlin.development.backend.feedback.joint_physical_correctness import _split_l3_prerequisites
-    from merlin.targetgen.trace_check import requirements_complete
+    from merlin.development.targetgen.trace_check import requirements_complete
 
     if not isinstance(result, dict):
         return False

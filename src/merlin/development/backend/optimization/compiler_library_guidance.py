@@ -11,7 +11,7 @@ import copy
 from pathlib import Path
 
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, mapping_file, write_json
-from merlin.targetgen.compiler_library import active_compiler_library
+from merlin.development.targetgen.compiler_library import active_compiler_library
 
 MAX_DECLARATIONS = 256
 MAX_PREVIEW = 320

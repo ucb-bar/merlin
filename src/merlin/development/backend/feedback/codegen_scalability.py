@@ -17,7 +17,7 @@ _MAX_BUILD_PROBE_BYTES = 16 * 1024 * 1024
 
 def selected_build_service(target: str):
     """Select the exact trusted host capability before authoring, never in the agent sandbox."""
-    from merlin.targetgen.native_model_execution import _build_service_for
+    from merlin.development.targetgen.native_model_execution import _build_service_for
 
     service = _build_service_for(target)
     return service, _selected_build_inputs(service, target)
@@ -28,10 +28,10 @@ def _selected_build_inputs(service, target: str) -> dict:
 
     This is not a transitive toolchain, sysroot or compiler-correctness attestation.
     """
-    from merlin.llvmlower import codegen, toolchain
-    from merlin.targetgen.contract import compile as contract_compile
-    from merlin.targetgen.contract.build_service import BuildOnlyService, file_digest
-    from merlin.targetgen.contract.source_ownership import compile_sources
+    from merlin.compiler.lower.model import codegen, toolchain
+    from merlin.development.targetgen.contract import compile as contract_compile
+    from merlin.development.targetgen.contract.build_service import BuildOnlyService, file_digest
+    from merlin.development.targetgen.contract.source_ownership import compile_sources
 
     if type(service) is not BuildOnlyService:
         raise ValueError("public object telemetry requires an exact pure build service")
@@ -74,7 +74,7 @@ def _selected_build_inputs(service, target: str) -> dict:
 
 def _compile_observation(artifact: str, work: Path, *, target: str, service, budget_s: int) -> dict:
     """Compile the exact emitted LLVM MLIR once, without linking or executing it."""
-    from merlin.targetgen.contract.compile import llvm_mlir_to_object
+    from merlin.development.targetgen.contract.compile import llvm_mlir_to_object
 
     source = artifact.encode("utf-8")
     result = {
@@ -109,7 +109,7 @@ def _compile_observation(artifact: str, work: Path, *, target: str, service, bud
             raise ValueError("selected build inputs changed during public object compilation")
         if not obj.is_file() or obj.is_symlink():
             raise ValueError("public object build produced no regular object")
-        from merlin.targetgen.contract.build_service import file_digest
+        from merlin.development.targetgen.contract.build_service import file_digest
 
         object_sha = file_digest(obj)
         build_root = work / "scalability_object"
@@ -159,10 +159,10 @@ def run(
     same emitted bytes; it does not link or execute them. Neither a size
     threshold nor a compiler strategy follows from the measurements.
     """
-    from merlin.targetgen.capability_probes import tile_edge
-    from merlin.targetgen.corpora import experiment_for
-    from merlin.targetgen.corpus_spec import derive_binding
-    from merlin.targetgen.lowering_coverage import probe_shape
+    from merlin.development.targetgen.capability_probes import tile_edge
+    from merlin.development.targetgen.corpora import experiment_for
+    from merlin.development.targetgen.corpus_spec import derive_binding
+    from merlin.development.targetgen.lowering_coverage import probe_shape
 
     if build_service is not None:
         if type(build_timeout_s) is not int or not 0 < build_timeout_s <= 120:

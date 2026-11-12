@@ -247,7 +247,7 @@ def _module_attribute(tokens):
 def _mathematical_document(text):
     # The canonical host parser already refuses unsupported/missing grammar.
     # Its residency command model is consumed privately and never serialized.
-    from merlin.targetgen.contract import interface_emit as I
+    from merlin.development.targetgen.contract import interface_emit as I
 
     def tensor_type(tail):
         declared = I._last_type(tail)
@@ -435,7 +435,7 @@ def encode_source(source: bytes) -> bytes:
     text = source.decode("utf-8")
     if "merlin_iface" not in text:
         from merlin.common.mlir_query import op_name
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         try:
             module = parse_mlir_text(text)

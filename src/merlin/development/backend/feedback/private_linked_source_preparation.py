@@ -15,8 +15,8 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from merlin.common import mlir_query as mq
-from merlin.frontends.capture_normalization import normalize_capture_mlir
-from merlin.targetgen.application_inventory import PreparedApplicationSource
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+from merlin.development.targetgen.application_inventory import PreparedApplicationSource
 
 _ACTIVE = ContextVar("linked_source_preparation", default=None)
 _ISSUED = weakref.WeakKeyDictionary()

@@ -14,8 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.model_check import chain_image_readback
-from merlin.model_check.chain_image_objects import payload, pin, reopen
+from merlin.evaluation.model import chain_image_readback
+from merlin.evaluation.model.chain_image_objects import payload, pin, reopen
 from merlin.runtime.backends.base import get_backend
 from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
 from merlin.runtime.whole_model_readback import decode_outputs
@@ -60,9 +60,16 @@ def compare_chain_outputs(image, reference, console, output):
         with np.load(reopen(row["outputs_npz"]), allow_pickle=False) as expected:
             result = compare_outputs(arrays, expected)
         comparisons.append({"program": program["name"], "step": row["step"], "outputs": result})
-        np.savez(output / f"step-{ordinal:04d}.npz", **dict(zip(
-            (f"out{i}" for i in range(len(arrays))), arrays, strict=True,
-        )))
+        np.savez(
+            output / f"step-{ordinal:04d}.npz",
+            **dict(
+                zip(
+                    (f"out{i}" for i in range(len(arrays))),
+                    arrays,
+                    strict=True,
+                )
+            ),
+        )
     return readback, comparisons
 
 
@@ -78,12 +85,17 @@ def observe(*, image_path, reference_path, reference_sha256, target, output, con
         raise ObservationError("chain observation output must be a fresh directory")
     output.mkdir(parents=True, exist_ok=False)
     record = {
-        "schema": "merlin.complete_chain_observation.v1", "status": "running",
-        "image": image_pin, "reference": reference_pin, "target": target,
+        "schema": "merlin.complete_chain_observation.v1",
+        "status": "running",
+        "image": image_pin,
+        "reference": reference_pin,
+        "target": target,
         "counter_kind": "spike_retired_instruction_proxy" if console is None else "raw_counter_ticks",
-        "timing_qualified": False, "started_unix": time.time(),
-        "scope": ("All declared recurrent outputs; step counters bracket forward invocations "
-                  "and exclude transfers/readback."),
+        "timing_qualified": False,
+        "started_unix": time.time(),
+        "scope": (
+            "All declared recurrent outputs; step counters bracket forward invocations and exclude transfers/readback."
+        ),
         "qualification": "development observation only; numerical-policy, source placement and hardware pending",
     }
     console_pin = None if console is None else pin(Path(console).resolve(strict=True))
@@ -99,9 +111,15 @@ def observe(*, image_path, reference_path, reference_sha256, target, output, con
         reference = json.loads(payload(reference_pin))
         selected_steps(image, reference)
         record["boot_elf"] = image["boot_elf"]
-        raw = (get_backend(target).run_declared_model_elf(
-            reopen(image["boot_elf"]), timeout=timeout_s, capture_bytes=True,
-        ) if console_pin is None else payload(console_pin))
+        raw = (
+            get_backend(target).run_declared_model_elf(
+                reopen(image["boot_elf"]),
+                timeout=timeout_s,
+                capture_bytes=True,
+            )
+            if console_pin is None
+            else payload(console_pin)
+        )
         if type(raw) is not bytes:
             raise ObservationError("selected chain backend did not return binary readback")
         (output / "console.bin").write_bytes(raw)
@@ -135,8 +153,15 @@ def main(argv=None):
     parser.add_argument("--console", type=Path)
     parser.add_argument("--timeout-s", type=int, default=600)
     args = parser.parse_args(argv)
-    record = observe(image_path=args.image, reference_path=args.reference, reference_sha256=args.reference_sha256,
-                     target=args.target, output=args.output, console=args.console, timeout_s=args.timeout_s)
+    record = observe(
+        image_path=args.image,
+        reference_path=args.reference,
+        reference_sha256=args.reference_sha256,
+        target=args.target,
+        output=args.output,
+        console=args.console,
+        timeout_s=args.timeout_s,
+    )
     print(json.dumps({key: record[key] for key in ("status", "counter_kind")}, indent=2))
     return 0 if record["status"] == "exact_all_outputs_passed" else 1
 

@@ -21,7 +21,7 @@ from merlin.common.paths import module_source_path
 from merlin.development.backend.compiler_library import join_background, library_thread
 from merlin.development.backend.context import InvocationContext, context_argv
 from merlin.development.backend.feedback import private_full_models as PFM
-from merlin.targetgen import tool_registry as _TR
+from merlin.development.targetgen import tool_registry as _TR
 
 FIRST_BACKGROUND_TICK = 900
 FIRST_GRADE_POLL_S = 30

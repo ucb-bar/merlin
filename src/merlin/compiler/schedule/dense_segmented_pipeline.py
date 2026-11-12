@@ -35,7 +35,7 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     _verify_dense_epochs,
 )
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.transforms.dense_planning import dense_blocks
+from merlin.compiler.transforms.dense_planning import dense_blocks
 
 OUTPUT_GROUP_PREFETCH = "prefetch_rhs_between_output_groups"
 SEGMENTED_ISSUE_ORDERS = (*ISSUE_ORDERS, "prefetch_rhs_between_k_tiles", OUTPUT_GROUP_PREFETCH)

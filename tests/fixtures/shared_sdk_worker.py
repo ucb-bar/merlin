@@ -181,7 +181,7 @@ run("source_dense", source_dense_from_export)
 
 
 def dense_float_io_from_export(path):
-    from merlin.transforms.certificates import ir_text, parse_ir
+    from merlin.compiler.transforms.certificates import ir_text, parse_ir
 
     module = parse_ir("""builtin.module {
       %c = arith.constant dense<[0xFF800000, 0x7F800001, 0x80000000]> : tensor<3xf32>
@@ -201,7 +201,7 @@ def source_rows_from_export(path):
     from xdsl.parser import Parser
 
     from merlin.compiler.schedule.row_softmax import compile_source_rows
-    from merlin.transforms.certificates import ir_text
+    from merlin.compiler.transforms.certificates import ir_text
 
     _, _, original, _, kwargs = case(path)
     context = Context()
@@ -317,7 +317,7 @@ def shared_input_from_export(_path):
     from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
     from merlin.compiler.schedule.shared_input_schedule import schedule_shared_input
     from merlin.compiler.schedule.shared_input_verification import verify_shared_input
-    from merlin.transforms.dense_planning import DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseResources
 
     context = Context(allow_unregistered=True)
     for dialect in (arith.Arith, builtin.Builtin, func.Func, linalg.Linalg, tensor.Tensor):

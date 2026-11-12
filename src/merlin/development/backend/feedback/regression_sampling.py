@@ -20,7 +20,7 @@ those cases while failing and large cases waited. Here, inside the rolling corre
   ``submission/joint-test-scope.json``, else the representative cases of the declared families).
 
 Of the carried-eligible cases each grade still runs a covering sample: the fewest cases whose declared
-axes (:func:`merlin.targetgen.tier_policy.capsule_axes`) span every axis value the eligible cases
+axes (:func:`merlin.development.targetgen.tier_policy.capsule_axes`) span every axis value the eligible cases
 declare, ties broken toward the case graded least recently, so the sample rotates through the cohort.
 The compiler under test is excluded from the closure on purpose: the sample is the regression detector
 for compiler edits, and a regression it finds makes the next grade a full sweep. A full sweep -- no case
@@ -122,7 +122,7 @@ def _digest(value) -> str:
 
 def closures(source_digests: dict, docs: dict, context: dict) -> dict:
     """``{case: digest}`` of each case's dependency closure (see the module docstring)."""
-    from merlin.targetgen.capsule_scheduling import dependencies
+    from merlin.development.targetgen.capsule_scheduling import dependencies
 
     names = sorted(source_digests)
     try:
@@ -184,7 +184,7 @@ def _cert_settled(entry) -> bool:
 
 def rotating_cover(docs: dict, eligible, recency: dict) -> list[str]:
     """Greedy cover of the eligible cases' axis values, ties toward the least recently graded case."""
-    from merlin.targetgen.tier_policy import capsule_axes
+    from merlin.development.targetgen.tier_policy import capsule_axes
 
     axes = {n: capsule_axes(docs.get(n) or {}) for n in sorted(eligible)}
     uncovered = set().union(*axes.values()) if axes else set()

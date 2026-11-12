@@ -10,9 +10,9 @@ import copy
 
 from merlin.compiler.quantization import recipe as Q
 from merlin.compiler.quantization.admission import build_quantization_contract, capture_recipe_candidates
+from merlin.development.targetgen import quant_recipe_policy as P
 from merlin.development.testgen.public_boundaries import digest
 from merlin.development.testgen.public_typed_semantics import CONTRACTIONS
-from merlin.targetgen import quant_recipe_policy as P
 
 
 def common_software(spec):

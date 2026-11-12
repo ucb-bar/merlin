@@ -11,7 +11,7 @@ group_profile=True)``: ``GROUP_ID`` / ``GROUP`` / ``GAP`` lines, parsed by
 * ``cycles`` and ``gap_before`` (cycles between the previous group's end and this group's start);
 * ``share_of_window`` -- its cycles over the whole bracketed window (groups plus gaps);
 * its derived ``roofline`` -- the compute floor of its contraction on the array and the movement floor
-  of its operand/result bytes on the memory path (:mod:`merlin.perf.capsule_roofline`), with
+  of its operand/result bytes on the memory path (:mod:`merlin.analysis.perf.capsule_roofline`), with
   ``over_roofline`` = cycles / bound.
 
 Measurement only: nothing here ranks, recommends or names a remedy. The program, the board, the host
@@ -214,7 +214,7 @@ def group_roofline_inputs(
     space: the output's trailing parallel dimension is its column extent) and the two operand and the
     result tensor types, so the compute floor and the compulsory bytes are both derived from the
     build's own record."""
-    from merlin.perf.derived_bound import _width_bits
+    from merlin.analysis.perf.derived_bound import _width_bits
 
     parallel, reduction = row.get("parallel") or [], row.get("reduction") or []
     contractions = None
@@ -266,7 +266,7 @@ def boundary_document(
     profile: Mapping[str, Any], routed: Sequence[Mapping[str, Any]], machine: Mapping[str, Any] | None
 ) -> dict[str, Any]:
     """One arm's agent-visible boundary profile from its parsed group profile and routed groups."""
-    from merlin.perf import capsule_roofline as CR
+    from merlin.analysis.perf import capsule_roofline as CR
 
     groups = list(profile.get("groups") or ())
     group_cycles = sum(int(g["cycles"]) for g in groups)
@@ -334,7 +334,7 @@ def run_arm(
 ) -> dict[str, Any]:
     """Route, build and run ``package_dir`` on the declared whole-model program; its boundary document,
     or ``{"status": "refused", "why": ...}`` when no profile could be measured."""
-    from merlin.llvmlower.device_offload import BY_GROUP
+    from merlin.compiler.lower.model.device_offload import BY_GROUP
 
     if compile_fn is None:
         from merlin.model import compile_saved_model as compile_fn

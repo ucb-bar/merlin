@@ -8,7 +8,7 @@ import math
 from pathlib import Path
 from typing import Any
 
-from merlin.targetgen.frontend_trace import loads_frontend_trace
+from merlin.development.targetgen.frontend_trace import loads_frontend_trace
 
 _FLOAT_DTYPES = frozenset({"bf16", "f16", "f32", "f64"})
 _EXACT_DTYPES = frozenset({"i1", "i8", "ui8", "i16", "i32", "i64"})

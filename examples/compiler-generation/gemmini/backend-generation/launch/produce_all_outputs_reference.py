@@ -3,7 +3,7 @@
 Run this operator outside the candidate workspace. It uses existing captures and
 inputs, never modifies the selected bundle, and requires every judged output to
 bitmatch its sealed reference before publishing the supplementary manifest. The
-manifest is compatible with ``merlin.model_check.full_output_audit``. The caller
+manifest is compatible with ``merlin.evaluation.model.full_output_audit``. The caller
 must admit and protect its SHA before using it as an offline comparison oracle.
 
 This is the reusable form of the operator that produced the v1 supplements;
@@ -54,11 +54,11 @@ def worker(args):
     import numpy as np
 
     from merlin.common.cpu_pool import AUXILIARY, cpu_priority, shared_compute_pool
-    from merlin.model_check import bundle as B
-    from merlin.model_check import chain as CH
-    from merlin.model_check import full as F
-    from merlin.model_check import models as M
-    from merlin.model_check import references as REF
+    from merlin.evaluation.model import bundle as B
+    from merlin.evaluation.model import chain as CH
+    from merlin.evaluation.model import full as F
+    from merlin.evaluation.model import models as M
+    from merlin.evaluation.model import references as REF
     from merlin.runtime import linalg_numpy as LN
 
     launch, operator = selected(args)
@@ -74,7 +74,7 @@ def worker(args):
         if any(not path_component(program.name) or program.steps < 1 for program in model.programs):
             raise ValueError("programs need safe names and a positive complete step roster")
         input_id = args.input
-        if Path(CH.__file__).resolve() != Path(args.repo).resolve() / "src/merlin/model_check/chain.py":
+        if Path(CH.__file__).resolve() != Path(args.repo).resolve() / "src/merlin/evaluation/model/chain.py":
             raise ValueError("imported reference engine is outside the selected source checkout")
         input_path = F.derived_input(bundle, model.name, input_id)
         with np.load(input_path, allow_pickle=False) as data:
@@ -91,11 +91,11 @@ def worker(args):
             bundle.root / model.name / input_id / "int8.npz",
         ]
         for name in (
-            "merlin.model_check.chain",
-            "merlin.model_check.catalog",
-            "merlin.model_check.references",
-            "merlin.model_check.full",
-            "merlin.model_check.models",
+            "merlin.evaluation.model.chain",
+            "merlin.evaluation.model.catalog",
+            "merlin.evaluation.model.references",
+            "merlin.evaluation.model.full",
+            "merlin.evaluation.model.models",
             "merlin.runtime.linalg_numpy",
             "merlin.runtime.dispatch_runtime",
             "merlin.runtime.host_math",

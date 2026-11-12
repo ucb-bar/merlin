@@ -13,7 +13,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from weakref import WeakKeyDictionary
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.component_cost import complete_component_cost
+from merlin.analysis.perf.component_measurement_plan import plan_development_measurements
+from merlin.analysis.perf.component_screen import ComponentOpportunity
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.development.backend.optimization.component_applicability import applicability_observation
 from merlin.development.backend.optimization.component_feature_inputs import plain
 from merlin.development.backend.optimization.component_runtime import require_independent_runtime
@@ -24,10 +27,7 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
     write_json,
 )
-from merlin.perf.component_cost import complete_component_cost
-from merlin.perf.component_measurement_plan import plan_development_measurements
-from merlin.perf.component_screen import ComponentOpportunity
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.evaluation.harness import hash_tree
 
 _ISSUED = WeakKeyDictionary()
 
@@ -274,14 +274,14 @@ def prepare_development_measurements(
     qualified compile-only provider exists. This function never silently turns
     static site counts into physical features or measured predictions.
     """
+    from merlin.analysis.perf import component_cost as CC
+    from merlin.analysis.perf import component_measurement_plan as MP
+    from merlin.analysis.perf import component_screen as CS
     from merlin.development.backend.optimization import component_analytical as A
     from merlin.development.backend.optimization import component_applicability as CA
     from merlin.development.backend.optimization import component_measurement_scheduling as owner
     from merlin.development.backend.optimization import development_feedback as D
     from merlin.development.backend.optimization.component_workflow import _corpus
-    from merlin.perf import component_cost as CC
-    from merlin.perf import component_measurement_plan as MP
-    from merlin.perf import component_screen as CS
 
     if (
         type(timeout_s) not in (int, float)

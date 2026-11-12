@@ -223,7 +223,7 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
 def _operation_eligibility(
     spec: Mapping, declaration: dict, matches: list[dict], accounting: Mapping | None
 ) -> list[dict]:
-    from merlin.targetgen.software_spec import admit_operation
+    from merlin.development.targetgen.software_spec import admit_operation
 
     eligible_ids = set(declaration["eligible_operations"])
     decisions = []
@@ -406,8 +406,8 @@ def build_quantization_contract(
             "recipe_schema": "quant_recipe_v1",
             "layer_plan_schema": "quant_layer_plan_v1",
             "extension_points": ["torchao.quantization.pt2e.quantizer.Quantizer", "torchao.core.config.AOBaseConfig"],
-            "existing_adapter": "merlin.targetgen._recipe_quantizer",
-            "layer_planner": "merlin.targetgen.quant_layer_plan.plan",
+            "existing_adapter": "merlin.development.targetgen._recipe_quantizer",
+            "layer_planner": "merlin.development.targetgen.quant_layer_plan.plan",
             "requirements": [
                 "complete operation signatures and explicit accelerator placement",
                 "matching format-specific recipe and layer shape plan",

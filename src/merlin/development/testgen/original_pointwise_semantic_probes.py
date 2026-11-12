@@ -17,6 +17,10 @@ from merlin.common import invocation_record as I
 from merlin.common.jsonio import canonical_json
 from merlin.common.paths import module_source_path
 from merlin.common.strict_json import loads
+from merlin.development.targetgen import original_pointwise_stress as PS
+from merlin.development.targetgen.original_operator_reference import OriginalReferenceBudget, prepare_original_reference
+from merlin.development.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+from merlin.development.targetgen.original_pointwise_sources import pointwise_source
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen import original_reference_plan as P
 from merlin.development.testgen import original_reference_roster as R
@@ -24,10 +28,6 @@ from merlin.development.testgen import original_reference_standard_ir as S
 from merlin.development.testgen import original_semantic_review_plan as Q
 from merlin.development.testgen.operator_schema_intake import _selection
 from merlin.development.testgen.rtl_intake import RtlIntakePin, _outside
-from merlin.targetgen import original_pointwise_stress as PS
-from merlin.targetgen.original_operator_reference import OriginalReferenceBudget, prepare_original_reference
-from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
-from merlin.targetgen.original_pointwise_sources import pointwise_source
 
 SCHEMA = "merlin.original_pointwise_semantic_probes.v1"
 _ISSUED = weakref.WeakKeyDictionary()

@@ -17,7 +17,7 @@ from merlin.development.backend.optimization import stage_prompt as SP
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.providers import codex_agent as CA
 from merlin.development.backend.providers import codex_runtime as CR
-from merlin.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import bwrap as BW
 
 
 def _read_paths(policy, *, workspace, selection):

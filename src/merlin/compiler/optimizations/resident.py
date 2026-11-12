@@ -6,8 +6,8 @@ import hashlib
 import tempfile
 from pathlib import Path
 
+from merlin.compiler.lower.model.selfcopy import FEATURE as _SELF_COPY_FEATURE
 from merlin.compiler.selection.features import ImprFeature
-from merlin.llvmlower.selfcopy import FEATURE as _SELF_COPY_FEATURE
 
 
 def _accumulator_resident_pre_schedule(

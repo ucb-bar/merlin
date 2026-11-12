@@ -7,7 +7,7 @@ from xdsl.context import Context
 from xdsl.dialects import builtin, llvm
 from xdsl.parser import Parser
 
-from merlin.targetgen.rocc import decode
+from merlin.development.targetgen.rocc import decode
 from merlin.verification import host_compute_audit as HA
 
 _ISA = {

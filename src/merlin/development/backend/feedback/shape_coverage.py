@@ -16,7 +16,7 @@ import stat
 import sys
 from pathlib import Path
 
-from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.target_experiment import load_target_experiment
 
 SHAPE_CACHE_SCHEMA = "merlin.phase1.shape_coverage_cache.v1"
 #: Deterministic emit outcomes of the submitted bytes. An ``error`` may be a harness or resource fault,
@@ -24,12 +24,12 @@ SHAPE_CACHE_SCHEMA = "merlin.phase1.shape_coverage_cache.v1"
 _CACHEABLE_OUTCOMES = frozenset({"lowered", "declined", "empty"})
 #: Grader code that stages a probe, routes its execution or classifies what came back.
 _SHAPE_HARNESS_MODULES = (
-    "merlin.targetgen.lowering_coverage",
-    "merlin.targetgen.capability_probes",
-    "merlin.targetgen.capsule_common",
-    "merlin.targetgen.package_runtime",
-    "merlin.targetgen.contract.schemas",
-    "merlin.targetgen.artifact_scale",
+    "merlin.development.targetgen.lowering_coverage",
+    "merlin.development.targetgen.capability_probes",
+    "merlin.development.targetgen.capsule_common",
+    "merlin.development.targetgen.package_runtime",
+    "merlin.development.targetgen.contract.schemas",
+    "merlin.development.targetgen.artifact_scale",
     "merlin.verification.lean_emission_context",
     "merlin.development.backend.feedback.compiler_profile_runtime",
     "merlin.development.backend.brokers.compiler_call_channel",
@@ -318,7 +318,7 @@ def probe_child(argv) -> int:
         CommonTransformService,
         original_compiler_execution,
     )
-    from merlin.targetgen import lowering_coverage as LC
+    from merlin.development.targetgen import lowering_coverage as LC
 
     spec_path, out_path = map(Path, argv)
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
@@ -381,7 +381,7 @@ def measure(
     error. Any cache fault is a miss: the probes run, and a sweep that did not run is still recorded
     as not covered by the caller.
     """
-    from merlin.targetgen import lowering_coverage as LC
+    from merlin.development.targetgen import lowering_coverage as LC
 
     cache = None
     if use_cache and service is not None:

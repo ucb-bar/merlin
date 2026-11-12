@@ -28,7 +28,7 @@ def _tree(root: Path, files: dict[str, str]) -> Path:
     return root
 
 
-_PERF = "merlin/python/merlin/perf"
+_PERF = "merlin/python/merlin/analysis/perf"
 
 
 def test_new_debt_fails_and_a_stale_entry_fails(tmp_path: Path, capsys) -> None:
@@ -39,7 +39,7 @@ def test_new_debt_fails_and_a_stale_entry_fails(tmp_path: Path, capsys) -> None:
                 f"{_PERF}/__init__.py": "",
                 f"{_PERF}/orphan.py": "X = 1\n",
                 f"{_PERF}/wired.py": "X = 1\n",
-                "build_tools/use.py": "from merlin.perf import wired\n",
+                "build_tools/use.py": "from merlin.analysis.perf import wired\n",
             },
         )
     )

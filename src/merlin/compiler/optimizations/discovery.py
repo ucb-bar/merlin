@@ -39,7 +39,7 @@ def _single_name_lever_modules() -> "dict[str, str]":
         import ast as _ast
 
         found: dict[str, str] = {}
-        for src in sorted(module_source_path("merlin.llvmlower").parent.glob("*.py")):
+        for src in sorted(module_source_path("merlin.compiler.lower.model").parent.glob("*.py")):
             try:
                 tree = _ast.parse(src.read_text(encoding="utf-8"))
             except (OSError, SyntaxError):
@@ -112,14 +112,14 @@ def _try_lazy_register(name: str) -> bool:
     if _module is not None:
         import importlib
 
-        importlib.import_module(f"merlin.llvmlower.{_module}").ensure_registered()
+        importlib.import_module(f"merlin.compiler.lower.model.{_module}").ensure_registered()
         return name in _REGISTRY
     # The parallel-GRAIN family carries its threshold in the name and lives in its own module, so
     # it is resolved first and by import rather than through the arity table below.
-    from merlin.llvmlower.parallel_grain import FEATURE_PREFIX as _PG_PREFIX
+    from merlin.compiler.lower.model.parallel_grain import FEATURE_PREFIX as _PG_PREFIX
 
     if name.startswith(_PG_PREFIX):
-        from merlin.llvmlower.parallel_grain import ensure_registered as _pg_ensure
+        from merlin.compiler.lower.model.parallel_grain import ensure_registered as _pg_ensure
 
         try:
             _pg_ensure(int(name[len(_PG_PREFIX) :]))
@@ -128,20 +128,20 @@ def _try_lazy_register(name: str) -> bool:
         return name in _REGISTRY
     # Per-region OpenMP team policy is another name-derived continuous family.  Resolve it here so
     # a package and the lowering subprocess do not depend on the proposer having imported it first.
-    from merlin.llvmlower.parallel_team import FEATURE_PREFIX as _PT_PREFIX
+    from merlin.compiler.lower.model.parallel_team import FEATURE_PREFIX as _PT_PREFIX
 
     if name.startswith(_PT_PREFIX):
-        from merlin.llvmlower.parallel_team import ensure_registered as _pt_ensure
+        from merlin.compiler.lower.model.parallel_team import ensure_registered as _pt_ensure
 
         try:
             _pt_ensure(int(name[len(_PT_PREFIX) :]))
         except ValueError:
             return False
         return name in _REGISTRY
-    from merlin.llvmlower.residual_parallel import FEATURE_PREFIX as _RP_PREFIX
+    from merlin.compiler.lower.model.residual_parallel import FEATURE_PREFIX as _RP_PREFIX
 
     if name.startswith(_RP_PREFIX):
-        from merlin.llvmlower.residual_parallel import ensure_registered as _rp_ensure
+        from merlin.compiler.lower.model.residual_parallel import ensure_registered as _rp_ensure
 
         try:
             _rp_ensure(int(name[len(_RP_PREFIX) :]))

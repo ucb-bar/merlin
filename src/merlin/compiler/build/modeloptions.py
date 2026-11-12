@@ -127,13 +127,13 @@ def prepare_saved(
         raise BaremetalModelError("host bounded RNE must be an explicit Boolean optimization choice")
     if type(host_roundeven) is not bool:
         raise BaremetalModelError("host roundeven must be an explicit Boolean optimization choice")
-    from merlin.llvmlower.host_bounded_rne import selected as bounded_rne_selected
+    from merlin.compiler.lower.model.host_bounded_rne import selected as bounded_rne_selected
 
     host_bounded_rne = bounded_rne_selected(host_bounded_rne)
     if type(shared_source_lowerings) is not tuple:
         raise BaremetalModelError("shared source lowerings require an immutable tuple of typed selections")
     if graph_optimizations is not None:
-        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+        from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
 
         if type(graph_optimizations) is HostGraphPolicy:
             graph_optimizations.revalidate()
@@ -141,22 +141,22 @@ def prepare_saved(
                 raise BaremetalModelError("host graph software target differs from the selected model target")
     early_layout_policy = getattr(device, "pre_group_layout", None)
     if early_layout_policy is not None:
-        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+        from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
 
         if type(early_layout_policy) is not HostGraphPolicy or early_layout_policy.target != target:
             raise BaremetalModelError("pre-group layout requires original software for this target")
         early_layout_policy.revalidate()
     storage_policy = getattr(device, "intermediate_storage", None)
     if storage_policy is not None:
-        from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+        from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
 
         if type(storage_policy) is not HostGraphPolicy or storage_policy.target != target:
             raise BaremetalModelError("intermediate storage requires original software for this target")
         storage_policy.revalidate()
     if shared_source_lowerings:
-        from merlin.llvmlower.source_dense import SourceDenseLowering
-        from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
-        from merlin.llvmlower.source_rows import SourceRowLowering
+        from merlin.compiler.lower.model.source_dense import SourceDenseLowering
+        from merlin.compiler.lower.model.source_pointwise import SourcePointwiseLowering
+        from merlin.compiler.lower.model.source_rows import SourceRowLowering
 
         allowed = (SourceDenseLowering, SourcePointwiseLowering, SourceRowLowering)
         if any(type(value) not in allowed for value in shared_source_lowerings):
@@ -196,7 +196,7 @@ def prepare_saved(
         raise BaremetalModelError("output must not be nested inside a saved capture or package")
     device_path = None
     if device is not None:
-        from merlin.llvmlower.device_build import DeviceRouting
+        from merlin.compiler.lower.model.device_build import DeviceRouting
 
         if not isinstance(device, DeviceRouting):
             raise BaremetalModelError("device must be an explicit DeviceRouting")

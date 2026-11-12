@@ -1,7 +1,7 @@
 """Decide a two-arm performance claim from MEASURED cycles.
 
 A differential family says two programs doing the same work should not cost the same. Deciding that
-was routed through ``merlin.perf.differential.compare``, which compares two composed demand
+was routed through ``merlin.analysis.perf.differential.compare``, which compares two composed demand
 envelopes -- and on a target whose resource times neither add nor max (a partial composition) that
 function refuses by construction, correctly: a cycle delta is not derivable from demands when the
 composition is partial. Refusing is sound, but it left every differential family undecided, because
@@ -31,7 +31,7 @@ import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.perf import barrier_arms as BA
+from merlin.analysis.perf import barrier_arms as BA
 
 ANALYZER = "perf_paired_claim.analyze_paired_claim/v1"
 
@@ -58,7 +58,7 @@ def analyze_paired_claim(descriptors: object, results: object, per_unit: object 
     ``cycles``. Every member must report both of its declared arms.
 
     ``per_unit`` maps capsule -> how many units the cheap arm REMOVED (for the synchronization
-    family, completion points, from :func:`merlin.perf.barrier_arms.paired_removal`). It is required
+    family, completion points, from :func:`merlin.analysis.perf.barrier_arms.paired_removal`). It is required
     exactly when the family's own falsifier declares a per-unit GROWTH observation, and is ignored
     otherwise. A direction test cannot decide a growth claim: "this arm is cheaper on every member"
     is true of a saving that is CONSTANT across members, which is precisely what a per-unit claim
@@ -382,7 +382,7 @@ def _validated_declaration(
             "measured dispersion, so the constant would be declared and never applied"
         )
 
-    from merlin.perf import claim_reach
+    from merlin.analysis.perf import claim_reach
 
     schedules = []
     for descriptor in members:

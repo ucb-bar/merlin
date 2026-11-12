@@ -16,9 +16,7 @@ from dataclasses import asdict, dataclass
 from xdsl.dialects import arith, builtin, func, scf
 from xdsl.ir import Block, Region
 
-from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.compiler.schedule.window_transfer import Window2D
-from merlin.xdsl_dialects.rolling_window import (
+from merlin.compiler.dialects.rolling_window import (
     AwaitOp,
     BeginOp,
     CompleteOp,
@@ -29,6 +27,8 @@ from merlin.xdsl_dialects.rolling_window import (
     StageRowOp,
     TransferType,
 )
+from merlin.compiler.schedule.program_limits import AddressWindow
+from merlin.compiler.schedule.window_transfer import Window2D
 
 SCHEMA = "merlin.rolling_window.v1"
 GROUP_SCHEMA = "merlin.grouped_rolling_window.v1"
@@ -204,7 +204,7 @@ def _read_rolling_window(text, plan, output_rows):
     from xdsl.context import Context
     from xdsl.parser import Parser
 
-    from merlin.xdsl_dialects.rolling_window import RollingWindow
+    from merlin.compiler.dialects.rolling_window import RollingWindow
 
     context = Context()
     for dialect in (builtin.Builtin, arith.Arith, func.Func, scf.Scf, RollingWindow):

@@ -411,7 +411,7 @@ pins:
     # are the same string. It is recorded anyway so that a DIFFERENT edit to this file is still refused —
     # the digest stops matching and the path drops to OFF_PIN with a message naming both digests.
     #
-    # The int8 dtypes these bytes declare are independently corroborated by `merlin.targetgen.rtl.facts`
+    # The int8 dtypes these bytes declare are independently corroborated by `merlin.development.targetgen.rtl.facts`
     # straight from the RTL (operand int8, accumulate int32 — the discovery surface prints the agreement).
     # That corroboration is why the claims are BELIEVED; it is not why they are pinned, and the two were
     # being conflated. Nothing in the pin recorded which bytes the dtypes came from until now.
@@ -1098,7 +1098,7 @@ artifacts:
       THE ELABORATION THE INSTALLED GEMMINI EMULATOR IS ACTUALLY BUILT FROM, and the one a cert produced
       today is about. It is registered because it was not: `gemmini_gsim_model_testharness` declares the
       HAND-EDITED bytes (477e16d0) and names emu_gemmini_gsim3 (e02c20dd), while the emulator resolved by
-      `merlin.targetgen.gsim_emulator` at out/build/rtl_engines/gemmini/gsim/emulator is 1a3de02a, built
+      `merlin.development.targetgen.gsim_emulator` at out/build/rtl_engines/gemmini/gsim/emulator is 1a3de02a, built
       from FIRRTL 089d053b -- a THIRD elaboration that no entry described. Both registered entries verify,
       so nothing was reported wrong; the cert engine had simply moved to bytes the registry did not cover,
       which is the wrong-device hazard in its quiet form.
@@ -1433,7 +1433,7 @@ artifacts:
     repo_relative: true
     digest: "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
     notes: >-
-      RE-PINNED 2026-10-01 to the canonical engine location `merlin.targetgen.gsim_emulator` resolves
+      RE-PINNED 2026-10-01 to the canonical engine location `merlin.development.targetgen.gsim_emulator` resolves
       (`<build>/rtl_engines/gemmini/gsim/emulator`). The previous path,
       <historical-build-workspace>/tmp/gsim_recert_20260904/emu_gemmini_gsim_recert, was deleted in the 2026-10-01
       scratch cleanup. The bytes did not change: the file at the new path has this same digest
@@ -1569,7 +1569,7 @@ artifacts:
     description: >-
       The reference simulator above, relinked with its SimDRAM harness rebuilt through the seeded,
       response-reordering memory model (src/merlin/resources/contracts/external/sim_memory/). It is the engine the
-      opt-in memory-order tier (merlin.targetgen.load_order) re-runs a certified program on: the stock
+      opt-in memory-order tier (merlin.development.targetgen.load_order) re-runs a certified program on: the stock
       testchipip mm_magic_t answers every read in acceptance order, so a program whose answer depends on
       two independent requests completing in issue order passes every cheap tier and fails on a board.
       Latency may be per response or a property of the ADDRESS region, and the knobs may be given as
@@ -1585,7 +1585,7 @@ artifacts:
     target: gemmini
     role: verilator_binary_mem_perturb
     notes: >-
-      Built by merlin.targetgen.mem_perturb.build_verilator_variant from the reference build's own
+      Built by merlin.development.targetgen.mem_perturb.build_verilator_variant from the reference build's own
       objects, read-only; its build_receipt.json sits beside it and records the preload invocation it
       derived by content (+permissive +loadmem={elf} +permissive-off). The same build relinked the
       UNMODIFIED objects as a control, and the result was byte-identical to gemmini_verilator_simulator
@@ -1826,7 +1826,7 @@ artifacts:
     # `#define ACC_READ_FULL_WIDTH` removed, because `GemminiConfigs.leanConfig` sets
     # `acc_read_full_width = false` (Configs.scala:244). It is the header every lean arm measured from
     # 2026-09-24 on was compiled against, and declaring it here is what makes a build FOR this machine
-    # refuse the curated 3758ae96 (merlin.perf.whole_model_build.machine_header) instead of accepting
+    # refuse the curated 3758ae96 (merlin.analysis.perf.whole_model_build.machine_header) instead of accepting
     # whatever a caller passes. It is an assertion about one macro, not a header generated from the
     # parameter set; the gap below stays open until one is. Also: no arm -- the vendor library's
     # included -- classifies correctly on this board (argmax 0 against 21 in every run), so this machine

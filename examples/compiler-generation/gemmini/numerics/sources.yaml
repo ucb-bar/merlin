@@ -1,9 +1,9 @@
-# Evaluation and calibration inputs for `python -m merlin.model_check` (contract:
+# Evaluation and calibration inputs for `python -m merlin.evaluation.model` (contract:
 # docs/guides/09-verification.md §8). Every source is pinned by revision and sha256; every selection is a
 # deterministic rule over that source, so anyone with the same files gets the same inputs.
 # Visible inputs and their manifest are generated under the selected public output, never beside this file.
 # Sealed inputs stay in the private root; the generated public manifest records their SHA256 identities.
-schema: merlin.model_check.sources.v1
+schema: merlin.evaluation.model.sources.v1
 target: gemmini
 
 models:

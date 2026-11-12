@@ -8,8 +8,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import conformance
 from merlin.experiments.definition import SpecError
-from merlin.targetgen import conformance
 
 from .preparation import _members, source_run
 
@@ -70,7 +70,7 @@ def selected_cohort_coverage(
     host-lane placement use the byte-bound selected contract, and memory regimes
     use selected facts.
     """
-    from merlin.targetgen.contract.materialize import cert_capsule_cover
+    from merlin.development.targetgen.contract.materialize import cert_capsule_cover
 
     if phase not in {"phase1", "phase2"}:
         raise ValueError("cohort coverage phase must be phase1 or phase2")
@@ -205,7 +205,7 @@ def selected_cohort_coverage(
             digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
             if digest != selected_digest or digest != required_digest:
                 raise ValueError("selected RTL facts differ from the frozen requirement or coverage inputs")
-            from merlin.targetgen import memory_regime as MR
+            from merlin.development.targetgen import memory_regime as MR
 
             corpus = MR.corpus_regimes(roots, str(spec_doc.get("target") or ""), labels=labels, facts=json.loads(raw))
             if corpus["capacity_rows"] is None:

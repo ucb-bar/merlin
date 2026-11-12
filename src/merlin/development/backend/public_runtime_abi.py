@@ -42,7 +42,7 @@ def _regular(path):
 
 def selected_symbol(contract):
     """Use the exact contract reader also used by the native caller and recipe."""
-    from merlin.targetgen.contract.harness_abi import from_contract
+    from merlin.development.targetgen.contract.harness_abi import from_contract
 
     if not isinstance(contract, dict):
         raise ValueError("selected runtime ABI contract is not a mapping")
@@ -102,7 +102,7 @@ def selected_callables(contract):
     arguments or result. The separate lowered representation metadata states
     the selected fixed runtime completion sequence.
     """
-    from merlin.targetgen.contract.harness_abi import from_contract
+    from merlin.development.targetgen.contract.harness_abi import from_contract
 
     entry = selected_symbol(contract)
     abi = from_contract(contract, target=str(contract.get("name", "selected")))
@@ -167,7 +167,7 @@ def selected_software_limits(contract):
 
 def selected_lowered_representation(contract):
     """Project only the existing selected software calling-convention gate."""
-    from merlin.targetgen.contract.harness_abi import lowered_plan_abi
+    from merlin.development.targetgen.contract.harness_abi import lowered_plan_abi
 
     abi = lowered_plan_abi(contract, target=str(contract.get("name", "selected")))
     if abi["completion_symbol"] is not None and (
@@ -333,7 +333,7 @@ def is_projected_protocol(row):
 
 def prepare(common, *, destination, repo, input_format="shared_interface_v1"):
     """Pin a fresh public protocol from the already selected private caller."""
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
 
     selected = [row for row in common if row.get("note") == "selected capability contract (ALL arms)"]
     protocols = [row for row in common if row.get("path") == DECLARED]
@@ -442,7 +442,7 @@ def verify(bundle, *, workspace=None, repo=None):
     if workspace is not None:
         if repo is None:
             raise ValueError("frozen runtime ABI verification requires its repository")
-        from merlin.targetgen.sandbox.bwrap import snapshot_input_paths
+        from merlin.development.targetgen.sandbox.bwrap import snapshot_input_paths
 
         paths = snapshot_input_paths(Path(workspace), bundle, declared, repo=Path(repo))
     elif repo is not None:

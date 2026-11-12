@@ -1,6 +1,6 @@
 """Rank pass-exploration candidates on training geometries, then check the winner on held-out ones.
 
-``merlin.transforms.pass_exploration`` explores one source module at a time
+``merlin.compiler.transforms.pass_exploration`` explores one source module at a time
 (:func:`explore_candidates`) and ranks one set of same-domain observations
 (:func:`rank_observed_metrics`). Choosing a schedule for an operator family needs both across several
 geometries, with the held-out geometries frozen before anything is tuned. This wrapper is that loop
@@ -45,7 +45,7 @@ NOTE = (
 
 def _observe(module, space, facts, *, output, emission, metrics, session_options) -> tuple[dict, dict]:
     """``({candidate: {metric: value}}, {candidate: status})`` for one source module."""
-    from merlin.transforms.pass_exploration import explore_candidates
+    from merlin.compiler.transforms.pass_exploration import explore_candidates
 
     values, statuses, by_program = {}, {}, {}
     for candidate in explore_candidates(module, space, facts, output=output, emission=emission, **session_options):
@@ -76,7 +76,7 @@ def _aggregate(per_geometry: list[dict], names, objectives) -> dict:
 
 
 def _rank(totals: dict, objectives, *, basis: str, domain: str) -> dict:
-    from merlin.transforms.pass_exploration import ObservedMetrics, rank_observed_metrics
+    from merlin.compiler.transforms.pass_exploration import ObservedMetrics, rank_observed_metrics
 
     observations = tuple(
         (name, ObservedMetrics(basis, domain, tuple((o, totals[name][o]) for o in objectives)))

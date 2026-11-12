@@ -12,7 +12,7 @@ from merlin.compiler.schedule.schedule_ir import (
     make_dense_schedule_plan,
     parse_dense_schedule_plan,
 )
-from merlin.transforms.dense_planning import dense_blocks
+from merlin.compiler.transforms.dense_planning import dense_blocks
 
 
 def inputs(shape=(9, 14, 25), tile=(2, 3, 4)):

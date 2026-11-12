@@ -137,7 +137,7 @@ def _replace_ssa(line: str, old: str, new: str) -> str:
 
 
 def _selected_relayouts(module, args, func_name, relayouts=None):
-    from ..xdsl_dialects.lowering.weight_layout import WeightRelayout, weight_layout_report
+    from merlin.compiler.dialects.lowering.weight_layout import WeightRelayout, weight_layout_report
 
     if type(args) is not set or any(type(i) is not int or i < 0 for i in args):
         raise RewriteRefused("weight relayout requires nonnegative argument indices")
@@ -182,10 +182,11 @@ def rewrite_transposed_args(
     from xdsl.dialects import tensor
     from xdsl.rewriter import Rewriter
 
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.dialects.lowering.weight_layout import _func, layout_chain
+
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
-    from ..xdsl_dialects._common import text
-    from ..xdsl_dialects.lowering.weight_layout import _func, layout_chain
 
     with IR_LOCK:
         module = mq.parse(mlir_text)
@@ -245,9 +246,7 @@ def hoist_safety_problems(
     problems: list[str] = []
     try:
         with IR_LOCK:
-            selected = _selected_relayouts(
-                mq.parse(src / "model.mlir"), hoisted_args, func_name, relayouts
-            )
+            selected = _selected_relayouts(mq.parse(src / "model.mlir"), hoisted_args, func_name, relayouts)
         header, payload_offset = load_header(src / "weights.safetensors")
         if "__metadata__" in header:
             metadata = header.pop("__metadata__")
@@ -381,9 +380,10 @@ def retarget_weights_file(mlir_text: str, weights_path: Path | str) -> tuple[str
     """
     from xdsl.dialects.builtin import StringAttr
 
+    from merlin.compiler.dialects._common import text
+
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
-    from ..xdsl_dialects._common import text
 
     with IR_LOCK:
         module = mq.parse(mlir_text)
@@ -423,9 +423,10 @@ def _carry_sidecars(src: Path, dst: Path, written: set[str]) -> list[str]:
 
 
 def _weight_selection(src, func_name, immutable_arguments):
+    from merlin.compiler.dialects.lowering.weight_layout import weight_layout_report
+
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
-    from ..xdsl_dialects.lowering.weight_layout import weight_layout_report
 
     src = Path(src)
     mlir_text = (src / "model.mlir").read_text()
@@ -519,7 +520,7 @@ def _hoist_record(src, report, weight_args, by_arg, dropped, retargeted, skipped
             "non_weight_transposes_not_hoisted": sum(r.arg not in weight_args for r in report.hoistable),
             "weights_file_retargeted": retargeted,
             "sidecars_not_carried": skipped,
-            "analysis": "merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report",
+            "analysis": "merlin.compiler.dialects.lowering.weight_layout.weight_layout_report",
         },
         caveats=(
             [f"{len(report.blocked)} re-layout(s) were NOT hoisted (argument has other readers)"]
@@ -568,7 +569,7 @@ def hoist_weight_transposes(
     SOUNDNESS, CHECKED NOT ASSUMED. Pre-transposing is value-preserving only when the transpose is
     the argument's SOLE consumer; anything else reading the argument would silently begin seeing
     transposed data. The hoistable set comes from
-    :func:`merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report`, which splits sole-use
+    :func:`merlin.compiler.dialects.lowering.weight_layout.weight_layout_report`, which splits sole-use
     from mixed-use and never merges them, and blocked re-layouts are left exactly as they are.
 
     BIT-EXACT. A transpose moves elements, it does not compute. Every value a consumer sees is the
@@ -612,7 +613,7 @@ def hoist_weight_transposes(
 
 def _rewrite_safetensors(src: Path, dst: Path, want: dict) -> int:
     """Apply verified layouts to raw element-byte records, keeping tensor order and metadata."""
-    from ..xdsl_dialects.lowering.weight_layout import apply_layout_steps
+    from merlin.compiler.dialects.lowering.weight_layout import apply_layout_steps
 
     with open(src / "weights.safetensors", "rb") as f:
         header, data_start = read_header(f)
@@ -678,10 +679,11 @@ def verify_hoisted_bundle(
     every original element byte. Untouched tensors are compared in bounded chunks.
     This establishes a conditional storage rewrite, not implementation qualification.
     """
+    from merlin.compiler.dialects._common import text
+
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
     from ..common.jsonio import canonical_json, strict_json_equal
-    from ..xdsl_dialects._common import text
 
     src, dst = Path(src), Path(dst)
     original, report, manifest, weight_args, by_arg, want = _weight_selection(src, func_name, immutable_arguments)
@@ -796,9 +798,10 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
     tensor's sole consumer -- anything else reading it would silently receive renumbered tokens.
     :func:`find_gather_specializations` enforces that and reports a rejection instead.
     """
+    from merlin.compiler.dialects.lowering.gather_specialization import find_gather_specializations, kept_rows
+
     from ..common import mlir_query as mq
     from ..common.ir_lock import IR_LOCK
-    from ..xdsl_dialects.lowering.gather_specialization import find_gather_specializations, kept_rows
 
     src, dst = Path(src), Path(dst)
     mlir_text = (src / "model.mlir").read_text()
@@ -866,7 +869,7 @@ def specialize_gather(src: Path | str, dst: Path | str, func_name: str = "forwar
             "table_mib_after": round(len(kept) * trailing * width / 2**20, 3),
             "index_arg": spec.index_arg,
             "index_arg_consumers": 1,
-            "analysis": "merlin.xdsl_dialects.lowering.gather_specialization",
+            "analysis": "merlin.compiler.dialects.lowering.gather_specialization",
         },
         caveats=[
             f"VALID FOR THESE ROW INDICES ONLY: {kept}. This is input specialization, not dead "

@@ -38,7 +38,7 @@ adapter build receipts remain in `scratch/host_math`; retain them as provenance.
 
 Before comparison, admit and protect each produced manifest and its payloads and
 record its SHA independently. Pass that admitted SHA as
-`merlin.model_check.full_output_audit --reference-sha256`; never select a supplement
+`merlin.evaluation.model.full_output_audit --reference-sha256`; never select a supplement
 from an untrusted current file alone. The offline audit compares all arrays with
 the unchanged selected numerical policy and original retained Spike readback.
 Its pass is an additional gate alongside complete full-model execution, exact

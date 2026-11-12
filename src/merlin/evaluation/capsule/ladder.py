@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import dataclasses
 
+from merlin.development.targetgen import completion_order_gate as _CO_GATE
+from merlin.development.targetgen import tier_policy as _tier_policy
+from merlin.development.targetgen.capsule_common import _cat
+from merlin.development.targetgen.package_runtime import CertFailure
+from merlin.development.targetgen.provenance import toolchain_shas
 from merlin.evaluation.capsule.adapters import OracleUnavailable
 from merlin.evaluation.capsule.availability import _full_ladder_enabled
 from merlin.evaluation.capsule.certificates import (
@@ -19,11 +24,6 @@ from merlin.evaluation.capsule.numerics import _encoding_divergence_hint
 from merlin.evaluation.capsule.oracle_call import invoke_oracle
 from merlin.evaluation.capsule.oracle_result import assess_oracle
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.targetgen import completion_order_gate as _CO_GATE
-from merlin.targetgen import tier_policy as _tier_policy
-from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.package_runtime import CertFailure
-from merlin.targetgen.provenance import toolchain_shas
 
 
 def run_oracle_ladder(
@@ -46,7 +46,7 @@ def run_oracle_ladder(
     evidence,
     inputs,
 ):
-    from merlin.targetgen.program_oracle import OracleUnavailable as _POUnavailable
+    from merlin.development.targetgen.program_oracle import OracleUnavailable as _POUnavailable
 
     # An endpoint that RAN the program and watched it never halt reports a VERDICT, not an absent
     # oracle. It is raised as a SUBCLASS of the unavailable exception (so every fail-closed handler
@@ -201,7 +201,7 @@ def run_oracle_ladder(
         # actually executed in this run, because that is what guarantees the executable on disk is
         # this run's and not a previous grade's (see `_clear_stale_executable`). The lookup fails
         # closed on every ambiguity, and a hit is reported AS a carry -- never as a measurement.
-        from merlin.targetgen.simulation_certificate import capture as _simulation_request
+        from merlin.development.targetgen.simulation_certificate import capture as _simulation_request
 
         _simulation_context = None
         if tier in cfg.rtl_tiers and tier not in adapter_managed_tiers:

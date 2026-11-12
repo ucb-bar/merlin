@@ -7,8 +7,8 @@ human review, historical origin, target support or numerical correctness.
 
 from __future__ import annotations
 
+from merlin.development.targetgen.software_spec import validate_software_spec
 from merlin.development.testgen.rtl_intake import RtlIntakeRefusal
-from merlin.targetgen.software_spec import validate_software_spec
 
 _ROOT = {"schema", "target", "status", "numerical_semantics", "operations"}
 _NUMERIC = {

@@ -17,13 +17,13 @@ import numpy as np
 
 from merlin.capture import artifacts as source_artifacts
 from merlin.common import mlir_query as mq
+from merlin.development.targetgen import golden_store
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 from merlin.development.testgen import capture_selection
 from merlin.development.testgen import connected_integer_bounds as B
 from merlin.development.testgen.provenance import _verify_frontend_evidence_dir
 from merlin.development.testgen.sealed_generation import verified_capture_failure
 from merlin.experiments.capture_execution import native_integer
-from merlin.targetgen import golden_store
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 SELECTION = "checked_native_integer_v1"
 AFFINE_COPY_SELECTION = "checked_native_integer_affine_copy_v2"

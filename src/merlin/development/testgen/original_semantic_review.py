@@ -75,7 +75,7 @@ def _stress(contract, selected, source, *, pointwise=False):
     if loads(Path(source["products"]["inputs"]["path"]).read_bytes()) != [R._tensor_record(t) for t in inputs]:
         raise ValueError("semantic stress changed the original full input storage roster")
     if pointwise:
-        from merlin.targetgen.original_pointwise_stress import observe
+        from merlin.development.targetgen.original_pointwise_stress import observe
 
         stress = observe(contract, inputs)
     else:
@@ -161,7 +161,7 @@ def _record(standard_ir, document, forbidden, probes=None):
         if source["state"] != "reference_checked" or ir["state"] != "source_reference_ir_checked":
             row["reason"] = "original complete numerical comparison or ordered upstream source ABI is unavailable"
             continue
-        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+        from merlin.development.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
 
         original_pointwise = version2 and type(contracts[index].policy) is OriginalPointwiseReferencePolicy
         measure = Q.measure_pointwise_stress if original_pointwise else Q.measure_stress
@@ -185,7 +185,7 @@ def _record(standard_ir, document, forbidden, probes=None):
     # or reference-stress allocation. Unsupported and denied rows still exist.
     for index, contract in planned.items():
         source, row = original["members"][index], rows[index]
-        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+        from merlin.development.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
 
         original_pointwise = version2 and type(contract.policy) is OriginalPointwiseReferencePolicy
         stress = (
@@ -194,7 +194,7 @@ def _record(standard_ir, document, forbidden, probes=None):
             else _stress(contract, selected, source)
         )
         if original_pointwise:
-            from merlin.targetgen.original_pointwise_stress import realized as pointwise_realized
+            from merlin.development.targetgen.original_pointwise_stress import realized as pointwise_realized
 
             realized = pointwise_realized(stress)
         else:
@@ -234,7 +234,7 @@ def _record(standard_ir, document, forbidden, probes=None):
             complete = complete and probe["state"] == "finite_probes_checked"
             realizations += [row.get("realized_stress", {}) for row in probe["members"]]
         if complete and version2 and probe and probe["owner"] is not None:
-            from merlin.targetgen.original_pointwise_stress import combined_realized
+            from merlin.development.targetgen.original_pointwise_stress import combined_realized
 
             # Scalar sources visit one element per probe. Signed coverage must
             # join real positive and negative visits across those original
@@ -292,8 +292,8 @@ def _sources(review, contexts, *, pointwise=False):
         for name in (
             __name__,
             Q.__name__,
-            "merlin.targetgen.original_operator_reference",
-            "merlin.targetgen.original_reference_values",
+            "merlin.development.targetgen.original_operator_reference",
+            "merlin.development.targetgen.original_reference_values",
             "merlin.common.jsonio",
             E.__name__,
         )
@@ -304,9 +304,9 @@ def _sources(review, contexts, *, pointwise=False):
             for name in (
                 "merlin.development.testgen.original_pointwise_semantic_probes",
                 "merlin.development.testgen.original_pointwise_stress_observer",
-                "merlin.targetgen.original_pointwise_stress",
-                "merlin.targetgen.original_pointwise_reference",
-                "merlin.targetgen.original_pointwise_sources",
+                "merlin.development.targetgen.original_pointwise_stress",
+                "merlin.development.targetgen.original_pointwise_reference",
+                "merlin.development.targetgen.original_pointwise_sources",
             )
         ]
     return tuple(

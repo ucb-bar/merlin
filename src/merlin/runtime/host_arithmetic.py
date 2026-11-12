@@ -9,7 +9,7 @@ independently and bind emitted bytes into ordinary compilation evidence.
 
 from dataclasses import dataclass
 
-from merlin.llvmlower.source_fma_batch import SourceFmaBatchContract
+from merlin.compiler.lower.model.source_fma_batch import SourceFmaBatchContract
 
 
 def _identifier(name: str) -> str:

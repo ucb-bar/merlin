@@ -74,7 +74,7 @@ def artifacts(paths: list[Path] | None = None) -> list[tuple[Path, dict]]:
 
 def verdict(found: list[tuple[Path, dict]]) -> tuple[list[str], int]:
     """``(problems, rc)`` -- pure, so a test can assert it without a tree."""
-    from merlin.targetgen.rtl.facts import validate_facts
+    from merlin.development.targetgen.rtl.facts import validate_facts
 
     problems: list[str] = []
     for path, doc in found:

@@ -3,7 +3,7 @@
 A rule such as "no hardware loop-descriptor instructions" is a statement in the closed role vocabulary
 (:mod:`merlin.analysis.instruction_roles`), never a list of instruction names: which instructions carry a role is a
 fact about the target, derived from its own RTL-derived encoding table through its declared compute
-endpoints (:func:`merlin.perf.task_instruction_evidence.target_instruction_facts`). Phase 0 derives
+endpoints (:func:`merlin.analysis.perf.task_instruction_evidence.target_instruction_facts`). Phase 0 derives
 that taxonomy once, resolves the experiment's ``prohibited_instruction_roles`` against it, and records
 the result where Phase 1 grading and Phase 2 measurement read it. Enforcement -- scanning the WHOLE
 linked program for a prohibited instruction -- is a separate owner; this module only declares and
@@ -45,8 +45,8 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
     """
     from merlin.analysis.compute_endpoints import endpoints_for
     from merlin.analysis.instruction_roles import ROLES
+    from merlin.analysis.perf.task_instruction_evidence import declared_instruction_set
     from merlin.analysis.rocc_commands import funct_table_for, policy_instruction_declarations
-    from merlin.perf.task_instruction_evidence import declared_instruction_set
 
     # The same composition ``target_instruction_facts`` makes, without requiring the target's runtime
     # backend: the taxonomy needs only the RTL-derived name table and the declared endpoint roles. The
@@ -101,7 +101,7 @@ def derive_role_taxonomy(target: str) -> dict[str, Any]:
         "by_role": by_role,
         "instructions_without_roles": unroled,
         "role_sources": list(declared.get("role_sources") or ()),
-        "derivation": "merlin.perf.task_instruction_evidence.target_instruction_facts",
+        "derivation": "merlin.analysis.perf.task_instruction_evidence.target_instruction_facts",
     }
 
 

@@ -3,10 +3,10 @@
 import hashlib
 from pathlib import Path
 
+from merlin.development.targetgen import component_program
+from merlin.development.targetgen.corpus_spec import CorpusBinding, dtype_info
+from merlin.development.targetgen.semantic_families import from_op
 from merlin.development.testgen.software_intake import IndependentSoftwareIntake
-from merlin.targetgen import component_program
-from merlin.targetgen.corpus_spec import CorpusBinding, dtype_info
-from merlin.targetgen.semantic_families import from_op
 
 SCHEMA = "merlin.phase0.source_semantics_admission.v1"
 

@@ -340,7 +340,7 @@ def validate_workload(
     This exercises the real ``merlin-materialize-interface`` pass: the module under test is whatever
     the pass emitted, not a hand-written stand-in.
     """
-    from merlin.xdsl_dialects.lowering import pipeline
+    from merlin.compiler.dialects.lowering import pipeline
 
     result = pipeline.lower_repeated_rhs_matmul(reuse=reuse, m=m, k=k, n=n)
     module = result.interface_module
@@ -364,7 +364,7 @@ def _record(verdict, **shape) -> None:
     solver ``unknown`` maps to ``unmeasured``, never to a pass.
     """
     try:
-        from merlin.xdsl_dialects.lowering import passes as P
+        from merlin.compiler.dialects.lowering import passes as P
 
         P.record_verification(
             VALIDATED_PASS,
@@ -410,14 +410,14 @@ def validate_equivalence(spec_cb: dict, agent_cb: dict, *, acc_width: int = 32, 
     The reason this exists beside :func:`validate_compilation` is a parser gap, not a new idea. A
     capsule hands its backend an ``input.interface.mlir`` written in the ``merlin_iface`` contract
     grammar, which has custom assembly that xDSL cannot parse — ``cli._load_interface`` says so in its
-    own docstring. But :func:`merlin.targetgen.contract.interface_emit.parse_interface_mlir` reads
+    own docstring. But :func:`merlin.development.targetgen.contract.interface_emit.parse_interface_mlir` reads
     that grammar into a command-buffer dict, so the specification can be brought to the same encoder
     the submission goes through. That makes every archived submission checkable without any in-tree
     lowering.
 
     Example, over an archived capsule-bench submission::
 
-        from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+        from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
         spec = parse_interface_mlir((unit / "generated/input.interface.mlir").read_text())
         agent = json.loads((unit / "generated/command_buffer.json").read_text())

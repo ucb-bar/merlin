@@ -109,7 +109,7 @@ def _operation_admission(scope):
     snapshot = bundle_snapshot._ACTIVE_VERIFICATION.get()
     if snapshot is not operation.snapshot or not bundle_snapshot._current_verification(snapshot):
         return None
-    from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import _issued_compiler_imports
 
     admission = _issued_compiler_imports()
     if admission is not scope.admission or _custody_selection(scope) != selected[4]:
@@ -133,7 +133,7 @@ class _Scope:
         self.live = True
 
     def verify(self):
-        from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+        from merlin.development.targetgen.compiler_profile_admission import active_compiler_imports
 
         admission = _operation_admission(self)
         if admission is None:
@@ -222,8 +222,8 @@ def original_emission_checks(service):
     The current common substrate issues no emission-check scope: the matching
     owner is validated and the body runs without one.
     """
-    from merlin.targetgen.common_transforms import CommonTransformService
-    from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+    from merlin.development.targetgen.common_transforms import CommonTransformService
+    from merlin.development.targetgen.compiler_profile_admission import active_compiler_imports
 
     if type(service) is not CommonTransformService:
         raise TypeError("ordinary emission checks require the exact original common service")
@@ -385,7 +385,7 @@ def _save(root, report):
 def _operation_snapshot(scope):
     """Batch pure custody reads, closing before any accepted product publication."""
     from merlin.common.bundle_snapshot import verified_snapshot_scope
-    from merlin.targetgen.common_transforms import CommonTransformService
+    from merlin.development.targetgen.common_transforms import CommonTransformService
 
     if (
         type(scope) is not _Scope
@@ -395,7 +395,7 @@ def _operation_snapshot(scope):
     ):
         raise ValueError("custody batching requires its live original emission owner")
     service = scope.service
-    from merlin.targetgen.package_runtime import active_package_executor
+    from merlin.development.targetgen.package_runtime import active_package_executor
 
     executor = active_package_executor()
     refresh = getattr(executor, "refreshed_operation_snapshot_v1", None)
@@ -581,7 +581,7 @@ def observe_object(function):
                 pending = scope.matching(source)
                 inputs = ()
                 if pending is not None:
-                    from merlin.targetgen.host_optimization_admission import _original_entry
+                    from merlin.development.targetgen.host_optimization_admission import _original_entry
 
                     entry, entry_source = _original_entry(scope.admission, values["target"], values["_build_service"])
                     if _manifest_identity(pending.package) != pending.manifest_sha256:

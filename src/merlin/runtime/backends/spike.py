@@ -120,7 +120,7 @@ def run_elf(
             raise ValueError("invalid Spike memory mapping")
         memory = [f"-m{hex(dram_base)}:{hex(mem_bytes)}"]
     cmd = [str(spike_path()), f"--isa={isa}", f"-p{harts}", *memory, str(elf)]
-    from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
+    from merlin.development.targetgen.rtl_engine_policy import simulation_runtime_slot
 
     with simulation_runtime_slot("spike", wait_timeout_s=timeout):
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)

@@ -14,7 +14,7 @@ def verify(capsule, golden):
         return {"effects": [], "scope": "no selected closed source mechanism witness"}
     import numpy as np
 
-    from merlin.targetgen.component_sources import parameters
+    from merlin.development.targetgen.component_sources import parameters
 
     attrs = operation["attributes"]
     selected = parameters({"dtype": "f32", **attrs})

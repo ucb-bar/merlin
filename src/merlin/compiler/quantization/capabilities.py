@@ -324,7 +324,7 @@ def for_target(
     target: str, *, facts: Mapping[str, Any] | None = None, prefer_activation_mode: str | None = None
 ) -> list[QuantRecipe]:
     """One recipe per compute unit that contracts, in the contract's unit order."""
-    from merlin.targetgen import readout_facet
+    from merlin.development.targetgen import readout_facet
 
     return [
         derive(facet, prefer_activation_mode=prefer_activation_mode)
@@ -346,7 +346,7 @@ def derive_candidates(
     underivable until format-specific readout evidence exists. No candidate is selected for a
     whole-model capture here; :func:`select` retains its existing behavior.
     """
-    from merlin.targetgen.compute_units import compute_units
+    from merlin.development.targetgen.compute_units import compute_units
 
     by_unit: dict[str, list[Any]] = {}
     for facet in facets:
@@ -471,10 +471,10 @@ def candidates_for_target(
     prefer_activation_mode: str | None = None,
 ) -> list[QuantCandidate]:
     """Target-facing candidate inventory; it does not change capture recipe selection."""
-    from merlin.targetgen import readout_facet
+    from merlin.development.targetgen import readout_facet
 
     if contract is None:
-        from merlin.targetgen.target_experiment import load_capability_manifest
+        from merlin.development.targetgen.target_experiment import load_capability_manifest
 
         contract = load_capability_manifest(target).contract
     facets = readout_facet.for_target(target, contract=contract, facts=facts)

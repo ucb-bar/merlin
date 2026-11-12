@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 
 from merlin.development.backend.context import InvocationContext
-from merlin.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
+from merlin.development.targetgen.rtl_engine_policy import ELABORATED_RTL as _ELABORATED_RTL
 
 _NEUTRAL_SIM = "contract"
 #: The selection a self-check makes when no single engine is named: every tier the official grade
@@ -61,7 +61,7 @@ def allowed_sims(context: InvocationContext) -> tuple[str, ...]:
     # separately. Fail CLOSED: if the policy cannot be imported, offer only what was always offered --
     # never widen the allowlist on an error path (this list is load-bearing isolation).
     try:
-        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+        from merlin.development.targetgen.rtl_engine_policy import ENGINE_PRIORITY
     except Exception:  # noqa: BLE001 -- no policy module: keep the historical ladder, do not widen
         engines = ("vcs", "verilator")
     else:
@@ -125,8 +125,8 @@ def cert_sim(cert_tier: str, *, context: InvocationContext) -> str | None:
     if allowed == (_NEUTRAL_SIM,):
         return _NEUTRAL_SIM
     try:
-        from merlin.targetgen.runner_config import runner_config_from_manifest
-        from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
+        from merlin.development.targetgen.runner_config import runner_config_from_manifest
+        from merlin.development.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         cfg = runner_config_from_manifest(load_capability_manifest(te.target))
@@ -146,7 +146,7 @@ def cert_sim(cert_tier: str, *, context: InvocationContext) -> str | None:
         # a round with nothing to promote. Resolve the sentinel through the SAME availability policy the
         # contract comment names, so the fidelity is declared once and the engine chosen once.
         if sim == _ELABORATED_RTL:
-            from merlin.targetgen.oracle_policy import chipyard_l3_selection
+            from merlin.development.targetgen.oracle_policy import chipyard_l3_selection
 
             sim = str((chipyard_l3_selection(te.target) or {}).get("engine") or "").strip() or None
     except Exception:  # noqa: BLE001 -- unresolvable map: no promotion, and the caller says so

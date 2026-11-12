@@ -15,7 +15,7 @@ required_top_level_fields:
   - events
   - handles
   - metrics
-producer: merlin.targetgen.synthesize.runtime_adapter_plan
+producer: merlin.development.targetgen.synthesize.runtime_adapter_plan
 consumers:
   - src/merlin/runtime/native (simulator + backends)
   - merlin.python.merlin.analysis.dse.search

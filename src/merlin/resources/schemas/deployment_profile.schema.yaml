@@ -11,7 +11,7 @@ required_top_level_fields:
   - supported_physical_egress
 producer: host deployment preparation
 consumers:
-  - merlin.perf.deployment_admissibility
+  - merlin.analysis.perf.deployment_admissibility
 validation_notes: >-
   schema must be deployment_profile_v1. artifacts contains contract, config, runtime_header, and
   bitstream records with path and sha256. supported_physical_egress is a list of encoding and

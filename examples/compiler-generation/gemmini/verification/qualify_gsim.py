@@ -18,8 +18,8 @@ from pathlib import Path
 
 from merlin.common.digest import sha256_file
 from merlin.development.backend.optimization import gsim_certificate as certificate
+from merlin.development.targetgen import gsim_emulator
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen import gsim_emulator
 
 
 def main() -> None:

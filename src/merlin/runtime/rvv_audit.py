@@ -381,7 +381,7 @@ def _objdump(toolchain_root: Path | None = None) -> str | None:
             if p.is_file():
                 return str(p)
     try:
-        from merlin.llvmlower import toolchain
+        from merlin.compiler.lower.model import toolchain
 
         repo_objdump = Path(toolchain.objdump())
         if repo_objdump.is_file():

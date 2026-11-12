@@ -28,9 +28,9 @@ def _successful_expected_refusal(result: dict) -> bool:
 
 def _operator_structural_feedback(result, capsule, *, target):
     """Qualification requires original applicable structure, independently of numerical screens."""
-    from merlin.targetgen.expected_refusal import validated_result
-    from merlin.targetgen.owned_host_leaf_execution import qualified_host_result, selected_host_leaf
-    from merlin.targetgen.trace_check import requirements_complete
+    from merlin.development.targetgen.expected_refusal import validated_result
+    from merlin.development.targetgen.owned_host_leaf_execution import qualified_host_result, selected_host_leaf
+    from merlin.development.targetgen.trace_check import requirements_complete
 
     if not isinstance(capsule, dict) or capsule.get("name") != result.get("capsule"):
         return {"status": "unavailable", "component": "original_capsule_binding"}
@@ -58,7 +58,7 @@ def _operator_structural_feedback(result, capsule, *, target):
 
 def _operator_feedback_state(result, capsule, *, target, barrier_status):
     """Keep numerical screens separate from original applicable qualification."""
-    from merlin.targetgen.expected_refusal import validated_result
+    from merlin.development.targetgen.expected_refusal import validated_result
 
     refusal = isinstance(capsule, dict) and validated_result(capsule, result)
     structural = _operator_structural_feedback(result, capsule, target=target)
@@ -353,7 +353,7 @@ def _offload_census(
     capsules -- no golden, no reference value, no simulator.
     """
 
-    from merlin.targetgen import offload_census as OC
+    from merlin.development.targetgen import offload_census as OC
 
     try:
         report = OC.census_of_corpus(

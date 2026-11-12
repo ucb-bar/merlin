@@ -2,8 +2,8 @@
 
 ## What the grader builds from your lowered IR
 
-The steps below come from `merlin.targetgen.contract.compile` (the object and link steps),
-`merlin.targetgen.contract.stack_usage` (the preflight) and `merlin.llvmlower.codegen` (the compiler
+The steps below come from `merlin.development.targetgen.contract.compile` (the object and link steps),
+`merlin.development.targetgen.contract.stack_usage` (the preflight) and `merlin.compiler.lower.model.codegen` (the compiler
 call). All files land in the case's `generated/` directory.
 
 | Step | Input to output | Notes |

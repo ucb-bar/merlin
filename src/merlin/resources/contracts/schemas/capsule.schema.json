@@ -132,7 +132,7 @@
           "dtype": {
             "type": "string",
             "minLength": 1,
-            "description": "Element type of this tensor. Not a fixed enum: the numeric-format vocabulary is data, declared in merlin/schemas/quant_formats.registry.yaml (where a new format -- MX, NVFP4, a GGUF k-quant -- is an entry, not a code change), so a list copied here goes stale the moment a target brings a format the list predates. Validity is enforced by merlin.targetgen.contract.schemas.validate_capsule against that registry plus plain machine accumulator widths, and an unknown token is still a hard ContractViolation."
+            "description": "Element type of this tensor. Not a fixed enum: the numeric-format vocabulary is data, declared in merlin/schemas/quant_formats.registry.yaml (where a new format -- MX, NVFP4, a GGUF k-quant -- is an entry, not a code change), so a list copied here goes stale the moment a target brings a format the list predates. Validity is enforced by merlin.development.targetgen.contract.schemas.validate_capsule against that registry plus plain machine accumulator widths, and an unknown token is still a hard ContractViolation."
           },
           "layout": {
             "type": "string"
@@ -218,7 +218,7 @@
             "activation_matmul",
             "model"
           ],
-          "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
+          "description": "The workload the capsule asks the backend to compile. Unlike dtype this IS a closed set, because an op is only expressible if the tooling can build its interface MLIR and produce its golden -- the vocabulary is code, not data. Its sources are merlin.development.targetgen.corpus_spec.BUILDERS (capsule + interface MLIR) and capsule_golden._recompute_golden (integer goldens; float ops carry an independent golden.yaml instead). Adding a builder without adding it here rejects the whole corpus at load, which is why merlin/tests/targetgen/test_capsule_vocabulary.py pins this list against BUILDERS."
         },
         "attributes": {
           "type": "object",
@@ -304,7 +304,7 @@
         "outcome": {
           "type": "string",
           "enum": ["compute", "refuse"],
-          "description": "What a correct backend does with this capsule. Absent or 'compute': emit a program and match the golden. 'refuse': the operation needs something the target's evidence says it cannot perform under this capsule's placement, so the only correct answer is the backend's stated decline; an emitted program fails as MUST_REFUSE_VIOLATED (merlin.targetgen.expected_refusal)."
+          "description": "What a correct backend does with this capsule. Absent or 'compute': emit a program and match the golden. 'refuse': the operation needs something the target's evidence says it cannot perform under this capsule's placement, so the only correct answer is the backend's stated decline; an emitted program fails as MUST_REFUSE_VIOLATED (merlin.development.targetgen.expected_refusal)."
         },
         "refusal": {
           "type": "object",
@@ -338,7 +338,7 @@
     "max_oracle_tier": {
       "type": "string",
       "enum": ["L0", "L1", "L2", "L3", "L4", "L5"],
-      "description": "Deepest oracle tier this capsule will be graded at -- a per-capsule CEILING. Tiers deeper than this are recorded as `skipped` with a reason naming the ceiling and the budget behind it; the key is NEVER omitted, because a tier with no record is not evidence (not_run_is_not_pass) and an absent key reads as though the capsule was never graded. Exists because certification cost is measured and grows with a capsule's depth (merlin.targetgen.cert_cost fits it per target/tier/engine from the runs already on disk), so a capsule too expensive to certify is screened at the cheap tier instead of silently costing hours. A capped capsule SHOULD also declare `extends`, naming the sibling that carries the deeper certification; a ceiling without one is a strictly weaker claim and is recorded as such. Enforced at grade time by merlin.targetgen.tier_policy.oracle_ceiling."
+      "description": "Deepest oracle tier this capsule will be graded at -- a per-capsule CEILING. Tiers deeper than this are recorded as `skipped` with a reason naming the ceiling and the budget behind it; the key is NEVER omitted, because a tier with no record is not evidence (not_run_is_not_pass) and an absent key reads as though the capsule was never graded. Exists because certification cost is measured and grows with a capsule's depth (merlin.development.targetgen.cert_cost fits it per target/tier/engine from the runs already on disk), so a capsule too expensive to certify is screened at the cheap tier instead of silently costing hours. A capped capsule SHOULD also declare `extends`, naming the sibling that carries the deeper certification; a ceiling without one is a strictly weaker claim and is recorded as such. Enforced at grade time by merlin.development.targetgen.tier_policy.oracle_ceiling."
     },
     "max_timing_tier": {
       "type": "string",
@@ -522,7 +522,7 @@
           "description": "What running this member costs, and what it is allowed to cost.",
           "properties": {
             "projected_cycles": {
-              "description": "The cycle CEILING this capsule declares, or a word saying it declares none. `merlin.perf.cost_plane.declared_ceiling` reads exactly this field and requires an integer -- a word resolves to no ceiling, so the cost assessment comes back incomplete and the plane can never reject a slow run, only a physically impossible one. Measured across the corpus: 113 of 113 capsules carrying the field wrote `derived_at_preflight`, none wrote an integer, and no code anywhere reads that string. The word vocabulary is therefore closed (see `generate_corpus._NO_CYCLE_BOUND`) so that having no bound is a declaration rather than an accident.",
+              "description": "The cycle CEILING this capsule declares, or a word saying it declares none. `merlin.analysis.perf.cost_plane.declared_ceiling` reads exactly this field and requires an integer -- a word resolves to no ceiling, so the cost assessment comes back incomplete and the plane can never reject a slow run, only a physically impossible one. Measured across the corpus: 113 of 113 capsules carrying the field wrote `derived_at_preflight`, none wrote an integer, and no code anywhere reads that string. The word vocabulary is therefore closed (see `generate_corpus._NO_CYCLE_BOUND`) so that having no bound is a declaration rather than an accident.",
               "anyOf": [
                 {
                   "type": "integer",
@@ -536,7 +536,7 @@
                     "unbounded",
                     "not_a_cycle_observable"
                   ],
-                  "description": "This member declares no ceiling, and which reason applies (merlin.perf.cycle_bound.NO_CYCLE_BOUND): derived at assessment, a law-fitting point with no budget, or a property read from the emitted stream rather than a cycle count."
+                  "description": "This member declares no ceiling, and which reason applies (merlin.analysis.perf.cycle_bound.NO_CYCLE_BOUND): derived at assessment, a law-fitting point with no budget, or a property read from the emitted stream rather than a cycle count."
                 }
               ]
             }

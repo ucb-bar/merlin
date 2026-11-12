@@ -90,7 +90,7 @@ def materialize_level(config: dict[str, object]) -> None:
             raise ValueError(f"{selected} requires {key}: {expected}, got {actual!r}")
     bundle = config.get("bundle")
     if isinstance(bundle, str):
-        from merlin.targetgen.generate_bundles import _ALL_ARMS
+        from merlin.development.targetgen.generate_bundles import _ALL_ARMS
 
         matches = [name for name, stem in _ALL_ARMS.items() if bundle.startswith(stem + "_")]
         if matches:
@@ -115,7 +115,7 @@ def level_for_phase1(config: Mapping[str, object]) -> str | None:
     if not isinstance(arm, str) or not isinstance(treatment, str):
         return None
     if isinstance(bundle, str):
-        from merlin.targetgen.generate_bundles import _ALL_ARMS
+        from merlin.development.targetgen.generate_bundles import _ALL_ARMS
 
         matches = [name for name, stem in _ALL_ARMS.items() if bundle.startswith(stem + "_")]
         if matches:

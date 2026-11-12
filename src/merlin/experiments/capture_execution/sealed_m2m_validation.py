@@ -145,7 +145,7 @@ def _validate_snapshots(
 def _materialized(
     output: Path, source: Path, output_mount: Path, *, worker_member: str = "worker.py"
 ) -> dict[str, Any]:
-    from merlin.targetgen.application_inventory import verify_capture_receipt
+    from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
     from .sealed_m2m import (
         SealedM2MError,
@@ -194,7 +194,7 @@ def _materialized(
             raise SealedM2MError(f"M2M source digest differs: {name}")
     reference_sources = (payload.get("tool") or {}).get("reference_sources")
     if reference_sources is not None:
-        member = "merlin/targetgen/_dynamic_integer_reference.py"
+        member = "merlin/development/targetgen/_dynamic_integer_reference.py"
         if (
             not isinstance(reference_sources, dict)
             or set(reference_sources) != {member}
@@ -271,7 +271,7 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
 def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
     """Use the same byte-bound recipe/trace census as the application inventory."""
     from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
-    from merlin.targetgen.frontend_trace import loads_frontend_trace
+    from merlin.development.targetgen.frontend_trace import loads_frontend_trace
 
     from .sealed_m2m import (
         SealedM2MError,

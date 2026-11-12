@@ -12,6 +12,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import corpus_spec as CS  # noqa: E402
+from merlin.development.targetgen.target_experiment import load_target_experiment  # noqa: E402
 from merlin.development.testgen.capture_recipe import _prepare_model_capture_entry, _with_selected_model_recipe
 from merlin.development.testgen.claim_boundary import assert_no_claim_capsules, held_out_models
 from merlin.development.testgen.generation_paths import (
@@ -40,8 +42,6 @@ from merlin.development.testgen.writer import (
     _write_capsule,
     _write_capsule_source,
 )
-from merlin.targetgen import corpus_spec as CS  # noqa: E402
-from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 
 def _select_generation_scope(entries: list[dict], scope: str) -> tuple[list[dict], list[dict]]:
@@ -81,7 +81,7 @@ def _screen_selected_entry(
 
 
 def _descriptor_for(target: str) -> Path:
-    from merlin.targetgen.corpora import standard_descriptor_path
+    from merlin.development.targetgen.corpora import standard_descriptor_path
 
     return standard_descriptor_path(target)
 
@@ -96,7 +96,7 @@ def _ensure_contract_on_path(descriptor: Path) -> None:
     tc = (raw.get("hardware_spec") or {}).get("target_contract")
     if not tc:
         return
-    from merlin.targetgen.target_registry import effective_target_path
+    from merlin.development.targetgen.target_registry import effective_target_path
 
     pkg = (repo_root() / tc).resolve().parent.parent  # .../contracts/target_contract.yaml -> package root
     # Prepend to the EFFECTIVE selection: an unset variable means the in-repo support default, and
@@ -717,8 +717,8 @@ def generate_target(
         if evidence is None:
             w = staged_write()
         else:
-            from merlin.targetgen.rtl.facts import observed_facts
-            from merlin.targetgen.target_registry import observed_contract
+            from merlin.development.targetgen.rtl.facts import observed_facts
+            from merlin.development.targetgen.target_registry import observed_contract
 
             captured_path = artifact_root / "hardware" / "circt" / "facts.json"
             with (
@@ -1336,8 +1336,8 @@ def _instruction_policy(target: str, roles: list[str], evidence, rtl_facts) -> d
         return resolve_policy([], {"status": "not_derived"})
     if evidence is None:
         return resolve_policy(roles, derive_role_taxonomy(target))
-    from merlin.targetgen.rtl.facts import observed_facts
-    from merlin.targetgen.target_registry import observed_contract
+    from merlin.development.targetgen.rtl.facts import observed_facts
+    from merlin.development.targetgen.target_registry import observed_contract
 
     with (
         observed_contract(target, evidence.contract),

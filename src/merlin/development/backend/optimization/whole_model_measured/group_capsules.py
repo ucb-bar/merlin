@@ -3,9 +3,9 @@ cell machine's real measurer (:class:`GroupProgramMeasurer`).
 
 A per-group perf capsule is the whole-model program with one step: the group the statement put to the
 package, at model shapes, on the values the model hands it, graded against the reference recomputed
-from those inputs (:func:`merlin.perf.whole_model_group_timing.build_group_programs`).  The REFERENCE
+from those inputs (:func:`merlin.analysis.perf.whole_model_group_timing.build_group_programs`).  The REFERENCE
 arm is the same one-step program with the target's library answering the group
-(:func:`~merlin.perf.whole_model_group_timing.build_reference_group_programs`), so the two arms of one
+(:func:`~merlin.analysis.perf.whole_model_group_timing.build_reference_group_programs`), so the two arms of one
 group differ only in who answered it.
 
 Each arm's recipe (machine, header, harness overrides, instruction rule, corpus binding) is the
@@ -146,12 +146,12 @@ def build_arm_programs(
 ) -> dict[int, dict[str, Any]]:
     """Each group's one-step program for ``arm``: ``{group: record}`` (plus ``arm``).  The package arm
     needs ``package_dir`` and asks the package for ``groups`` alone; the reference arm ignores it.
-    ``exactness`` (a :class:`merlin.perf.exactness.Contract`) is the contract BOTH arms' groups are graded
+    ``exactness`` (a :class:`merlin.analysis.perf.exactness.Contract`) is the contract BOTH arms' groups are graded
     under; without one each group is graded by the comparison its op implies."""
     from merlin.development.backend.optimization.whole_model_measured.forms import contract_of_entry
 
     of_entry = contract_of_entry(exactness) if exactness is not None else None
-    from merlin.perf import whole_model_group_timing as T
+    from merlin.analysis.perf import whole_model_group_timing as T
 
     if arm.name == ARM_PACKAGE:
         if package_dir is None:
@@ -213,7 +213,7 @@ def _sealed_scan(record: Mapping[str, Any], arm: Arm, *, target: str) -> dict[st
 def isa_scan(record: Mapping[str, Any], *, target: str, roles: Sequence[str]) -> dict[str, Any]:
     """The instruction rule over the WHOLE one-group ELF (kernel, library and host code alike), with the
     per-group census the same pass produces."""
-    from merlin.perf import isa_prohibition as ISA
+    from merlin.analysis.perf import isa_prohibition as ISA
 
     if record.get("refusal") or not record.get("elf"):
         return {"clean": False, "error": "no program to scan", "summary": {}}
@@ -249,7 +249,7 @@ def time_on_gsim(
     emulator: str | Path | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Every labelled program on the elaborated-RTL emulator: ``{label: row}`` (a ranking measurement)."""
-    from merlin.perf import whole_model_group_timing as T
+    from merlin.analysis.perf import whole_model_group_timing as T
 
     labels = sorted(programs)
     keyed = {index: dict(programs[label]) for index, label in enumerate(labels)}
@@ -317,8 +317,8 @@ def measure_on_gsim(
     ``require_package`` refuses, BEFORE any emulator time, a package-arm program the package does not
     answer, quoting the package's own reason.  ``exactness`` is the contract both arms are graded under
     (the default -- every form exact, an op's own declared bound kept -- when None), recorded either way."""
+    from merlin.analysis.perf import exactness as EX
     from merlin.development.backend.optimization.whole_model_measured import gates as G
-    from merlin.perf import exactness as EX
 
     exactness = exactness if exactness is not None else EX.Contract.default(target=target)
     out = Path(out)
@@ -424,9 +424,9 @@ def measure_on_gsim(
 def efficiency_row(
     record: Mapping[str, Any], row: Mapping[str, Any], diagnostics: Mapping[str, Any], *, target: str, out: Path
 ) -> dict[str, Any]:
-    """One correct package program's efficiency diagnostics (:mod:`merlin.perf.group_efficiency`): what
+    """One correct package program's efficiency diagnostics (:mod:`merlin.analysis.perf.group_efficiency`): what
     it issued per execution against its derived roofline -- or why no census could be taken."""
-    from merlin.perf import group_efficiency as E
+    from merlin.analysis.perf import group_efficiency as E
 
     group = str(record["group"])
     roofline = (diagnostics.get("rooflines") or {}).get(group)
@@ -483,7 +483,7 @@ class GroupProgramMeasurer:
 
     def contract(self):
         """The exactness contract the cell's programs are graded under (carried by value on the spec)."""
-        from merlin.perf import exactness as EX
+        from merlin.analysis.perf import exactness as EX
 
         return EX.Contract.from_value(self.spec.get("exactness"), target=self.target)
 

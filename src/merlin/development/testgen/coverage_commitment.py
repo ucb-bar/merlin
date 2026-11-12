@@ -409,7 +409,7 @@ def build_commitment(
     if spec.get("status") != "reviewed":
         blockers.append({"component": "software_spec", "reason": "software declarations are not reviewed"})
     if document.get("schema") == INPUT_SCHEMA:
-        from merlin.targetgen.spec_fact_drift import blockers as drift_blockers
+        from merlin.development.targetgen.spec_fact_drift import blockers as drift_blockers
 
         # A reviewed spec can still forbid what the facts establish, or claim what they refuse.
         blockers.extend(drift_blockers(document.get("spec_fact_drift")))
@@ -622,7 +622,7 @@ def build_commitment(
             # Only an actual selected lane crossing can be screened against
             # typed transfer declarations. An unknown endpoint is not evidence
             # that the declaration is absent.
-            from merlin.targetgen.software_spec import screen_transfer_contract
+            from merlin.development.targetgen.software_spec import screen_transfer_contract
 
             route = screen_transfer_contract(
                 spec,
@@ -910,7 +910,7 @@ def _selected_program(capsule: dict, directory: Path) -> Path | None:
 def verify_cohort_binding(report: dict, inputs: dict | None, roots, *, contract: Path | None = None) -> None:
     """Verify a frozen report's actual bytes without recapturing or rebuilding it."""
     from merlin.development.backend.source_inputs import fingerprint
-    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.capsule_common import discover_capsules
 
     if report.get("schema") != SCHEMA or report.get("inputs_sha256") != (
         _digest(inputs) if inputs is not None else None
@@ -944,7 +944,7 @@ def admitted_source_roots(source_roots, public_root: Path, *, contract: Path | N
     Workload readiness instead binds the source program and its original capsule
     bytes, while the ordinary materializer and snapshot bind the execution view.
     """
-    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.capsule_common import discover_capsules
 
     admitted = discover_capsules(public_root, labels={"public", "dev"}, contract=contract)
     source = discover_capsules(source_roots, labels={"public", "dev"}, contract=contract)
@@ -963,9 +963,9 @@ def observe_cohort(
 ) -> dict:
     """Inventory only the selected admitted files, without running a compiler or Torch."""
     from merlin.development.backend.source_inputs import fingerprint
+    from merlin.development.targetgen.application_inventory import application_demand_inventory
+    from merlin.development.targetgen.capsule_common import discover_capsules
     from merlin.experiments.corpus.coverage import selected_cohort_coverage
-    from merlin.targetgen.application_inventory import application_demand_inventory
-    from merlin.targetgen.capsule_common import discover_capsules
 
     roots = [Path(roots)] if isinstance(roots, (str, Path)) else list(roots)
     capsules = discover_capsules(roots, labels={"public", "dev"}, contract=contract)
@@ -980,7 +980,7 @@ def observe_cohort(
             row["program_sha256"] = sha256_bytes(program.read_bytes())
             try:
                 if "linalg_mlir" not in capsule:
-                    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+                    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
                     # The frozen contract grammar has its own canonical parser.
                     # It is not a source model and cannot lend Linalg signatures

@@ -146,7 +146,7 @@ def _capture_compiler_source(package_dir, generated):
     """Retain the actual compiler before lowering, without generated build state."""
     from merlin.common.tree_hash import hash_tree
     from merlin.development.backend.optimization.retained_revisions import source_inventory
-    from merlin.targetgen import executed_program
+    from merlin.development.targetgen import executed_program
 
     # A reused build directory still holds an earlier invocation's executed programs; the receipt
     # finished below names only what this invocation's tiers execute.
@@ -218,11 +218,11 @@ def _finish_compiler_source(captured, generated):
     """Bind a stable retained compiler to this invocation's emitted artifacts.
 
     ``executed_programs`` lists, per simulator run, the exact ELF, caller and kernel object that engine
-    executed (:mod:`merlin.targetgen.executed_program`); ``artifacts`` names only the bytes left in place
+    executed (:mod:`merlin.development.targetgen.executed_program`); ``artifacts`` names only the bytes left in place
     afterwards, which are the last tier's."""
     from merlin.common.digest import sha256_file
     from merlin.common.tree_hash import hash_tree
-    from merlin.targetgen import executed_program
+    from merlin.development.targetgen import executed_program
 
     if captured is None:
         return None
@@ -296,7 +296,7 @@ def _pin_model_capsule(capsule: dict, destination: Path) -> dict:
     import shutil
     import tempfile
 
-    from merlin.targetgen.native_model_execution import _digest
+    from merlin.development.targetgen.native_model_execution import _digest
 
     interface = Path(capsule.get("interface_mlir", "capsule.interface.mlir"))
     if interface.is_absolute() or ".." in interface.parts:

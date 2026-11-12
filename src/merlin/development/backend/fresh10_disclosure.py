@@ -67,7 +67,8 @@ def _word_end(text, literal, *, start_boundary=False):
 
 def _library_text(text):
     if any(
-        _word_end(text, name) for name in ("merlin.transforms", "merlin.compiler.kernel_ir", "merlin.compiler.schedule")
+        _word_end(text, name)
+        for name in ("merlin.compiler.transforms", "merlin.compiler.kernel_ir", "merlin.compiler.schedule")
     ):
         return True
     if any(
@@ -91,7 +92,7 @@ def _library_text(text):
 def _cca_text(text):
     return (
         _word_end(text, "CCA", start_boundary=True)
-        or _word_end(text, "merlin.mining")
+        or _word_end(text, "merlin.analysis.mining")
         or any(name in text for name in ("cca_tools", "cca_spine", "reference-analysis", "reference_analysis"))
     )
 

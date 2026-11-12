@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.common.cpu_pool import AUTHOR, cpu_priority
 from merlin.common.paths import repo_root
 from merlin.development.backend.optimization import campaign as PC
@@ -22,8 +21,9 @@ from merlin.development.backend.optimization.broker_evidence import _is_sha256
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
 from merlin.development.backend.optimization.contracts import sha256_file as _sha256_file
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox import host_surfaces as HS
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import host_surfaces as HS
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)

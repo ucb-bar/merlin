@@ -296,7 +296,7 @@ def case_operation(declaration) -> dict | None:
     if not isinstance(declaration, dict):
         return None
     from merlin.development.backend.feedback import shape_classes
-    from merlin.targetgen import semantic_families as sf
+    from merlin.development.targetgen import semantic_families as sf
 
     operation = declaration.get("operation") if isinstance(declaration.get("operation"), dict) else {}
     attrs = operation.get("attributes") if isinstance(operation.get("attributes"), dict) else {}

@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from merlin.targetgen import gsim_emulator
+from merlin.development.targetgen import gsim_emulator
 
 
 def _sha(path) -> str:

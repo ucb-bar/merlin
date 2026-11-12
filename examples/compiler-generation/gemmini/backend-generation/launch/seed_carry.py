@@ -301,7 +301,7 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
     executable has those bytes (the executable itself, else the digest its readback build recorded:
     retention keeps the decoded stream longer than the executable)."""
     from merlin.development.backend.feedback import fast_estimate as FE
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
     run_dir = Path(run_dir)
     ledger = _json(run_dir / FE.LEDGER) or {}

@@ -6,9 +6,9 @@ is not heterogeneous system topology, coherence or execution admission.
 
 from __future__ import annotations
 
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval, GlobalPlan, verify_global_plan
 from merlin.compiler.partition.semantic import outline_semantic_regions, semantic_dispatch
-from merlin.semantic_compiler.target_binding import NativeCompilationError
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval, GlobalPlan, verify_global_plan
+from merlin.compiler.semantic.target_binding import NativeCompilationError
 
 
 def select_application_plan(source, alternatives, *, max_states=10_000):

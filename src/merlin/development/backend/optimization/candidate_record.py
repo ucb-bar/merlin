@@ -154,7 +154,7 @@ def replicate_schedule(performance: object, requested: int | None) -> tuple[str,
     schedule at or above it. A declaration that states neither is refused -- a count chosen here
     would be this stage's opinion about how many measurements the family's band needs.
     """
-    from merlin.perf import claim_reach
+    from merlin.analysis.perf import claim_reach
 
     try:
         contract = claim_reach.replicate_contract(performance if isinstance(performance, Mapping) else {})
@@ -517,7 +517,7 @@ def _validate_audit_requalification(document: Mapping[str, Any]) -> None:
 
 def verify_sandbox_containment_evidence(sandbox: Mapping[str, Any], *, require_present: bool = True) -> None:
     """Check recorded operability and deny-rule coverage without upgrading historical evidence."""
-    from merlin.targetgen.sandbox import preflight as sandbox_preflight  # noqa: PLC0415
+    from merlin.development.targetgen.sandbox import preflight as sandbox_preflight  # noqa: PLC0415
 
     probe = sandbox.get("preflight")
     if probe is None and not require_present and "dropped_declarations" not in sandbox:

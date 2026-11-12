@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING, Protocol
 
 import yaml
 
-from merlin.benchharness import repo_sha
 from merlin.common.paths import resolve_grant
 from merlin.development.backend import author_subagents as AS
 from merlin.development.backend import authoring_conformance as AC
@@ -41,12 +40,13 @@ from merlin.development.backend.context import InvocationContext, readback_recor
 from merlin.development.backend.options import RunOptions
 from merlin.development.backend.providers import codex_context as CTX
 from merlin.development.backend.workspaces import select_workspace_root
-from merlin.targetgen.sandbox import bwrap as _BWS
-from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.sandbox import bwrap as _BWS
+from merlin.development.targetgen.target_experiment import load_target_experiment
+from merlin.evaluation.harness import repo_sha
 
 if TYPE_CHECKING:
     from merlin.development.backend.task_staging import TaskStagingConfig
-    from merlin.targetgen.compiler_library import CompilerLibrarySelection
+    from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -390,7 +390,7 @@ def task_scope(
     te, sandbox: str, *, repo: Path, public_roots=None, hidden_roots=None, contract: Path | None = None
 ) -> dict:
     """Derive non-vacuous task scope using the selected policy and hidden views."""
-    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.capsule_common import discover_capsules
 
     contract = contract if contract is not None else resolve_grant("merlin/contract", root=repo)
     public = discover_capsules(
@@ -424,8 +424,8 @@ def model_python_selection(
     operator-owned value here before authoring; a sibling checkout is not runtime
     authority for an installed Phase 1 invocation.
     """
+    from merlin.development.targetgen.capsule_common import discover_capsules
     from merlin.runtime.modelinputs import file_sha256
-    from merlin.targetgen.capsule_common import discover_capsules
 
     contract = contract if contract is not None else resolve_grant("merlin/contract", root=repo)
     public = discover_capsules(
@@ -600,13 +600,13 @@ def validate_options(a: RunOptions) -> int | None:
         # user-namespace setup. Refuse before snapshotting a large corpus or
         # launching an agent, rather than reporting the agent's empty work as a
         # model failure.
-        from merlin.targetgen.sandbox.preflight import SandboxUnavailable, require_working_sandbox
+        from merlin.development.targetgen.sandbox.preflight import SandboxUnavailable, require_working_sandbox
 
         try:
             require_working_sandbox(context="Phase 1 agent rounds run inside bwrap")
         except SandboxUnavailable as exc:
             print(f"REFUSING: {exc}", file=sys.stderr)
-            print("  probe it directly: python -m merlin.targetgen.sandbox.preflight", file=sys.stderr)
+            print("  probe it directly: python -m merlin.development.targetgen.sandbox.preflight", file=sys.stderr)
             return 4
     return None
 
@@ -648,7 +648,7 @@ def _prepare(
     refusal = validate_options(a)
     if refusal is not None:
         return refusal
-    from merlin.targetgen.sandbox.preflight import SnapshotGuardUnavailable, require_snapshot_guards
+    from merlin.development.targetgen.sandbox.preflight import SnapshotGuardUnavailable, require_snapshot_guards
 
     try:
         _guard_preflight = require_snapshot_guards()
@@ -665,7 +665,7 @@ def _prepare(
         return load_target_experiment(context.descriptor)
 
     bundle = yaml.safe_load(request.bundle_manifest.read_text())
-    from merlin.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.tool_profile import verify_tool_profile
 
     if (a.preflight_only or a.codex_canary) and (not isinstance(bundle, dict) or bundle.get("bundle_id") != a.bundle):
         raise ValueError("preflight bundle identity differs from the explicitly selected manifest")

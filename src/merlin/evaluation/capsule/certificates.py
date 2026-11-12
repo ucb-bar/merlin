@@ -8,13 +8,13 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from merlin.development.backend.feedback import setup_timing as _host_timing
+from merlin.development.targetgen import capsule_golden as CG
+from merlin.development.targetgen import completion_order_gate as _CO_GATE
+from merlin.development.targetgen import seeded_grade as _seeded_grade
+from merlin.development.targetgen import tier_cache as _TC
+from merlin.development.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
 from merlin.evaluation.capsule.tier import TierResult as TierResult
 from merlin.runtime.backends import base as _backends_mod
-from merlin.targetgen import capsule_golden as CG
-from merlin.targetgen import completion_order_gate as _CO_GATE
-from merlin.targetgen import seeded_grade as _seeded_grade
-from merlin.targetgen import tier_cache as _TC
-from merlin.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
 
 _PREPARED_EXECUTION_OBSERVER = ContextVar("capsule_prepared_execution_observer", default=None)
 
@@ -34,7 +34,7 @@ def _prepared_tier_reuse(
     screen = first and _seeded_grade.screen_carry(capsule_name, tier)
 
     def observe(elf):
-        from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+        from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
         if Path(elf).resolve() != (Path(generated) / PACKAGE_ELF_NAME).resolve():
             return
@@ -62,12 +62,12 @@ def _prepared_tier_reuse(
 def _order_after_certificate(
     target, cfg, tiers, trace, generated, *, gold, policy, gsource, trigger=None, readback_outputs=()
 ):
-    """The opt-in memory-order tier (:mod:`merlin.targetgen.load_order`), judged by this capsule's golden.
+    """The opt-in memory-order tier (:mod:`merlin.development.targetgen.load_order`), judged by this capsule's golden.
 
     A reordered run is held to exactly the standard the certificate was: the capsule's own comparison
     under its own policy, read through the target backend's console reader when it has one."""
-    from merlin.targetgen import elf_lanes as _EL
-    from merlin.targetgen import load_order as _LO
+    from merlin.development.targetgen import elf_lanes as _EL
+    from merlin.development.targetgen import load_order as _LO
 
     def _parse(text):
         try:
@@ -106,8 +106,8 @@ def _clear_stale_executable(generated) -> None:
     answers all of them with the wrong program. Removing it costs nothing: the adapter that needs one
     rebuilds it, deterministically, from this run's own lowering.
     """
-    from merlin.targetgen import build_cache as _BC
-    from merlin.targetgen import elf_lanes as _EL
+    from merlin.development.targetgen import build_cache as _BC
+    from merlin.development.targetgen import elf_lanes as _EL
 
     try:
         (Path(generated) / _EL.PACKAGE_ELF_NAME).unlink()
@@ -141,7 +141,7 @@ def run_executables(generated) -> tuple:
     The whole directory is walked rather than short-circuiting on the known name: a target may produce
     both, and listing fifteen files costs nothing next to being wrong about what ran.
     """
-    from merlin.targetgen import elf_lanes as _EL
+    from merlin.development.targetgen import elf_lanes as _EL
 
     root = Path(generated)
     found = []
@@ -174,7 +174,7 @@ def _tier_certificate_key(
     """
     executables = run_executables(generated)
     if simulation_context is not None:
-        from merlin.targetgen.simulation_certificate import key
+        from merlin.development.targetgen.simulation_certificate import key
 
         identity, instrument = key(simulation_context, executables, expected=(capsule_name, tier, target))
         return identity, instrument, "" if identity else "original simulation request identity is unavailable"
@@ -245,7 +245,7 @@ def carried_tier_result(
         return None, why
     simulated = simulation_context is not None
     if simulated:
-        from merlin.targetgen import simulation_certificate as _SC
+        from merlin.development.targetgen import simulation_certificate as _SC
 
         root = _SC.cache_root()
         hit = None if root is None else _TC.lookup(capsule_name, tier, identity, instrument, root=root, ledgers=False)
@@ -317,7 +317,7 @@ def record_tier_certificate(
             return
         arguments = {}
         if simulation_context is not None:
-            from merlin.targetgen.simulation_certificate import cache_root
+            from merlin.development.targetgen.simulation_certificate import cache_root
 
             root = cache_root()
             if root is None:

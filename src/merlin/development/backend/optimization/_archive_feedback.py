@@ -9,10 +9,10 @@ from __future__ import annotations
 import hashlib
 import tarfile
 
+from merlin.analysis.perf.candidate_source import MAX_TEXT, source_observation
 from merlin.development.backend.optimization import _archive_source_domain as DOMAIN
 from merlin.development.backend.optimization import archive_spike_runtime as RT
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.perf.candidate_source import MAX_TEXT, source_observation
 
 SCHEMA = "merlin.phase2.retained_archive_feedback.v1"
 

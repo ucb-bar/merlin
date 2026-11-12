@@ -14,15 +14,15 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Protocol, Union, get_args, get_origin, get_type_hints
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.kernels.cca import CCA
+from merlin.analysis.kernels.cca_compare import compare, uncomparable_axes
+from merlin.analysis.kernels.cca_contract import FACET_CLASSES
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization.broker_evidence import _is_sha256
 from merlin.development.backend.optimization.component_baseline import verify_baseline_admission
 from merlin.development.backend.optimization.component_runtime import require_independent_runtime
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, sha256_file
-from merlin.kernels.cca import CCA
-from merlin.kernels.cca_compare import compare, uncomparable_axes
-from merlin.kernels.cca_contract import FACET_CLASSES
+from merlin.evaluation.harness import hash_tree
 
 ACTION = "component-cca-feedback"
 TIER = "structural_component_cca"

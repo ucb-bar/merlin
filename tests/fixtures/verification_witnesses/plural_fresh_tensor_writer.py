@@ -9,9 +9,9 @@ from xdsl.dialects import bufferization, func, memref, tensor
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, StringAttr
 from xdsl.parser import Parser
 
-from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
-from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
-from merlin.xdsl_dialects._common import make_context, text
+from merlin.compiler.dialects._common import make_context, text
+from merlin.compiler.lower.model.borrowed_buffer_calls import BorrowedBufferEffects
+from merlin.compiler.lower.model.fresh_tensor_writer import FreshTensorWriterContract, rewrite_fresh_tensor_writers
 
 SOURCE = "module {\nfunc.func @forward(%a:tensor<2x3xi8>,%state:tensor<3xi16>) ->\n (tensor<2x3xi8>,tensor<2x3xi32>,tensor<3xi16>,tensor<2x3xi32>) attributes {llvm.emit_c_interface} {\n %out=tensor.empty():tensor<2x3xi32>\n %next=tensor.empty():tensor<3xi16>\n %r:2=func.call @writer(%a,%state,%out,%next):\n (tensor<2x3xi8>,tensor<3xi16>,tensor<2x3xi32>,tensor<3xi16>)->(tensor<3xi16>,tensor<2x3xi32>)\n return %a,%r#1,%r#0,%r#1:tensor<2x3xi8>,tensor<2x3xi32>,tensor<3xi16>,tensor<2x3xi32>\n}\nfunc.func private @writer(tensor<2x3xi8>,tensor<3xi16>,tensor<2x3xi32>,tensor<3xi16>)->\n (tensor<3xi16>,tensor<2x3xi32>) attributes {llvm.emit_c_interface}\n}"
 BASELINE = "module {\nfunc.func @forward(%a:tensor<2x3xi8>,%state:tensor<3xi16>) ->\n (tensor<2x3xi8>,tensor<2x3xi32>,tensor<3xi16>,tensor<2x3xi32>) attributes {llvm.emit_c_interface} {\n %out=tensor.empty():tensor<2x3xi32>\n %next=tensor.empty():tensor<3xi16>\n %r=func.call @first(%a,%state,%out):(tensor<2x3xi8>,tensor<3xi16>,tensor<2x3xi32>)->tensor<2x3xi32>\n %s=func.call @second(%a,%state,%next):(tensor<2x3xi8>,tensor<3xi16>,tensor<3xi16>)->tensor<3xi16>\n return %a,%r,%s,%r:tensor<2x3xi8>,tensor<2x3xi32>,tensor<3xi16>,tensor<2x3xi32>\n}\nfunc.func private @first(tensor<2x3xi8>,tensor<3xi16>,tensor<2x3xi32>)->tensor<2x3xi32>\n attributes {llvm.emit_c_interface}\nfunc.func private @second(tensor<2x3xi8>,tensor<3xi16>,tensor<3xi16>)->tensor<3xi16> attributes {llvm.emit_c_interface}\n}"
@@ -49,10 +49,10 @@ def fixture(source=SOURCE):
 def run_plural_results_native_against_separate_calls_and_reference(
     tmp_path, declaration_abi, optimization, upstream_host_tools
 ):
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.codegen import mlir_runtime_c
+    from merlin.compiler.lower.model.toolchain import clang
     from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.codegen import mlir_runtime_c
-    from merlin.llvmlower.toolchain import clang
 
     adapter = tmp_path / "adapter.c"
     adapter.write_text(

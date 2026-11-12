@@ -7,8 +7,8 @@ from xdsl.dialects.builtin import IntegerType
 from xdsl.dialects.llvm import ICmpPredicateFlag
 from xdsl.ir import Operation
 
-from merlin.perf.host_cfg_index import prepare_host_cfg
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.analysis.perf.host_cfg_index import prepare_host_cfg
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
 
 
 @dataclass(frozen=True)

@@ -136,7 +136,7 @@ the row check and the ordering check below catch it.
 
 Every admitted route is executed on host integers and checked against the source; its effect
 stream is also encoded as accelerator commands from the same facts (local address, rows, columns)
-and run through `merlin.targetgen.completion_order.check_commands` (write-write and write-read pairs
+and run through `merlin.development.targetgen.completion_order.check_commands` (write-write and write-read pairs
 under the queue semantics) plus a read-then-write supplement. `check_scope` in the output lists what
 is and is not checked; `uncertain` with `residual` names any pair whose dispatch tracking the probes
 left open and what they observed. Replace the recipe's encoder with yours and keep the checks as a

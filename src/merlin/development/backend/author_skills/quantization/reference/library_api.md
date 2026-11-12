@@ -24,7 +24,7 @@ assert lhs.residual_add_scaled(rhs, 0.5, 0.5).data == [2, -1, 0]        # one ro
 ## Fold or keep a chain of source scales
 
 ```python
-from merlin.llvmlower.requantization import prove_scale, prove_scale_bound, quantized, synthesize_bias
+from merlin.compiler.lower.model.requantization import prove_scale, prove_scale_bound, quantized, synthesize_bias
 
 proof = prove_scale([0.5, 0.0625], -10000, 10000)      # exact over the whole stated domain
 assert proof["scale"] == 0.03125 and proof["rounding"] == "nearest_even"
@@ -45,10 +45,10 @@ case's tolerance has to allow.
 ## Exact i32 -> i8 readout: thresholds, multiplier/shift, column runs, host C
 
 ```python
-from merlin.llvmlower.integer_readout import (
+from merlin.compiler.lower.model.integer_readout import (
     derive, emit_readout, evaluate, exact_rational_candidate, fixedpoint_candidate, partition_column_scales,
 )
-from merlin.llvmlower.requantization import quantized
+from merlin.compiler.lower.model.requantization import quantized
 
 proof = derive([0.0625])                                 # whole i32 domain; derive([s], relu=True) clamps at 0
 assert evaluate(100, proof) == quantized(100, [0.0625]) == 6
@@ -66,8 +66,8 @@ assert "void readout_q(const int32_t*acc,int8_t*out,size_t count)" in code
 ## Accumulator bounds
 
 ```python
-from merlin.llvmlower.integer_producer_range import IntegerSumProductsRange
-from merlin.llvmlower.integer_readout import derive, emit_readout
+from merlin.compiler.lower.model.integer_producer_range import IntegerSumProductsRange
+from merlin.compiler.lower.model.integer_readout import derive, emit_readout
 
 domain = IntegerSumProductsRange(terms=2304, lhs_min=-128, lhs_max=127, rhs_min=-128, rhs_max=127)
 assert domain.interval() == (-37453824, 37748736)        # every prefix checked against i32
@@ -84,10 +84,10 @@ assert "guaranteed by the bound producer contract" in code
 
 ```python
 from merlin.common import mlir_query as mq
-from merlin.llvmlower.integer_gemm import match_integer_gemm
-from merlin.llvmlower.requantization_match import match
-from merlin.targetgen import output_path as OP
-from merlin.xdsl_dialects.lowering import output_fusion as OF
+from merlin.compiler.lower.model.integer_gemm import match_integer_gemm
+from merlin.compiler.lower.model.requantization_match import match
+from merlin.development.targetgen import output_path as OP
+from merlin.compiler.dialects.lowering import output_fusion as OF
 
 module = mq.parse(source_text)
 root = next(op for op in module.walk() if match_integer_gemm(op) is not None)

@@ -82,7 +82,7 @@ def load(roster_path: Path) -> dict[str, dict[str, dict[str, Any]]]:
 
 
 def _check_descriptor(roster: dict, descriptor: Path) -> None:
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     spec = load_target_experiment(descriptor).workload_spec or {}
     for section in SECTIONS:

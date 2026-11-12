@@ -13,7 +13,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
+from merlin.development.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
 
 @dataclass(frozen=True)
@@ -61,11 +61,11 @@ def load_context(
         os.environ["MERLIN_TARGET_EXPERIMENT"] = str(descriptor)
         os.environ["MERLIN_REPO_ROOT"] = str(root)
 
-    from merlin.targetgen.corpora import source_experiment_env
+    from merlin.development.targetgen.corpora import source_experiment_env
 
     sourced = source_experiment_env(descriptor=descriptor)
     if _legacy_target_reader is None:
-        from merlin.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
+        from merlin.development.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
 
         experiment_descriptor = load_target_experiment(descriptor)
         selected_contract = selected_experiment_contract(experiment_descriptor, environment=os.environ)
@@ -77,13 +77,13 @@ def load_context(
     else:
         target = _legacy_target_reader(descriptor)
         # The native edge intentionally accepts malformed legacy descriptors.
-        from merlin.targetgen.target_experiment import descriptor_resources_root
+        from merlin.development.targetgen.target_experiment import descriptor_resources_root
 
         experiment = descriptor_resources_root(descriptor, root=root)
         bundles = experiment / "input_bundles"
 
-    from merlin.benchharness import reports_root, runs_root
     from merlin.common.paths import runs_root as generation_runs_root
+    from merlin.evaluation.harness import reports_root, runs_root
 
     return InvocationContext(
         repo=root,
@@ -157,7 +157,7 @@ def readback_kwargs(context: InvocationContext) -> dict:
     """Explicit trusted adapter selection; absent selection preserves legacy calls."""
     if context.readback_policy is None:
         return {}
-    from merlin.targetgen.contract.readback_policy import ReadbackPolicy
+    from merlin.development.targetgen.contract.readback_policy import ReadbackPolicy
 
     return {"readback_policy": ReadbackPolicy(context.readback_policy)}
 

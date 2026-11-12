@@ -162,7 +162,7 @@ def resolve_features(knobs: dict, manifest: dict, shapes: Any = (), *, codegen_p
         else:
             # Preserve legacy packages and deliberately registered custom targets
             # until their callers select a provider. New OOT callers pass one.
-            from merlin.mining.from_strategy import microkernel_features
+            from merlin.analysis.mining.from_strategy import microkernel_features
 
             resolved = microkernel_features(mk, target=str(manifest.get("target", "rvv")), shapes=shapes)
         for name in resolved:

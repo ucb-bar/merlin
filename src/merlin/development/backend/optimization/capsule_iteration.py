@@ -13,8 +13,8 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.feedback import capsule_certification as C
+from merlin.evaluation.harness import hash_tree
 
 SCHEMA = "global_capsule_phase1_iteration_binding_v1"
 
@@ -302,7 +302,7 @@ def require_final_results(binding, *, descriptor: Path | None = None) -> None:
         raise ValueError("final results require an explicit existing full qualification and target descriptor")
     from merlin.development.backend.optimization import functional_inputs as FI
     from merlin.development.backend.optimization.global_inputs import FrozenPhase1
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     run_dir = Path(binding["run_dir"])
     selected = FrozenPhase1(

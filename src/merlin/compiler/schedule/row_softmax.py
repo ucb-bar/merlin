@@ -28,9 +28,9 @@ from merlin.compiler.kernel_ir.ir import (
     check_structure,
 )
 from merlin.compiler.schedule.compact_dense import DenseMemoryView
-from merlin.semantic_compiler.allocate import allocate, check_assignment
-from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
-from merlin.semantic_compiler.rules import AddressConstraint
+from merlin.compiler.semantic.allocate import allocate, check_assignment
+from merlin.compiler.semantic.allocation_types import CandidateGraph, Reservation, StorageBank, Value
+from merlin.compiler.semantic.rules import AddressConstraint
 
 ROLES = ("maximum", "exponentials", "lanes", "normalizer")
 # Inclusive instruction phases: a source and destination of one instruction
@@ -426,7 +426,7 @@ def read_source_rows(final, *, numerical_policy, assume_finite_inputs, max_sourc
     from xdsl.dialects.linalg.ops import GenericOp
     from xdsl.ir import Block
 
-    from merlin.llvmlower.cpu_softmax import (
+    from merlin.compiler.lower.model.cpu_softmax import (
         CPU_SOFTMAX_F32_AVX2_POLICY,
         build_cpu_softmax_lastdim,
         cpu_softmax_row_numerics,
@@ -519,7 +519,7 @@ class RowSoftmaxSourceCompilation:
         from math import prod
 
         from merlin.compiler.schedule.library_sources import shared_library_sources
-        from merlin.transforms.certificates import ir_digest
+        from merlin.compiler.transforms.certificates import ir_digest
 
         library = hashlib.sha256(json.dumps(shared_library_sources(), sort_keys=True).encode()).hexdigest()
         if (
@@ -585,7 +585,12 @@ def compile_source_rows(
 
     from merlin.compiler.schedule.library_sources import shared_library_sources
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+    from merlin.compiler.transforms.pipeline_state import (
+        PassSpec,
+        PipelineContext,
+        PipelineSession,
+        validate_pass_order,
+    )
 
     if (
         type(module) is not builtin.ModuleOp
@@ -781,7 +786,12 @@ def compile_row_softmax(
     from merlin.compiler.schedule.row_softmax_verification import verify_row_softmax
     from merlin.compiler.schedule.schedule_pipeline import shared_library_sources
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+    from merlin.compiler.transforms.pipeline_state import (
+        PassSpec,
+        PipelineContext,
+        PipelineSession,
+        validate_pass_order,
+    )
 
     specs = (
         PassSpec("row_semantics", 0, produces=("row_source",), mutates_ir=False, ir_level="schedule"),

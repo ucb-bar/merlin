@@ -4,9 +4,9 @@ import hashlib
 import json
 
 from merlin.common.paths import repo_root
-from merlin.targetgen import tool_registry as TR
-from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, attach_common_substrate
-from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+from merlin.development.targetgen import tool_registry as TR
+from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, attach_common_substrate
+from merlin.development.targetgen.tool_profile_shared import prepare_shared_source_release
 
 
 def prepare(root, *, tools=()):

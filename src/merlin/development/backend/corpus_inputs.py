@@ -18,11 +18,11 @@ import yaml
 
 from merlin.development.backend.run_inputs import bundle_manifest_identity
 from merlin.development.backend.source_inputs import fingerprint
+from merlin.development.targetgen.capsule_common import discover_capsules
+from merlin.development.targetgen.contract.description import verify_description_projection, write_description
+from merlin.development.targetgen.sandbox import bwrap
 from merlin.experiments.corpus.admission import public_capsules_for
 from merlin.experiments.corpus.preparation import copy_input, ordinary_tree, private_json
-from merlin.targetgen.capsule_common import discover_capsules
-from merlin.targetgen.contract.description import verify_description_projection, write_description
-from merlin.targetgen.sandbox import bwrap
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,12 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
         operand_selection = released.get("rocc_operand_selection") if isinstance(released, dict) else None
         if operand_selection is not None:
             from merlin.common.digest import sha256_bytes
-            from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, _sha, selected_inputs
+            from merlin.development.targetgen.rocc.selected_operand_protocol import (
+                _json,
+                _read_pin,
+                _sha,
+                selected_inputs,
+            )
 
             public_facts = te.path.parent / "rtl_facts/facts.json"
             private_facts = te.path.parent / "contracts/operand-facts.json"
@@ -209,7 +214,7 @@ def _reconcile_public_software_denial(te, bundle, paths, *, spec, source_freeze,
     Only retired common substrates reopened a reviewed software declaration as a
     public input. The current substrate keeps every private denial as selected.
     """
-    from merlin.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.tool_profile import verify_tool_profile
 
     verify_tool_profile(bundle)
     return paths
@@ -608,8 +613,8 @@ def _grading_public_root(context, public_root: Path | None = None):
     def resolve():
         nonlocal resolved
         if resolved is None:
+            from merlin.development.targetgen.target_experiment import load_target_experiment
             from merlin.experiments.corpus.admission import public_capsules_for
-            from merlin.targetgen.target_experiment import load_target_experiment
 
             resolved = public_capsules_for(load_target_experiment(descriptor))
         return resolved
@@ -622,7 +627,7 @@ def policy_roots(context, policy_root: Path | None = None) -> tuple[Path, ...]:
     if policy_root is not None:
         return (policy_root,)
     try:
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         return tuple(te.graded_roots())

@@ -22,8 +22,8 @@ from merlin.common import cpu_pool, invocation_record
 from merlin.development.backend.feedback import compiler_profile_child as CHILD
 from merlin.development.backend.feedback import compiler_profile_runtime as R
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen import capsule_common as CC
-from merlin.targetgen import package_runtime as P
+from merlin.development.targetgen import capsule_common as CC
+from merlin.development.targetgen import package_runtime as P
 
 SCHEMA = "merlin.original_interface_child.v1"
 ENV = "MERLIN_ORIGINAL_EMISSION_PROCESSES"

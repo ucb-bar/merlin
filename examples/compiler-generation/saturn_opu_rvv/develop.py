@@ -23,7 +23,7 @@ import yaml
 
 from merlin.common.paths import artifacts_dir
 from merlin.common.yaml import write_yaml
-from merlin.targetgen import capability_manifests as cm
+from merlin.development.targetgen import capability_manifests as cm
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
     descriptor = yaml.safe_load((tdir / "descriptor.yaml").read_text(encoding="utf-8"))
     residual = yaml.safe_load((tdir / "residual.yaml").read_text(encoding="utf-8"))
 
-    from merlin.targetgen.rtl import mlc_bridge as _mb
+    from merlin.development.targetgen.rtl import mlc_bridge as _mb
 
     reader = _mb.resolve_spatial_introspect(a.facts_from)
     facts = _mb.spatial_fact_bundle(a.facts_from)

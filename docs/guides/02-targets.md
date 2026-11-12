@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-09
 related: [01-inputs, 03-preparation]
-code_refs: [src/merlin/target/spec/load.py, src/merlin/system/topology.py, src/merlin/compiler/backend/service.py, src/merlin/compiler/backend/load.py, src/merlin/targetgen/target_registry.py, src/merlin/targetgen/rtl/facts.py]
+code_refs: [src/merlin/target/spec/load.py, src/merlin/target/system/topology.py, src/merlin/compiler/backend/service.py, src/merlin/compiler/backend/load.py, src/merlin/development/targetgen/target_registry.py, src/merlin/development/targetgen/rtl/facts.py]
 ---
 
 # 2. Select a target system and backend

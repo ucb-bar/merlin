@@ -87,7 +87,7 @@ def run(*, run_dir, descriptor, submission, original_partition, out, host_elemen
     from merlin.development.backend.feedback import private_instruction_declaration as declaration
     from merlin.development.backend.feedback import private_model_chain as chain
     from merlin.development.backend.feedback.formal import _private_source_freeze_for_formal
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     if type(host_elementwise_fusion) is not bool:
         raise ValueError("static revalidation requires a boolean host fusion selection")
@@ -278,7 +278,8 @@ def _policy_observation(result, record, receipt):
     call = IR.verify(observed)
     if (
         call.get("stage") != "device_final_linked_elf_policy"
-        or call.get("callable") != "merlin.targetgen.contract.elf_admission.LinkedElfAdmissionService.evaluate"
+        or call.get("callable")
+        != "merlin.development.targetgen.contract.elf_admission.LinkedElfAdmissionService.evaluate"
         or call.get("arguments") != {"target": record["target"], "scope": "selected final linked-artifact policy"}
         or not any(
             pin.get("path") == str(policy_report) and pin.get("sha256") == result["report_sha256"]

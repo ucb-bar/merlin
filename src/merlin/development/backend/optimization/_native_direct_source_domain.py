@@ -8,13 +8,13 @@ are independently rebound before exact public TRAIN support is considered.
 import hashlib
 import json
 
+from merlin.analysis.perf.candidate_source import MAX_TEXT
 from merlin.development.backend.optimization import _archive_source_domain as DOMAIN
 from merlin.development.backend.optimization import archive_native_screen as NATIVE
 from merlin.development.backend.optimization import ordinary_checked_source as CHECKED
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256
-from merlin.perf.candidate_source import MAX_TEXT
+from merlin.development.targetgen import checked_source_model_diagnostic as SELECTOR
 from merlin.runtime import _native_files as F
-from merlin.targetgen import checked_source_model_diagnostic as SELECTOR
 
 PROTOCOL = "merlin.public_native_direct_pointer_domain.v1"
 
@@ -22,9 +22,9 @@ PROTOCOL = "merlin.public_native_direct_pointer_domain.v1"
 def source_modules():
     """Load the extra core checker only for the explicitly selected protocol."""
     from merlin.common import invocation_record
+    from merlin.compiler.lower.model import direct_source_contraction
     from merlin.development.backend.feedback import candidate_observations
-    from merlin.llvmlower import direct_source_contraction
-    from merlin.targetgen import native_pointer_source_binding
+    from merlin.development.targetgen import native_pointer_source_binding
 
     return (
         direct_source_contraction,
@@ -44,7 +44,7 @@ def emitted_source(member, compiled, workspace, original):
     custody only; it supplies no source, execution or timing qualification.
     """
     from merlin.development.backend.feedback import candidate_observations as PRODUCTS
-    from merlin.targetgen.native_pointer_source_binding import PROTOCOL as NATIVE_PROTOCOL
+    from merlin.development.targetgen.native_pointer_source_binding import PROTOCOL as NATIVE_PROTOCOL
 
     grade = original["original_grade"]
     native, emission = grade["candidate_native_execution"], grade["candidate_emission"]
@@ -110,7 +110,7 @@ def current(policy, member, workspace, value, catalog):
     """No saved status or caller-supplied proof can substitute for the queued receipt."""
     from xdsl.utils.exceptions import ParseError, VerifyException
 
-    from merlin.llvmlower import direct_source_contraction as BIND
+    from merlin.compiler.lower.model import direct_source_contraction as BIND
 
     unknown = {"status": "UNKNOWN", "family": None}
     selected = selection_record(policy)

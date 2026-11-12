@@ -113,7 +113,7 @@ inputs:
   - merlin.compiler.ir.logical_abi
   - merlin.compiler.schedule.convolution_exploration
   - merlin.compiler.schedule.dense_panel_epochs
-  - merlin.transforms.evaluated_exploration
-  - merlin.transforms.shape_policy
+  - merlin.compiler.transforms.evaluated_exploration
+  - merlin.compiler.transforms.shape_policy
   - merlin.compiler.schedule.pointwise_convolution
   - merlin.compiler.schedule.batched_dense

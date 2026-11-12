@@ -17,7 +17,7 @@ from .headers import unit_header
 
 def package_root(support_target: str) -> Path:
     """The selected support package's root (where its ``kernels/`` live), resolved like its plugin."""
-    from merlin.targetgen.plugins import resolve_support
+    from merlin.development.targetgen.plugins import resolve_support
 
     return Path(resolve_support(support_target).base)
 
@@ -28,7 +28,7 @@ def for_routing(routing: Any) -> SelectedKernel:
     With no kernel named, a package that cannot be resolved here still has its default -- its plugin's own
     build, which fails on its own terms if the package is missing -- but a NAMED kernel never falls back.
     """
-    from merlin.targetgen.plugins import PluginError
+    from merlin.development.targetgen.plugins import PluginError
 
     spec = getattr(routing, "kernel", None)
     target = getattr(routing, "support_target", None)

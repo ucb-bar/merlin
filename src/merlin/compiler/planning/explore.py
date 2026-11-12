@@ -10,12 +10,12 @@ import math
 from dataclasses import asdict, dataclass
 
 from merlin.common.digest import is_sha256
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 
 ROUTES = {
     "multioutput": "merlin.compiler.transforms.multioutput.compile_source_multioutput",
     "adjacent_elementwise": "merlin.compiler.schedule.fusion.plan_fusion",
-    "epilogue": "merlin.xdsl_dialects.lowering.output_fusion.decisions",
+    "epilogue": "merlin.compiler.dialects.lowering.output_fusion.decisions",
     "shared_input": "merlin.compiler.schedule.shared_input_schedule.schedule_shared_input",
     "connected_residency": "merlin.compiler.lower.connected.compile_connected_pointwise",
     "preparation_reuse": "merlin.compiler.observations.install_prepared_observed",
@@ -365,8 +365,13 @@ def evaluate_fusions(
     Discovery pages are resumable; parameterizations for one region are bounded
     to sixteen paths including the unconditional unfused fallback per round.
     """
-    from merlin.transforms.pipeline_policy import PipelineVariant, PolicyFacts, RegisteredPass, evaluate_variants
-    from merlin.transforms.pipeline_state import PassSpec
+    from merlin.compiler.transforms.pipeline_policy import (
+        PipelineVariant,
+        PolicyFacts,
+        RegisteredPass,
+        evaluate_variants,
+    )
+    from merlin.compiler.transforms.pipeline_state import PassSpec
 
     alternatives = tuple(alternatives)
     if (

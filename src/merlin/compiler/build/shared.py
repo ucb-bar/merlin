@@ -32,7 +32,7 @@ def build_shared_library(
     rt_o = out_so.with_name("mlir_runtime_host.o")
     original_run = run
     if source_lowering is not None:
-        from merlin.llvmlower.native_source_model import NativeSourceModel
+        from merlin.compiler.lower.model.native_source_model import NativeSourceModel
 
         if type(source_lowering) is not NativeSourceModel:
             raise ValueError("native source linking requires its original typed transaction")
@@ -74,8 +74,8 @@ def build_shared_library(
             flags=("-O2", "-fPIC"),
             runner=original_run,
         )
-    from merlin.llvmlower.adjacent_exp import runtime_c_for as exp_runtime_c_for
-    from merlin.llvmlower.guarded_zero_contraction import runtime_c_for
+    from merlin.compiler.lower.model.adjacent_exp import runtime_c_for as exp_runtime_c_for
+    from merlin.compiler.lower.model.guarded_zero_contraction import runtime_c_for
 
     selected_runtime = runtime_c_for(Path(ll_path).read_text()) + exp_runtime_c_for(Path(ll_path).read_text())
     guarded_objects = ()

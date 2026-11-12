@@ -13,10 +13,10 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen import torch_zero_return_observer as Z
+from merlin.development.targetgen.frontend_operator_effects import original_zero_return_requests
 from merlin.development.testgen import tensor_argument_intake as T
 from merlin.development.testgen.rtl_intake import RtlIntakeRefusal, _outside, _plain
-from merlin.targetgen import torch_zero_return_observer as Z
-from merlin.targetgen.frontend_operator_effects import original_zero_return_requests
 
 SCHEMA = "merlin.independent_zero_return_getter.v1"
 
@@ -25,7 +25,7 @@ def prepare_getter(*, tensor_getter, forbidden, output):
     """The fixed native bridge uses the same independently observed public SDK."""
     T.verify_getter(tensor_getter)
     output.mkdir(mode=0o700)
-    observer = module_source_path("merlin.targetgen.torch_zero_return_observer")
+    observer = module_source_path("merlin.development.targetgen.torch_zero_return_observer")
     _outside(observer, forbidden)
     sdk = json.loads(Path(tensor_getter["sdk"]).read_bytes())
     cpp, dependencies = output / "getter.cpp", output / "getter.d"
@@ -61,7 +61,7 @@ def verify_getter(record):
         set(record)
         != {"schema", "tensor_getter", "observer", "cpp", "getter", "dependencies", "dependency_paths", "invocation"}
         or record["schema"] != SCHEMA
-        or record["observer"] != str(module_source_path("merlin.targetgen.torch_zero_return_observer"))
+        or record["observer"] != str(module_source_path("merlin.development.targetgen.torch_zero_return_observer"))
         or Path(record["cpp"]).read_text() != Z.CPP_SOURCE
     ):
         raise RtlIntakeRefusal("zero-return getter lost its fixed public native source")

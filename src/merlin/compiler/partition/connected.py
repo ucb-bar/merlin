@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import prod
 
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 
 
 @dataclass(frozen=True)

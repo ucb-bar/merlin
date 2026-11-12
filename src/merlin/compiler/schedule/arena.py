@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from merlin.xdsl_dialects.lowering.arena_plan import (
+from merlin.compiler.dialects.lowering.arena_plan import (
     ARENA_ALIGN,
     ArenaPlanError,
     MemoryPlan,
@@ -16,7 +16,7 @@ from merlin.xdsl_dialects.lowering.arena_plan import (
     _buf_bytes,
     pack_disjoint,
 )
-from merlin.xdsl_dialects.lowering.dispatch_program import DispatchProgram
+from merlin.compiler.dialects.lowering.dispatch_program import DispatchProgram
 
 
 @dataclass(frozen=True)
@@ -43,10 +43,10 @@ class ArenaRequirements:
 
 def _bounded_arena_inputs(prog: DispatchProgram, requirements: ArenaRequirements):
     """Recover storage and lifetime obligations from the current graph."""
-    from merlin.semantic_compiler.allocate import Reservation, StorageBank
-    from merlin.semantic_compiler.buffer_allocation import Buffer
-    from merlin.xdsl_dialects.lowering.dispatch_program import verify_program
-    from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
+    from merlin.compiler.dialects.lowering.dispatch_program import verify_program
+    from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
+    from merlin.compiler.semantic.allocate import Reservation, StorageBank
+    from merlin.compiler.semantic.buffer_allocation import Buffer
 
     if requirements.dispatch_digest != dispatch_digest(prog):
         raise ArenaPlanError("memory requirements do not match the emitted dispatch graph")
@@ -158,7 +158,7 @@ def _bounded_arena_stats(prog, requirements, requests, arena_bytes):
 
 def check_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements, memory: MemoryPlan) -> None:
     """Check an emitted placement directly; do not invoke the allocator."""
-    from merlin.semantic_compiler.buffer_allocation import check_buffer_allocation
+    from merlin.compiler.semantic.buffer_allocation import check_buffer_allocation
 
     sizes, requests, banks, reservations = _bounded_arena_inputs(prog, requirements)
     if memory.sizes != sizes:
@@ -179,7 +179,7 @@ def check_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements, 
 
 def plan_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements) -> MemoryPlan:
     """Place completion-aware temporaries; leave external buffers caller-owned."""
-    from merlin.semantic_compiler.buffer_allocation import BufferAllocation, allocate_buffers, check_buffer_allocation
+    from merlin.compiler.semantic.buffer_allocation import BufferAllocation, allocate_buffers, check_buffer_allocation
 
     sizes, requests, banks, reservations = _bounded_arena_inputs(prog, requirements)
     result = None

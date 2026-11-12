@@ -18,7 +18,6 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.compiler_library import selected_child
 from merlin.development.backend.context import (
     InvocationContext,
@@ -34,10 +33,11 @@ from merlin.development.backend.feedback import private_full_models as PFM
 from merlin.development.backend.feedback import private_instruction_coordinator as instruction_coordinator
 from merlin.development.backend.feedback import private_instruction_declaration as instruction_declaration
 from merlin.development.backend.feedback.private_facts import selected_input_facts
+from merlin.development.targetgen import capsule_grade as CG
+from merlin.development.targetgen import oracle_policy as capsule_oracle_policy
+from merlin.development.targetgen import runner_config as capsule_runner_config
 from merlin.evaluation.capsule import adapters as capsule_adapters
-from merlin.targetgen import capsule_grade as CG
-from merlin.targetgen import oracle_policy as capsule_oracle_policy
-from merlin.targetgen import runner_config as capsule_runner_config
+from merlin.evaluation.harness import hash_tree
 
 # This is the certification tier for the Arm-4 functional experiment.  A cheaper-tier pass is
 # useful iteration feedback, but is not a completed formal run.  Keep the requirement next to the
@@ -127,7 +127,7 @@ def _private_source_freeze_for_formal(
     required = [{"path": original, "kind": "file"} for original, _field in resolved]
     if descriptor is not None:
         from merlin.development.backend.corpus_inputs import _reconcile_public_software_denial
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         selected = load_target_experiment(descriptor)
         if selected.target != target:
@@ -149,7 +149,7 @@ def _private_source_freeze_for_formal(
         raise ValueError("formal private authored sources are not frozen and masked")
     if workspace is None or repo is None:
         raise ValueError("formal private authored sources require the frozen workspace")
-    from merlin.targetgen.sandbox import bwrap
+    from merlin.development.targetgen.sandbox import bwrap
 
     snapshot = environment.get("bundle_input_snapshot")
     bwrap.verify_snapshot_binding(workspace, effective, snapshot, repo=repo)
@@ -210,7 +210,7 @@ def phase_completion(
         return False, ["score_missing_or_malformed"]
 
     reasons: list[str] = []
-    from merlin.targetgen.expected_refusal import execution_denominator
+    from merlin.development.targetgen.expected_refusal import execution_denominator
 
     n_executable, refusal_failures = execution_denominator(score)
     reasons.extend(refusal_failures)
@@ -518,7 +518,7 @@ def main(argv: list[str] | None = None, *, context: InvocationContext | None = N
     owner_type = SnapshotInputs if external_snapshot_selected() else CommonTransformService
     owner = owner_type(workspace=early.workspace.absolute(), bundle_manifest=manifest, repo=original_context.repo)
     from merlin.development.backend.feedback.compiler_profile_runtime import original_compiler_execution
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     target = load_target_experiment(original_context.descriptor)
     with original_compiler_execution(
@@ -634,7 +634,7 @@ def _main(argv: list[str] | None = None, *, context: InvocationContext | None = 
     if imported is not None and (a.no_oracle or a.skip_hidden or a.validation_scope != "full"):
         ap.error("imported capsule observations require complete unpaid external full validation")
     if imported is not None:
-        from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+        from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
 
         if active_shared_pass_requirement() is not None:
             ap.error("imported capsule observations do not qualify the selected shared-pass compiler interfaces")

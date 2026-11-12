@@ -16,7 +16,7 @@ merlin's introspection differential-probes the ``to_bytecode`` below to recover 
 WHERE THE REAL COMPUTE ENCODING LIVES (read this before concluding "compute is unencodable"): this file
 is NOT the source of truth for how you EMIT an instruction. The target's true instruction is a 64-bit
 FIXED-FORMAT word, and its exact field layout + opcode table are DERIVED from the RTL decoder and exposed
-by ``merlin.targetgen.isa_model.isa_model_for_target("radiance")`` — 24 opcodes incl. compute
+by ``merlin.development.targetgen.isa_model.isa_model_for_target("radiance")`` — 24 opcodes incl. compute
 (``MADD`` / ``MSUB`` / ``NM_ADD`` / ``NM_SUB`` = fused FP multiply-add, ``OP_FP``, ``OP``, ``OP_IMM``),
 memory (``LOAD`` / ``STORE`` with the ``ext2`` field selecting the address space: global=0, shared=1),
 and the neutrino ops (``NU_INVOKE`` …). That is the layout the shipped ``isa_tools.py disasm``/``lint``

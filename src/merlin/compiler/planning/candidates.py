@@ -27,7 +27,7 @@ def host_units(host) -> list[Any]:
     board actually declares vector capability: a board that says nothing gets the scalar unit alone,
     because inventing a vector unit for it would place vector work on a core that traps on it.
     """
-    from merlin.targetgen.compute_units import ComputeUnit
+    from merlin.development.targetgen.compute_units import ComputeUnit
 
     dtypes = _host_dtypes()
     units = [ComputeUnit(name="host_scalar", kind="scalar", dtypes=dtypes, ops=())]
@@ -42,8 +42,8 @@ def units_for(system) -> list[tuple[str, Any]]:
     Devices precede the host so that declaration-order selection -- what the router does today when no
     cost model is supplied -- keeps preferring a device, and this stays inert on existing inputs.
     """
-    from merlin.targetgen import compute_units as _cu
-    from merlin.targetgen import target_registry as _tr
+    from merlin.development.targetgen import compute_units as _cu
+    from merlin.development.targetgen import target_registry as _tr
 
     out: list[tuple[str, Any]] = []
     for dev in getattr(system, "devices", ()) or ():
@@ -65,7 +65,7 @@ def units_for(system) -> list[tuple[str, Any]]:
 
 def _candidate(unit, demand):
     """The `routing.Candidate` view of a unit, so any cost model in the repo can score it."""
-    from merlin.targetgen.routing import Candidate, _legal_on  # noqa: PLC2701
+    from merlin.development.targetgen.routing import Candidate, _legal_on  # noqa: PLC2701
 
     _legal, acc = _legal_on(unit, demand)
     return Candidate(unit=unit.name, kind=unit.kind, acc=acc, exposure=getattr(unit, "exposure", None))

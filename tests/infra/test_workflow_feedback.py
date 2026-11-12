@@ -7,8 +7,8 @@ import pytest
 
 from merlin.development.backend.feedback import joint_performance as P
 from merlin.development.backend.feedback import rolling_scalability as R
+from merlin.development.targetgen import capsule_common
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.targetgen import capsule_common
 
 
 @pytest.fixture

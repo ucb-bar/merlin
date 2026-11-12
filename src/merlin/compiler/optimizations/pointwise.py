@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from merlin.compiler.lower.model.selfcopy import FEATURE as _SELF_COPY_FEATURE
 from merlin.compiler.selection.features import ImprFeature
-from merlin.llvmlower.selfcopy import FEATURE as _SELF_COPY_FEATURE
 
 VEC_NONCONTRACTION_NAME = "vectorize_non_contraction_generics"
 

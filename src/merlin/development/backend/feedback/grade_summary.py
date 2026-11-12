@@ -12,7 +12,7 @@ largest-headroom cases), so the first lines say where the cycles are.
 
 A row whose numerics pass while its structural trace evidence is failed or unavailable says so on its
 line (``trace=<status>: <reason>``) and in its own section: the final closure requires that evidence
-(:func:`merlin.targetgen.trace_check.requirements_complete`), so a passing row that lacks it would be
+(:func:`merlin.development.targetgen.trace_check.requirements_complete`), so a passing row that lacks it would be
 withheld there, and the author should learn that while still able to act on it.
 
 It is derived only from the document it sits beside, which the author can already read, so it adds no

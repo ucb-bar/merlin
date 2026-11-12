@@ -31,14 +31,14 @@ from merlin.common.bundle_snapshot import (
 from merlin.development.backend.feedback import compiler_profile_child as CHILD
 from merlin.development.backend.feedback import compiler_profile_runtime as R
 from merlin.development.backend.optimization.contracts import StageGateError
+from merlin.development.targetgen import package_runtime as P
+from merlin.development.targetgen import runner_config as capsule_runner_config
+from merlin.development.targetgen import tier_policy
+from merlin.development.targetgen.contract.readback_policy import ReadbackPolicy
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.evaluation.capsule import model_runtime as capsule_model_runtime
 from merlin.evaluation.capsule import processes as capsule_processes
-from merlin.targetgen import package_runtime as P
-from merlin.targetgen import runner_config as capsule_runner_config
-from merlin.targetgen import tier_policy
-from merlin.targetgen.contract.readback_policy import ReadbackPolicy
 
 ENV = "MERLIN_OPERATOR_GRADE_PROCESSES"
 _ADAPTERS = weakref.WeakKeyDictionary()
@@ -139,7 +139,7 @@ def _communicate_or_defer(process, *, timeout_s):
     wait. A background grade polls only while its original source guard exists;
     the scheduler, not the candidate or child, decides when work is superseded.
     """
-    from merlin.targetgen.capsule_scheduling import active_defer_probe
+    from merlin.development.targetgen.capsule_scheduling import active_defer_probe
 
     probe = active_defer_probe()
     if probe is None:
@@ -324,8 +324,8 @@ def grade(capsule, package_dir, *, runs_root, contract, target, suite, dtype, ad
 
 
 def main(argv):
+    from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
     from merlin.evaluation.capsule import runner as runner
-    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--operator-grade", type=Path, required=True)

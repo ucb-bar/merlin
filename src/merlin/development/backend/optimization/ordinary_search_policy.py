@@ -16,6 +16,14 @@ from dataclasses import asdict, is_dataclass, replace
 from functools import partial
 from pathlib import Path
 
+from merlin.analysis.perf import _census_process as CENSUS_PROCESS
+from merlin.analysis.perf import _dynamic_stream as DYNAMIC_STREAM
+from merlin.analysis.perf import candidate_cost_graph as CANDIDATE_GRAPH
+from merlin.analysis.perf import candidate_diagnostics as CANDIDATE_DIAGNOSTICS
+from merlin.analysis.perf import candidate_features as CANDIDATE_FEATURES
+from merlin.analysis.perf import candidate_source as CANDIDATE_SOURCE
+from merlin.analysis.perf import dynamic_census as DYNAMIC_CENSUS
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.common import owned_children as CORE_CHILDREN
 from merlin.development.backend.brokers import compiler_call_channel as PROFILE_CHANNEL
 from merlin.development.backend.feedback import candidate_census as CANDIDATE_CENSUS
@@ -62,24 +70,16 @@ from merlin.development.backend.optimization.contracts import (
 )
 from merlin.development.backend.optimization.edit_authority import FrozenEditAuthority
 from merlin.development.backend.optimization.retained_revisions import RetainedRevision, executing_revisions
-from merlin.perf import _census_process as CENSUS_PROCESS
-from merlin.perf import _dynamic_stream as DYNAMIC_STREAM
-from merlin.perf import candidate_cost_graph as CANDIDATE_GRAPH
-from merlin.perf import candidate_diagnostics as CANDIDATE_DIAGNOSTICS
-from merlin.perf import candidate_features as CANDIDATE_FEATURES
-from merlin.perf import candidate_source as CANDIDATE_SOURCE
-from merlin.perf import dynamic_census as DYNAMIC_CENSUS
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.development.targetgen import compiler_library as COMPILER_LIBRARY
+from merlin.development.targetgen import native_model_execution as NATIVE_MODEL
+from merlin.development.targetgen import native_model_policy as MODEL_POLICY
+from merlin.development.targetgen import public_program_timing as PUBLIC_PROGRAM
+from merlin.development.targetgen.contract import artifact_retesting as AR
+from merlin.development.targetgen.contract import compile as NATIVE_BUILD
+from merlin.development.targetgen.target_experiment import TargetExperiment
 from merlin.runtime import complete_call_timing as COMPLETE_TIMING
 from merlin.runtime import direct_kernel_harness as DIRECT_HARNESS
 from merlin.runtime import harness_render as LOGICAL_HARNESS
-from merlin.targetgen import compiler_library as COMPILER_LIBRARY
-from merlin.targetgen import native_model_execution as NATIVE_MODEL
-from merlin.targetgen import native_model_policy as MODEL_POLICY
-from merlin.targetgen import public_program_timing as PUBLIC_PROGRAM
-from merlin.targetgen.contract import artifact_retesting as AR
-from merlin.targetgen.contract import compile as NATIVE_BUILD
-from merlin.targetgen.target_experiment import TargetExperiment
 
 _ISSUER = object()
 _FUNCTIONAL_FILES = (
@@ -170,7 +170,7 @@ class OrdinarySearchPolicy(CF.CorpusFeedbackPolicy):
         ):
             raise StageGateError("additional compiler libraries require an explicit reviewed host selection")
         self._compiler_library_selection = compiler_library_selection
-        from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+        from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
 
         if compiler_pass_selection is not None and type(compiler_pass_selection) is not CompilerPassSelection:
             raise StageGateError("compiler passes require an explicit original host selection")

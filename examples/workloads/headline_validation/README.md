@@ -29,14 +29,14 @@ to the same revision and that the loaded layer count matches that config.
 
 ```sh
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 M2M_SEQ=8 \
-  "$LLAMA_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$LLAMA_CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/headline_validation/tiny_llama_loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \
   --out "$HEADLINE_ROOT/tinyllama-prefill"
 
 M2M_RESNET_RANDOM=1 M2M_SESSION_STEPS=1 \
-  "$RESNET_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$RESNET_CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader "$MODEL2MLIR_ROOT/workloads/resnet50_v1_5/loader.py" \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -44,7 +44,7 @@ M2M_RESNET_RANDOM=1 M2M_SESSION_STEPS=1 \
 
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   M2M_SMOLVLA_PRETRAINED=1 M2M_SMOLVLA_SESSION=e2e \
-  "$SMOLVLA_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$SMOLVLA_CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader "$MODEL2MLIR_ROOT/workloads/smolvla/loader.py" \
   --dtype fp32 --seed 0 --materialize-bundle \

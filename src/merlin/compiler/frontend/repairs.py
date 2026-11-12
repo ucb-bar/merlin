@@ -183,7 +183,7 @@ def _attach_c_interface(text: str) -> tuple[str, int]:
                 from xdsl.dialects.func import FuncOp
                 from xdsl.printer import Printer
 
-                from merlin.frontends.linalg_mlir import parse_mlir_text
+                from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
                 module = parse_mlir_text(text)
                 for fn in module.body.block.ops:

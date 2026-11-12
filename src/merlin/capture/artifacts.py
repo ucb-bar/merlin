@@ -103,7 +103,7 @@ def model_input_abi(art: CapsuleArtifacts) -> list[dict]:
     ``@forward`` signature, so its trailing leaves must agree exactly. Refuse generation if either record is
     absent or drifts; guessing from decoded values is invalid (an f32 tensor may contain only integral values).
     """
-    from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
+    from merlin.development.targetgen.contract.linalg_iface import parse_linalg_mlir
 
     loader_abi = (art.meta or {}).get("input_abi")
     if not isinstance(loader_abi, list) or len(loader_abi) != len(art.inputs):
@@ -214,8 +214,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
 
     import numpy as np
 
-    from merlin.targetgen import materialized_integer_capture as native_capture
-    from merlin.targetgen.application_inventory import verify_capture_receipt
+    from merlin.development.targetgen import materialized_integer_capture as native_capture
+    from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
     native_integer = native_capture.selected(selection)
     public_performance = (
@@ -243,7 +243,7 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     if hashlib.sha256(receipt_raw).hexdigest() != selection.get("receipt_sha256"):
         raise M2MUnavailable("materialized capture receipt changed during selection")
     receipt = json.loads(receipt_raw)
-    from merlin.targetgen.claim_models import is_claim_bundle
+    from merlin.development.targetgen.claim_models import is_claim_bundle
 
     declared_source = receipt.get("source") or {}
     identities = [
@@ -287,8 +287,8 @@ def materialized_model_artifacts(selection: dict) -> CapsuleArtifacts:
     # Never silently certify a multi-result or integer-result ABI with that file.
     complete_reference = not native_integer and len(output_abi) > 1
     if complete_reference:
-        from merlin.targetgen.application_inventory import verified_static_integerization
-        from merlin.targetgen.materialized_reference import complete_float_outputs
+        from merlin.development.targetgen.application_inventory import verified_static_integerization
+        from merlin.development.targetgen.materialized_reference import complete_float_outputs
 
         if not verified_static_integerization(
             observed.get("capture_integerization"), receipt_sha256=observed["receipt_sha256"]

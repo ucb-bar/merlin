@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization import static_identity as SI
 from merlin.development.backend.optimization.mechanism_program import MechanismProgram
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)
@@ -126,7 +126,7 @@ class MechanismRounds:
         compiler_shared_source_root: Path,
     ) -> dict[str, Any] | None:
         """Attribute current bytes before compilation; initial seed analysis has no round delta."""
-        from merlin.perf.compiler_edit_scope import inspect_round_mechanism_edits
+        from merlin.analysis.perf.compiler_edit_scope import inspect_round_mechanism_edits
 
         self.program.check_integrity()
         if not self.configured:

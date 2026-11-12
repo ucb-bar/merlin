@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from merlin.development.backend.optimization.contracts import StageGateError, canonical_json
-from merlin.targetgen.compiler_library import CompilerLibraryContract, freeze_compiler_library
+from merlin.development.targetgen.compiler_library import CompilerLibraryContract, freeze_compiler_library
 
 VIEW_SCHEMA = "merlin.component_agent_view.v1"
 _EXCLUDED = frozenset({".git", ".claude", ".codex", "out", "docs", "tests", "__pycache__"})

@@ -9,6 +9,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from merlin.common.jsonio import readable_json
+from merlin.development.targetgen.capsule_common import make_run_paths
+from merlin.development.targetgen.package_runtime import BackendDeclined, CertFailure, InfraFailure, Package
+from merlin.development.targetgen.runner_config import _config_for_target
 from merlin.evaluation.capsule.adapters import _adapter_readback_policy
 from merlin.evaluation.capsule.availability import _resolve_oracle_adapters
 from merlin.evaluation.capsule.inputs import bind_program_inputs, emit_program
@@ -19,9 +22,6 @@ from merlin.evaluation.capsule.publication import publish_operation
 from merlin.evaluation.capsule.records import ProgramEvidence, ReferenceData
 from merlin.evaluation.capsule.reference import check_reference
 from merlin.evaluation.capsule.trace import check_trace
-from merlin.targetgen.capsule_common import make_run_paths
-from merlin.targetgen.package_runtime import BackendDeclined, CertFailure, InfraFailure, Package
-from merlin.targetgen.runner_config import _config_for_target
 
 
 def run_capsule(
@@ -55,7 +55,7 @@ def run_capsule(
     ``workers`` records actual caller fanout; absent means unstated.
     Missing engines remain unavailable; structural counts supply no RTL timing.
     """
-    from merlin.targetgen.provenance import toolchain_shas
+    from merlin.development.targetgen.provenance import toolchain_shas
 
     # The effective target comes from the config (authoritative — cfg.target drives the run) when one is
     # supplied, else the explicit ``target`` argument. If NEITHER is given we refuse to run rather than
@@ -86,16 +86,16 @@ def run_capsule(
     # whole-model flow (compile_rvv) and gating vs its golden — NOT the per-op tier ladder. Write the
     # same capsule_result.json shape so downstream reporting is uniform.
     if model_execution_selection is not None:
-        from merlin.targetgen.public_program_timing import verify_selection
+        from merlin.development.targetgen.public_program_timing import verify_selection
 
         verify_selection(capsule, model_execution_selection)
     if checked_source_diagnostic is not None:
-        from merlin.targetgen.checked_source_model_diagnostic import verify_host_selection
+        from merlin.development.targetgen.checked_source_model_diagnostic import verify_host_selection
 
         verify_host_selection(
             checked_source_diagnostic, capsule, target=eff_target, public_selection=model_execution_selection
         )
-    from merlin.targetgen.owned_host_slice_execution import selected_source_slice
+    from merlin.development.targetgen.owned_host_slice_execution import selected_source_slice
 
     if capsule.get("kind") == "model" or selected_source_slice(capsule):
         if _defer_result_publication:
@@ -123,7 +123,7 @@ def run_capsule(
             ),
             encoding="utf-8",
         )
-        from merlin.targetgen.owned_host_model_selection import owned_model_required
+        from merlin.development.targetgen.owned_host_model_selection import owned_model_required
 
         if (
             owned_model_required(capsule, target=eff_target)
@@ -155,7 +155,7 @@ def run_capsule(
         # This model verdict does not independently price command-buffer work.
         # A candidate has one submitted whole-program buffer; the legacy graph
         # has many. Neither absence may be mistaken for a zero-work claim.
-        from merlin.perf.work_volume import command_buffer_evidence as _cb_evidence
+        from merlin.analysis.perf.work_volume import command_buffer_evidence as _cb_evidence
 
         volume_scope = (
             "candidate whole-program buffer; volume not independently priced here"
@@ -179,7 +179,7 @@ def run_capsule(
             (paths.generated / "placement_census.json").write_text(json.dumps(census, indent=2), encoding="utf-8")
         return result
 
-    from merlin.targetgen.owned_host_leaf_execution import grade_owned_host_leaf, selected_host_leaf
+    from merlin.development.targetgen.owned_host_leaf_execution import grade_owned_host_leaf, selected_host_leaf
 
     if selected_host_leaf(capsule):
         if _defer_result_publication:

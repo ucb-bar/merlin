@@ -1,9 +1,21 @@
 {
+ "src/merlin/analysis/kernels/": "src/merlin/kernels/",
+ "src/merlin/analysis/mining/": "src/merlin/mining/",
+ "src/merlin/analysis/perf/": "src/merlin/perf/",
  "src/merlin/cli/compile_command.py": "src/merlin/compile/command.py",
  "src/merlin/cli/compile_workload.py": "src/merlin/compile_cli.py",
  "src/merlin/cli/main.py": "src/merlin/cli.py",
  "src/merlin/cli/service.py": "src/merlin/service_cli.py",
+ "src/merlin/compiler/dialects/": "src/merlin/xdsl_dialects/",
+ "src/merlin/compiler/frontend/": "src/merlin/frontends/",
+ "src/merlin/compiler/lower/model/": "src/merlin/llvmlower/",
+ "src/merlin/compiler/semantic/": "src/merlin/semantic_compiler/",
+ "src/merlin/compiler/transforms/": "src/merlin/transforms/",
+ "src/merlin/development/targetgen/": "src/merlin/targetgen/",
+ "src/merlin/evaluation/harness/": "src/merlin/benchharness/",
+ "src/merlin/evaluation/model/": "src/merlin/model_check/",
  "src/merlin/runtime/remote_linux.py": "src/merlin/mining/k1.py",
+ "src/merlin/target/system/": "src/merlin/system/",
  "src/merlin/verification/ablation.py": "src/merlin/verify/ablation.py",
  "src/merlin/verification/cb_semantics.py": "src/merlin/verify/cb_semantics.py",
  "src/merlin/verification/cli.py": "src/merlin/verify/cli.py",
@@ -36,6 +48,7 @@
  "src/merlin/verification/lean_state_effects.py": "src/merlin/verify/lean_state_effects.py",
  "src/merlin/verification/lean_state_projection.py": "src/merlin/verify/lean_state_projection.py",
  "src/merlin/verification/linalg_semantics.py": "src/merlin/verify/linalg_semantics.py",
+ "src/merlin/verification/liveness/": "src/merlin/liveness/",
  "src/merlin/verification/llvm_symbols.py": "src/merlin/verify/llvm_symbols.py",
  "src/merlin/verification/merlin_iface_semantics.py": "src/merlin/verify/merlin_iface_semantics.py",
  "src/merlin/verification/model_coverage.py": "src/merlin/verify/model_coverage.py",
@@ -50,5 +63,6 @@
  "src/merlin/verification/smt_ops.py": "src/merlin/verify/smt_ops.py",
  "src/merlin/verification/smt_semantics.py": "src/merlin/verify/smt_semantics.py",
  "src/merlin/verification/split_reduction.py": "src/merlin/verify/split_reduction.py",
- "src/merlin/verification/tools.py": "src/merlin/verify/tools.py"
+ "src/merlin/verification/tools.py": "src/merlin/verify/tools.py",
+ "src/merlin/verification/validation/": "src/merlin/validation/"
 }

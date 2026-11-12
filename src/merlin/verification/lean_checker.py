@@ -65,7 +65,7 @@ def accepted_receipt(receipt: LeanTransformReceipt, before: str, after: str) -> 
 
 
 def pipeline_semantic_identity(kind: str | None = None) -> str:
-    root = Path(__file__).parent.parent / "transforms"
+    root = Path(__file__).parent.parent / "compiler" / "transforms"
     selected = ["certificates.py", "normalization.py", "loops.py", "planning.py", "validation.py"]
     additional = b""
     if kind in {"scalar_redundancy_elimination", "scalar_loop_invariant_motion", "ordered_loop_unrolling"}:
@@ -364,8 +364,8 @@ def verify_pipeline_change(
     from xdsl.utils.exceptions import ParseError, VerifyException
 
     from merlin.common.path_scrub import scrub_host_paths
-    from merlin.transforms.certificates import BufferReuseWitness, IntegerWitness, LoopWitness, ShapeWitness
-    from merlin.transforms.validation import validate_change
+    from merlin.compiler.transforms.certificates import BufferReuseWitness, IntegerWitness, LoopWitness, ShapeWitness
+    from merlin.compiler.transforms.validation import validate_change
 
     model = pipeline_semantic_identity(change.kind)
     domain = _TRANSFORM_DOMAINS.get(change.kind)

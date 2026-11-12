@@ -137,7 +137,7 @@ def build(record, *, tiers=None):
     for name in ("host_roundeven", "host_elementwise_fusion"):
         if not features[name]["selected"]:
             continue
-        from merlin.targetgen.source_composition_preferences import host_codegen_evidence
+        from merlin.development.targetgen.source_composition_preferences import host_codegen_evidence
 
         try:
             features[name].update(host_codegen_evidence(compiled, {name: True})[name])
@@ -149,7 +149,7 @@ def build(record, *, tiers=None):
         if item is None:
             bounded["status"] = "applied_evidence_unavailable"
         else:
-            from merlin.llvmlower.host_bounded_rne import require_report
+            from merlin.compiler.lower.model.host_bounded_rne import require_report
 
             report, digest = item
             try:

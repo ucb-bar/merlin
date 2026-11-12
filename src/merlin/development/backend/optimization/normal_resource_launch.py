@@ -14,7 +14,7 @@ from pathlib import Path
 
 from merlin.development.backend.optimization import external_resources as resources
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.sandbox import preflight
+from merlin.development.targetgen.sandbox import preflight
 
 
 @contextmanager

@@ -120,7 +120,7 @@ def construction(case, ctx, *, suite="core"):
         gaps.append(
             dict(
                 kind="reference_machine_view_missing",
-                next_action="Use merlin.kernels.reference_capture:capture_native_function for issue evidence; "
+                next_action="Use merlin.analysis.kernels.reference_capture:capture_native_function for issue evidence; "
                 "bind a selected target builder/ABI for timed machine-code comparison.",
             )
         )
@@ -174,9 +174,9 @@ def construction(case, ctx, *, suite="core"):
         learning=dict(
             index="OPTIMIZATION_RULES.json",
             notes="ITERATION_NOTES.md",
-            outcome_api="merlin.perf.optimization_ledger:append_attempts",
-            history_api="merlin.mining.reconstruction_history:read_history",
-            policy_api="merlin.transforms.shape_policy:propose_shape_policies / assess_shape_policy",
+            outcome_api="merlin.analysis.perf.optimization_ledger:append_attempts",
+            history_api="merlin.analysis.mining.reconstruction_history:read_history",
+            policy_api="merlin.compiler.transforms.shape_policy:propose_shape_policies / assess_shape_policy",
             group_by=["operation family and complete fusion/numerical contract", "shape/resource guards"],
             record=[
                 "pass composition/settings and emitted witnesses",

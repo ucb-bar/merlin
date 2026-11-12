@@ -10,7 +10,7 @@ from time import monotonic
 
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.checked_source_model_diagnostic import CheckedSourceModelDiagnostic
+from merlin.development.targetgen.checked_source_model_diagnostic import CheckedSourceModelDiagnostic
 
 METADATA_QUEUE_SECONDS = 120
 

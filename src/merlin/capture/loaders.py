@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from merlin.targetgen import component_sources
+from merlin.development.targetgen import component_sources
 
 _PREAMBLE = '''"""Auto-generated capsule loader ({op}, {dtype}). Defines the op in PyTorch; model2MLIR
 lowers it to linalg and the host torch-eager result is the reference golden. Deterministic inputs."""
@@ -355,7 +355,7 @@ def supported_ops() -> list[str]:
 
 def build_loader_src(spec: dict) -> str:
     """Render the selected builtin template through shared typed input validation."""
-    from merlin.targetgen.capsule_builtin_source import render_builtin_source
+    from merlin.development.targetgen.capsule_builtin_source import render_builtin_source
 
     return render_builtin_source(
         spec,

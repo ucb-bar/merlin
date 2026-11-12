@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from merlin.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
-from merlin.perf.envelope import Peak
+from merlin.analysis.perf.command_buffer_store import CommandBufferIntegrityError, load_command_buffer
+from merlin.analysis.perf.envelope import Peak
 
 COMPUTE = "compute"
 
@@ -39,12 +39,12 @@ def public_baseline_measurement(raw, *, corpus, member, package_sha256, certific
     """
     import math
 
-    from merlin.benchharness import hash_tree
+    from merlin.analysis.perf.work_volume import command_buffer_evidence
     from merlin.development.backend.optimization import contracts as K
     from merlin.development.backend.optimization import corpus as C
     from merlin.development.backend.optimization import feedback_metrics as FM
     from merlin.development.backend.optimization import gsim_gate as G
-    from merlin.perf.work_volume import command_buffer_evidence
+    from merlin.evaluation.harness import hash_tree
 
     if (
         type(corpus) is not C.FrozenPerformanceCorpus
@@ -156,7 +156,7 @@ def achievable_ceiling(points: Sequence[MeasuredPoint], *, provenance: str) -> P
 
     :meth:`Peak.observed_ceiling` re-checks ``demand / rate <= busy`` on every point it was built
     from and returns UNKNOWN rather than a rate if any point violates it, so this cannot quietly
-    become a nameplate number. ``merlin.perf.roofline`` will only admit a peak of this kind.
+    become a nameplate number. ``merlin.analysis.perf.roofline`` will only admit a peak of this kind.
     """
     if not points:
         return Peak.unknown(COMPUTE, "mac", "no measured point priced its work", provenance=provenance)

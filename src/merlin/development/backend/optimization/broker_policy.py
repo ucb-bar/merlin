@@ -18,8 +18,8 @@ from merlin.common.paths import repo_root
 from merlin.development.backend.optimization.broker import BrokerAction, placeholder_names
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 CORPUS_FEEDBACK_V1 = "corpus-feedback-v1"
 WHOLE_MODEL_V1 = "whole-model-v1"

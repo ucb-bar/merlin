@@ -203,8 +203,8 @@ def explore(source, caps, image, weights, expected) -> list[dict]:
         emit_convolution_schedule,
         explore_convolution_schedules,
     )
-    from merlin.transforms.pass_exploration import EmittedProgram
-    from merlin.transforms.pipeline_state import PipelineContext
+    from merlin.compiler.transforms.pass_exploration import EmittedProgram
+    from merlin.compiler.transforms.pipeline_state import PipelineContext
 
     S = _support()
     retention, rhs_law = _laws(source, caps)

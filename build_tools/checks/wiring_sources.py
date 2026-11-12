@@ -82,7 +82,7 @@ def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
     if not {(1, "tool_registry", "spec", None), (0, "merlin.common.access", "author_inaccessible", None)} <= imports:
         return set()
     producer = root / "src/merlin/experiments/corpus/preparation.py"
-    registry = root / "src/merlin/targetgen/tool_registry.py"
+    registry = root / "src/merlin/development/targetgen/tool_registry.py"
     policy = root / "src/merlin/common/access.py"
     if not all(path.is_file() for path in (producer, registry, policy)):
         return set()
@@ -195,13 +195,41 @@ def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
     return selected
 
 
+def _granted_modules(tree: ast.AST) -> set[str]:
+    """Exact module names an author profile grants: literal ``"merlin.x"`` strings and the finite
+    ``"merlin.prefix." + name for name in ("a", "b")`` form. Directory grants are not read."""
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.startswith("merlin."):
+            if all(part.isidentifier() for part in node.value.split(".")):
+                found.add(node.value)
+        elif isinstance(node, ast.GeneratorExp) and len(node.generators) == 1:
+            elt, gen = node.elt, node.generators[0]
+            if (
+                isinstance(elt, ast.BinOp)
+                and isinstance(elt.op, ast.Add)
+                and isinstance(elt.left, ast.Constant)
+                and isinstance(elt.left.value, str)
+                and elt.left.value.startswith("merlin.")
+                and isinstance(elt.right, ast.Name)
+                and isinstance(gen.target, ast.Name)
+                and gen.target.id == elt.right.id
+                and isinstance(gen.iter, (ast.Tuple, ast.List))
+                and all(isinstance(e, ast.Constant) and isinstance(e.value, str) for e in gen.iter.elts)
+            ):
+                found.update(elt.left.value + e.value for e in gen.iter.elts)
+    return found
+
+
 def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
-    """Follow three existing finite source loaders, without importing them."""
+    """Follow the existing finite source loaders and author grants, without importing them."""
     try:
         relative = path.relative_to(root).as_posix()
     except ValueError:
         return set()
-    if relative == "src/merlin/targetgen/tool_profile_shared.py":
+    if relative == "src/merlin/development/backend/author_profiles.py":
+        return _granted_modules(tree)
+    if relative == "src/merlin/development/targetgen/tool_profile_shared.py":
         return _staged_rtl_sources(root, tree)
     if relative == "src/merlin/compiler/quantization/torchao/portable.py":
         helper, prepare = _function(tree, "helper"), _function(tree, "prepare_helpers")
@@ -210,7 +238,7 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
         required = (
             "name not in DEPENDENCIES",
             "_TARGETGEN / (name + '.py')",
-            "'merlin.targetgen.' + name",
+            "'merlin.development.targetgen.' + name",
         )
         forms = {ast.unparse(n) for n in ast.walk(helper)}
         invoked = any(
@@ -235,7 +263,7 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
             for n in init.body
         ):
             return set()
-        return {"merlin.targetgen." + name for name in _strings(tree, "DEPENDENCIES")}
+        return {"merlin.development.targetgen." + name for name in _strings(tree, "DEPENDENCIES")}
     if relative not in {
         "src/merlin/development/backend/full_compiler_workspace.py",
         "src/merlin/development/backend/raw_interface_sources.py",
@@ -301,13 +329,24 @@ def published_source_modules(root: Path) -> set[str]:
     data = json.loads(raw)
     if data.get("schema") != "merlin.fresh10_tooling_projection.v1":
         raise ValueError("published compiler source inventory has an unsupported schema")
+    # Directories moved by a reorganization (current prefix -> former prefix in source_moves.json): a
+    # recorded member is found at its current place, and still admitted only on identical bytes.
+    moves = json.loads((Path(__file__).with_name("source_moves.json")).read_text(encoding="utf-8"))
+    moved_dirs = sorted(((old, new) for new, old in moves.items() if new.endswith("/")), key=lambda t: -len(t[0]))
     admitted = set()
     for profile in data["profiles"].values():
         for row in profile["full_members"]:
             module = row.get("module")
             if type(module) is not str or not module.startswith("merlin."):
                 continue
-            source = root / row.get("source_relative", "src/" + row["path"])
+            relative = row.get("source_relative", "src/" + row["path"])
+            for old, new in moved_dirs:
+                if relative.startswith(old):
+                    relative = new + relative[len(old) :]
+                    module = ".".join(Path(relative[len("src/") :]).with_suffix("").parts)
+                    module = module[: -len(".__init__")] if module.endswith(".__init__") else module
+                    break
+            source = root / relative
             if (
                 source.is_file()
                 and not any(p.is_symlink() for p in (source, *source.parents))
@@ -322,7 +361,7 @@ def compiler_source_inputs(root: Path) -> set[str]:
     """Current closed source-copy rosters plus admitted versioned sources."""
     names = published_source_modules(root)
     for relative in (
-        "src/merlin/targetgen/tool_profile_shared.py",
+        "src/merlin/development/targetgen/tool_profile_shared.py",
         "src/merlin/development/backend/full_compiler_workspace.py",
         "src/merlin/development/backend/raw_interface_sources.py",
     ):

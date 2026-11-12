@@ -8,7 +8,7 @@ name: saturn
 version: 0.1
 # WHERE this target's elaborated RTL is. Irreducible SETUP -- an SoC checkout holds many elaborations
 # and nothing in the RTL says which one is "saturn's", so the config is DECLARED here, in the target's
-# own contract, and read by merlin.targetgen.rtl.introspect.declared_rtl_source. Everything the
+# own contract, and read by merlin.development.targetgen.rtl.introspect.declared_rtl_source. Everything the
 # extractor then reports (geometry, SRAM capacities, element widths) is DERIVED from these artifacts;
 # no capacity, bank count or width is declared anywhere in this file.
 #   ext_root   a `.env` MERLIN_EXT_<NAME> key, so no absolute path is committed
@@ -54,7 +54,7 @@ vector:
   vl_policy: scalable_vl
   tail_policy: agnostic   # vsetvli ta,ma
   lmul_policy: static_m4_accumulate   # e8m1 loads widened into e32m4 accumulators
-# Datatype -> compute-unit -> op capability model (parsed by merlin.targetgen.compute_units). Saturn had
+# Datatype -> compute-unit -> op capability model (parsed by merlin.development.targetgen.compute_units). Saturn had
 # NO compute_units at all, which made it invisible to every consumer that asks "what engines does this
 # target have" -- the eligibility oracle, the engine audit, and the kind-routed fact extractor all read
 # this field, and an absent one reads as "no compute hardware" rather than "declared elsewhere".

@@ -9,7 +9,7 @@ import yaml
 
 from merlin.common import bundle_snapshot as B
 from merlin.common.paths import module_source_path
-from merlin.targetgen.tool_profile import verify_tool_profile
+from merlin.development.targetgen.tool_profile import verify_tool_profile
 from merlin.verification.lean_contract import document_digest
 
 
@@ -41,7 +41,11 @@ class SnapshotInputs:
             if row.get("module")
         }
         names.update(
-            (__name__, "merlin.targetgen.package_runtime", "merlin.development.backend.feedback.snapshot_execution")
+            (
+                __name__,
+                "merlin.development.targetgen.package_runtime",
+                "merlin.development.backend.feedback.snapshot_execution",
+            )
         )
         self.framework_sources = tuple(self._pin(module_source_path(name)) for name in sorted(names))
 

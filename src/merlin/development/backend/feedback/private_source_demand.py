@@ -8,10 +8,10 @@ from pathlib import Path
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
+from merlin.compiler.dialects.lowering import compute_groups as CG
 from merlin.development.backend.feedback.private_group_provenance import eligible_source_identity
 from merlin.development.backend.feedback.private_source_member_hardware import observe as observe_member
 from merlin.verification.lean_contract import document_digest
-from merlin.xdsl_dialects.lowering import compute_groups as CG
 
 SCHEMA = "merlin.private_source_device_demand.v1"
 _EXCLUSIONS = frozenset(
@@ -326,8 +326,8 @@ def derive(
 
 
 def request(source, device):
+    from merlin.compiler.lower.model.device_build import DeviceRouting
     from merlin.compiler.planning.complete import select_complete_group
-    from merlin.llvmlower.device_build import DeviceRouting
 
     receipt = source["accelerator_source_demand"]
     if receipt["n_demanded_groups"] and (
@@ -408,10 +408,10 @@ def exact_source_groups(module, target: str, capture: Path, form) -> tuple[list,
 
     A group that takes a converted accumulator through a stored float bias and a quantize is an
     integer readout only when the transition proof over its stored weights says so
-    (:mod:`merlin.xdsl_dialects.lowering.group_exact_float`). An unproved group is formed again with
+    (:mod:`merlin.compiler.dialects.lowering.group_exact_float`). An unproved group is formed again with
     its float chain left on the host, so the gate never demands an accelerator epilogue that would
     compute something other than the reference. Returns the groups and how many were refused.
     """
-    from merlin.llvmlower.source_compute_groups import form_exact_groups
+    from merlin.compiler.lower.model.source_compute_groups import form_exact_groups
 
     return form_exact_groups(module, target, capture, form)

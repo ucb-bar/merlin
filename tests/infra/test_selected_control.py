@@ -17,13 +17,13 @@ from merlin.compiler.backend.sourceproposal import (
     source_numerical_identity,
 )
 from merlin.compiler.build.image import CImageLink
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.lower.model.offload_plan import bind_source
 from merlin.compiler.pipeline import PlannedCompiler, RegionBackend
 from merlin.compiler.planning.execution import select_execution
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower.offload_plan import bind_source
-from merlin.system.topology import select_topology
-from merlin.transforms.certificates import ir_text
-from merlin.transforms.pipeline_state import PipelineContext
+from merlin.compiler.transforms.certificates import ir_text
+from merlin.compiler.transforms.pipeline_state import PipelineContext
+from merlin.target.system.topology import select_topology
 
 SOURCE = "module {func.func @forward(%x:tensor<2x3xf32>)->tensor<2x3xf32> {\n %a=tensor.collapse_shape %x [[0,1]] : tensor<2x3xf32> into tensor<6xf32>\n %b=tensor.expand_shape %a [[0,1]] output_shape [2,3] : tensor<6xf32> into tensor<2x3xf32>\n func.return %b:tensor<2x3xf32>\n}}"
 

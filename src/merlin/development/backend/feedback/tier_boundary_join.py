@@ -33,7 +33,7 @@ _COMMON = {
 # Merlin's own commit does not: the executed bytes are already pinned field by field above (source IR,
 # both command buffers, lowered IR, kernel object, and per engine the ELF and harness), and the judge is
 # pinned by the instrument digest on the ledger record, which hashes the grading path's bytes. That is
-# the rule `merlin.targetgen.tier_cache.execution_identity` keys certificates on. Keying on the commit
+# the rule `merlin.development.targetgen.tier_cache.execution_identity` keys certificates on. Keying on the commit
 # instead discarded every gSIM pass whose Spike observation was recorded before an unrelated commit landed
 # on the checkout enclosing a frozen export (fresh6: 142 of 315 promoted passes). The commit stays in the
 # recorded observation as provenance; it just does not decide whether two observations are one boundary.
@@ -290,7 +290,7 @@ def resolve(state, name, requested_identity, row, *, source_identity_verified):
         # its source authority; never attribute this completion to the new source.
         # Require the existing strict cross-source join, including current ELF,
         # harness, kernel/input boundary and independently selected loop judge.
-        from merlin.targetgen.oracle_schedule import valid_execution_digest
+        from merlin.development.targetgen.oracle_schedule import valid_execution_digest
 
         loop_instrument = pending.get("loop_instrument")
         if not valid_execution_digest(loop_instrument) or loop.get("instrument") != loop_instrument:

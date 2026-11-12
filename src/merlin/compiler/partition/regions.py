@@ -12,20 +12,20 @@ from dataclasses import dataclass
 
 from xdsl.dialects import builtin, func
 
-from merlin.compiler.ir.boundary import live_values
-from merlin.compiler.ir.region import preview_region
-from merlin.compiler.planning.execution import SelectedExecution
-from merlin.transforms.certificates import ir_digest
-from merlin.verification.partition import verify_partition
-from merlin.xdsl_dialects.lowering.dispatch_program import build_dispatch_program
-from merlin.xdsl_dialects.lowering.global_plan_emission import (
+from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
+from merlin.compiler.dialects.lowering.global_plan_emission import (
     BoundaryMapping,
     EmittedComponent,
     GlobalPlanEmission,
     dispatch_digest,
     verify_global_plan_emission,
 )
-from merlin.xdsl_dialects.lowering.outline import DispatchInfo, OutlineResult
+from merlin.compiler.dialects.lowering.outline import DispatchInfo, OutlineResult
+from merlin.compiler.ir.boundary import live_values
+from merlin.compiler.ir.region import preview_region
+from merlin.compiler.planning.execution import SelectedExecution
+from merlin.compiler.transforms.certificates import ir_digest
+from merlin.verification.partition import verify_partition
 
 
 def _source_members():
@@ -70,7 +70,7 @@ class PartitionRegion:
     def request_source(self, entry: str):
         """Serialize this exact region at the explicitly selected provider entry."""
         from merlin.compiler.request import Source
-        from merlin.transforms.certificates import ir_text
+        from merlin.compiler.transforms.certificates import ir_text
 
         if type(entry) is not str or not entry:
             raise ValueError("region source needs an explicit provider entry")

@@ -27,7 +27,7 @@ def observe_passed_census(root, *, target, compiler, remaining_s, numerical_pass
     try:
         from merlin.development.backend.optimization import campaign as PC
         from merlin.development.backend.optimization.census_launch import observe_dynamic_census
-        from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+        from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
         images = [path for path in Path(root).rglob(PACKAGE_ELF_NAME) if path.is_file() and not path.is_symlink()]
         if len(images) != 1:
@@ -36,7 +36,7 @@ def observe_passed_census(root, *, target, compiler, remaining_s, numerical_pass
         if policy is None:
             if descriptor is None:
                 return unknown("original selected package sandbox is unavailable")
-            from merlin.targetgen.target_experiment import load_target_experiment
+            from merlin.development.targetgen.target_experiment import load_target_experiment
 
             selected = load_target_experiment(descriptor)
             if selected.target != target:

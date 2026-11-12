@@ -174,7 +174,7 @@ def classify(spec_cb: dict, agent_cb: dict) -> str:
 
 def read_unit(unit: Path) -> dict[str, Any]:
     """Load one unit's three artifacts. Returns a record with ``load_error`` set on failure."""
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     rec: dict[str, Any] = {"unit": str(unit), "capsule": unit.name}
     try:

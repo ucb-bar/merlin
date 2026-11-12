@@ -84,8 +84,7 @@ def select_model_spike_timeout(contract, timeout_s):
     )
     block = runner.get("chipyard_rocc")
     backend._require(
-        type(block) is dict and type(block.get("engines")) is dict
-        and type(block["engines"].get("spike")) is dict,
+        type(block) is dict and type(block.get("engines")) is dict and type(block["engines"].get("spike")) is dict,
         "model Spike resource selection requires a declared Spike engine",
     )
     resources = dict(block.get("execution_resources", {}))
@@ -100,7 +99,7 @@ def select_model_spike_timeout(contract, timeout_s):
 def select_gsim_readback(contract, transport):
     """Derive only the declared full-value gSIM transport, preserving semantics."""
     backend._require(type(contract) is dict, "readback selection requires an original contract")
-    from merlin.targetgen.contract.readback_policy import (
+    from merlin.development.targetgen.contract.readback_policy import (
         COHERENT_DUMP_V1,
         COHERENT_PACKET_V1,
         COHERENT_PACKET_V2,
@@ -161,8 +160,8 @@ def select_operand_protocol(contract, selection):
         "rocc_operand_selection" not in contract and "rocc_operand_protocol" not in contract,
         "operand selection cannot replace an existing selected observer",
     )
-    from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
-    from merlin.targetgen.rocc.semantics import BoundSemantics
+    from merlin.development.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
+    from merlin.development.targetgen.rocc.semantics import BoundSemantics
 
     selected = copy.deepcopy(contract)
     if type(selection) is not dict or set(selection) != {"original_facts", "sidecar"}:
@@ -176,21 +175,24 @@ def select_operand_protocol(contract, selection):
 
 def relocate_operand_protocol(contract, selection):
     """Relocate an existing observer only to byte-identical facts and sidecar files."""
-    from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
-    from merlin.targetgen.rocc.semantics import BoundSemantics
+    from merlin.development.targetgen.rocc.selected_operand_protocol import _json, _read_pin, bind_selected_observer
+    from merlin.development.targetgen.rocc.semantics import BoundSemantics
 
     if type(contract) is not dict or "rocc_operand_protocol" in contract:
         raise ValueError("observer relocation requires an unchanged selected contract")
     previous = contract.get("rocc_operand_selection")
     if any(type(row) is not dict or set(row) != {"original_facts", "sidecar"} for row in (previous, selection)):
         raise ValueError("observer relocation requires the complete original and relocated selections")
-    originals = {key: _read_pin(previous[key], limit) for key, limit in
-                 (("original_facts", 16 * 1024 * 1024), ("sidecar", 2 * 1024 * 1024))}
+    originals = {
+        key: _read_pin(previous[key], limit)
+        for key, limit in (("original_facts", 16 * 1024 * 1024), ("sidecar", 2 * 1024 * 1024))
+    }
     for key, raw in originals.items():
         if _read_pin(selection[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:
             raise ValueError("observer relocation cannot change facts or sidecar bytes")
-    original = BoundSemantics(target=contract.get("name"), contract=contract,
-                              facts=_json(originals["original_facts"], 16 * 1024 * 1024))
+    original = BoundSemantics(
+        target=contract.get("name"), contract=contract, facts=_json(originals["original_facts"], 16 * 1024 * 1024)
+    )
     bind_selected_observer(original, selection)
     for key, raw in originals.items():
         if _read_pin(previous[key], 16 * 1024 * 1024 if key == "original_facts" else 2 * 1024 * 1024) != raw:

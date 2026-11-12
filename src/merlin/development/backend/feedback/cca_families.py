@@ -9,7 +9,7 @@ are lifted with the bank's own pinned decoder, through the same lifter and the s
 that built the bank, and grouped three ways, all derived by tooling:
 
 * **identical**: the SHA256 of the linked accelerator-region bytes (the bank's own unit identity);
-* **family**: :func:`merlin.mining.reference_subset_cards.family_signature` (decoded roles,
+* **family**: :func:`merlin.analysis.mining.reference_subset_cards.family_signature` (decoded roles,
   instruction classes, configured-field set, loop-nest shape, control status, non-numeric dataflow
   facts), the same function over bank units and over authors' kernels; counts and shapes excluded;
 * **operation class**: the case's declared source semantics (:func:`.family_rollup.describe`), used
@@ -18,8 +18,8 @@ that built the bank, and grouped three ways, all derived by tooling:
 Per family: the nearest bank unit by signature agreement, with the fields that agree and differ;
 representatives (the most frequent body, and the slowest member by the latest modeled cycles when any
 member has them); the applicability comparison of each representative with that unit
-(:func:`merlin.kernels.mechanism_applicability.applicability`); a member-by-member comparison with the
-representative (:func:`~merlin.kernels.mechanism_applicability.mechanism_differences`) whose deviating
+(:func:`merlin.analysis.kernels.mechanism_applicability.applicability`); a member-by-member comparison with the
+representative (:func:`~merlin.analysis.kernels.mechanism_applicability.mechanism_differences`) whose deviating
 members are listed as exceptions; and, per member, the shape-dependent route admissions.
 
 Facts only: nothing is ranked by assumed speed, structural agreement is never semantic equivalence, and
@@ -164,7 +164,7 @@ def compute(run_dir, workspace, *, pin, target, budget_s=BUDGET_S, clock=time.mo
             except Exception as error:  # noqa: BLE001 -- one unliftable kernel is reported, not fatal
                 failed[case] = f"{type(error).__name__}: {str(error)[:120]}"
         operations, shapes = case_semantics(workspace, sorted({m["case"] for m in members}))
-        from merlin.kernels.mechanism_applicability import selected_geometry
+        from merlin.analysis.kernels.mechanism_applicability import selected_geometry
 
         geometry, reason = selected_geometry(target, json.loads(Path(decoder_files["facts"]).read_text()))
         record = build(

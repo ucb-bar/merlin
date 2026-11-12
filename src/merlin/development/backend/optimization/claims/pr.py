@@ -15,17 +15,17 @@ What differs from PK is the claim, and therefore the whole decision:
 
 ⚠️ PK was REFUTED because all four of its depths sat inside the machine's overlap fill transient, and
 PR's cheapest band starts at the very same depth. So this analyzer runs
-:func:`merlin.perf.fill_transient.transient_verdict` PER BAND and refuses to quote a rate for a band
+:func:`merlin.analysis.perf.fill_transient.transient_verdict` PER BAND and refuses to quote a rate for a band
 whose points sit inside the transient. That refusal is a result, and it is reported per band.
 
 ⚠️ PR's declaration carries NO ``acceptance`` block today, so
-:func:`merlin.perf.claim_reach.has_decision_procedure` reports it as undecidable and nothing computes
+:func:`merlin.analysis.perf.claim_reach.has_decision_procedure` reports it as undecidable and nothing computes
 its verdict. :func:`supported_acceptance` returns the exact block that freezes THIS analyzer; a
 descriptor that carries an acceptance block must match it exactly, and one that carries none is still
 decided but is reported with ``contract_frozen: false`` so a reader cannot mistake a reproducible
 decision for a contractually bound one.
 
-The arithmetic lives in :mod:`merlin.perf.residency_claim`, which names no target, no store and no
+The arithmetic lives in :mod:`merlin.analysis.perf.residency_claim`, which names no target, no store and no
 band. This module owns only the declaration and evidence contract.
 """
 
@@ -36,9 +36,9 @@ import string
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from merlin.analysis.perf import fill_transient as FT
+from merlin.analysis.perf import residency_claim as RC
 from merlin.development.backend.optimization.claims.oracle_acceptance import require_sha256, selected_acceptance
-from merlin.perf import fill_transient as FT
-from merlin.perf import residency_claim as RC
 
 _FAMILY = "PR"
 _CLAIM = "DIFFERENTIAL"
@@ -102,7 +102,7 @@ _PROPOSED_ACCEPTANCE: dict[str, Any] = {
         ),
     },
     "transient_guard": {
-        "module": "merlin.perf.fill_transient.transient_verdict",
+        "module": "merlin.analysis.perf.fill_transient.transient_verdict",
         "applied": "per_residency_band",
         "on_in_fill_transient": "refuse_the_band_and_quote_no_rate",
         "why": (
@@ -574,12 +574,12 @@ def _validate_results(
 def _counter_set(counters: Any) -> Any:
     """Accept either a live ``OccupancyCounters`` or the mapping its ``to_dict`` produces.
 
-    :func:`merlin.perf.hw_counters.counters_for_target` hands its caller the DICT form, and a sealed
+    :func:`merlin.analysis.perf.hw_counters.counters_for_target` hands its caller the DICT form, and a sealed
     campaign manifest carries that same dict. Rebuilding it here -- structurally, by splitting each
     combination key on the separator ``to_dict`` joined it with -- means a caller cannot accidentally
     pass a mapping that silently resolves no counters and reads back as a machine with no overlap.
     """
-    from merlin.perf.hw_counters import OccupancyCounters
+    from merlin.analysis.perf.hw_counters import OccupancyCounters
 
     if isinstance(counters, OccupancyCounters):
         return counters
@@ -597,7 +597,7 @@ def _counter_set(counters: Any) -> Any:
 
 
 def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: Any) -> RC.Member:
-    """One :class:`~merlin.perf.residency_claim.Member`, with its overlap reading or its reason.
+    """One :class:`~merlin.analysis.perf.residency_claim.Member`, with its overlap reading or its reason.
 
     ``partition`` is the target's CIRCT counter-partition evidence (:data:`FT.PARTITION_FIELDS`).
     This module is a pure decision procedure over frozen descriptors and sealed result rows, so it
@@ -606,7 +606,7 @@ def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: A
     reading and the reason attached, which its band reports as ``BAND_OVERLAP_UNDETERMINABLE``. It is
     never substituted for, and it never reaches the report as a bare exception string.
     """
-    from merlin.perf.hw_counters import eta_from_counters
+    from merlin.analysis.perf.hw_counters import eta_from_counters
 
     try:
         proof = FT.partition_kwargs(partition)
@@ -682,13 +682,13 @@ def analyze_pr_claim(
     """Decide PR from exact frozen descriptors, exact run-authored rows, and derived counters.
 
     ``counters`` is the combination-counter set derived from the target's OWN shipped header
-    (:func:`merlin.perf.hw_counters.counters_for_target`). It is REQUIRED: without it the per-band
+    (:func:`merlin.analysis.perf.hw_counters.counters_for_target`). It is REQUIRED: without it the per-band
     fill-transient guard cannot run, and a rate quoted past a guard that did not run is exactly the
     result that refuted the sibling family. Absent counters is a refusal, never a skipped check.
 
     ``partition`` is that target's CIRCT counter-partition evidence -- the elaborated HW text, the
     header's event codes, and the two module identities -- which
-    :func:`merlin.perf.hw_counters.eta_from_counters` requires before it will call an overlap reading
+    :func:`merlin.analysis.perf.hw_counters.eta_from_counters` requires before it will call an overlap reading
     measured. A counter block's NAMES only suggest that it partitions busy time; the proof is in the
     RTL, and without it every member would report UNKNOWN overlap and every band would be refused for
     a reason that pointed at the instrument rather than at the missing artifact. So it is refused
@@ -797,7 +797,7 @@ def decision_boundary(decision: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 def falsifier_evidence(decision: Mapping[str, Any], *, member_of: Any = None) -> list[Any]:
-    """This family's negative-control evidence as :class:`merlin.perf.campaign.FalsifierEvidence`.
+    """This family's negative-control evidence as :class:`merlin.analysis.perf.campaign.FalsifierEvidence`.
 
     One record per band that reached its own negative control, so the campaign's own promotion gate
     sees the same three-state answer this analyzer computed: ``True`` the control fired (the two
@@ -805,10 +805,10 @@ def falsifier_evidence(decision: Mapping[str, Any], *, member_of: Any = None) ->
     band whose control could not be evaluated produces no record at all rather than an undetermined
     one, because the reason it could not is already a named band refusal.
 
-    ``member_of`` maps a band name to the :class:`~merlin.perf.campaign.ReplicaIdentity` the run used
+    ``member_of`` maps a band name to the :class:`~merlin.analysis.perf.campaign.ReplicaIdentity` the run used
     for that band's control member. It is required: this module does not invent identities.
     """
-    from merlin.perf.campaign import FalsifierEvidence
+    from merlin.analysis.perf.campaign import FalsifierEvidence
 
     if not isinstance(decision, Mapping) or decision.get("family") != _FAMILY:
         raise _Refusal("falsifier evidence can only be read off a PR decision")

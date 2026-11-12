@@ -18,8 +18,8 @@ from pathlib import Path
 from merlin.development.backend.optimization import campaign
 from merlin.development.backend.optimization import normal_resource_launch as resources
 from merlin.development.backend.optimization.contracts import StageGateError, mapping_file, sha256_file
+from merlin.development.targetgen.compiler_library import active_compiler_library
 from merlin.evaluation.capsule import model_runtime as capsule_model_runtime
-from merlin.targetgen.compiler_library import active_compiler_library
 
 _ACTIVE = ContextVar("functional_guard_invocations", default=None)
 _EXECUTOR = ContextVar("functional_guard_package_executor", default=None)

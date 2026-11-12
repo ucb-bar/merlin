@@ -17,9 +17,9 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.targetgen import component_program
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
-from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
+from merlin.development.targetgen import component_program
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.development.targetgen.contract.linalg_iface import parse_linalg_mlir
 
 SCHEMA = "merlin.public_compile_sources.v2"
 SCALES = (1, 8, 64)

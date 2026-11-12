@@ -26,8 +26,8 @@ def binding(policy, *, include=True):
 
 
 def install(policy, view, index=None):
+    from merlin.development.targetgen.contract.build_products import BuildProductIndex
     from merlin.runtime.build_runtime import BuildRuntimeView
-    from merlin.targetgen.contract.build_products import BuildProductIndex
 
     if (
         type(view) is not BuildRuntimeView
@@ -50,8 +50,8 @@ def executing(policy, job_root, *, reuse_products):
     if policy.build_runtime_view is None:
         yield
         return
+    from merlin.development.targetgen.contract.build_products import executing_build_products
     from merlin.runtime.build_runtime import executing_build_runtime
-    from merlin.targetgen.contract.build_products import executing_build_products
 
     temporary = Path(os.environ["TMPDIR"]) if os.environ.get("TMPDIR") else None
     storage_roots = (

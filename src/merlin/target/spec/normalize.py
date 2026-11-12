@@ -64,7 +64,7 @@ _FORMAT = {
 
 def check_record(value: dict, kind: str) -> None:
     """Close lossy v1 boundaries before invoking their existing normalizers."""
-    from merlin.targetgen.software_spec import _SIGNATURE_FIELDS, validate_numerical_semantics
+    from merlin.development.targetgen.software_spec import _SIGNATURE_FIELDS, validate_numerical_semantics
 
     if kind == "numerical_semantics":
         fields(value, _NUMERICAL, kind)
@@ -114,11 +114,11 @@ def check_record(value: dict, kind: str) -> None:
 
         validate_output_requantization(value)
     elif kind == "isa":
-        from merlin.targetgen.isa_spec import validate_isa_spec
+        from merlin.development.targetgen.isa_spec import validate_isa_spec
 
         validate_isa_spec(value)
     elif kind == "transfer_contracts":
-        from merlin.targetgen.transfer_contracts import validate_transfer_contracts
+        from merlin.development.targetgen.transfer_contracts import validate_transfer_contracts
 
         fields(value, {"status", "declarations"}, kind, {"declarations"})
         declarations = value["declarations"]
@@ -153,8 +153,8 @@ def check_record(value: dict, kind: str) -> None:
 
 
 def normalize(composition: Composition) -> tuple[dict, dict, list[str], list[dict]]:
-    from merlin.targetgen.software_spec import SCHEMA as V1_SCHEMA
-    from merlin.targetgen.software_spec import validate_software_spec
+    from merlin.development.targetgen.software_spec import SCHEMA as V1_SCHEMA
+    from merlin.development.targetgen.software_spec import validate_software_spec
 
     source = fields(
         composition.document,

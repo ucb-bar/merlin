@@ -63,7 +63,7 @@ SOURCE_ROOTS = (
 )
 MUTABLE_NAMESPACES = tuple("merlin." + p for p in SOURCE_ROOTS) + (
     "merlin.runtime",
-    "merlin.targetgen",
+    "merlin.development.targetgen",
     "merlin.verification",
     # Relocated compiler authoring families, not new copy roots. Existing import
     # closure still determines the baseline; stored selections keep their tuple.
@@ -79,15 +79,15 @@ MUTABLE_NAMESPACES = tuple("merlin." + p for p in SOURCE_ROOTS) + (
     "merlin.compiler.quantization",
 )
 PUBLIC_HELPERS = (
-    "merlin.targetgen.contract.linalg_iface",
-    "merlin.targetgen.isa_spec",
-    "merlin.targetgen.isa_model",
-    "merlin.targetgen.isa_dialect_gen",
-    "merlin.targetgen.isa_header_gen",
-    "merlin.targetgen.oot_starterkit.cmdbuf",
-    "merlin.targetgen.oot_starterkit.iface",
-    "merlin.perf.emitted_work",
-    "merlin.perf.model_group_work",
+    "merlin.development.targetgen.contract.linalg_iface",
+    "merlin.development.targetgen.isa_spec",
+    "merlin.development.targetgen.isa_model",
+    "merlin.development.targetgen.isa_dialect_gen",
+    "merlin.development.targetgen.isa_header_gen",
+    "merlin.development.targetgen.oot_starterkit.cmdbuf",
+    "merlin.development.targetgen.oot_starterkit.iface",
+    "merlin.analysis.perf.emitted_work",
+    "merlin.analysis.perf.model_group_work",
     "merlin.runtime.operation_profile",
 )
 # The shared author-withheld packages; the V22 author SDK stages none of them either.
@@ -237,7 +237,7 @@ def scoped_full_compiler(selection):
         raise ValueError("full compiler scope requires an explicit original selection")
     token = _ACTIVE.set(selection)
     try:
-        from merlin.targetgen.package_runtime import scoped_compiler_sources
+        from merlin.development.targetgen.package_runtime import scoped_compiler_sources
 
         with scoped_compiler_sources(selection, candidate_sources):
             yield selection

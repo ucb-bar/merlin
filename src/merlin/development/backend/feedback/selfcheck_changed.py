@@ -5,13 +5,13 @@ many: measured on one 300-minute run, 224 minutes were spent blocked on self-che
 to three capsules at a time. The grade already decides "affected" exactly, at the one place where it
 is expensive: an elaborated-RTL tier whose executable, request and engine selection are byte-identical
 to a certified one carries that exact-byte simulator certificate instead of simulating
-(:mod:`merlin.targetgen.simulation_certificate`). This selector asks that same question first.
+(:mod:`merlin.development.targetgen.simulation_certificate`). This selector asks that same question first.
 
 It runs in two passes over one isolated copy of the submission, so both see the same bytes:
 
 1. **Probe.** Every public capsule is graded on the grade's own adapters, in parallel over the shared
    CPU pool, with each elaborated-RTL engine refused just before dispatch
-   (:func:`merlin.targetgen.simulation_certificate.probe_observer`). Emission, the ELF builds and the
+   (:func:`merlin.development.targetgen.simulation_certificate.probe_observer`). Emission, the ELF builds and the
    functional screen run as they always do -- no certificate carries the screen -- and the RTL tier is
    decided by the certificate lookup alone: a hit carries the certified verdict, a miss is refused
    unexecuted. Nothing is simulated at an RTL tier.
@@ -53,8 +53,8 @@ import threading
 import time
 from pathlib import Path
 
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.targetgen import capsule_common as capsule_capsule_common
 
 SCHEMA = "merlin.selfcheck_changed_selection.v1"
 UNCHANGED_CERTIFIED = "unchanged-certified"
@@ -74,7 +74,7 @@ def probe_engines(adapters: dict, target: str) -> tuple[frozenset[str], str]:
     back without running it, and an engine the screen also uses would refuse the screen; both refuse
     the selector instead of simulating or guessing.
     """
-    from merlin.targetgen.runner_config import _config_for_target
+    from merlin.development.targetgen.runner_config import _config_for_target
 
     rtl = _config_for_target(target, None, "").rtl_tiers  # The ladder's own resolution, fallback included.
     engines, screens = set(), set()
@@ -96,7 +96,7 @@ def probe_engines(adapters: dict, target: str) -> tuple[frozenset[str], str]:
 @contextlib.contextmanager
 def probing(engines):
     """Refuse dispatch of ``engines`` for this process and every grader child it launches."""
-    from merlin.targetgen.simulation_certificate import PROBE_ENV
+    from merlin.development.targetgen.simulation_certificate import PROBE_ENV
 
     os.environ[PROBE_ENV] = ",".join(sorted(engines))
     try:
@@ -111,7 +111,7 @@ def classify(result, capsule, *, adapters: dict, barrier_tier: str, target: str)
     from merlin.development.backend.feedback import qa as _qc
     from merlin.development.backend.feedback.selfcheck_results import _operator_feedback_state
     from merlin.development.backend.feedback.selfcheck_selection import capsule_barrier
-    from merlin.targetgen.simulation_certificate import PROBE_REASONS
+    from merlin.development.targetgen.simulation_certificate import PROBE_REASONS
 
     if not isinstance(result, dict) or not isinstance(result.get("tiers"), dict):
         return CHANGED, {"why": "no readable probe result"}
@@ -166,7 +166,7 @@ def _failure(result: dict, statuses: dict) -> dict:
 
 def longest_first(names, capsules: dict) -> list[str]:
     """``names`` in the grade's own longest-first order: measured cost, then cycles, then operand volume."""
-    from merlin.targetgen import capsule_scheduling as S
+    from merlin.development.targetgen import capsule_scheduling as S
 
     members = [capsules[name] for name in names]
     estimate = S.cost_estimates(members, *S.measured_costs(S.selected_history()))
@@ -392,9 +392,9 @@ def select_changed(a, *, sub, context, capsules_root, contract, adapters, combin
     from merlin.development.backend.feedback.compiler_profile_runtime import selfcheck_execution
     from merlin.development.backend.feedback.selfcheck_selection import tier_engines
     from merlin.development.backend.feedback.selfcheck_selectors import Selection
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import simulation_certificate as SC
-    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen import simulation_certificate as SC
+    from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
 
     def refuse(why):
         return Selection(

@@ -457,14 +457,14 @@ def _source_obligations(
 ) -> dict:
     """Recompute eligibility over the actual source, independently of the candidate route."""
     from merlin.common import mlir_query as mq
+    from merlin.compiler.dialects.lowering import compute_groups as CG
+    from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+    from merlin.compiler.lower.model.source_compute_groups import form_source_groups
     from merlin.development.backend.feedback.private_pool_support import prove_pool_source
-    from merlin.frontends.capture_normalization import normalize_capture_mlir
-    from merlin.llvmlower.source_compute_groups import form_source_groups
-    from merlin.targetgen import application_inventory as AI
-    from merlin.targetgen import model_coverage as MC
-    from merlin.targetgen import operation_accounting as OA
-    from merlin.targetgen.eligibility import capability_map_from_contract, is_eligible
-    from merlin.xdsl_dialects.lowering import compute_groups as CG
+    from merlin.development.targetgen import application_inventory as AI
+    from merlin.development.targetgen import model_coverage as MC
+    from merlin.development.targetgen import operation_accounting as OA
+    from merlin.development.targetgen.eligibility import capability_map_from_contract, is_eligible
 
     source = capture / "model.mlir"
     _source_progress(progress, "capture_receipt")
@@ -743,7 +743,7 @@ def _verify_compiled_program(
     require_compilation_recipe: bool = True,
 ) -> dict[str, Any]:
     """Canonical post-build checks shared by freshly built and diagnostic images."""
-    from merlin.llvmlower.device_offload import BY_GROUP
+    from merlin.compiler.lower.model.device_offload import BY_GROUP
 
     expected_route = "device_requested_dispatch_unverified" if device_selected else "host_baseline"
     if (
@@ -864,10 +864,10 @@ def run(
     the full roster/source freeze and cannot pass the full gate; source-only takes no compiler.
     Typed semantic refusals retain failed rows; identity/route/unexpected errors abort.
     """
+    from merlin.compiler.lower.model.device_offload import BY_GROUP
     from merlin.compiler.planning.model import plan_before_build
-    from merlin.llvmlower.device_offload import BY_GROUP
+    from merlin.development.targetgen import target_registry
     from merlin.runtime.modelinputs import selected_firrtl
-    from merlin.targetgen import target_registry
 
     instruction_selection = linked_policy.freeze(linked_elf_admission, target=target)
     if native_result_format_selection is not None:
@@ -1066,7 +1066,7 @@ def run(
                 program: dict(((build_options or {}).get(name) or {}).get(program) or {}) for program, _ in programs
             }
             selected_math = math_policy.bind(document, spec, row, target, program_options, item["checks"])
-            from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
+            from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget
 
             program_ir_budgets = {}
             for program, options in program_options.items():
@@ -1084,7 +1084,7 @@ def run(
             }
             from contextlib import nullcontext
 
-            from merlin.targetgen.eligibility import original_result_format_scope
+            from merlin.development.targetgen.eligibility import original_result_format_scope
 
             original_contract_bytes, original_facts_bytes = capability_path.read_bytes(), facts_path.read_bytes()
             native_result_ceiling = None

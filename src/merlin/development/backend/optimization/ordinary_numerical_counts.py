@@ -7,8 +7,8 @@ This module supplies no source-effect, timing, incumbent or convergence grant.
 from merlin.development.backend.optimization import archive_native_screen as NATIVE
 from merlin.development.backend.optimization import ordinary_checked_source as CHECKED
 from merlin.development.backend.optimization.contracts import StageGateError, canonical_json, document_sha256
+from merlin.development.targetgen import checked_source_model_diagnostic as S
 from merlin.runtime import _native_files as F
-from merlin.targetgen import checked_source_model_diagnostic as S
 
 EFFECTS_SCHEMA = "merlin.public_numerical_counts_pending_effects.v1"
 

@@ -13,10 +13,10 @@ required_top_level_fields:
   - source_urls
   - scala_roots
   - examples_dirs
-producer: merlin.targetgen.ingest.source_manifest
+producer: merlin.development.targetgen.ingest.source_manifest
 consumers:
-  - merlin.targetgen.evidence.report
-  - merlin.targetgen.pipeline
+  - merlin.development.targetgen.evidence.report
+  - merlin.development.targetgen.pipeline
 validation_notes: >-
   Paths are recorded as given (absolute or repo-relative). source_urls are recorded for
   provenance only and must not trigger network access. branch/commit/notes are optional.

@@ -6,8 +6,8 @@ authority. The supplied evaluator owns its independent facts and policy.
 
 from __future__ import annotations
 
-from merlin.llvmlower.device_build import DeviceRouting
-from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.compiler.lower.model.device_build import DeviceRouting
+from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
 
 def freeze(service, *, target):

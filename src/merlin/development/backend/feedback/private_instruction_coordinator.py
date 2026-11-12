@@ -15,6 +15,7 @@ from merlin.development.backend.optimization.component_instruction_audit import 
     InstructionDecoderSelection,
 )
 from merlin.development.backend.optimization.component_instruction_policy import issue_independent_instruction_policy
+from merlin.development.targetgen.rtl.source_selection import load_selection
 from merlin.development.testgen.accessor_intake import issue_independent_accessor_intake
 from merlin.development.testgen.command_intake import issue_independent_command_intake
 from merlin.development.testgen.rtl_intake import issue_independent_hardware_intake
@@ -22,7 +23,6 @@ from merlin.development.testgen.source_predicate_intake import (
     SourcePredicateSelection,
     issue_independent_source_predicate_intake,
 )
-from merlin.targetgen.rtl.source_selection import load_selection
 
 
 @dataclass(frozen=True)

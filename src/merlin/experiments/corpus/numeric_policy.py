@@ -13,8 +13,8 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen.corpus_spec import profile_datapath
-from merlin.targetgen.software_spec import (
+from merlin.development.targetgen.corpus_spec import profile_datapath
+from merlin.development.targetgen.software_spec import (
     numerical_datapath,
     software_spec_path_for_recipe,
     validate_software_spec,

@@ -299,13 +299,13 @@ def _execute(args, command, plan, native_session, *, context: EnvelopeContext):
     from merlin.experiments.execution.chia_group import NativeTaskGroup, local_options
 
     if not _HAVE_CHIA:
-        from merlin.benchharness.chia_bridge import require_chia
+        from merlin.evaluation.harness.chia_bridge import require_chia
 
         require_chia()
     import chia.trace
 
-    from merlin.benchharness.chia_bridge import chia_run
-    from merlin.benchharness.chia_tasks import chia_tasks
+    from merlin.evaluation.harness.chia_bridge import chia_run
+    from merlin.evaluation.harness.chia_tasks import chia_tasks
 
     wrapper = context.wrapper_source.resolve()
     trace_path = Path(chia.trace.__file__).resolve()

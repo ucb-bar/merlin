@@ -179,19 +179,19 @@ def _source_visibility_selected(declaration, payload):
 
 def _source_graph(root, selected, source, binding):
     """Read actual source SSA for v2; retain the original explicit v1 route."""
-    from merlin.llvmlower.connected_spatial import (
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.lower.model.connected_spatial import (
         extract_connected_spatial_region,
         group_connected_spatial,
         public_spatial_source_graph,
         spatial_pair_interface,
     )
-    from merlin.llvmlower.connected_spatial_route import restore_group_rewrite
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.lower.model.connected_spatial_route import restore_group_rewrite
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     if selected["schema"] == "merlin.owned_spatial_source.v1":
         return public_spatial_source_graph(source, binding)
-    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     _, graph_bytes = _local_document(root, selected["source_graph"])
     _, rewrite_bytes = _local_document(root, selected["source_rewrite"])
@@ -212,7 +212,7 @@ def _source_graph(root, selected, source, binding):
         raise ValueError("owned source graph contains code outside its complete extracted spatial region")
     # Check the same ordinary source export, including both quantizers and all
     # tensor roles. Neither the candidate nor its asserted effects selects it.
-    from merlin.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import corpus_spec as CS
 
     _, interface = CS.build(source, binding)
     actual = spatial_pair_interface(entry, lambda _: binding, source_reference=source["source_reference"])
@@ -235,14 +235,14 @@ def _source_graph(root, selected, source, binding):
 
 def _route(record, *, source_sha256, effects_basis, stack_budget_bytes):
     """Decode bounded data; no author module, callback or effects assertion loads."""
+    from merlin.compiler.lower.model.borrowed_effects import BorrowedBufferEffects
+    from merlin.compiler.lower.model.connected_spatial_route import ConnectedSpatialRoute
+    from merlin.compiler.lower.model.fresh_tensor_writer import FreshTensorWriterContract, PrivateWorkspaceContract
     from merlin.compiler.schedule.blocks import SpatialMaxReadout
     from merlin.compiler.schedule.program_limits import AddressWindow
     from merlin.compiler.schedule.spatial_producer import SpatialProducerPlan, read_spatial_plan_record
     from merlin.compiler.schedule.spatial_readout import RoundedReadout, SpatialReadoutChain
     from merlin.compiler.schedule.window_transfer import CountedConvolutionPlan, Window2D
-    from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
-    from merlin.llvmlower.connected_spatial_route import ConnectedSpatialRoute
-    from merlin.llvmlower.fresh_tensor_writer import FreshTensorWriterContract, PrivateWorkspaceContract
 
     if type(record) is not dict or record.get("schema") not in (
         "operator.connected_spatial_original_route_inputs.v1",
@@ -335,10 +335,10 @@ def _route(record, *, source_sha256, effects_basis, stack_budget_bytes):
 
 def emit_selected(capsule, candidate_llvm, command_buffer, output, *, target, timeout, candidate_package):
     """Original capsule selection for the ordinary package/capsule front half."""
+    from merlin.compiler.lower.model.codegen import RISCV_FLAGS
     from merlin.compiler.selection.mesh import _mesh_tile_binding
-    from merlin.llvmlower.codegen import RISCV_FLAGS
+    from merlin.development.targetgen.contract.harness_abi import for_target
     from merlin.runtime.backends.base import harness_build_recipe
-    from merlin.targetgen.contract.harness_abi import for_target
 
     binding = _mesh_tile_binding(target, "i8", "i32", numeric_policy=capsule["numeric_policy"])
     recipe = harness_build_recipe(target).with_effective_abi()
@@ -386,24 +386,24 @@ def emit(
     from xdsl.dialects.builtin import ModuleOp
     from xdsl.parser import Parser
 
-    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
-    from merlin.llvmlower import codegen, toolchain
-    from merlin.llvmlower.compilation_recipe import CompilationRecipe
-    from merlin.llvmlower.connected_spatial import group_connected_spatial
-    from merlin.llvmlower.connected_spatial_host import select_closed_spatial_device_helper
-    from merlin.llvmlower.device_build import DeviceRouting, verify_object_symbol_binding
-    from merlin.llvmlower.device_preparation import (
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.lower.model import codegen, toolchain
+    from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
+    from merlin.compiler.lower.model.connected_spatial import group_connected_spatial
+    from merlin.compiler.lower.model.connected_spatial_host import select_closed_spatial_device_helper
+    from merlin.compiler.lower.model.device_build import DeviceRouting, verify_object_symbol_binding
+    from merlin.compiler.lower.model.device_preparation import (
         freeze_device_offload_selection,
         prepare_device_route,
         require_device_offload_artifacts,
     )
-    from merlin.llvmlower.host_builder import FnBuilder, append_void_region
-    from merlin.llvmlower.spatial_scratch_abi import emit_spatial_raw_entry
-    from merlin.llvmlower.tensor_helper_inlining import composition_features
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.lower.model.host_builder import FnBuilder, append_void_region
+    from merlin.compiler.lower.model.spatial_scratch_abi import emit_spatial_raw_entry
+    from merlin.compiler.lower.model.tensor_helper_inlining import composition_features
+    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
     root = Path(capsule["__dir__"]).absolute()
     if root.resolve() != root or any(p.is_symlink() for p in (root, *root.parents)):
@@ -444,7 +444,7 @@ def emit(
     ):
         if capsule.get(key) != declaration.get(key):
             raise ValueError("owned source differs from its frozen capsule declaration")
-    from merlin.targetgen import frozen_placement
+    from merlin.development.targetgen import frozen_placement
 
     frozen_placement.read(declaration, root)
     if declaration.get("software_screen", {}).get("status") != "admitted":

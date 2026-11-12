@@ -17,6 +17,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.rtl.circt_introspect import (
+    extract_funct_table,
+    extract_register_bundle_layouts,
+    unresolved_register_bundles,
+)
+from merlin.development.targetgen.rtl.hw_graph import parse_generic_hw
+from merlin.development.targetgen.rtl.hw_observations import input_observations
 from merlin.development.testgen.rtl_intake import (
     IndependentHardwareIntake,
     RtlIntakePin,
@@ -27,13 +34,6 @@ from merlin.development.testgen.rtl_intake import (
     _pin,
     _plain,
 )
-from merlin.targetgen.rtl.circt_introspect import (
-    extract_funct_table,
-    extract_register_bundle_layouts,
-    unresolved_register_bundles,
-)
-from merlin.targetgen.rtl.hw_graph import parse_generic_hw
-from merlin.targetgen.rtl.hw_observations import input_observations
 
 SCHEMA = "merlin.independent_command_observations.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -177,10 +177,10 @@ def issue_independent_command_intake(
         raise RtlIntakeRefusal("command intake needs one actually reproduced selected core HW artifact")
     names = (
         "merlin.development.testgen.command_intake",
-        "merlin.targetgen.rtl.circt_introspect",
-        "merlin.targetgen.rtl.hw_graph",
-        "merlin.targetgen.rtl.hw_observations",
-        "merlin.targetgen.rtl.ports",
+        "merlin.development.targetgen.rtl.circt_introspect",
+        "merlin.development.targetgen.rtl.hw_graph",
+        "merlin.development.targetgen.rtl.hw_observations",
+        "merlin.development.targetgen.rtl.ports",
         "xdsl.parser",
         "xdsl.dialects.comb",
     )

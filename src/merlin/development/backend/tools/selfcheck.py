@@ -527,7 +527,7 @@ def main(argv=None):
         "--candidate-schedule",
         default="",
         help="compare/applicability: owned artifacts/ or "
-        "variants/ stream document from python -m merlin.kernels.schedule_effects; with "
+        "variants/ stream document from python -m merlin.analysis.kernels.schedule_effects; with "
         "--candidate-path the reply attributes each difference to the lowering or to emission",
     )
     ap.add_argument(

@@ -6,7 +6,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.analysis.perf import work_volume as WORK
 from merlin.common import invocation_record as I
+from merlin.compiler.lower.model.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
 from merlin.development.backend.optimization import _archive_feedback as HISTORY
 from merlin.development.backend.optimization import _archive_feedback_context as HISTORY_CONTEXT
 from merlin.development.backend.optimization import _archive_source_domain as SOURCE_DOMAIN
@@ -23,10 +25,8 @@ from merlin.development.backend.optimization.contracts import (
     document_sha256,
     write_json,
 )
-from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
-from merlin.perf import work_volume as WORK
+from merlin.development.targetgen.contract import interface_emit as INTERFACE
 from merlin.runtime import _native_files as F
-from merlin.targetgen.contract import interface_emit as INTERFACE
 
 _ISSUER = object()
 _FAMILIES = {"matmul": "matmul", "linear": "matmul", "conv2d": "conv", "resident_reuse": "resident_chain"}
@@ -471,7 +471,7 @@ def issue_archive_screen(
         raise StageGateError("archive screen needs its original reviewed runtime and host attribution")
     policy.validate_search_inputs()
     runtime.verify()
-    from merlin.llvmlower import reviewed_pass_capabilities as CAP
+    from merlin.compiler.lower.model import reviewed_pass_capabilities as CAP
 
     model = json.loads(runtime.model_json)
     binding = PassCapabilityBinding(

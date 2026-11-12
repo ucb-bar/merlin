@@ -14,6 +14,10 @@ import yaml
 
 from merlin.common.jsonio import readable_json
 from merlin.development.backend.feedback import setup_timing as _host_timing
+from merlin.development.targetgen import seeded_grade as _seeded_grade
+from merlin.development.targetgen import tier_cache as _TC
+from merlin.development.targetgen.contract import schemas
+from merlin.development.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
 from merlin.evaluation.capsule.identity import CONTRACT_VERSION
 from merlin.evaluation.capsule.instructions import apply_executed_stream_rule
 from merlin.evaluation.capsule.instructions import (
@@ -26,10 +30,6 @@ from merlin.evaluation.capsule.lanes import (
     graded_execution_identity,
     operator_path_lane_execution,
 )
-from merlin.targetgen import seeded_grade as _seeded_grade
-from merlin.targetgen import tier_cache as _TC
-from merlin.targetgen.contract import schemas
-from merlin.targetgen.elf_lanes import PROGRAM_ARTIFACT_SUFFIX
 
 
 @_host_timing.measured("result_processing")
@@ -75,7 +75,7 @@ def _finalize_capsule_result(
     re-runs an oracle. Its side effects are the artifacts the row implies -- capsule_result.json and
     the run manifest -- plus a self-validation warning."""
     # Imported here, as run_capsule did: this module's import of .provenance is deferred to call time.
-    from merlin.targetgen.provenance import toolchain_shas
+    from merlin.development.targetgen.provenance import toolchain_shas
 
     # not_run_is_not_pass: a mandatory tier that did not pass closed (unavailable/skipped/absent) makes
     # the capsule incomplete — never a silent pass. A tier that is honestly N/A for this capsule's
@@ -95,7 +95,7 @@ def _finalize_capsule_result(
     # sections for this target's DERIVED accelerator opcode settles "no work reached the accelerator"
     # whatever spelling the backend used -- including the `.word`/`.insn` datum the IR-level decoder
     # reads as silence. It settles nothing in the positive direction (an instruction present in a
-    # binary is not one that ran). See `merlin.targetgen.elf_lanes`.
+    # binary is not one that ran). See `merlin.development.targetgen.elf_lanes`.
     #
     # It can prove the POSITIVE half too, but from execution rather than from the artifact, and only by
     # holding both halves of the claim at once: an oracle tier RAN this program on an instrument and
@@ -111,7 +111,7 @@ def _finalize_capsule_result(
     # unmeasured assertion must not read as a pass.
     _decl_lanes = capsule.get("lanes") or {}
     if _decl_lanes.get("require") or _decl_lanes.get("forbid"):
-        from merlin.targetgen import elf_lanes as _EL
+        from merlin.development.targetgen import elf_lanes as _EL
 
         _lane_rep = (extra or {}).get("lane_report")
         # A report the CALLER supplied comes from a path that owns evidence this one cannot see (the
@@ -342,7 +342,7 @@ def _finalize_capsule_result(
                 _r.submission = dict(submission)
     # A MUST-REFUSE CAPSULE INVERTS THE GRADE, after every other rule has spoken: its only correct
     # answer is the backend's stated decline, and an emitted program -- right-looking or not -- fails.
-    from merlin.targetgen import expected_refusal as _ER
+    from merlin.development.targetgen import expected_refusal as _ER
 
     status, failure, _refusal_record = _ER.verdict(capsule, status, failure, declined)
     result = {
@@ -360,7 +360,7 @@ def _finalize_capsule_result(
     # WHICH TIERS THIS RUN ACTUALLY EXECUTED, and which it carried from an earlier certification of the
     # same executable on the same instrument. Emitted on EVERY result, including one where nothing was
     # carried: a saving and a lie differ only in whether the reuse is stated, and a reader must never
-    # have to infer "freshly measured" from the absence of a block. See merlin.targetgen.tier_cache.
+    # have to infer "freshly measured" from the absence of a block. See merlin.development.targetgen.tier_cache.
     result["tier_reuse"] = _TC.reuse_block(result["tiers"])
     if _seeded_grade.seed_run() and (_from := _seeded_grade.label(result, getattr(cfg, "oracle_tiers", None))):
         result["tier_reuse"]["carried_from"] = _from  # a seeded grade's pass, carried in full

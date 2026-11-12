@@ -22,7 +22,7 @@ def parse_merlin_iface(text: str):
     from xdsl.dialects.builtin import Builtin
     from xdsl.parser import Parser
 
-    from merlin.targetgen.contract.interface_emit import to_generic_form
+    from merlin.development.targetgen.contract.interface_emit import to_generic_form
 
     try:
         generic = to_generic_form(text)

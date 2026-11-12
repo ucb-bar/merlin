@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from merlin.common import mlir_query as mq
-from merlin.llvmlower.device_build import DeviceRouting, _accum_from_facts
-from merlin.llvmlower.source_compute_groups import form_source_groups
-from merlin.xdsl_dialects.lowering import compute_groups as CG
+from merlin.compiler.dialects.lowering import compute_groups as CG
+from merlin.compiler.lower.model.device_build import DeviceRouting, _accum_from_facts
+from merlin.compiler.lower.model.source_compute_groups import form_source_groups
 
 
 def select_complete_group(_shape):

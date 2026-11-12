@@ -54,8 +54,8 @@ def _run_streaming_model_gate(
     model_gate_prerequisites=None,
 ):
     """Open capstones on a fixed selected-operator denominator in the same worker pool."""
+    from merlin.development.targetgen.capsule_scheduling import run_pipelined
     from merlin.experiments.corpus.model_sources import model_gate_satisfied
-    from merlin.targetgen.capsule_scheduling import run_pipelined
 
     caps = op_caps + model_caps
     model_names = {str(cap["name"]) for cap in model_caps}
@@ -68,7 +68,7 @@ def _run_streaming_model_gate(
 
     def fraction(cap=None):
         if cap is not None:
-            from merlin.targetgen.model_gate_continuation import prerequisite_fraction
+            from merlin.development.targetgen.model_gate_continuation import prerequisite_fraction
 
             prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
             if prior is not None:
@@ -102,7 +102,7 @@ def _run_streaming_model_gate(
     def admitted(cap):
         if cap.get("kind") != "model":
             return True
-        from merlin.targetgen.model_gate_continuation import admits, prerequisite_fraction
+        from merlin.development.targetgen.model_gate_continuation import admits, prerequisite_fraction
 
         prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
         continuation = (
@@ -145,7 +145,7 @@ def _original_capsule_worker_scope():
     its scope checks owner/selection identity at entry and exit. Legacy owners
     retain ordinary fresh verification, and every command keeps its final read.
     """
-    from merlin.targetgen.package_runtime import active_package_executor
+    from merlin.development.targetgen.package_runtime import active_package_executor
 
     owner = active_package_executor()
     capability = getattr(owner, "concurrent_entrypoints_v1", None)
@@ -172,10 +172,10 @@ def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
         return None
     from merlin.development.backend import joint_control
     from merlin.development.backend.feedback.compiler_profile_runtime import active_original_execution
-    from merlin.targetgen.capsule_scheduling import BoundaryReadiness
-    from merlin.targetgen.expected_refusal import expects_refusal
-    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
-    from merlin.targetgen.owned_host_slice_execution import selected_source_slice
+    from merlin.development.targetgen.capsule_scheduling import BoundaryReadiness
+    from merlin.development.targetgen.expected_refusal import expects_refusal
+    from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
+    from merlin.development.targetgen.owned_host_slice_execution import selected_source_slice
 
     if joint_control.selected() is None:
         return None

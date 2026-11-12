@@ -7,7 +7,7 @@ from merlin import api
 from merlin.compiler.artifact import Artifact, Compilation
 from merlin.compiler.pipeline import PlannedCompiler, RegionBackend
 from merlin.compiler.planning.execution import select_execution
-from merlin.transforms.certificates import ir_text
+from merlin.compiler.transforms.certificates import ir_text
 
 
 class RecordingBackend:
@@ -15,7 +15,7 @@ class RecordingBackend:
         self.name, self.events, self.reject, self.mutate = (name, events, reject, mutate)
 
     def validate(self, request):
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         module = parse_mlir_text(request.source.text)
         assert module.body.block.first_op.sym_name.data == "kernel"

@@ -20,8 +20,8 @@ from merlin.capture.receipts import (
     _static_pt2e_model,
 )
 from merlin.common.paths import module_source_path, repo_root
-from merlin.targetgen import capture_cache
-from merlin.targetgen._capture_diagnostics import stderr_cause as _stderr_cause
+from merlin.development.targetgen import capture_cache
+from merlin.development.targetgen._capture_diagnostics import stderr_cause as _stderr_cause
 
 
 def _m2m_dir() -> Path:
@@ -339,7 +339,7 @@ class PytorchRefSource:
         framework/importer dependency or arbitrary loader input. The caller rechecks
         the key before publishing or returning a shared-cache result.
         """
-        worker = module_source_path("merlin.targetgen._m2m_capture_worker")
+        worker = module_source_path("merlin.development.targetgen._m2m_capture_worker")
         cached_slot = capture_cache.committed_attempt(slot) if slot is not None else None
         if cached_slot is not None:
             try:
@@ -477,7 +477,7 @@ class PytorchRefSource:
         # program digests and the raw census, and leaves any unknown call in the remaining census.
         # Therefore this cannot turn an unrecognized opaque op into a clean capsule.
         if meta.get("opaque"):
-            from merlin.frontends.capture_normalization import (
+            from merlin.compiler.frontend.capture_normalization import (
                 CaptureNormalizationError,
                 normalize_capture_mlir,
             )

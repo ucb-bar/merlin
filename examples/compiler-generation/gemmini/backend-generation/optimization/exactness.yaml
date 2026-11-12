@@ -1,5 +1,5 @@
 # The exactness contract of the gemmini whole-model gates (src/merlin/resources/schemas/exactness_contract.schema.yaml,
-# enforced by merlin.perf.exactness): which forms may differ from their reference, by how much, and why.
+# enforced by merlin.analysis.perf.exactness): which forms may differ from their reference, by how much, and why.
 #
 # EVERY FORM IS EXACT unless an entry below says otherwise, and an entry is a reviewed decision, not a
 # tuning knob: a bounded form trades bit-exactness for a lever (a device requantization whose shift

@@ -19,7 +19,7 @@ from merlin.common import invocation_record
 from merlin.development.backend import full_compiler_workspace as full
 from merlin.development.backend.feedback import compiler_profile_child as C
 from merlin.development.backend.feedback import snapshot_execution as S
-from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+from merlin.development.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
 
 SCHEMA = "merlin.snapshot_external_model_child.v1"
 FIELD = "snapshot_external_model_child"

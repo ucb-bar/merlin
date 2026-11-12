@@ -12,10 +12,10 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+from merlin.analysis.perf import dynamic_census as C
 from merlin.common import invocation_record as I
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization import normal_resource_launch as R
-from merlin.perf import dynamic_census as C
 from merlin.runtime import _native_files as F
 
 

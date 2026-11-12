@@ -8,8 +8,8 @@ from hashlib import sha256
 from math import prod
 
 from merlin.compiler.frontend.inputs import StagedCompileInputs
-from merlin.llvmlower.c_runtime import DT_BYTES
-from merlin.semantic_compiler.model import KernelRequest, TensorType
+from merlin.compiler.lower.model.c_runtime import DT_BYTES
+from merlin.compiler.semantic.model import KernelRequest, TensorType
 
 from .sources import c_source_pair
 

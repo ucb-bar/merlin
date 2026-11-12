@@ -109,8 +109,8 @@ class OwnedHostModelCompiler:
         with the original source-bound ``descriptor_effects`` factory. Descriptor
         equality supplies no noescape, release or completion permission.
         """
+        from merlin.compiler.lower.model.device_offload import BY_GROUP
         from merlin.compiler.planning.model import plan_before_build
-        from merlin.llvmlower.device_offload import BY_GROUP
         from merlin.model import compile_saved_model
         from merlin.runtime.host_math import host_math_recipe
 
@@ -133,13 +133,13 @@ class OwnedHostModelCompiler:
         if type(share_exact_tensor_preparations) is not bool:
             raise ValueError("tensor preparation sharing must be an explicit Boolean choice")
         if intermediate_storage is not None:
-            from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+            from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
 
             if type(intermediate_storage) is not HostGraphPolicy or intermediate_storage.target != self.target:
                 raise TypeError("intermediate storage needs the original selected target software policy")
             intermediate_storage.revalidate()
         if pre_group_layout is not None:
-            from merlin.llvmlower.host_graph_policy import HostGraphPolicy
+            from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
 
             if type(pre_group_layout) is not HostGraphPolicy or pre_group_layout.target != self.target:
                 raise TypeError("pre-group layout needs the original selected target software policy")
@@ -148,7 +148,7 @@ class OwnedHostModelCompiler:
                 raise ValueError("pre-group layout deferred: unsupported partial or spatial source binding")
 
         if quantized_sum is not None:
-            from merlin.llvmlower.quantized_sum_route import QuantizedSumRoute
+            from merlin.compiler.lower.model.quantized_sum_route import QuantizedSumRoute
 
             if type(quantized_sum) is not QuantizedSumRoute:
                 raise TypeError("owned model quantized sum needs its original typed source route")
@@ -158,13 +158,13 @@ class OwnedHostModelCompiler:
         if linked_elf_admission is None:
             raise ValueError("an independently selected linked-ELF admission is required")
         if connected_spatial is not None:
-            from merlin.llvmlower.connected_spatial_route import ConnectedSpatialRoute
+            from merlin.compiler.lower.model.connected_spatial_route import ConnectedSpatialRoute
 
             if type(connected_spatial) is not ConnectedSpatialRoute:
                 raise TypeError("owned model connected lowering requires an original typed spatial route")
             connected_spatial.record()
         if sibling_source is not None:
-            from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+            from merlin.compiler.lower.model.sibling_source_route import SiblingSourceRoute
 
             if type(sibling_source) is not SiblingSourceRoute:
                 raise TypeError("owned model sibling lowering requires an original typed sibling route")
@@ -172,7 +172,7 @@ class OwnedHostModelCompiler:
             if connected_spatial is not None:
                 raise ValueError("original sibling and spatial routes are mutually exclusive")
         if independent_heads is not None:
-            from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
+            from merlin.compiler.lower.model.head_source_route import HeadBatchSourceRoute
 
             if type(independent_heads) is not HeadBatchSourceRoute:
                 raise TypeError("owned head lowering requires its original typed source selection")
@@ -212,7 +212,7 @@ class OwnedHostModelCompiler:
         if quantized_sum is not None:
             device = replace(device, quantized_sum=quantized_sum)
         if connected_spatial is not None:
-            from merlin.llvmlower.device_build import DeviceRouting
+            from merlin.compiler.lower.model.device_build import DeviceRouting
 
             if type(device) is not DeviceRouting:
                 raise TypeError("owned model connected lowering requires ordinary device routing")
@@ -222,7 +222,7 @@ class OwnedHostModelCompiler:
             # Source/plan/readout/workspace checks run in normal preparation.
             device = replace(device, connected_spatial=connected_spatial)
         if sibling_source is not None:
-            from merlin.llvmlower.device_build import DeviceRouting
+            from merlin.compiler.lower.model.device_build import DeviceRouting
 
             if type(device) is not DeviceRouting:
                 raise TypeError("owned model sibling lowering requires ordinary device routing")
@@ -230,7 +230,7 @@ class OwnedHostModelCompiler:
                 raise ValueError("owned model already has a distinct sibling source selection")
             device = replace(device, sibling_source=sibling_source)
         if independent_heads is not None:
-            from merlin.llvmlower.device_build import DeviceRouting
+            from merlin.compiler.lower.model.device_build import DeviceRouting
 
             if type(device) is not DeviceRouting or device.sibling_source is not None:
                 raise TypeError("owned head lowering needs an unchanged ordinary device route")

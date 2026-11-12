@@ -18,16 +18,16 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path, schemas_dir
 from merlin.common.strict_json import loads
+from merlin.development.targetgen import original_operator_sources as S
+from merlin.development.targetgen.frontend_original_call import call_contracts
+from merlin.development.targetgen.original_operator_reference import OriginalReferenceBudget, prepare_original_reference
+from merlin.development.targetgen.original_reference_values import TypedReferenceTensor as T
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen import original_reference_plan as P
 from merlin.development.testgen import original_schema_defaults as D
 from merlin.development.testgen.component_semantic_basis import ComponentSemanticBasis
 from merlin.development.testgen.operator_schema_intake import IndependentOperatorSchemaIntake, _selection
 from merlin.development.testgen.rtl_intake import RtlIntakePin
-from merlin.targetgen import original_operator_sources as S
-from merlin.targetgen.frontend_original_call import call_contracts
-from merlin.targetgen.original_operator_reference import OriginalReferenceBudget, prepare_original_reference
-from merlin.targetgen.original_reference_values import TypedReferenceTensor as T
 
 SCHEMA = "merlin.original_reference_roster.v1"
 BATCH_SCHEMA = "merlin.original_reference_roster.v2"
@@ -52,18 +52,18 @@ _READERS = (
     D.__name__,
     "merlin.development.testgen.original_reference_observer",
     "merlin.development.testgen.original_pointwise_reference_observer",
-    "merlin.targetgen.original_operator_reference",
-    "merlin.targetgen.original_pointwise_reference",
-    "merlin.targetgen.original_pointwise_sources",
-    "merlin.targetgen.original_reference_values",
-    "merlin.targetgen.original_operator_sources",
-    "merlin.targetgen.frontend_original_call",
-    "merlin.targetgen.frontend_typed_add",
-    "merlin.targetgen.torch_schema_defaults_observer",
+    "merlin.development.targetgen.original_operator_reference",
+    "merlin.development.targetgen.original_pointwise_reference",
+    "merlin.development.targetgen.original_pointwise_sources",
+    "merlin.development.targetgen.original_reference_values",
+    "merlin.development.targetgen.original_operator_sources",
+    "merlin.development.targetgen.frontend_original_call",
+    "merlin.development.targetgen.frontend_typed_add",
+    "merlin.development.targetgen.torch_schema_defaults_observer",
     E.__name__,
     "merlin.development.testgen.original_call_sources",
     "merlin.common.quant_formats",
-    "merlin.targetgen.software_spec",
+    "merlin.development.targetgen.software_spec",
     "merlin.common.schemas",
     "merlin.common.yaml",
     "merlin.common.strict_json",
@@ -93,17 +93,17 @@ def _sources(selection):
     readers = list(_READERS)
     if loads(Path(selection).read_bytes())["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
         readers += [
-            "merlin.targetgen.original_transpose_sources",
-            "merlin.targetgen.original_transpose_reference",
+            "merlin.development.targetgen.original_transpose_sources",
+            "merlin.development.targetgen.original_transpose_reference",
             "merlin.development.testgen.original_transpose_reference_observer",
         ]
     if loads(Path(selection).read_bytes())["schema"] == P.BROADCAST_SCHEMA:
-        readers.append("merlin.targetgen.original_broadcast_add_sources")
+        readers.append("merlin.development.targetgen.original_broadcast_add_sources")
     if P.transport(loads(Path(selection).read_bytes())) == "batch.v1":
         readers += [
             "merlin.development.testgen.original_schema_batch",
-            "merlin.targetgen.torch_schema_batch_observer",
-            "merlin.targetgen.torch_schema_observer",
+            "merlin.development.targetgen.torch_schema_batch_observer",
+            "merlin.development.targetgen.torch_schema_observer",
         ]
     return [module_source_path(name) for name in readers] + [
         Path(selection),
@@ -191,7 +191,7 @@ def _drafts(defaults, *, schema, basis, selection):
         )
         add_forms = S.original_add_forms
         if selection["schema"] == P.BROADCAST_SCHEMA:
-            from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
+            from merlin.development.targetgen.original_broadcast_add_sources import broadcast_add_forms
 
             add_forms = broadcast_add_forms
         forms = [
@@ -200,11 +200,11 @@ def _drafts(defaults, *, schema, basis, selection):
             for form in factory(trace, schemas, observed)
         ]
         if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
-            from merlin.targetgen.original_pointwise_sources import pointwise_forms
+            from merlin.development.targetgen.original_pointwise_sources import pointwise_forms
 
             forms += pointwise_forms(trace, schemas, observed, version=2)
         if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
-            from merlin.targetgen.original_transpose_sources import transpose_forms
+            from merlin.development.targetgen.original_transpose_sources import transpose_forms
 
             forms += transpose_forms(trace, schemas, observed)
         indexed = {form["node"]: form for form in forms}
@@ -234,16 +234,16 @@ def _drafts(defaults, *, schema, basis, selection):
                             "aten.conv2d.default": S.conv2d_source,
                         }
                         if selection["schema"] in {P.POINTWISE_SCHEMA, P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
-                            from merlin.targetgen.original_pointwise_reference import OPERATIONS
-                            from merlin.targetgen.original_pointwise_sources import pointwise_source
+                            from merlin.development.targetgen.original_pointwise_reference import OPERATIONS
+                            from merlin.development.targetgen.original_pointwise_sources import pointwise_source
 
                             factories.update(dict.fromkeys(OPERATIONS, pointwise_source))
                         if selection["schema"] in {P.TRANSPOSE_SCHEMA, P.BROADCAST_SCHEMA}:
-                            from merlin.targetgen.original_transpose_sources import TARGET, transpose_source
+                            from merlin.development.targetgen.original_transpose_sources import TARGET, transpose_source
 
                             factories[TARGET] = transpose_source
                         if selection["schema"] == P.BROADCAST_SCHEMA:
-                            from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
+                            from merlin.development.targetgen.original_broadcast_add_sources import broadcast_add_source
 
                             factories["aten.add.Tensor"] = broadcast_add_source
                         factory = factories[form["target"]]

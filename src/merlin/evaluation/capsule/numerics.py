@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen import capsule_golden as CG
+from merlin.development.targetgen.capsule_common import _cat, _flat
+from merlin.development.targetgen.package_runtime import CertFailure
 from merlin.evaluation.capsule.diagnostics import _absent_outputs as _absent_outputs
 from merlin.evaluation.capsule.diagnostics import _readback_refusal as _readback_refusal
 from merlin.runtime.backends import base as _backends_mod
-from merlin.targetgen import capsule_golden as CG
-from merlin.targetgen.capsule_common import _cat, _flat
-from merlin.targetgen.package_runtime import CertFailure
 
 DID_NOT_HALT_PLANE = "program_did_not_halt"
 
@@ -208,7 +208,7 @@ def _encoding_divergence_hint(
     concrete = ""
     if trace is not None:
         try:
-            from merlin.targetgen import divergence_localizer as _DL
+            from merlin.development.targetgen import divergence_localizer as _DL
 
             concrete = _DL.format_finding(_DL.localize(cb, capsule, trace))
         except Exception:  # noqa: BLE001 — the localizer is advisory; never let it break the failure path

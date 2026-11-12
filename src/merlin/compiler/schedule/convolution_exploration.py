@@ -52,13 +52,13 @@ from merlin.compiler.schedule.window_transfer import emit_convolution_tile as em
 from merlin.compiler.schedule.window_transfer import (
     plan_convolution_readout_transfers as plan_convolution_readout_transfers,
 )
-from merlin.transforms.pass_exploration import EmittedProgram as EmittedProgram
-from merlin.transforms.pass_exploration import PassFamily as PassFamily
-from merlin.transforms.pass_exploration import explore_candidates as explore_candidates
-from merlin.transforms.pass_exploration import generate_candidates as generate_candidates
-from merlin.transforms.pipeline_policy import PolicyFacts as PolicyFacts
-from merlin.transforms.pipeline_policy import RegisteredPass as RegisteredPass
-from merlin.transforms.pipeline_state import PassSpec as PassSpec
+from merlin.compiler.transforms.pass_exploration import EmittedProgram as EmittedProgram
+from merlin.compiler.transforms.pass_exploration import PassFamily as PassFamily
+from merlin.compiler.transforms.pass_exploration import explore_candidates as explore_candidates
+from merlin.compiler.transforms.pass_exploration import generate_candidates as generate_candidates
+from merlin.compiler.transforms.pipeline_policy import PolicyFacts as PolicyFacts
+from merlin.compiler.transforms.pipeline_policy import RegisteredPass as RegisteredPass
+from merlin.compiler.transforms.pipeline_state import PassSpec as PassSpec
 
 from .convolution_admission import (
     _phase_blocks as _phase_blocks,

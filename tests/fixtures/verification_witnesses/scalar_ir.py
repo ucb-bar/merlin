@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from merlin.analysis.perf.whole_model_chunks import chunk_forward
 from merlin.common import mlir_query as mq
-from merlin.perf.whole_model_chunks import chunk_forward
 from merlin.verification import HAS_Z3
 from merlin.verification.scalar_ir import ScalarTransformReceipt, qualify_scalar_receipt, verify_scalar_transform
 

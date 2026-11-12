@@ -11,9 +11,9 @@ import math
 from collections.abc import Mapping
 from copy import deepcopy
 
+from merlin.analysis.perf import capsule_roofline as R
+from merlin.analysis.perf.candidate_source import public_projection
 from merlin.common.digest import is_sha256
-from merlin.perf import capsule_roofline as R
-from merlin.perf.candidate_source import public_projection
 
 SCHEMA = "merlin.phase2.ordinary_capsule_feedback.v1"
 _MISSING = {

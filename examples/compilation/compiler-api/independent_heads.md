@@ -43,7 +43,7 @@ Use the additional compiler source selection for these APIs. The compact SDK's
 older inventory does not acquire new modules by importing this example.
 
 ```python
-from merlin.llvmlower.integer_batched_matmul_calls import lower_integer_batched_matmul_program
+from merlin.compiler.lower.model.integer_batched_matmul_calls import lower_integer_batched_matmul_program
 
 program = lower_integer_batched_matmul_program(
     original_tensor_source,

@@ -40,10 +40,10 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.paths import env as _env
+from merlin.development.targetgen.program_values import OracleUnavailable
 from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
 from merlin.runtime.metrics import COMMON_METRIC_NAMES
 from merlin.runtime.reference import outputs_match, reference_outputs
-from merlin.targetgen.program_values import OracleUnavailable
 
 # Self-register this reference GPU/SIMT backend with the class registry (base._REGISTRY). Discovery in
 # base._ensure_discovered imports this module to run the call, so the core carries no name -> module
@@ -92,7 +92,7 @@ def _rtl_machine_capacity(target: str) -> dict[str, Any]:
     when available.  Peak FLOPs/cycle does not need a clock: one IEEE FMA is two
     mathematical operations per active lane.
     """
-    from merlin.targetgen.rtl.facts import load_facts
+    from merlin.development.targetgen.rtl.facts import load_facts
 
     try:
         document = load_facts(target)
@@ -197,7 +197,7 @@ def cyclotron_root() -> Path:
 def _arc_cosim_assets(target: str) -> tuple[Path, Path, Path] | None:
     """(mlc_venv_python, model.so, state-manifest.json) for a target's RTL-arc cosim model, or None when the
     mlc checkout / compiled model is absent (fail closed — the caller degrades, never fabricates a result)."""
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     d = mlc_bridge.mlc_dir()
     if d is None:
@@ -237,7 +237,7 @@ def run_elf_arc(
     )
     drv = out.with_suffix(".driver.py")
     drv.write_text(driver, encoding="utf-8")
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     proc = subprocess.run(
         [str(py), str(drv), str(so), str(manifest), str(elf), str(base), str(length), str(max_cycles), str(out)],
@@ -352,7 +352,7 @@ def console_base(target: str | None = None) -> int | None:
     turns a coding mistake into a silent "this target has no console", which is exactly how the bug this
     exists to fix stayed hidden.
     """
-    from merlin.targetgen.rtl import facts as _facts
+    from merlin.development.targetgen.rtl import facts as _facts
 
     try:
         doc = _facts.load_facts(target or _facts_target())
@@ -690,8 +690,8 @@ int main(void){{
 
 def _model_for(target: str):
     """The derived IsaModel for a target, or a MuonUnavailable when no encoding fact is present (fail closed)."""
-    from merlin.targetgen.isa_model import isa_model_from_encoding
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.isa_model import isa_model_from_encoding
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     fact = mlc_bridge.isa_encoding_for(target)
     if not fact:
@@ -719,7 +719,7 @@ def build_forkfree_bsp(workdir: str | Path, *, target: str = "radiance", num_war
     transient or committed binaries. The assembler shim is rendered from the target's derived ``runtime_abi``
     (:func:`render_simt_preamble`), not a hardcoded preamble. Returns the object list
     :func:`compile_kernel_forkfree` links."""
-    from merlin.targetgen.contract.toolchain import mlir_bin
+    from merlin.development.targetgen.contract.toolchain import mlir_bin
 
     from . import muon_bsp
 
@@ -754,10 +754,15 @@ def compile_kernel_forkfree(
     R_RISCV relocation (a constant pool, a cross-section global, or a mu_schedule warp-callback pointer) is
     transcoded at the OBJECT level (reloc records preserved) and the fork-free linker resolves every
     relocation at the derived field positions. Returns the ELF path."""
-    from merlin.targetgen.contract.toolchain import mlir_bin
-    from merlin.targetgen.isa_model import isa_model_from_encoding
-    from merlin.targetgen.isa_transcode import FixedFormatTranscoder, derive_march, emit_kernel_asm, to_data_lines
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.contract.toolchain import mlir_bin
+    from merlin.development.targetgen.isa_model import isa_model_from_encoding
+    from merlin.development.targetgen.isa_transcode import (
+        FixedFormatTranscoder,
+        derive_march,
+        emit_kernel_asm,
+        to_data_lines,
+    )
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     from . import muon_link
 
@@ -818,7 +823,7 @@ def compile_kernel_forkfree(
     # The emitted stream is self-checked with the SAME derived disassembler the agent tooling uses: every
     # word must decode to a defined opcode. This catches a transcoder regression at BUILD time (cheap)
     # instead of in a paid oracle run, and enforces the derived tooling on the emit path (fail closed).
-    from merlin.targetgen import isa_disasm as _disasm
+    from merlin.development.targetgen import isa_disasm as _disasm
 
     def _lint_words(words: list[int]) -> None:
         illegal = [i for i, d in enumerate(_disasm.disassemble(model, words)) if d.get("illegal")]
@@ -893,7 +898,7 @@ def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
     """Content key for one of this backend's builds, or ``None`` to build normally.
 
     This target brings its OWN compiler, so it cannot key on the shared harness recipe that
-    ``merlin.targetgen.build_cache.build_identity`` covers -- but its builds are pure functions of the
+    ``merlin.development.targetgen.build_cache.build_identity`` covers -- but its builds are pure functions of the
     same shape: the emitted artifact, the target, the toolchain that would run today, and the bytes of
     the code that drives it (this backend package plus the shared MLIR->LLVM front it calls). Measured
     across this target's runs on disk: 1,757 s of screen-tier build against 3,160 s of screen-tier
@@ -902,8 +907,8 @@ def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
     try:
         from merlin.common.paths import module_source_path
         from merlin.common.source_membership import python_members
-        from merlin.targetgen import build_cache as _bc
-        from merlin.targetgen.contract.toolchain import mlir_bin
+        from merlin.development.targetgen import build_cache as _bc
+        from merlin.development.targetgen.contract.toolchain import mlir_bin
 
         here = Path(__file__).resolve().parent
         front_owner = module_source_path("merlin.compiler.lower.native.pipeline")
@@ -944,11 +949,11 @@ def compile_mlir_forkfree(
     target's fixed-format words (reloc-preserving) and the fork-free linker resolves the call against the
     from-source BSP. No clang-muon anywhere. Returns the ELF path."""
     from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
-    from merlin.targetgen import build_cache as _bc
-    from merlin.targetgen.contract.toolchain import mlir_bin
-    from merlin.targetgen.isa_model import isa_model_from_encoding
-    from merlin.targetgen.isa_transcode import derive_march
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen import build_cache as _bc
+    from merlin.development.targetgen.contract.toolchain import mlir_bin
+    from merlin.development.targetgen.isa_model import isa_model_from_encoding
+    from merlin.development.targetgen.isa_transcode import derive_march
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     from . import muon_bsp, muon_harness, muon_link
 
@@ -1113,7 +1118,7 @@ def compile_for_oracle(kernel_src: str, workdir: str | Path, *, target: str = "r
     (how many capsules the thesis path grades on its own). Set ``MERLIN_MUON_FORKFREE_ONLY=1`` for a pure
     thesis run: the fork is refused and a kernel the fork-free path can't yet build (e.g. a multi-warp
     ``mu_schedule`` kernel, until the multi-thread transcode lands) fails closed rather than borrowing it."""
-    from merlin.targetgen import build_cache as _bc
+    from merlin.development.targetgen import build_cache as _bc
 
     # A CACHED BUILD MUST CARRY ITS STAMP OR NOT BE USED. Which toolchain produced the graded ELF is
     # the measurement this function exists to make -- the fork is never a silent fallback -- so the

@@ -26,9 +26,14 @@ from merlin.compiler.schedule.window_transfer import (
     ConvolutionLoadIssueLaw,
     ConvolutionResidentInputRows,
 )
-from merlin.transforms.pass_exploration import EmittedProgram, PassFamily, explore_candidates, generate_candidates
-from merlin.transforms.pipeline_policy import PolicyFacts, RegisteredPass
-from merlin.transforms.pipeline_state import PassSpec
+from merlin.compiler.transforms.pass_exploration import (
+    EmittedProgram,
+    PassFamily,
+    explore_candidates,
+    generate_candidates,
+)
+from merlin.compiler.transforms.pipeline_policy import PolicyFacts, RegisteredPass
+from merlin.compiler.transforms.pipeline_state import PassSpec
 
 
 def convolution_pass_space(

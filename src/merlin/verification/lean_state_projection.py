@@ -12,10 +12,10 @@ import json
 from xdsl.dialects import arith, builtin, func, memref, scf
 from xdsl.ir import Operation
 
-from merlin.transforms.certificates import ir_digest, parse_ir
-from merlin.transforms.normalization import constant_integer
-from merlin.transforms.planning import blocks_in
-from merlin.transforms.pure_scalar import eligible_scalar_operation
+from merlin.compiler.transforms.certificates import ir_digest, parse_ir
+from merlin.compiler.transforms.normalization import constant_integer
+from merlin.compiler.transforms.planning import blocks_in
+from merlin.compiler.transforms.pure_scalar import eligible_scalar_operation
 
 from .lean_state_effects import (
     EffectExchange,
@@ -32,8 +32,8 @@ def _parse(source, contract):
     from xdsl.context import Context
     from xdsl.parser import Parser
 
-    from merlin.targetgen.isa_dialect_gen import build_dialect
-    from merlin.targetgen.isa_spec import resolved_isa_from_record
+    from merlin.development.targetgen.isa_dialect_gen import build_dialect
+    from merlin.development.targetgen.isa_spec import resolved_isa_from_record
 
     context = Context(allow_unregistered=True)
     for dialect in (builtin.Builtin, func.Func, arith.Arith, scf.Scf, memref.MemRef):

@@ -68,7 +68,7 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 
 ## What does not belong here
 
-- Generated, model-specific files (`model_gen.h`, `model_io.h`, `model_call.c`, `weights.bin`) — those are emitted per model by `merlin/python/merlin/llvmlower/c_runtime.py` into a build dir.
+- Generated, model-specific files (`model_gen.h`, `model_io.h`, `model_call.c`, `weights.bin`) — those are emitted per model by `merlin/python/merlin/compiler/lower/model/c_runtime.py` into a build dir.
 - Target-specific harness (crt/HTIF/malloc/linker) — that is `src/merlin/runtime/native/baremetal/<env>/`.
 - Per-kernel dispatch logic (the per-dispatch outliner/dispatch-table runtime, when added) layers on top but the descriptor ABI stays here.
 

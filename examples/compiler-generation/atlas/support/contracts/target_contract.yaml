@@ -1,4 +1,4 @@
-# GENERATED capability manifest for atlas (merlin.targetgen.capability_manifests). Provenance-tagged; requires_human_review. Regenerable from contracts/residual.yaml.
+# GENERATED capability manifest for atlas (merlin.development.targetgen.capability_manifests). Provenance-tagged; requires_human_review. Regenerable from contracts/residual.yaml.
 capabilities:
   mesh:
     cols: 32

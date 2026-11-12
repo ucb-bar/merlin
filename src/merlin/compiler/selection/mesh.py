@@ -58,8 +58,8 @@ def _mesh_tile_binding(
     here. A floating datapath without a declared policy refuses explicitly."""
     from types import SimpleNamespace
 
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
 
     te = SimpleNamespace(target=target, sim_via=_bespoke_sim_via(target))
     datapath = CS.profile_datapath({"datapath": numeric_policy}, numeric_only=True)
@@ -92,7 +92,7 @@ def tile_builder_op(demand) -> tuple[str | None, str]:
     ``family`` is UNKNOWN-safe and never widens, so an op with no derivable family is still matched by
     name exactly as before, and a family match is recorded so the weaker provenance stays visible.
     """
-    from merlin.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import corpus_spec as CS
 
     name = "matmul" if demand.op in ("matmul", "linear") else demand.op
     if name in CS.BUILDERS:

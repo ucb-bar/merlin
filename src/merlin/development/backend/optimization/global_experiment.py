@@ -11,7 +11,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.analysis.perf.functional_gate import FunctionalGateConfig, FunctionalGateResult
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization import emission_analysis as EA
 from merlin.development.backend.optimization import stage_inputs as INPUTS
@@ -28,8 +29,7 @@ from merlin.development.backend.optimization.portfolio_probes import PortfolioPr
 from merlin.development.backend.optimization.revision_journal import RevisionJournal
 from merlin.development.backend.optimization.revision_session import RevisionSession
 from merlin.development.backend.optimization.static_analysis_import import StaticAnalysisImport
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.perf.functional_gate import FunctionalGateConfig, FunctionalGateResult
+from merlin.evaluation.harness import hash_tree
 
 
 class GlobalPerfExperiment:

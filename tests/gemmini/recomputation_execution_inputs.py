@@ -15,9 +15,9 @@ import recomputation_host_work as W
 from packing_execution_inputs import pin, recheck_artifacts
 
 from merlin.common.paths import repo_root
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.frontend.materialized import MaterializedModelInputs
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.transforms.certificates import ir_digest, ir_text
+from merlin.compiler.transforms.certificates import ir_digest, ir_text
 
 SOURCE_SHA = "be3df891d1c03c7f48702a9ef30c699d65acce915aa10e5ad81d8589bc7eb54b"
 

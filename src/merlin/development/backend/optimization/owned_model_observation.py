@@ -153,8 +153,8 @@ def _runtime_sources(recipe):
 def _completion_modules(dispatch):
     from xdsl.parser import Parser
 
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-    from merlin.targetgen.rocc.control_flow import closing_fence_on_normal_returns
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.rocc.control_flow import closing_fence_on_normal_returns
 
     artifacts = dispatch.get("device_artifacts")
     roster = (dispatch.get("host_calls") or {}).get("mandatory_call_roster")
@@ -211,7 +211,7 @@ class OwnedModelScope:
     files: tuple[tuple[str, str], ...]
 
     def producer(self, elf, limits):
-        from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+        from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
 
         if F.canonical(Path(elf)) != self.elf:
             raise ValueError("owned timing selected another producer executable")
@@ -242,9 +242,9 @@ class OwnedModelScope:
 
 def prepare(result, *, target, evidence_root=None):
     """Reopen the native owner's evidence; a boolean completion claim is not enough."""
-    from merlin.llvmlower.compilation_recipe import verify_completed_recipe
-    from merlin.targetgen import capability_manifest, target_registry
-    from merlin.targetgen.owned_host_model_execution import _dispatch_proof
+    from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+    from merlin.development.targetgen import capability_manifest, target_registry
+    from merlin.development.targetgen.owned_host_model_execution import _dispatch_proof
 
     selected = target_registry.resolve(target)
     manifest = capability_manifest.load_capability_manifest(target)

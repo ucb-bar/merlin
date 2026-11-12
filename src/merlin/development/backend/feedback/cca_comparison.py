@@ -53,7 +53,7 @@ def mechanism_summary(analysis):
     Roles (A/W/output sites), transfer width per role, operand buffering, load/compute issue overlap,
     prefetch distance, output panel extent and operand residency, read from the region's derived effects.
     A fact the record does not establish stays unknown with the record's own reason."""
-    import merlin.kernels.mechanism_applicability as MA
+    import merlin.analysis.kernels.mechanism_applicability as MA
 
     effects = analysis.get("derived_effects") or {}
     sites = (analysis.get("mechanism_projection") or {}).get("role_sites") or {}
@@ -133,7 +133,7 @@ def _summary_text(summary):
 
 def group(members):
     """``{family key: [members]}``; each member carries its signature and identical-body identity."""
-    from merlin.mining.reference_subset_cards import family_key, family_signature
+    from merlin.analysis.mining.reference_subset_cards import family_key, family_signature
 
     families = {}
     for member in members:
@@ -148,7 +148,7 @@ EXPERT_UNITS = 3
 
 def nearest_units(signature, units, count):
     """Up to ``count`` distinct bank units by signature agreement (``[(score, occurrence)]``)."""
-    from merlin.mining.reference_subset_cards import signature_similarity
+    from merlin.analysis.mining.reference_subset_cards import signature_similarity
 
     best = {}
     for unit in units:
@@ -160,7 +160,7 @@ def nearest_units(signature, units, count):
 
 def nearest(signature, units, operation=None):
     """The bank occurrence whose signature agrees most, with the basis; ties are listed, never broken silently."""
-    from merlin.mining.reference_subset_cards import signature_similarity
+    from merlin.analysis.mining.reference_subset_cards import signature_similarity
 
     shortlist = [unit for unit in units if operation is not None and unit.get("operation") == operation]
     basis = (
@@ -271,7 +271,7 @@ def build(
     clock=time.monotonic,
 ):
     """The family record. ``deadline`` is a ``clock()`` value; work past it is skipped with that reason."""
-    from merlin.kernels.mechanism_applicability import applicability, mechanism_differences
+    from merlin.analysis.kernels.mechanism_applicability import applicability, mechanism_differences
 
     cycles, operations, shapes = cycles or {}, operations or {}, shapes or {}
     families = group(members)

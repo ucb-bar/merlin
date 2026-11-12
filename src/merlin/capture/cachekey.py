@@ -8,7 +8,7 @@ from pathlib import Path
 
 from merlin.capture.artifacts import _MODEL_CAPTURE_ABI_VERSION
 from merlin.common.paths import module_source_path
-from merlin.targetgen import capture_cache
+from merlin.development.targetgen import capture_cache
 
 
 def capture_slot(
@@ -112,7 +112,8 @@ def capture_slot(
             # A capability is part of the program, and so is the module that realises it: its source
             # is keyed by content. Added only when asked for, so every existing slot keeps its key.
             request["capture_capabilities"] = {
-                name: sha256_file(module_source_path("merlin.targetgen._" + name)) for name in sorted(capabilities)
+                name: sha256_file(module_source_path("merlin.development.targetgen._" + name))
+                for name in sorted(capabilities)
             }
         key = hashlib.sha256(json.dumps(request, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return cache_dir("model_capture") / f"{op}_{dtype}_{key}"

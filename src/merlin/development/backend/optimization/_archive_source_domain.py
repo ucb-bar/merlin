@@ -11,20 +11,20 @@ from __future__ import annotations
 import hashlib
 import json
 
+from merlin.analysis.perf.candidate_source import MAX_TEXT
 from merlin.common import mlir_query as Q
+from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
 from merlin.development.backend.optimization.contracts import document_sha256
-from merlin.perf.candidate_source import MAX_TEXT
 from merlin.runtime import _native_files as F
-from merlin.transforms.dense_ir import recognize_signed_integer_matmul
 
 SCHEMA = "merlin.archive_single_dot_profile.v1"
 
 
 def source_modules():
     """Original host recognizers to pin with the queue owner, not candidate code."""
-    from merlin.perf import candidate_source, compiler_plan_evidence
-    from merlin.targetgen.oot_starterkit import llvm_context, plan
-    from merlin.transforms import dense_ir
+    from merlin.analysis.perf import candidate_source, compiler_plan_evidence
+    from merlin.compiler.transforms import dense_ir
+    from merlin.development.targetgen.oot_starterkit import llvm_context, plan
 
     return (Q, candidate_source, compiler_plan_evidence, llvm_context, plan, dense_ir)
 
@@ -49,7 +49,7 @@ def _profile(m, k, n):
 
 def interface_profile(text):
     """Read the exact original interface contract, including raw readout."""
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     cb = parse_interface_mlir(text)
     commands = cb["commands"]
@@ -215,7 +215,7 @@ def current(member, compiled, workspace, catalog):
     """Reopen current source + actual compiled plan, preserving precise refusal."""
     from xdsl.utils.exceptions import ParseError, VerifyException
 
-    from merlin.targetgen.oot_starterkit.plan import validate_mixed_program_plan
+    from merlin.development.targetgen.oot_starterkit.plan import validate_mixed_program_plan
 
     unknown = {"status": "UNKNOWN", "family": None}
     if (member.descriptor.get("operation") or {}).get("op") != "model":

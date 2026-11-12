@@ -1,6 +1,6 @@
 """Deterministic, no-LLM extraction of Muon (RadianceMuonConfig) hardware facts from the real RTL.
 
-The Muon analog of :mod:`merlin.targetgen.rtl.circt_introspect` (Gemmini). The hardware is the source
+The Muon analog of :mod:`merlin.development.targetgen.rtl.circt_introspect` (Gemmini). The hardware is the source
 of truth: every geometry fact here is read out of the **elaborated FIRRTL + module hierarchy + memory
 macro list + device tree** that CIRCT/firtool produced for ``RadianceMuonConfig`` (under
 ``$MERLIN_CHIPYARD/sims/vcs/generated-src/...``), and emitted into one provenance-stamped
@@ -557,7 +557,7 @@ def _isa_block() -> dict[str, Any]:
     up: an unfalsifiable number wearing a fact's clothes. The doc values are not even right — the
     RTL-derived reading is ``max_src_operands=3`` (the trace bundle carries three source-register
     slots), not the 4 the doc claims. A consumer that needs the encoding and cannot get it must see
-    that, and :func:`merlin.targetgen.rtl.mlc_bridge.simt_facts` already returns ``{}`` on a missing
+    that, and :func:`merlin.development.targetgen.rtl.mlc_bridge.simt_facts` already returns ``{}`` on a missing
     ``encoding_bits`` so the manifest deriver falls back to the family default honestly.
     """
     intrinsics = {
@@ -566,7 +566,7 @@ def _isa_block() -> dict[str, Any]:
         "simt": ["vx_thread_id", "vx_warp_id", "vx_core_id", "vx_split", "vx_join", "vx_tmc"],
     }
     try:
-        from merlin.targetgen.rtl import mlc_bridge
+        from merlin.development.targetgen.rtl import mlc_bridge
 
         fact = mlc_bridge.isa_encoding_for(TARGET)
     except Exception:  # noqa: BLE001 — mlc/cache absent
@@ -810,7 +810,7 @@ def build_facts() -> dict[str, Any]:
 def default_facts_path() -> Path:
     # muon has no hand-curated merlin/targets/muon; the resolver routes it to artifacts/targets/muon
     # (or $MERLIN_RTL_FACTS). Muon uses a distinct filename (muon_facts.json) next to the pin.
-    from merlin.targetgen.rtl.facts import rtl_facts_path
+    from merlin.development.targetgen.rtl.facts import rtl_facts_path
 
     return rtl_facts_path(TARGET).with_name("muon_facts.json")
 
@@ -833,7 +833,7 @@ def main(argv: list[str] | None = None) -> int:
     # Guarded write: an extraction that silently lost the isa block looks identical to a good one on the
     # way out, and this is the path a person runs by hand (ensure_facts' _warn_if_degraded does not cover
     # it). Refuse the downgrade here rather than leave it to be caught by eye.
-    from merlin.targetgen.rtl.facts import FactsDowngrade, write_facts_guarded
+    from merlin.development.targetgen.rtl.facts import FactsDowngrade, write_facts_guarded
 
     try:
         write_facts_guarded(out, facts, allow_downgrade=a.allow_downgrade)

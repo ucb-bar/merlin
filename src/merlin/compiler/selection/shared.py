@@ -10,6 +10,9 @@ import ast
 import importlib
 from pathlib import Path
 
+from merlin.compiler.lower.model.copy_expand import FEATURE as _EXPAND_COPY_FEATURE
+from merlin.compiler.lower.model.selfcopy import FEATURE as _SELF_COPY_FEATURE
+from merlin.compiler.lower.model.transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 from merlin.compiler.passes.features import (
     FUSE_AFTER_GENERALIZE_NAME,
     FUSE_ELEMENTWISE_NAME,
@@ -19,9 +22,6 @@ from merlin.compiler.passes.features import (
     _promote_buffers_to_stack,
     _reuse_tensor_destination,
 )
-from merlin.llvmlower.copy_expand import FEATURE as _EXPAND_COPY_FEATURE
-from merlin.llvmlower.selfcopy import FEATURE as _SELF_COPY_FEATURE
-from merlin.llvmlower.transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 
 from .features import FeatureRegistry, ImprFeature
 
@@ -61,10 +61,10 @@ _NAME_MODULES: dict[str, str] | None = None
 def _name_modules() -> dict[str, str]:
     global _NAME_MODULES
     if _NAME_MODULES is None:
-        from merlin import llvmlower
+        from merlin.compiler.lower import model as llvmlower
 
         owners = Path(llvmlower.__path__[0])
-        modules = {f"merlin.llvmlower.{stem}": owners / (stem + ".py") for stem in _SHARED_MODULES}
+        modules = {f"merlin.compiler.lower.model.{stem}": owners / (stem + ".py") for stem in _SHARED_MODULES}
         modules["merlin.compiler.quantization.scope"] = (
             Path(__file__).resolve().parents[1] / "quantization" / "scope.py"
         )
@@ -97,13 +97,13 @@ def _lazy_register(name: str) -> bool:
     owner = _name_modules().get(name)
     if owner is not None:
         module = importlib.import_module(owner)
-        if owner == "merlin.llvmlower.quant_round":
+        if owner == "merlin.compiler.lower.model.quant_round":
             module.ensure_shared_registered()
         else:
             module.ensure_registered()
         return name in _REGISTRY
     for stem in ("parallel_grain", "parallel_team", "residual_parallel"):
-        module = importlib.import_module(f"merlin.llvmlower.{stem}")
+        module = importlib.import_module(f"merlin.compiler.lower.model.{stem}")
         prefix = module.FEATURE_PREFIX
         if name.startswith(prefix):
             try:

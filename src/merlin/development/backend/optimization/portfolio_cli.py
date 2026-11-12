@@ -21,9 +21,9 @@ from merlin.development.backend.optimization import portfolio_launch as LAUNCH
 from merlin.development.backend.optimization import portfolio_worker as WORKER
 from merlin.development.backend.optimization import qualification_policy as Q
 from merlin.development.backend.optimization.portfolio_options import parse_invocation
+from merlin.development.targetgen.target_experiment import load_target_experiment
 from merlin.experiments import frozen_python as FP
 from merlin.experiments import source_snapshot as SNAP
-from merlin.targetgen.target_experiment import load_target_experiment
 
 MODULE = "merlin.development.backend.optimization.portfolio_cli"
 SCHEMA = "merlin.portfolio-deployment.v1"

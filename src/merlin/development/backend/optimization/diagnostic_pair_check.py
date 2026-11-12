@@ -25,7 +25,7 @@ from merlin.development.backend.optimization.contracts import (
     write_json,
 )
 from merlin.development.backend.optimization.diagnostic_schedule_metrics import project as project_metrics
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
 
 SCHEMA = "merlin.diagnostic_source_pair_selection.v1"
 PROTOCOL = "merlin.diagnostic_source_pair.v1"

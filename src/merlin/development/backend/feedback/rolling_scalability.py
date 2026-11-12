@@ -310,7 +310,7 @@ class PerformanceFeedback:
 
         from merlin.development.backend.feedback import joint_performance as P
         from merlin.development.backend.feedback.qa import _execution_digest_from_result
-        from merlin.targetgen.capsule_common import load_capsule
+        from merlin.development.targetgen.capsule_common import load_capsule
 
         try:
             with P.environment_scope(self.environment):
@@ -345,8 +345,8 @@ class PerformanceFeedback:
     def _pin_result(self, name):
         import json
 
+        from merlin.development.targetgen.capsule_common import load_capsule
         from merlin.runtime import _native_files as F
-        from merlin.targetgen.capsule_common import load_capsule
 
         result_path = self._case_root(name) / "capsule_result.json"
         capsule = load_capsule(self.selection.cases[name])
@@ -470,7 +470,7 @@ class PerformanceFeedback:
                     # The score's host-compute veto rewrites a completed result after this
                     # observation (offload_census._record_veto): that row now fails, so it gets
                     # no performance feedback. Any other change still refuses the whole projection.
-                    from merlin.targetgen.offload_census import is_recorded_veto
+                    from merlin.development.targetgen.offload_census import is_recorded_veto
 
                     current = json.loads(Path(result["path"]).read_bytes())
                     if not is_recorded_veto(self.observed.get(name), current):

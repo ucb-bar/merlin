@@ -12,8 +12,8 @@ from merlin.compiler.backend.composition import (
     materialize,
     validate_backend_composition,
 )
-from merlin.targetgen import plugins
-from merlin.targetgen import target_registry as registry
+from merlin.development.targetgen import plugins
+from merlin.development.targetgen import target_registry as registry
 
 REVISION = "a" * 40
 

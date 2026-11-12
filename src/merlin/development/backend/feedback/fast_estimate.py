@@ -79,7 +79,7 @@ def census(trace) -> dict | None:
     import hashlib
 
     from merlin.development.backend.feedback.fence_overlap import _is_fence
-    from merlin.targetgen.semantic_families import from_isa_class
+    from merlin.development.targetgen.semantic_families import from_isa_class
 
     commands = fences = sites = unproved = 0
     families: Counter[str] = Counter()

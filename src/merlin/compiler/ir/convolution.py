@@ -97,6 +97,6 @@ def _reassoc(groups: "list[list[int]]"):  # noqa: UP037 -- Preserve the original
     return ArrayAttr([ArrayAttr([IntegerAttr(j, i64) for j in g]) for g in groups])
 
 
-BoundedIm2ColSource.__module__ = "merlin.llvmlower.im2col_pack"
-BoundedIm2ColArm.__module__ = "merlin.llvmlower.im2col_pack"
-BoundedIm2ColRewrite.__module__ = "merlin.llvmlower.im2col_pack"
+BoundedIm2ColSource.__module__ = "merlin.compiler.lower.model.im2col_pack"
+BoundedIm2ColArm.__module__ = "merlin.compiler.lower.model.im2col_pack"
+BoundedIm2ColRewrite.__module__ = "merlin.compiler.lower.model.im2col_pack"

@@ -47,7 +47,7 @@ def _components():
     # venv. See docs/guides/06-lowering.md -- third_party/llvm-install is gitignored, so a fresh clone
     # has to build it.
     try:
-        from merlin.llvmlower import toolchain as tc
+        from merlin.compiler.lower.model import toolchain as tc
 
         rows.append(("clang-23", tc.clang().is_file(), "MERLIN_CLANG (see docs/guides/06-lowering.md)", tc.clang()))
         rows.append(
@@ -80,7 +80,7 @@ def _llvm_ok() -> bool:
     m2m venv the lowering runner executes in); mlir-translate is additionally required by any multi-hart
     image, and every example builds one."""
     try:
-        from merlin.llvmlower import toolchain as tc
+        from merlin.compiler.lower.model import toolchain as tc
 
         return bool(tc.available()) and tc.mlir_translate().is_file()
     except Exception:  # noqa: BLE001

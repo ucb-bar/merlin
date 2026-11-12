@@ -65,7 +65,7 @@ def compact_result(result, *, artifact):
         if isinstance(gate, dict)
     }
     return {
-        "schema": "merlin.model_check.compact_feedback.v1",
+        "schema": "merlin.evaluation.model.compact_feedback.v1",
         **{key: result.get(key) for key in ("status", "model", "action", "source_sha256", "returncode")},
         "scope": {
             "report_schema": report.get("schema"),

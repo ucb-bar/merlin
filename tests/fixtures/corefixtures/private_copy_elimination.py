@@ -7,7 +7,7 @@ from merlin.compiler.schedule.temporary_storage import (
     StorageEffects,
     TemporaryObject,
 )
-from merlin.semantic_compiler.allocation_types import StorageBank
+from merlin.compiler.semantic.allocation_types import StorageBank
 
 SPACES = ("bytes", "typed_view", "input", "output")
 

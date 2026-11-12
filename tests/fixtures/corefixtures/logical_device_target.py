@@ -9,7 +9,7 @@ def require_native_tools(*, device=False, host=False):
     from pathlib import Path
 
     from corefixtures.host_toolchain import _refuse_selected_missing
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     tools = {"clang": toolchain.clang()}
     selection_keys = ["MERLIN_CLANG", "MERLIN_MLIR_INSTALL", "MERLIN_IREE_BIN", "MERLIN_EXT_MERLIN_IREE"]
@@ -44,12 +44,12 @@ def require_native_tools(*, device=False, host=False):
 
 
 def install(monkeypatch):
+    from merlin.compiler.dialects.lowering import compute_groups
     from merlin.compiler.selection import mesh as selection_mesh
+    from merlin.development.targetgen import readout_facet
+    from merlin.development.targetgen.corpus_spec import CorpusBinding
     from merlin.runtime import mesh
-    from merlin.system import offload
-    from merlin.targetgen import readout_facet
-    from merlin.targetgen.corpus_spec import CorpusBinding
-    from merlin.xdsl_dialects.lowering import compute_groups
+    from merlin.target.system import offload
 
     readouts = [
         {"selector": "i8", "applies": ["bias_add", "acc_scale", "relu", "maxpool"]},

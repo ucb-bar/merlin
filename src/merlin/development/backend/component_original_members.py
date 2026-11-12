@@ -15,12 +15,12 @@ from pathlib import Path
 
 from merlin.common.jsonio import canonical_json
 from merlin.common.strict_json import loads
+from merlin.development.targetgen.contract.tensor_types import type_identity
+from merlin.development.targetgen.original_reference_values import TypedReferenceTensor
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen import original_reference_roster as R
 from merlin.development.testgen import original_reference_standard_ir as S
 from merlin.development.testgen import original_standard_ir_plan as P
-from merlin.targetgen.contract.tensor_types import type_identity
-from merlin.targetgen.original_reference_values import TypedReferenceTensor
 
 SCHEMA = "merlin.original_candidate_members.v1"
 MEMBER_SCHEMA = "merlin.original_candidate_member.v1"

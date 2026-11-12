@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from math import prod
 
-from merlin.llvmlower.c_runtime import DT_BYTES
+from merlin.compiler.lower.model.c_runtime import DT_BYTES
+from merlin.compiler.semantic.model import IndexMap, KernelRequest, pointwise_identity_maps
 from merlin.runtime.fp8_formats import storage_bits
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, pointwise_identity_maps
 
 from .sources import c_source_pair
 

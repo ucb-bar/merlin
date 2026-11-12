@@ -65,8 +65,8 @@ def local_grade(
 ) -> dict[str, dict[str, Any]]:
     """Run each locally verified program on the functional model ``local`` (a machine spec): correct
     only when the program printed its local line with zero mismatches over a nonzero count, and its words."""
+    from merlin.analysis.perf import whole_model_verdict as V
     from merlin.development.backend.optimization.whole_model_measured.machines import machine_from_spec
-    from merlin.perf import whole_model_verdict as V
 
     machine = machine_from_spec(dict(local))
     graded: dict[str, dict[str, Any]] = {}
@@ -108,9 +108,9 @@ def board_batch(
 ) -> dict[str, Any]:
     """Link every entry (``{label: {"timing": record, "local": graded row}}``) and the control into one
     board program, run it ONCE, and admit each entry's group count on its own evidence."""
+    from merlin.analysis.perf import whole_model_verdict as V
     from merlin.development.backend.optimization.whole_model_measured.batch import control_check
     from merlin.development.backend.optimization.whole_model_measured.machines import machine_from_spec
-    from merlin.perf import whole_model_verdict as V
     from merlin.runtime.backends import base as backends
 
     out = Path(out)

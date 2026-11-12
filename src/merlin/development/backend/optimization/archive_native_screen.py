@@ -8,8 +8,8 @@ both original functional arms remain required and visible.
 import hashlib
 import json
 
+from merlin.compiler.lower.model.reviewed_pass_capabilities import ReviewedPassCapability
 from merlin.development.backend.optimization.contracts import StageGateError, canonical_json
-from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
 from merlin.runtime import _native_files as F
 
 
@@ -36,7 +36,7 @@ def original_numerical_observation(directory, value, *, checked_source=None):
     public = {name: item for name, item in original.items() if name != "original_grade"}
     if checked_source is not None:
         from merlin.development.backend.optimization.ordinary_checked_source import record
-        from merlin.targetgen.checked_source_model_diagnostic import (
+        from merlin.development.targetgen.checked_source_model_diagnostic import (
             NUMERICAL_COUNTS_PROTOCOL,
             numerical_grade_matches_selection,
         )
@@ -50,7 +50,9 @@ def original_numerical_observation(directory, value, *, checked_source=None):
         ):
             raise StageGateError("native diagnostic inference lost its original live complete-source selection")
         if selected.get("verification_protocol") == NUMERICAL_COUNTS_PROTOCOL:
-            from merlin.targetgen.checked_source_model_diagnostic_execution import reopen_numerical_counts_grade
+            from merlin.development.targetgen.checked_source_model_diagnostic_execution import (
+                reopen_numerical_counts_grade,
+            )
 
             try:
                 reopen_numerical_counts_grade(checked_source[0], original["original_grade"])

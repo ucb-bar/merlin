@@ -35,7 +35,7 @@ from verification_witnesses.borrowed_buffer_results_native import (
 def test_real_native_observer_cannot_refresh_changed_products_or_original_effects(
     tmp_path, upstream_host_tools, mutation
 ):
-    from merlin.llvmlower.fresh_tensor_writer import rewrite_fresh_tensor_writers
+    from merlin.compiler.lower.model.fresh_tensor_writer import rewrite_fresh_tensor_writers
 
     (writer, module) = (contract(), tensor_fixture())
     rewrite_fresh_tensor_writers(module, (writer,))

@@ -3,7 +3,7 @@
 A :class:`QuantFormat` describes WHAT a number is — its element encoding (bit width, and the
 exponent/mantissa split for floats), sub-byte packing, and scale representation — and never WHICH
 hardware runs it. That datatype -> compute-unit mapping belongs in a target contract's
-``compute_units`` (see :mod:`merlin.targetgen.routing`), not here. Keeping the two apart is what lets
+``compute_units`` (see :mod:`merlin.development.targetgen.routing`), not here. Keeping the two apart is what lets
 the rest of the tooling (framework ingestion, mixed-precision split, routing, verification) stay
 **format-agnostic**: it consults the descriptor, never a hardcoded list of formats.
 

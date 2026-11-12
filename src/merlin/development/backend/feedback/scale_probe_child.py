@@ -23,9 +23,9 @@ from merlin.common.digest import sha256_file
 from merlin.development.backend.feedback import compiler_profile_child as CHILD
 from merlin.development.backend.feedback import compiler_profile_runtime as R
 from merlin.development.backend.optimization.contracts import StageGateError, exact_tree_record
+from merlin.development.targetgen import package_runtime as P
+from merlin.development.targetgen.rtl.facts import observed_facts
 from merlin.evaluation.capsule import processes as capsule_processes
-from merlin.targetgen import package_runtime as P
-from merlin.targetgen.rtl.facts import observed_facts
 
 SCHEMA = "merlin.original_public_scale_child.v1"
 
@@ -102,7 +102,7 @@ def _execution_lifetime(owner, *, candidate, target_experiment, work_root, sandb
 
 def _verify_products(root, row):
     """Reopen command receipts and lexical observations before parent publication."""
-    from merlin.llvmlower.device_ir_scalability import analyze_device_ir
+    from merlin.compiler.lower.model.device_ir_scalability import analyze_device_ir
 
     fields = {
         "lowering_status",
@@ -365,9 +365,9 @@ def emit_cases(
 
 def observe_case(job, *, spec_path, executor, original_budget):
     """Reopen one original producer case; each actual command retains its boundary."""
+    from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget
     from merlin.development.backend.feedback import compile_only as C
     from merlin.development.testgen import public_scale_sources
-    from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
 
     owner, target = executor.owner, executor.target
     expected = {

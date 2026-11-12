@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import prod
 
-from merlin.semantic_compiler.model import KernelRequest, pointwise_identity_maps
+from merlin.compiler.semantic.model import KernelRequest, pointwise_identity_maps
 
 
 @dataclass(frozen=True)

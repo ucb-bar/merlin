@@ -15,10 +15,10 @@ from pathlib import Path
 import yaml
 
 from merlin.compiler.backend.isa import split_isa
-from merlin.model_check.binding_sources import dts_memory, read_dts
+from merlin.development.targetgen import gsim_emulator
+from merlin.development.targetgen.rtl import elaboration
+from merlin.evaluation.model.binding_sources import dts_memory, read_dts
 from merlin.runtime.boards import load_boards
-from merlin.targetgen import gsim_emulator
-from merlin.targetgen.rtl import elaboration
 
 
 def _selection(path: Path) -> dict:
@@ -181,8 +181,8 @@ def audit(
     source = facts["facts"]["source"]
     production = consistency.get("production") or {}
     execution_consistency = consistency
-    from merlin.targetgen.rtl.source_selection import load_selection
-    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+    from merlin.development.targetgen.rtl.source_selection import load_selection
+    from merlin.development.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
 
     binding = None
     try:
@@ -199,7 +199,7 @@ def audit(
         ):
             raise ValueError("simulation bundle differs from the correspondence")
         production = simulation.get("production") or {}
-        from merlin.targetgen.rtl.source_selection import production_consistency
+        from merlin.development.targetgen.rtl.source_selection import production_consistency
 
         execution_consistency = production_consistency(simulation)
     elaboration_pin = production.get("elaboration") or {}

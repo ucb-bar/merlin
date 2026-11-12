@@ -17,17 +17,17 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
 from merlin.common.jsonio import canonical_json
-from merlin.development.backend.feedback import private_control_support as control
-from merlin.development.backend.feedback import private_index_source as source_api
-from merlin.frontends.prepared_index_source_body import (
+from merlin.compiler.frontend.prepared_index_source_body import (
     SCHEMA as BODY_SCHEMA,
 )
-from merlin.frontends.prepared_index_source_body import (
+from merlin.compiler.frontend.prepared_index_source_body import (
     _record_role,
     _same_json,
     _selected_width,
     validate_source_record,
 )
+from merlin.development.backend.feedback import private_control_support as control
+from merlin.development.backend.feedback import private_index_source as source_api
 from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
 FIELD = "prepared_index_host_support"

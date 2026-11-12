@@ -19,7 +19,7 @@ class HostMathRecipe:
 
 def runtime_symbol_bindings(policy: str, symbols: Sequence[str]) -> dict[str, str]:
     """Select GNU wrapper definitions from an explicit runtime recipe."""
-    from merlin.llvmlower.link_supplier_trace import trace_symbol_flags
+    from merlin.compiler.lower.model.link_supplier_trace import trace_symbol_flags
 
     trace_symbol_flags(symbols)  # Validate the original, bounded C-symbol roster.
     recipe = host_math_recipe(policy)

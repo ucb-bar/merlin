@@ -3,7 +3,7 @@
 This note justifies the `ConfigExRs1`/`ConfigExRs2` bundle selections, the
 `class_operand_bundles` entry and the `field_kinds` entries in
 `operand_selection_recipe.yaml`. Every value is either re-derived or verified by
-`python -m merlin.targetgen.rocc.operand_selection_recipe` (`main`) against the
+`python -m merlin.development.targetgen.rocc.operand_selection_recipe` (`main`) against the
 FIRRTL pinned in the selected facts:
 
 - FIRRTL: `firechip.chip.FireSim.FireSimGemminiRocketConfig.fir`, sha256 `b7d9826b…5bf0`

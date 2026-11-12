@@ -8,6 +8,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from merlin.common.jsonio import readable_json
+from merlin.development.targetgen import tier_policy as _tier_policy
+from merlin.development.targetgen.capsule_common import NOT_MEASURED_STATUSES
+from merlin.development.targetgen.package_runtime import build_package, integrity_scan, load_package
 from merlin.evaluation.capsule.eligibility import _gate_counts, _split_ineligible, suite_for
 from merlin.evaluation.capsule.identity import _SUITE_MODEL_PIN, _pin_model_capsule
 from merlin.evaluation.capsule.model_suite import (
@@ -17,9 +20,6 @@ from merlin.evaluation.capsule.model_suite import (
     _run_streaming_model_gate,
 )
 from merlin.evaluation.capsule.operation import run_capsule
-from merlin.targetgen import tier_policy as _tier_policy
-from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES
-from merlin.targetgen.package_runtime import build_package, integrity_scan, load_package
 
 _CALIBRATION_CAP = 3
 
@@ -88,7 +88,7 @@ def run_suite(*args, **kwargs) -> list[dict]:
             # CAS model pinning can alter frozen input inode link metadata.
             # Refresh only through the original owner's full native admission,
             # before _run_suite creates any workers. Legacy owners stay fresh.
-            from merlin.targetgen.package_runtime import active_package_executor
+            from merlin.development.targetgen.package_runtime import active_package_executor
 
             executor = active_package_executor()
             refresh = getattr(executor, "staged_suite_snapshot_scope_v1", None)
@@ -159,7 +159,7 @@ def _run_suite(
     # production whole-model boundary plane.
     _pass_recorder = None
     if os.environ.get("MERLIN_PASS_LOG"):
-        from merlin.xdsl_dialects.lowering import passes as _pass_recorder
+        from merlin.compiler.dialects.lowering import passes as _pass_recorder
 
         _pass_recorder.install_pass_recorder()
 
@@ -168,7 +168,7 @@ def _run_suite(
         # calibration head is serial by construction, and recording the suite's max_workers for it
         # would describe contention its numbers never saw.
         if process_operators and cap.get("kind") != "model":
-            from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
+            from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
 
             if not selected_host_leaf(cap):
                 return _operator_child.grade(
@@ -251,9 +251,9 @@ def _run_suite(
         # PIPELINED: a capsule starts as soon as a worker is free and its selected `extends` sibling has
         # FINISHED (it cites that sibling's published result), with one short calibration head on the
         # cheapest members while tiers are unpriced. No wave barrier, so one slow member never holds
-        # the rest (merlin.targetgen.capsule_scheduling).
+        # the rest (merlin.development.targetgen.capsule_scheduling).
         from merlin.development.backend.feedback import snapshot_execution
-        from merlin.targetgen.capsule_scheduling import run_pipelined
+        from merlin.development.targetgen.capsule_scheduling import run_pipelined
 
         return run_pipelined(
             caps,
@@ -432,7 +432,7 @@ def _run_suite(
                 }
             )
             continue
-        from merlin.targetgen.model_gate_continuation import admits, prerequisite_fraction
+        from merlin.development.targetgen.model_gate_continuation import admits, prerequisite_fraction
 
         prior = prerequisite_fraction(c, model_gate_prerequisites, target=target)
         value = frac if prior is None else prior

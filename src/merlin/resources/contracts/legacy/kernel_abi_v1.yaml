@@ -1,12 +1,12 @@
 # Kernel ABI version 1 (resident command-shape pointer ABI).
 #
-# The pointer ABI Merlin's own device shim (merlin.llvmlower.device_shim, staged_admission,
+# The pointer ABI Merlin's own device shim (merlin.compiler.lower.model.device_shim, staged_admission,
 # exact_offload) emits against, and the one a support package implementing the version-1 harness
 # certifies with build_tools/checks/check_kernel_abi_arg_order.py. It is NOT part of the
 # candidate-facing experiment contract: a runner-owned harness built by Merlin follows
 # `logical_kernel_abi` (version 2) in ../mlir_oot_backend_contract.yaml.
 #
-# Readers resolve this file through merlin.targetgen.contract.schemas.legacy_kernel_abi_path().
+# Readers resolve this file through merlin.development.targetgen.contract.schemas.legacy_kernel_abi_path().
 version: 1
 
 kernel_abi:
@@ -26,7 +26,7 @@ kernel_abi:
   # consume this key. The other two shapes have a DIFFERENT arity and order.
   signature: "void {target}_kernel(ptr weight_0 .. ptr weight_{G-1}, ptr lhs_0 .. ptr lhs_{R-1}, ptr out_0 .. ptr out_{R-1}) - the resident_matmul command shape ONLY; other shapes: arg_order_by_command_shape[].signature"
   # Kept as a flat string because readers that implement only the resident-matmul shape consume this
-  # key (merlin.llvmlower.device_shim.kernel_abi_for renders it into the emitted shim). It is the
+  # key (merlin.compiler.lower.model.device_shim.kernel_abi_for renders it into the emitted shim). It is the
   # resident_matmul row restated and MUST NOT be read as the rule for any other shape.
   arg_order: "resident_matmul shape ONLY: [each group's resident weight, in resident-pack order] ++ [every group's matmul lhs, group-major] ++ [every group's commit output, group-major] ++ [the bias of every commit declaring a fused bias stage, group-major -- empty when none does]. Other command shapes have a DIFFERENT order: see arg_order_by_command_shape."
   # Rows are tried TOP-DOWN and the FIRST matching `when` decides the ABI; this mirrors the dispatch a

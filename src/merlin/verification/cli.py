@@ -41,7 +41,7 @@ def _load_interface(path: Path):
     """
     from xdsl.parser import Parser
 
-    from merlin.xdsl_dialects import _common, contract, interface, runtime, schedule
+    from merlin.compiler.dialects import _common, contract, interface, runtime, schedule
 
     # Each dialect module exposes its Dialect INSTANCE as <NAME>_DIALECT; `Dialect` is the xDSL class
     # it imported, which is not what the context wants.

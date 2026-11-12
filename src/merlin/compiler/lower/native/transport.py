@@ -17,7 +17,7 @@ from pathlib import Path
 from merlin.common import invocation_record as I
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.common.jsonio import canonical_json
-from merlin.llvmlower.optional_passes import child_environment
+from merlin.compiler.lower.model.optional_passes import child_environment
 
 SCHEMA = "merlin.serial_llvm_dialect_product.v1"
 _TRANSLATE = "f.write(str(llvm.translate_module_to_llvmir(module.operation)))"
@@ -45,7 +45,7 @@ def run_translation(command, *, timeout, audit, retention, source, runner, depen
         if scalar_stage is None:
             with shared_compute_pool(timeout_s=timeout):
                 return subprocess.run(command, capture_output=True, text=True, timeout=timeout, env=child_environment())
-        from merlin.llvmlower.source_stage_transport import run_command
+        from merlin.compiler.lower.model.source_stage_transport import run_command
 
         # This transport serves an invocation-local callback while the native
         # child waits. The callback may require its own slot, so its CPU custody

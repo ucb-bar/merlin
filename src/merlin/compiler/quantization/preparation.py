@@ -46,7 +46,7 @@ def validate_profile(document: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("application preparation profile has an unknown compatibility_policy")
     body["methodology"] = M.validate(body.get("methodology"))
     if "gptq_weights" in body:
-        from merlin.targetgen import _gptq
+        from merlin.development.targetgen import _gptq
 
         if not isinstance(body["gptq_weights"], Mapping):
             raise ValueError("gptq_weights must state the existing GPTQ parameters")

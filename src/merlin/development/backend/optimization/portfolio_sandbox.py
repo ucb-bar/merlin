@@ -9,7 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker
 from merlin.development.backend.optimization import agent_workspace as AW
 from merlin.development.backend.optimization import broker as PB
 from merlin.development.backend.optimization import campaign as PC
@@ -21,10 +21,10 @@ from merlin.development.backend.optimization import static_identity as SI
 from merlin.development.backend.optimization.functional_inputs import FrozenFunctionalInputs
 from merlin.development.backend.optimization.portfolio_analysis import PortfolioAnalysis
 from merlin.development.backend.optimization.portfolio_probes import compiler_dependency_mounts
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 from merlin.experiments.frozen_python import inherited_python_command
-from merlin.perf.analysis_worker import IsolatedAnalysisWorker
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.target_experiment import TargetExperiment
 
 
 def rebind_compiler_sandbox(

@@ -29,7 +29,7 @@ def capture_recipe_candidates(
     """
     from merlin.compiler.quantization.recipe import digest
     from merlin.compiler.quantization.torchao.application import DEFAULT_OBSERVER_EPSILON, _observer_name
-    from merlin.targetgen.semantic_families import from_op
+    from merlin.development.targetgen.semantic_families import from_op
 
     preparation = quantization_contract.get("preparation_profile")
     if preparation_profile is not None:

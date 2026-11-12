@@ -38,9 +38,9 @@ def _target_identity(target):
 
 def _serialized_readout(root, operations, output_path):
     """Check the existing serialized requantization family against selected semantics."""
-    from merlin.llvmlower.requantization_match import match
-    from merlin.targetgen.output_path import validate
-    from merlin.transforms.dense_ir import _trace_attributes
+    from merlin.compiler.lower.model.requantization_match import match
+    from merlin.compiler.transforms.dense_ir import _trace_attributes
+    from merlin.development.targetgen.output_path import validate
 
     readout = validate(output_path)
     if readout.get("accumulator", {}).get("dtype") != "i32" or not readout.get("exits", {}).get("requant"):
@@ -133,7 +133,7 @@ def discover_fusion_candidates(
     unknown and the existing selector decides the complete program cover.
     """
     from merlin.compiler.backend.discovery import ProposalBudget, ProposalContext, ProposalPage
-    from merlin.targetgen.target_registry import TargetInfo
+    from merlin.development.targetgen.target_registry import TargetInfo
     from merlin.verification.lean_contract import document_digest
 
     if type(target) is not TargetInfo:
@@ -245,10 +245,10 @@ def discover_fusion_candidates(
     check_provider()
 
     def check(current_source, proposal):
+        from merlin.compiler.dialects.lowering import compute_groups as CG
+        from merlin.compiler.dialects.lowering import output_fusion as OF
         from merlin.compiler.ir.contraction_shapes import contraction_extents, zero_initialised
-        from merlin.transforms.dense_ir import _trace_attributes, static_zero_integer_matmul_geometry
-        from merlin.xdsl_dialects.lowering import compute_groups as CG
-        from merlin.xdsl_dialects.lowering import output_fusion as OF
+        from merlin.compiler.transforms.dense_ir import _trace_attributes, static_zero_integer_matmul_geometry
 
         check_provider()
         if (

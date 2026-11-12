@@ -19,7 +19,7 @@ reader (a planner, a cost model, a person deciding whether the accelerator earns
 it.
 
 The oracle is never a literal here. It is the readout facet derived from the target's own RTL facts
-and backend hooks (:mod:`merlin.targetgen.readout_facet`), and which derived field adjudicates which
+and backend hooks (:mod:`merlin.development.targetgen.readout_facet`), and which derived field adjudicates which
 op family is DATA, declared in ``mlir_oot_backend_contract.yaml`` under
 ``admission.route_quality.host_refusal_evidence``. A family the contract does not name, or a field
 the facet could not derive, comes back ``UNKNOWN`` with the reason — never a pass, and never a
@@ -49,7 +49,7 @@ program. Absent or unparseable host IR is ``incomplete`` with a stated cause, ne
 PHASED, BOTH TIERS
 ------------------
 Each tier is a gate with a phase declared in ``src/merlin/resources/contracts/gate_phases.yaml`` and read through
-:func:`merlin.perf.gate_phase.configured_phase`. ``incomplete`` is a STATUS, orthogonal to phase,
+:func:`merlin.analysis.perf.gate_phase.configured_phase`. ``incomplete`` is a STATUS, orthogonal to phase,
 and never a pass at either.
 
 TARGET-AGNOSTIC
@@ -71,7 +71,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from merlin.perf import gate_phase
+from merlin.analysis.perf import gate_phase
 
 __all__ = [
     "SCHEMA",
@@ -135,7 +135,7 @@ _HOST_TASK_KIND = "host"
 #: LLVM-dialect operations whose result is a computed VALUE rather than an address or a control
 #: decision. ``comparison`` is deliberately excluded: a predicate over tensor data is how a
 #: legal relu-free clamp is spelled on the host, and including it would make a bound check a
-#: finding. Categories come from :mod:`merlin.perf.host_cfg_activity`, which owns the family split.
+#: finding. Categories come from :mod:`merlin.analysis.perf.host_cfg_activity`, which owns the family split.
 _COMPUTE_CATEGORIES = frozenset({"integer_arithmetic", "floating_arithmetic", "conversion"})
 
 
@@ -285,7 +285,7 @@ def _capability_stages(facets: Sequence[Any]) -> tuple[frozenset[str], tuple[str
     The strongest rung. Every facet that cannot license a capability contributes its gap message
     instead, so a reader sees WHY the strong rung was silent rather than only that it was.
     """
-    from merlin.targetgen import readout_facet as rf
+    from merlin.development.targetgen import readout_facet as rf
 
     stages: set[str] = set()
     gaps: list[str] = []
@@ -419,7 +419,7 @@ def declaration_quality(
 ) -> DeclarationReport:
     """Adjudicate every host-routed region's stated reason against the derived capability.
 
-    ``facets`` are the target's :class:`~merlin.targetgen.readout_facet.ReadoutFacet` objects. They
+    ``facets`` are the target's :class:`~merlin.development.targetgen.readout_facet.ReadoutFacet` objects. They
     are passed in rather than loaded so the caller owns the (slow, filesystem-touching) derivation
     and so a test can state the capability it means to check.
     """
@@ -505,7 +505,7 @@ def declaration_quality_for_target(command_buffer: Mapping[str, Any], target: st
     ``target`` is a PARAMETER. Nothing here knows which one; an undeivable facet set leaves the
     report ``incomplete`` with the derivation failure as its cause.
     """
-    from merlin.targetgen import readout_facet as rf
+    from merlin.development.targetgen import readout_facet as rf
 
     try:
         facets = rf.for_target(target)
@@ -656,7 +656,7 @@ def _tensor_arguments(command_buffer: Mapping[str, Any]) -> frozenset[int]:
 def _pointer_root(value: Any, entry: Any, op_index: Mapping[Any, int]) -> str:
     """The SSA root of a pointer: an entry argument, a stack slot, a module buffer, or UNKNOWN.
 
-    A SECOND pointer-root walk, deliberately. :mod:`merlin.perf.host_cfg_activity` has one, but it
+    A SECOND pointer-root walk, deliberately. :mod:`merlin.analysis.perf.host_cfg_activity` has one, but it
     is a closure and it reports a module-level buffer as ``UNKNOWN``; teaching it to resolve one
     would change the numbers that instrument has already published. Widening an instrument is a
     scheduled change, not a side effect of landing a check, so this walk is local and says so.
@@ -685,13 +685,13 @@ def _pointer_root(value: Any, entry: Any, op_index: Mapping[Any, int]) -> str:
 
 
 def _real_op_name(operation: Any) -> str:
-    from merlin.perf.host_cfg_activity import _real_name
+    from merlin.analysis.perf.host_cfg_activity import _real_name
 
     return _real_name(operation)
 
 
 def _category_of(operation: Any) -> str:
-    from merlin.perf.host_cfg_activity import _category
+    from merlin.analysis.perf.host_cfg_activity import _category
 
     return _category(_real_op_name(operation))
 
@@ -738,7 +738,7 @@ def host_compute(
     if not routes:
         return HostComputeReport(GATE_HOST_COMPUTE, STATUS_INCOMPLETE, (), tuple(causes))
 
-    from merlin.perf.host_cfg_index import prepare_host_cfg
+    from merlin.analysis.perf.host_cfg_index import prepare_host_cfg
 
     cfg = prepare_host_cfg(function)
     if not cfg.blocks:

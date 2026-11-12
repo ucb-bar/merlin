@@ -7,7 +7,7 @@ skill's ``capacity_pipeline_example.py`` for the facts -> capacities derivation,
 adapter and the dense host executor, so every recipe derives its tiles the same way:
 
 * ``capacities(facts)``: array edge and the operand/accumulator stores (rows, row bytes) from
-  ``merlin.targetgen.address_space``; without a facts file a small synthetic body, labelled as such.
+  ``merlin.development.targetgen.address_space``; without a facts file a small synthetic body, labelled as such.
 * ``dense_view(shape, caps, lhs_rows=None)``: ``DenseProblem``, ``DenseLoopStorage`` and
   ``DenseResources`` whose byte budgets are the store windows. ``lhs_rows`` moves the LHS/RHS split of
   the operand store (the long-K recipe gives the LHS a full-K panel).
@@ -72,7 +72,7 @@ def dtypes():
 def dense_view(shape, caps, *, lhs_rows=None):
     """One problem plus storage/resources whose byte budgets are the operand and accumulator stores."""
     from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
-    from merlin.transforms.dense_planning import DenseProblem, DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
 
     rows_edge, cols_edge = caps["array"]
     p = DenseProblem(*shape, cols_edge, rows_edge, cols_edge, 1, 1, 4)
@@ -106,7 +106,7 @@ def output_rows(p) -> int:
 
 def blocks(p, s, r):
     """Capacity-legal blocks, each with the longest K panel its separate LHS/RHS windows hold."""
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     return dense_blocks(p, r, k_limit=lambda m, n: s.k_limit(p, r, m, n))
 

@@ -20,7 +20,7 @@ from merlin.common.paths import repo_root
 from merlin.development.backend.audit_shell import public_feedback_context, published_feedback, read_view
 from merlin.experiments.access_policy import MODULE_ACCESS
 
-_AS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"])
+_AS = __import__("merlin.development.targetgen.sandbox", fromlist=["audit_tokens"])
 # Merlin authoring tool dirs: ALLOWED for merlin_assisted, DENIED for raw_baseline -> flag reads of
 # them for raw ONLY (for merlin they are legitimate authoring inputs). Includes the target-agnostic
 # compiler-modification SPINE exposed to the assisted arm: the CCA (extract), cca_compare (diff),
@@ -28,9 +28,9 @@ _AS = __import__("merlin.targetgen.sandbox", fromlist=["audit_tokens"])
 # derivation-driven backend (targetgen/rtl_backend) that derives the routes/levers from RTL discovery.
 # None import the oracle.
 _MERLIN_TOOL_TOKENS = (
-    "targetgen/contract",
-    "targetgen/synthesize",
-    "targetgen/generate",
+    "development/targetgen/contract",
+    "development/targetgen/synthesize",
+    "development/targetgen/generate",
     "xdsl_dialects",
     "kernels/cca",
     "kernels/action_catalog",
@@ -157,7 +157,7 @@ class AnswerAudit:
 
         The arm-policy tokens in :func:`_path_tokens` are a COARSE stand-in for the grant: they flag the
         merlin authoring tools for every arm whose name is not ``merlin_assisted``, while the
-        ``cpp_merlininfra`` bundles in fact grant ``merlin/python/merlin/targetgen/generate/*.py``. Reading
+        ``cpp_merlininfra`` bundles in fact grant ``merlin/python/merlin/development/targetgen/generate/*.py``. Reading
         what your own bundle handed you is not a cheat, so a read aimed at a granted FILE is advisory.
 
         DENY-WINS twice over, so this can never launder an answer surface: a granted entry is dropped if a

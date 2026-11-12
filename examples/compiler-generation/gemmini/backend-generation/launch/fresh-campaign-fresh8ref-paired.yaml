@@ -29,13 +29,13 @@ inputs:
   - merlin.compiler.ir.logical_abi
   - merlin.compiler.schedule.convolution_exploration
   - merlin.compiler.schedule.dense_panel_epochs
-  - merlin.transforms.evaluated_exploration
-  - merlin.transforms.shape_policy
+  - merlin.compiler.transforms.evaluated_exploration
+  - merlin.compiler.transforms.shape_policy
   - merlin.compiler.schedule.pointwise_convolution
   - merlin.compiler.schedule.batched_dense
   - merlin.compiler.schedule.loaded_sum_epochs
   - merlin.compiler.selection.knobs
-  - merlin.transforms.tuning_selection
+  - merlin.compiler.transforms.tuning_selection
   - merlin.compiler.schedule.dense_shared_rhs
   - merlin.compiler.schedule.dense_shared_rhs_check
   - merlin.compiler.schedule.shared_rhs_schedule_ir

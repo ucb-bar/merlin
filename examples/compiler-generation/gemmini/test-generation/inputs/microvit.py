@@ -6,7 +6,7 @@ large for the cycle-accurate tier, so the claim rests on a functional oracle who
 ``derived_from_rtl: false``. This model is sized to be affordable AT that tier instead: same shape as
 the reference vision+recurrent control net, two orders of magnitude less data.
 
-WHAT IT CONTAINS IS DERIVED, NOT CHOSEN. :mod:`merlin.targetgen.micro_model` composes the inventory from
+WHAT IT CONTAINS IS DERIVED, NOT CHOSEN. :mod:`merlin.development.targetgen.micro_model` composes the inventory from
 three evidence sources — the accelerator families the target's capability manifest ADMITS, the families
 real captures CONTAIN that it does not admit (which therefore MUST run on the host lane), and the op
 spelling those captures actually use — and interleaves them so the host work sits BETWEEN accelerator

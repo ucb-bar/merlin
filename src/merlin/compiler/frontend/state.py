@@ -187,7 +187,7 @@ def authorize_freeze(directory, staged, function, *, consent, max_bytes):
     from merlin.compiler.frontend.archives import _read_member
     from merlin.compiler.frontend.inputs import load_lifted_argument_bytes
     from merlin.compiler.frontend.signature import _WEIGHT_DTYPES
-    from merlin.llvmlower.prepared_operand_effects import validate_pure_tensor_function
+    from merlin.compiler.lower.model.prepared_operand_effects import validate_pure_tensor_function
 
     manifest = json.loads(_read_member(directory, "compile-inputs.json"))
     record = (manifest.get("source") or {}).get("export_state")

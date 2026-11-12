@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.runtime.program import build_program
-from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
-from merlin.xdsl_dialects.lowering.global_plan import (
+from merlin.compiler.dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
+from merlin.compiler.dialects.lowering.global_plan import (
     BufferRepresentation,
     CycleInterval,
     GlobalPlan,
     RegionAlternative,
     ValueRepresentation,
 )
-from merlin.xdsl_dialects.lowering.global_plan_emission import (
+from merlin.compiler.dialects.lowering.global_plan_emission import (
     BoundaryMapping,
     EmittedComponent,
     GlobalPlanEmission,
     dispatch_digest,
 )
+from merlin.runtime.program import build_program
 
 
 def _logical() -> DispatchProgram:

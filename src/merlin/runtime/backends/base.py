@@ -74,7 +74,7 @@ class BackendKind(str, Enum):
 
 
 #: Closed vocabulary for SOFTWARE execution capabilities a backend may declare.  These are kept out
-#: of ``merlin.perf.profile.TRAITS`` deliberately: whether the runner can build a whole-program ABI or
+#: of ``merlin.analysis.perf.profile.TRAITS`` deliberately: whether the runner can build a whole-program ABI or
 #: place a warm and measured invocation under one counter is a property of the backend/harness, not a
 #: discovered property of the accelerator RTL.  A shared performance family may require both kinds of
 #: evidence, but it must not turn missing tooling into a claim about the hardware.
@@ -169,7 +169,7 @@ def _ensure_discovered() -> None:
 
 
 # --- out-of-tree backend discovery (MERLIN_TARGET_PATH) ---------------------------------------------
-# A target definition is a self-contained OUT-OF-TREE PACKAGE (``merlin.targetgen.target_registry``);
+# A target definition is a self-contained OUT-OF-TREE PACKAGE (``merlin.development.targetgen.target_registry``);
 # its contract's ``plugin`` block may name a runtime backend module (``plugin.backend``, a path relative
 # to the package root). We import that module BY FILE PATH so its ``register(...)`` runs — so a reference
 # accelerator backend evicted to a published ``<target>-mlir`` package plugs back in with ZERO core
@@ -222,7 +222,7 @@ def _assert_oot_plugin_ownership() -> None:
     because metadata can change without an environment-string change. Ownership
     commits canonical provider/module paths, not source bytes or held references.
     """
-    from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference, resolve_support
+    from merlin.development.targetgen.plugins import PluginError, provider_root, resolve_reference, resolve_support
 
     with _oot_lock:
         for owner in tuple(_LOADED_PLUGIN_OWNERS.values()):
@@ -259,7 +259,7 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
     seam that lets a new target contribute a backend OR an oracle as data (a plugin path), never a core
     edit to a registry literal."""
     try:
-        from ...targetgen import target_registry
+        from merlin.development.targetgen import target_registry
     except Exception:  # noqa: BLE001 — targetgen optional; no OOT discovery without it
         return []
     try:
@@ -267,7 +267,7 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
     except Exception:  # noqa: BLE001 — a malformed search path must not break the registry
         return []
     out: list[tuple[str, Path]] = []
-    from merlin.targetgen.plugins import resolve_support
+    from merlin.development.targetgen.plugins import resolve_support
 
     for name in names:
         try:
@@ -278,7 +278,7 @@ def _oot_plugin_modules(key: str = "backend") -> list[tuple[str, Path]]:
         rel = plugin.get(key)
         if not rel:
             continue  # declares nothing under this key — a package without the seam, not a broken one
-        from merlin.targetgen.plugins import PluginError, provider_root, resolve_reference
+        from merlin.development.targetgen.plugins import PluginError, provider_root, resolve_reference
 
         try:
             root = provider_root(info.base, plugin.get("path"))
@@ -328,7 +328,7 @@ def _load_oot_backend_locked(name: str, path: Path, *, ns: str) -> None:
     ``ns`` is the synthetic top-level namespace, so a target's ``plugin.backend`` and its
     ``plugin.sim_oracle`` (loaded via the same mechanism) get distinct module names and never collide."""
     modname = f"{ns}.{name}"
-    from merlin.targetgen.plugins import (
+    from merlin.development.targetgen.plugins import (
         PluginError,
         _reference_path,
         is_core_module_source,
@@ -455,7 +455,7 @@ def backends_of_class(target_class: TargetClass) -> list[str]:
     return sorted(n for n, b in _REGISTRY.items() if b.target_class == target_class)
 
 
-from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
+from merlin.development.targetgen.contract.build_recipe import HarnessBuildRecipe
 
 
 def harness_build_recipe(target: str) -> HarnessBuildRecipe:
@@ -555,7 +555,7 @@ def _contract_backend(name: str):
     """Bind selected data before discovering executable providers; never cache by name."""
     if name in _SEEDED:
         return None
-    from merlin.targetgen.target_registry import TargetContractMissing, resolve
+    from merlin.development.targetgen.target_registry import TargetContractMissing, resolve
 
     selected = resolve(name)
     try:
@@ -573,8 +573,8 @@ def _contract_backend(name: str):
         raise ValueError("selected contract has an unknown backend family or mismatched name")
     if contract.get("plugin"):
         raise ValueError("data-bound runtime selection cannot grant executable provider hooks")
+    from merlin.development.targetgen.rtl.facts import load_facts
     from merlin.runtime.backends.chipyard_rocc import bind
-    from merlin.targetgen.rtl.facts import load_facts
 
     return bind(target=name, contract=contract, facts=load_facts(name, regenerate=False))
 
@@ -593,7 +593,7 @@ def get_backend(name: str):
     _ensure_discovered()
     why = _LOAD_FAILURES.get(name)
     if why and name in _REGISTRY:
-        from merlin.targetgen.target_registry import TargetContractMissing, resolve
+        from merlin.development.targetgen.target_registry import TargetContractMissing, resolve
 
         selected = resolve(name)
         try:

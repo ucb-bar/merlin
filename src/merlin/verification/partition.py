@@ -13,7 +13,7 @@ from pathlib import Path
 
 from xdsl.dialects import builtin, func
 
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 
 
 @dataclass(frozen=True)

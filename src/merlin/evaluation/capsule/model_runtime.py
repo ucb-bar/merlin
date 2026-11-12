@@ -8,6 +8,7 @@ import sys
 import time
 from pathlib import Path
 
+from merlin.development.targetgen.package_runtime import Package
 from merlin.evaluation.capsule.identity import (
     _MODEL_NUMERIC_UNSET,
     _SUITE_MODEL_PIN,
@@ -18,7 +19,6 @@ from merlin.evaluation.capsule.model import _grade_model_capsule_inline
 from merlin.evaluation.capsule.model_candidates import _grade_candidate_model_capsule_inline
 from merlin.evaluation.capsule.model_inputs import _resolve_model_numeric_policy
 from merlin.evaluation.capsule.processes import _kill_tree as _kill_tree
-from merlin.targetgen.package_runtime import Package
 
 _CHILD_GUARD = (
     "import ctypes,os,signal,sys;"

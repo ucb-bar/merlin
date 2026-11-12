@@ -15,7 +15,7 @@ target's emit encoding.
 
 The emit encoding for EVERY op (warp-control AND compute AND memory) is the target's 64-bit FIXED-FORMAT
 word, whose field layout + opcode table are DERIVED from the RTL decoder and exposed by
-``merlin.targetgen.isa_model.isa_model_for_target("radiance")`` (opcodes incl. ``MADD``/``OP_FP`` compute,
+``merlin.development.targetgen.isa_model.isa_model_for_target("radiance")`` (opcodes incl. ``MADD``/``OP_FP`` compute,
 ``LOAD``/``STORE`` with an ``ext2`` address-space field global=0/shared=1). That derived word is what the
 shipped ``isa_tools.py disasm``/``lint`` decode against and what merlin's FORK-FREE backend emits into
 (stock rv32 compile → ``isa_transcode`` re-encode; no Muon-LLVM fork needed). See the corrected residue

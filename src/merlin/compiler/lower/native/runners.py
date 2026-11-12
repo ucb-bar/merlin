@@ -327,7 +327,7 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
 def _activation_poly_runner(emit: str = EMIT_TRANSLATE, *, fused: bool = False) -> str:
     """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
     feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
-    from merlin.llvmlower.act_poly import rewrite_source
+    from merlin.compiler.lower.model.act_poly import rewrite_source
 
     return _RUNNER_ACT_POLY_HEAD + rewrite_source(fused=fused) + _RUNNER_ACT_POLY_TAIL.replace("__MERLIN_EMIT__", emit)
 
@@ -348,9 +348,9 @@ def _select_runner(
     translate vs dump-for-mlir-translate). Keeping the two independent is what lets the
     multicore path carry the feature rewrites — see the EMIT_* comment.
     """
-    from merlin.llvmlower.ir_inspection import bind_inspection
-    from merlin.llvmlower.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
-    from merlin.llvmlower.source_observation_stage import bind_runner as _bind_source_observation_runner
+    from merlin.compiler.lower.model.ir_inspection import bind_inspection
+    from merlin.compiler.lower.model.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
+    from merlin.compiler.lower.model.source_observation_stage import bind_runner as _bind_source_observation_runner
 
     if {"approximate_transcendental_activation", "vectorized_transcendental_activation"} & feats:
         source = _activation_poly_runner(emit, fused="fuse_activation_polynomial_fma" in feats)
@@ -364,10 +364,10 @@ def _select_runner(
         )
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
-    from merlin.llvmlower.automatic_host_features import bind_runner as bind_automatic_host_runner
+    from merlin.compiler.lower.model.automatic_host_features import bind_runner as bind_automatic_host_runner
 
     source = bind_automatic_host_runner(source, features=feats)
-    from merlin.llvmlower.adjacent_exp import bind_runner as bind_exact_exp_runner
+    from merlin.compiler.lower.model.adjacent_exp import bind_runner as bind_exact_exp_runner
 
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)

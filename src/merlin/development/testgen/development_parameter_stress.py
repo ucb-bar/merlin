@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from merlin.development.testgen import development_sources as D
-from merlin.model_check.kernel_reference import _int_matmul
+from merlin.evaluation.model.kernel_reference import _int_matmul
 
 SCHEMA = "merlin.phase0.public_parameter_compile_stress.v1"
 

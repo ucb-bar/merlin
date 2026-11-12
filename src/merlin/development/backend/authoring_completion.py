@@ -28,7 +28,7 @@ from merlin.development.backend.providers import execution as EX
 from merlin.development.backend.telemetry.report import (
     _emit_run_timing as _emit_run_timing,
 )
-from merlin.targetgen import experiment_tokens as ET
+from merlin.development.targetgen import experiment_tokens as ET
 
 
 def _verified_status_line(verdict: dict) -> str:
@@ -262,7 +262,7 @@ def complete(session: AuthoringSession) -> int:
     # Additionally sink this run's agentic telemetry into the shared aet store (opt-in,
     # MERLIN_AET_SINK=1) so it shows up in `aet spend` / `aet plot` across experiments. This is
     # purely additive — the existing experiment_tokens cost yaml above stays authoritative.
-    from merlin.targetgen import aet_bridge as AB
+    from merlin.development.targetgen import aet_bridge as AB
 
     if AB.aet_sink_enabled(run_dir):
         AB.emit_to_aet(

@@ -5,6 +5,10 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from merlin.compiler.frontend.bucketize_source import STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
+from merlin.compiler.frontend.linalg_f32_maximum_patterns import STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA
+from merlin.compiler.frontend.linalg_reduction_source_body import STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA
+from merlin.compiler.frontend.prepared_index_source_body import SCHEMA as PREPARED_INDEX_SOURCE_BODY_SCHEMA
 from merlin.development.backend.feedback import private_f32_maximum_support as maximum_support
 from merlin.development.backend.feedback import private_f32_reduction_support as f32_reduction_support
 from merlin.development.backend.feedback import private_index_host_support as index_support
@@ -13,10 +17,6 @@ from merlin.development.backend.feedback import private_linalg_support as linalg
 from merlin.development.backend.feedback.private_source_admission import (
     prepared_host_admission as prepared_host_admission,
 )
-from merlin.frontends.bucketize_source import STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA
-from merlin.frontends.linalg_f32_maximum_patterns import STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA
-from merlin.frontends.linalg_reduction_source_body import STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA
-from merlin.frontends.prepared_index_source_body import SCHEMA as PREPARED_INDEX_SOURCE_BODY_SCHEMA
 
 
 def source_context(row: Mapping[str, Any], index: Mapping[str, Any], selected: Mapping[str, Any] | None) -> dict:

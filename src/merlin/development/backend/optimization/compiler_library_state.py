@@ -13,10 +13,10 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, exact_tree_record
-from merlin.targetgen.compiler_library import (
+from merlin.development.targetgen.compiler_library import (
     SCHEMA as CONTRACT_SCHEMA,
 )
-from merlin.targetgen.compiler_library import (
+from merlin.development.targetgen.compiler_library import (
     CompilerLibraryContract,
     CompilerLibrarySelection,
     LibraryMember,

@@ -130,7 +130,7 @@ class Placement:
 
 
 def _lane_for(kind: str | None, on_host: bool) -> str:
-    from merlin.targetgen.routing import _MESH_KINDS
+    from merlin.development.targetgen.routing import _MESH_KINDS
 
     if on_host:
         return "scalar_rvv_lane"
@@ -147,7 +147,7 @@ def place(demands: Sequence[Any], system, *, cost: Callable[[Any, Any], float | 
     to the first legal one rather than dropping it: declining to price is not declining to run.
     """
     # One legality predicate and one gap sentence, both borrowed rather than restated.
-    from merlin.targetgen.routing import _gap_text, _legal_on  # noqa: PLC2701
+    from merlin.development.targetgen.routing import _gap_text, _legal_on  # noqa: PLC2701
 
     pairs = units_for(system)
     placed: list[Placed] = []

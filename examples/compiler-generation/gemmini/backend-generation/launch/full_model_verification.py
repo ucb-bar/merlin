@@ -12,9 +12,9 @@ import yaml
 from merlin.common import oot_repo
 from merlin.common.digest import sha256_file
 from merlin.common.tree_hash import hash_tree
-from merlin.model_check.cli import tree_sha256
-from merlin.model_check.full_chain_validation import report_complete
-from merlin.model_check.models import load as load_models
+from merlin.evaluation.model.cli import tree_sha256
+from merlin.evaluation.model.full_chain_validation import report_complete
+from merlin.evaluation.model.models import load as load_models
 
 
 def read(path: Path) -> dict:
@@ -208,11 +208,11 @@ def _invocation(record: dict, stage: str) -> dict:
 def _target_witness(launch, record: dict) -> None:
     import numpy as np
 
-    from merlin.llvmlower.compilation_recipe import verify_completed_recipe
-    from merlin.model_check import full_build as FB
-    from merlin.model_check import full_quantized as FQ
-    from merlin.model_check import full_reference_cache as RC
-    from merlin.model_check import replay as RP
+    from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+    from merlin.evaluation.model import full_build as FB
+    from merlin.evaluation.model import full_quantized as FQ
+    from merlin.evaluation.model import full_reference_cache as RC
+    from merlin.evaluation.model import replay as RP
     from merlin.runtime.backends import spike_model
     from merlin.runtime.modelinputs import strict_tree_sha256
 
@@ -389,8 +389,8 @@ def _capture_correspondence(selected: dict) -> None:
 
 def validate_infrastructure_readiness(launch, receipt: dict) -> None:
     """Admit authoring from positive mechanisms; never qualify the retained or fresh compiler."""
-    from merlin.model_check import bundle as B
-    from merlin.model_check import full_quantized as FQ
+    from merlin.evaluation.model import bundle as B
+    from merlin.evaluation.model import full_quantized as FQ
 
     if (
         set(receipt)
@@ -475,7 +475,7 @@ def model_command(launch, name: str, package: Path, report: Path, work: Path, ti
         launch.expand(launch.document["launcher"]["python"]),
         "-u",
         "-m",
-        "merlin.model_check",
+        "merlin.evaluation.model",
         "check",
         "--submission",
         str(package),

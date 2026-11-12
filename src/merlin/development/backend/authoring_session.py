@@ -32,7 +32,7 @@ from merlin.development.backend.corpus_inputs import policy_roots as policy_root
 from merlin.development.backend.feedback import certification as CERT
 from merlin.development.backend.feedback import loop_grading as LG
 from merlin.development.backend.providers import execution as EX
-from merlin.targetgen.target_experiment import (
+from merlin.development.targetgen.target_experiment import (
     load_capability_manifest,
     load_target_experiment,
 )
@@ -99,7 +99,7 @@ class AuthoringSession:
             (prepared.selected_codex_runtime if self.options.codex_binary else None),
             self.options.codex_max_subagents,
         )
-        from merlin.targetgen.sandbox import bwrap as BW
+        from merlin.development.targetgen.sandbox import bwrap as BW
 
         selected_rtl_facts = (
             BW.frozen_selected_rtl_facts(self.workspace, self.bundle, repo=self.context.repo)
@@ -142,7 +142,7 @@ class AuthoringSession:
             policy_roots=policy_roots(self.context, self.policy_root),
             contract=self.contract_root,
             promotion_root=self.policy_root,
-            additional_forbidden=("xdsl_dialects.lowering", "xdsl_dialects/lowering", "outputs_match")
+            additional_forbidden=("xdsl_dialects.lowering", "compiler/dialects/lowering", "outputs_match")
             if self.options.experiment == "realistic" and self.arm == "merlin_assisted"
             else (),
             public_build_service=public_build_service,
@@ -187,7 +187,7 @@ class AuthoringSession:
         self.state_path = self.run_dir / "qa_loop_state.yaml"
         self.progress = AuthoringProgress()
         try:  # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
-            from merlin.targetgen.generate_prompt import prompt_slots as _pslots
+            from merlin.development.targetgen.generate_prompt import prompt_slots as _pslots
 
             self.endpoint_kind = _pslots(self.target_experiment(), _manifest()).get("endpoint_kind", "")
         except Exception:  # noqa: BLE001
@@ -323,7 +323,7 @@ class AuthoringSession:
         Its append-only scalar stream uses the last observation of each metric.
         """
         try:
-            from merlin.targetgen import aet_bridge as AB
+            from merlin.development.targetgen import aet_bridge as AB
 
             if not AB.aet_sink_enabled(self.run_dir):
                 return

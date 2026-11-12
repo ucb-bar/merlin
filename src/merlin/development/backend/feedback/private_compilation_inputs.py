@@ -10,7 +10,7 @@ SCOPE = "completed explicit compiler/link inputs rehashed; transitive toolchain 
 
 
 def verify(output: Mapping[str, Any], elf: Path, *, required: bool) -> dict[str, Any]:
-    from merlin.llvmlower.compilation_recipe import FILENAME, verify_completed_recipe
+    from merlin.compiler.lower.model.compilation_recipe import FILENAME, verify_completed_recipe
 
     binding = output.get("compilation_recipe")
     if binding is None and not required:

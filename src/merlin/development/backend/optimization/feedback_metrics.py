@@ -208,7 +208,7 @@ def derived_peak_macs_per_cycle(rtl_facts_path: Path, target: str) -> tuple[int 
     understate capacity. This is no guarantee of achievable sustained throughput.
     """
     try:
-        from merlin.perf.capsule_roofline import compute_peak_from_facts  # noqa: PLC0415
+        from merlin.analysis.perf.capsule_roofline import compute_peak_from_facts  # noqa: PLC0415
 
         facts = json.loads(Path(rtl_facts_path).read_text(encoding="utf-8"))
         peak, basis = compute_peak_from_facts(facts)
@@ -440,7 +440,7 @@ def declared_capsule_operand_bytes(descriptor: Mapping[str, Any]) -> tuple[int |
     the declared result element width. Either is None when a shape or width is not declared -- an
     absent volume is never read as zero.
     """
-    from merlin.perf.derived_bound import _width_bits  # noqa: PLC0415
+    from merlin.analysis.perf.derived_bound import _width_bits  # noqa: PLC0415
 
     def volume(rows: Any) -> int | None:
         if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)) or not rows:
@@ -493,9 +493,9 @@ def capsule_roofline(descriptor: Mapping[str, Any], machine: Mapping[str, Any] |
     """The derived roofline of one frozen member's DECLARED work on this machine.
 
     A statement about the workload and the machine only, so it is identical for every program that
-    computes the member; see :mod:`merlin.perf.capsule_roofline` for both floors.
+    computes the member; see :mod:`merlin.analysis.perf.capsule_roofline` for both floors.
     """
-    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+    from merlin.analysis.perf import capsule_roofline as CR  # noqa: PLC0415
 
     contractions, work_basis = declared_capsule_contractions(descriptor)
     read_bytes, write_bytes, byte_basis = declared_capsule_operand_bytes(descriptor)
@@ -532,7 +532,7 @@ def roofline_cell(
     """The agent-visible ``roofline`` block of one feedback cell: the derived bound and where each
     measured arm sits against it (``cycles / roofline``; 1.0 is the bound itself). Any measured count
     BELOW the bound refutes the bound (``status: refuted``) rather than reporting a ratio under one."""
-    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+    from merlin.analysis.perf import capsule_roofline as CR  # noqa: PLC0415
 
     try:
         doc = capsule_roofline(descriptor, machine)
@@ -780,7 +780,7 @@ def derive_machine_bounds(rtl_facts_path: Path, certificate: Any, target: str) -
     """Roofline bounds for this stage: geometry from the exact RTL facts, memory-path widths from the
     elaboration the certificate pins for the timing engine (so the bound describes the machine that
     produces every cycle in the feedback). Anything underivable is UNKNOWN with its reason."""
-    from merlin.perf import capsule_roofline as CR  # noqa: PLC0415
+    from merlin.analysis.perf import capsule_roofline as CR  # noqa: PLC0415
 
     pins = getattr(certificate, "pins", None)
     pin = pins.get("gsim_firrtl") if isinstance(pins, Mapping) else None

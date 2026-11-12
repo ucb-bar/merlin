@@ -34,8 +34,8 @@ def emit(result):
     from xdsl.dialects import llvm
     from xdsl.dialects.builtin import ModuleOp, i64
 
+    from merlin.compiler.lower.model.host_builder import FnBuilder
     from merlin.compiler.schedule.llvm_program import FnBuilderControlAdapter
-    from merlin.llvmlower.host_builder import FnBuilder
 
     builder, declarations, emission_order = FnBuilder([]), {}, []
     control = FnBuilderControlAdapter(builder)

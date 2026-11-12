@@ -19,7 +19,7 @@ HOST_CONTROL = "merlin_host_control"
 
 def _host_control(cap, directory):
     """A selected platform control is never evidence of candidate acceleration."""
-    from merlin.targetgen.owned_host_leaf_execution import selected_host_leaf
+    from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
 
     screen = cap.get("software_screen") or {}
     source = cap.get("linalg_mlir") or cap.get("interface_mlir")
@@ -139,8 +139,8 @@ def read(path: Path, *, target: str) -> dict:
 
 
 def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
-    from merlin.targetgen.capsule_common import load_capsule
-    from merlin.targetgen.sandbox.bwrap import _validate_host_sources
+    from merlin.development.targetgen.capsule_common import load_capsule
+    from merlin.development.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
     from .preparation import _members, copy_input, ordinary_tree

@@ -477,9 +477,9 @@ def failure_class(job: Mapping[str, Any], result: Mapping[str, Any] | None) -> t
     infrastructure's, never a fact about the bytes), ``prohibited_instruction`` (the whole-ELF
     instruction rule refused it), ``declined`` (the coverage gate: groups declined to the library) and
     ``refused`` (no admissible reading, for any other recorded reason)."""
+    from merlin.analysis.perf import whole_model_verdict as V
     from merlin.development.backend.optimization.whole_model_measured import gates as G
     from merlin.development.backend.optimization.whole_model_measured import jobs as J
-    from merlin.perf import whole_model_verdict as V
 
     state = job.get("state")
     if state == J.SUPERSEDED:
@@ -517,7 +517,7 @@ def failure_class(job: Mapping[str, Any], result: Mapping[str, Any] | None) -> t
 
 
 def _group_rows(result: Mapping[str, Any] | None) -> dict[str, Mapping[str, Any]]:
-    from merlin.perf import whole_model_verdict as V
+    from merlin.analysis.perf import whole_model_verdict as V
 
     return {
         str(row["group"]): row
@@ -776,7 +776,7 @@ def _index_rows(target: str | None, run_dir: Path, inventory: Inventory) -> dict
     if not target:
         return None
     from merlin.common import paths
-    from merlin.targetgen import target_index
+    from merlin.development.targetgen import target_index
 
     try:
         path = target_index.index_path(target)
@@ -858,7 +858,7 @@ def phase2(
     screen_section = (config or {}).get("screen") if isinstance((config or {}).get("screen"), Mapping) else {}
     bar_path = screen_section.get("reference")
     bar_doc = cache.result(str(bar_path), inventory, "screen reference result.json") if bar_path else None
-    from merlin.perf import whole_model_verdict as V
+    from merlin.analysis.perf import whole_model_verdict as V
 
     bar = None
     if bar_doc is not None:
@@ -1155,7 +1155,7 @@ def target_summary(
 
     from merlin.common import paths
     from merlin.common.paths import generation_run_roots
-    from merlin.targetgen import package_records, target_index
+    from merlin.development.targetgen import package_records, target_index
 
     from ..history import runs
 

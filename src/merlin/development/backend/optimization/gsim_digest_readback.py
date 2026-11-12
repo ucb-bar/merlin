@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.digest import sha256_file
-from merlin.targetgen.contract import compile as OOT
-from merlin.targetgen.contract import readback_policy as RB
+from merlin.development.targetgen.contract import compile as OOT
+from merlin.development.targetgen.contract import readback_policy as RB
 
 MODE_ENV = "MERLIN_PHASE2_GSIM_READBACK"
 SCHEMA = "merlin_gsim_digest_readback_v1"

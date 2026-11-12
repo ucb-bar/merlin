@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import copy
 
+from merlin.development.targetgen import component_program, corpus_spec
 from merlin.development.testgen.component_generation import digest
-from merlin.targetgen import component_program, corpus_spec
 
 SCHEMA = "merlin.component_graph_family.v1"
 VARIANTS = ("logical_epochs", "fresh_values")
@@ -31,7 +31,7 @@ def validate(declaration):
 
 def validate_owners(selected):
     """Every generated computation needs a selected reviewed semantic owner."""
-    from merlin.targetgen.semantic_families import from_op
+    from merlin.development.targetgen.semantic_families import from_op
 
     for operation in ("matmul", "copy", "add"):
         family = from_op(operation)

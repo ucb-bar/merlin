@@ -15,10 +15,10 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen import torch_tensor_argument_observer as T
+from merlin.development.targetgen.frontend_operator_effects import original_tensor_argument_requests
 from merlin.development.testgen.command_intake import _git
 from merlin.development.testgen.rtl_intake import RtlIntakeRefusal, _json, _outside, _plain
-from merlin.targetgen import torch_tensor_argument_observer as T
-from merlin.targetgen.frontend_operator_effects import original_tensor_argument_requests
 
 SCHEMA = "merlin.independent_tensor_argument_getter.v1"
 ENVIRONMENT = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
@@ -95,7 +95,7 @@ def _dependency_path(raw):
 def prepare_getter(*, python, compiler, checkout, commit, forbidden, output):
     """Build only the fixed getter; public source APIs choose the numeric guard."""
     output.mkdir(mode=0o700)
-    observer = module_source_path("merlin.targetgen.torch_tensor_argument_observer")
+    observer = module_source_path("merlin.development.targetgen.torch_tensor_argument_observer")
     compiler_path = Path(compiler).absolute()
     _outside(compiler_path, forbidden)
     compiler = _plain(compiler_path.resolve(strict=True))
@@ -219,7 +219,7 @@ def verify_getter(record):
         or record["schema"] != SCHEMA
         or record["unknowns"]
         != ["installed_framework_sdk_build_correspondence", "complete_host_linker_loader_dependency_closure"]
-        or record["observer"] != str(module_source_path("merlin.targetgen.torch_tensor_argument_observer"))
+        or record["observer"] != str(module_source_path("merlin.development.targetgen.torch_tensor_argument_observer"))
         or Path(record["cpp"]).read_text() != T.CPP_SOURCE
     ):
         raise RtlIntakeRefusal("Tensor argument getter lost its fixed original source preparation")

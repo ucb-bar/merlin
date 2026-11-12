@@ -12,7 +12,7 @@ import json
 from collections.abc import Mapping
 from pathlib import Path
 
-from merlin.targetgen.public_program_timing import SCHEMA, is_public_program, verify_selection
+from merlin.development.targetgen.public_program_timing import SCHEMA, is_public_program, verify_selection
 
 
 def selection(capsule, rtl_identity, *, simulator="gsim"):
@@ -38,7 +38,7 @@ def selection(capsule, rtl_identity, *, simulator="gsim"):
     body = document.get("facts") or {}
     config = (body.get("source") or {}).get("config")
     if "simulation_correspondence" in body:
-        from merlin.targetgen.rtl.unit_correspondence import execution_binding
+        from merlin.development.targetgen.rtl.unit_correspondence import execution_binding
 
         simulation = (body["simulation_correspondence"].get("configs") or {}).get("simulation") or {}
         config = execution_binding(document, config=simulation.get("config"))["config"]
@@ -115,7 +115,7 @@ def project(capsule, grade, *, target, readback_policy=None):
     if tier.get("status") != "pass" or tier.get("engine") != "gsim":
         raise ValueError("public timing did not execute the original selected RTL tier")
     citation = tier.get("engine_citation") or {}
-    from merlin.targetgen import gsim_emulator as GE
+    from merlin.development.targetgen import gsim_emulator as GE
 
     current = GE.citation(target, env_var=getattr(backend, "GSIM_EMU_ENV", None))
     if current != citation or current.get("receipt_status") != "bound":
@@ -128,7 +128,7 @@ def project(capsule, grade, *, target, readback_policy=None):
     cb = json.loads(cb_path.read_bytes())
     if console_path.stat().st_size > 64 << 20:
         raise ValueError("complete public output console exceeds its normal bounded projection")
-    from merlin.targetgen.contract.readback_policy import read_console, selected
+    from merlin.development.targetgen.contract.readback_policy import read_console, selected
 
     readback_policy = selected(readback_policy)
     console = read_console(console_path, policy=readback_policy)
@@ -141,8 +141,8 @@ def project(capsule, grade, *, target, readback_policy=None):
     from merlin.runtime.commandbuffer import declared_output_dtypes
 
     observed = backends.decode_float_readback(observed, declared_output_dtypes(cb))
-    from merlin.targetgen.capsule_golden import compare
-    from merlin.targetgen.golden_store import load_golden
+    from merlin.development.targetgen.capsule_golden import compare
+    from merlin.development.targetgen.golden_store import load_golden
 
     declaration_path = _reopen(native["source"]["capsule_declaration"])
     import yaml
@@ -156,7 +156,7 @@ def project(capsule, grade, *, target, readback_policy=None):
     if scope["kind"] != ACCELERATOR_ONLY:
         raise ValueError("public whole-program timing would score Merlin-supplied host compute")
     golden = load_golden(declaration_path.parent)
-    from merlin.targetgen.native_model_output_binding import checked_source_output_values
+    from merlin.development.targetgen.native_model_output_binding import checked_source_output_values
 
     source_observed = checked_source_output_values(cb, native, golden, observed)
     if set(source_observed) != set(golden["outputs"]) or set(observed) != set(cb["kernel_abi"]["outputs"]):

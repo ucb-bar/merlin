@@ -1,0 +1,57 @@
+# src/merlin/compiler/dialects/lowering
+
+## Purpose
+
+The staged lowering that composes core dialects: linalg input → `contract` facts → `schedule` decisions → `interface` ops → selected target dialect → `runtime` command-buffer IR → executable command-buffer dict for the runtime engine.
+
+Plus the **whole-model dialect plane** that brings real model2MLIR modules into this world: `outline.py` (`merlin-outline-dispatches`) splits the monolithic `func @forward` into one kernel func per compute dispatch + a driver, and `dispatch_program.py` (`merlin-emit-dispatch-program`) flattens that driver into a serializable runtime dispatch DAG. `passes.py` is the catalog of every Merlin-**authored** pass (vs the upstream passes orchestrated in `llvmlower/`) and the `run_dialect_plane` entry point.
+
+## What belongs here
+
+- One module per synthetic-workload stage (`contract_facts.py`, `schedule_decisions.py`, `interface_lowering.py`, `target_lowering.py`, `runtime_lowering.py`, `emit_command_buffer.py`), the workload builder (`input_workload.py`), cross-op analyses (`analyses.py`), and the orchestrator (`pipeline.py`).
+- The whole-model dialect plane: `outline.py`, `dispatch_program.py`, `schedule_dispatch.py` (multicore partitioning), `passes.py`.
+- Specialization opportunity analyses over whole-model IR: `gather_specialization.py` (tables indexed by an input's VALUE, e.g. an embedding lookup). These REPORT, they do not rewrite — see its docstring on why input specialization must never be applied silently.
+
+## What does not belong here
+
+- Dialect definitions (those are the sibling modules).
+- Runtime execution semantics (that is `merlin/python/merlin/runtime/`).
+- Target-specific codegen beyond the dialect-plan-driven op mapping.
+
+## Interfaces
+
+- Consumes contract and dialect-plan resources from the registry-selected support provider;
+  an explicit OOT provider wins over same-name bundled resources. Missing or malformed
+  selected contracts fail closed, without borrowing the neutral example's default.
+- Produces dicts conforming to `src/merlin/resources/schemas/command_buffer.schema.yaml`, executed by `merlin.runtime.simulate` and checked against `reference_outputs`.
+
+## Invariants
+
+Output-fusion threshold proofs include the minimum source output and the first
+unreachable level above its maximum. Interior thresholds cannot exclude values
+outside a narrower source clamp. Bounded domains that never reach either
+differing clamp remain eligible when their complete threshold proof succeeds.
+Selected fusion statements preserve the proof's accumulator/readout formats,
+physical gain-vector width and integer offsets. Independent logical column
+scales carry a gain-bound arithmetic-only partition obligation; the target
+compiler still owns physical legality, allocation and execution. A missing or
+altered obligation refuses the statement. Packing consumes those exact offsets;
+it never independently divides and rounds the original floating bias. Unsupported
+statement formats refuse without replacing the selected cut by a bare contraction.
+
+- **Outliner**: each compute op (`linalg.*` except `fill`/`yield`/`index`) becomes one kernel func; cheap pure producers (`arith.constant`/`tensor.empty`/`linalg.fill`) are *cloned into* the kernel; view/glue ops stay in the driver. Region-captured free values (model2MLIR `linalg.generic` gather bodies) MUST be lifted to kernel params — miss one and the kernel fails `IsolatedFromAbove`. The rewrite is value-preserving: inlining the kernels reproduces the original dataflow (proven bit-identical on host).
+- **Dispatch program** is a DAG: every node input is an earlier node output or a model arg (`verify_program`). `prune_dead_nodes` drops the dead cloned-accumulator view copies. The whole thing is JSON-serializable (runtime ABI).
+- Outlined kernel funcs are clean linalg — no `extract_slice` — so they round-trip through the xDSL printer (the whole model does not). This is what makes per-kernel compile + check work (`llvmlower/kernel_backend.py`).
+- Stages are plain module→module transforms returning fresh/cloned modules; never mutate the caller's module. Every stage output must pass `module.verify()`.
+- Local checks live in op `verify_`; anything needing program order or SSA chains lives in `analyses.py` and is run by the pipeline.
+- The emitted command buffer must execute such that `simulate(cb) == reference_outputs(cb)` — residency must never change results.
+- Deterministic tensor naming (`W`, `A0..`, `W_res`, `acc{i}`, `Y{i}`); same input → byte-identical command buffer.
+
+## Testing expectations
+
+`tests/ir/test_xdsl_lowering_e2e.py` (full descent + execution + metric assertions),
+`test_lowering_provider_selection.py` (selected-support ownership), and per-dialect analysis tests.
+
+## Notes for future agents
+
+To add a target: a reference dialect under `../targets/`, a lowering table in its `dialect_plan.yaml`, an opcode map in `runtime_lowering.py` (or a target-supplied encoding), and a backend in `merlin/python/merlin/runtime/`. Keep stages wrappable as xDSL `ModulePass`es — don't grow hidden state.

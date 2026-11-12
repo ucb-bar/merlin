@@ -7,7 +7,7 @@ shipped definition is a document: it can be wrong. When it is, every backend tha
 it emits a word that assembles cleanly and decodes to something else — no illegal instruction, no error,
 just wrong numbers days later.
 
-All the reasoning lives in :mod:`merlin.targetgen.isa_rtl_crosscheck`; this is the command-line gate over
+All the reasoning lives in :mod:`merlin.development.targetgen.isa_rtl_crosscheck`; this is the command-line gate over
 it. Nothing here knows an opcode or a target: both sides of every comparison are read from the target's
 own sources.
 
@@ -31,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
-from merlin.targetgen import isa_rtl_crosscheck as X  # noqa: E402
+from merlin.development.targetgen import isa_rtl_crosscheck as X  # noqa: E402
 
 
 def _print_report(rep, *, show_covered: bool) -> None:

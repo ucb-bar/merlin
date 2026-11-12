@@ -21,8 +21,8 @@ def prepare(*, plan_path, config, prep, output):
     """Ordinary selection only: no captures, references, compiler or target execution."""
     from merlin.development.backend import launch_config as L
     from merlin.development.backend.feedback import private_full_models as F
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen.evidence import export_evidence, load_exported_evidence, select_evidence
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     producer_inputs = {str(Path(path).absolute()): pin(path) for path in (plan_path, config, __file__)}
     plan = json.loads(Path(plan_path).read_bytes())

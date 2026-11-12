@@ -74,8 +74,8 @@ def model_op_demands(linalg_mlir: str, in_fmt: str, weight_fmt: str | None = Non
     follows that observed format because the request alone cannot prove a conversion. A whole-model
     capture is routinely mixed -- see :attr:`routing.OpDemand.elem_fmt`.
     """
-    from merlin.targetgen import semantic_families as sf
-    from merlin.targetgen.routing import OpDemand
+    from merlin.development.targetgen import semantic_families as sf
+    from merlin.development.targetgen.routing import OpDemand
 
     summ = linalg_summary(linalg_mlir)
     ops, fams = summ["prov_ops"], summ["prov_families"]
@@ -177,7 +177,7 @@ def model_op_demands_checked(
     linalg_mlir: str, in_fmt: str, weight_fmt: str | None = None, *, source_kind: str = "captured_provenance_v1"
 ) -> list:
     """Verify complete ordered contraction identity and declared source formats."""
-    from merlin.targetgen.source_demand_inventory import model_op_demands_checked as checked
+    from merlin.development.targetgen.source_demand_inventory import model_op_demands_checked as checked
 
     return checked(linalg_mlir, in_fmt, weight_fmt, source_kind=source_kind)
 
@@ -189,7 +189,7 @@ def linalg_to_iface(linalg_mlir: str, entry: dict, binding):
     declares; fail closed (``M2MUnavailable``) on any mismatch — never emit an interface the lowering does
     not support. Returns ``(cap, mlir)`` from the merlin_iface builder (byte-identical to the handwritten
     form when they agree)."""
-    from merlin.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import corpus_spec as CS
 
     op = entry.get("op", "matmul")
     summ = linalg_summary(linalg_mlir)
@@ -221,7 +221,7 @@ def verify_exact_application_int_mm(linalg_mlir: str, match: dict) -> dict:
     body and geometry. It deliberately does not claim that a whole model compiles or executes.
     """
     from merlin.common import mlir_query as mq
-    from merlin.targetgen.application_inventory import (
+    from merlin.development.targetgen.application_inventory import (
         exact_int_mm_geometry,
         int_mm_source_is_qualified,
         operation_structure,

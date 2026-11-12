@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen.corpus_spec import dtype_info
 from merlin.development.testgen.component_generation import digest
-from merlin.targetgen.corpus_spec import dtype_info
 
 
 def conditional_lengths(facts, *, numerical_semantics):

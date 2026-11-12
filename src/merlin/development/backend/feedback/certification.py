@@ -19,8 +19,8 @@ from typing import Any
 import yaml
 
 from merlin.development.backend.feedback import loop_grading as LG
+from merlin.development.targetgen.target_experiment import load_target_experiment
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen.target_experiment import load_target_experiment
 
 #: Safety multiple applied to a FITTED per-capsule L3 cost — the same "generous 2x" the measured-T_obs
 #: path below already applies. A margin, not a hardware fact.
@@ -490,7 +490,7 @@ def _official_grade_result(
             failures.extend(f"hidden:{reason}" for reason in hidden_failures)
             continue
         n_capsules, n_passed = phase.get("n_capsules"), phase.get("n_passed")
-        from merlin.targetgen.expected_refusal import execution_denominator
+        from merlin.development.targetgen.expected_refusal import execution_denominator
 
         n_executable, refusal_failures = execution_denominator(phase)
         failures.extend(f"{phase_name}:{reason}" for reason in refusal_failures)

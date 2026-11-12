@@ -10,9 +10,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
-
-from .contraction_k import OrderedKTilingError, _validated_oriented_source
+from merlin.compiler.semantic.model import KernelRequest, SemanticNode, TensorType
+from merlin.compiler.transforms.contraction_k import OrderedKTilingError, _validated_oriented_source
 
 
 class OrderedMNTilingError(ValueError):

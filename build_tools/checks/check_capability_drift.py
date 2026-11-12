@@ -6,7 +6,7 @@ two drift, nothing notices, and both directions cost a real number:
 
   UNDER-DECLARED  the sources evidence a capability the manifest omits. This does NOT show up as a
                   failing capsule — the conformance requirement is ``admitted INTERSECT observed``
-                  (:mod:`merlin.targetgen.conformance`), so an unadmitted family is EXCLUDED from the
+                  (:mod:`merlin.development.targetgen.conformance`), so an unadmitted family is EXCLUDED from the
                   requirement rather than missed, and the bar for the whole corpus quietly drops.
                   Measured here: a systolic target's contract says in a comment "No general reduction /
                   softmax / attention / normalization hardware" while its own ISA header enumerates
@@ -62,7 +62,7 @@ for _p in (_HERE.parents[2] / "merlin" / "python",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin.targetgen import capability_discovery as CD  # noqa: E402
+from merlin.development.targetgen import capability_discovery as CD  # noqa: E402
 
 
 def audit(target: str, *, require_pin: bool = False) -> dict:

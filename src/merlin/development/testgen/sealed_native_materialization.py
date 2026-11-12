@@ -13,8 +13,8 @@ import json
 from pathlib import Path
 
 from merlin.common import strict_json
+from merlin.development.targetgen import native_reference_composition as C
 from merlin.development.testgen import sealed_native_program as N
-from merlin.targetgen import native_reference_composition as C
 
 
 def source_binding(attestation, program, root):

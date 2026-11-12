@@ -30,8 +30,8 @@ def plan_forward_args(
 ) -> list[np.ndarray | _ModelInput]:
     """Every ``@forward`` argument in signature order: the array of a weight, buffer or lifted constant,
     or the ``inputs.npz`` member a model input is bound from (``input_files`` are that file's members)."""
-    from ..llvmlower.model_runner import parse_forward_signature
-    from ..llvmlower.weights_pack import load_safetensors_header
+    from merlin.compiler.lower.model.model_runner import parse_forward_signature
+    from merlin.compiler.lower.model.weights_pack import load_safetensors_header
 
     sig = parse_forward_signature(model_dir / "model.mlir")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())

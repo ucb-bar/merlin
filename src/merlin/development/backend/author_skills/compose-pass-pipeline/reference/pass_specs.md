@@ -9,9 +9,9 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 
 - `frontend` via `merlin.cli.compile_workload` (merlin.cli.compile_workload): capture
 - `codegen` via `merlin.compiler.build.shared` (merlin.compiler.build.shared): object -> link
-- `llvm` via `merlin.llvmlower.lower_model` (merlin.llvmlower.lower): input -> source-recomputed -> host-graph-optimized -> host-row-scheduled -> host-padding-gather-forwarded -> host-destination-reused -> host-rounding-selected -> host-permutation-forwarded -> host-pointwise-fused -> host-tensor-preparations-shared -> operation-profiled -> <*PREPROCESS_STAGES> -> upstream -> upstream-scheduled -> llvm-translated -> llvm-dialect -> llvm-normalized -> llvm-final
-- `whole-model` via `merlin.perf.whole_model_build.build` (merlin.perf.whole_model_build): passes -> statement -> group_objects -> extract -> render_kernels -> program_build -> memory_map -> oracle_join
-- `staged` via `merlin.xdsl_dialects.lowering.lower_module` (merlin.xdsl_dialects.lowering.pipeline): input -> contract -> schedule -> interface -> target -> runtime
+- `llvm` via `merlin.compiler.lower.model.lower_model` (merlin.compiler.lower.model.lower): input -> source-recomputed -> host-graph-optimized -> host-row-scheduled -> host-padding-gather-forwarded -> host-destination-reused -> host-rounding-selected -> host-permutation-forwarded -> host-pointwise-fused -> host-tensor-preparations-shared -> operation-profiled -> <*PREPROCESS_STAGES> -> upstream -> upstream-scheduled -> llvm-translated -> llvm-dialect -> llvm-normalized -> llvm-final
+- `whole-model` via `merlin.analysis.perf.whole_model_build.build` (merlin.analysis.perf.whole_model_build): passes -> statement -> group_objects -> extract -> render_kernels -> program_build -> memory_map -> oracle_join
+- `staged` via `merlin.compiler.dialects.lowering.lower_module` (merlin.compiler.dialects.lowering.pipeline): input -> contract -> schedule -> interface -> target -> runtime
 
 ## Pass contracts (`PassSpec`) by declaring function
 
@@ -166,7 +166,7 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 2 | row_fiber_schedule | row_source | row_candidates | * | True | host_tensor |
 | 4 | row_fiber_conformance | row_candidates | row_realization | - | False | host_tensor |
 
-### `merlin.llvmlower.automatic_destinations:prepare_automatic_destinations`
+### `merlin.compiler.lower.model.automatic_destinations:prepare_automatic_destinations`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -174,7 +174,7 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 1 | <family + '_forwarding'> | source | emission | * | True | host_tensor |
 | 2 | <family + '_conformance'> | emission | realized_regions | - | False | host_tensor |
 
-### `merlin.llvmlower.automatic_gathers:prepare_automatic_gathers`
+### `merlin.compiler.lower.model.automatic_gathers:prepare_automatic_gathers`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -182,14 +182,14 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 1 | padding_gather_rewrite | source | emission | * | True | host_tensor |
 | 2 | padding_gather_conformance | emission | realization | - | False | host_tensor |
 
-### `merlin.llvmlower.automatic_host:optimize_host_quantization`
+### `merlin.compiler.lower.model.automatic_host:optimize_host_quantization`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
 | 0 | bounded_quantization | - | - | * | True | host_tensor |
 | 1 | arithmetic_conformance | - | - | - | False | host_tensor |
 
-### `merlin.llvmlower.automatic_rounding:prepare_automatic_rounding`
+### `merlin.compiler.lower.model.automatic_rounding:prepare_automatic_rounding`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -197,7 +197,7 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 1 | rounding_representation | source | emission | * | True | host_tensor |
 | 2 | rounding_conformance | emission | - | - | False | host_tensor |
 
-### `merlin.llvmlower.convolution_routes:normalize_convolution_source`
+### `merlin.compiler.lower.model.convolution_routes:normalize_convolution_source`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -206,7 +206,7 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 2 | convolution-panel-packing | routes | realized | * | True | tensor |
 | 2 | convolution-conformance | realized | checked | - | False | tensor |
 
-### `merlin.llvmlower.graph_optimizations:optimize_host_graph`
+### `merlin.compiler.lower.model.graph_optimizations:optimize_host_graph`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -217,13 +217,13 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 2 | layout-propagation | coordinates, layout_plans | rewrite | * | True | host_tensor |
 | 3 | layout-conformance | rewrite | conformance | - | False | host_tensor |
 
-### `merlin.llvmlower.offload_plan:bind_source`
+### `merlin.compiler.lower.model.offload_plan:bind_source`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
 | 0 | offload-source | - | source_graph | - | False | linalg |
 
-### `merlin.llvmlower.offload_plan:realize_offload_plan`
+### `merlin.compiler.lower.model.offload_plan:realize_offload_plan`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
@@ -231,21 +231,21 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 1 | offload-plan | graph | selection | - | False | linalg |
 | 2 | offload-conformance | selection | checked_selection | - | False | linalg |
 
-### `merlin.llvmlower.source_dense_group:schedule_source_dense_group`
+### `merlin.compiler.lower.model.source_dense_group:schedule_source_dense_group`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
 | 0 | group-source-admission | - | independent_dense_sources | - | False | linalg |
 | 2 | group-dense-lowering | independent_dense_sources | compiled_dense_group | - | False | linalg |
 
-### `merlin.transforms.dense_row_batching:plan_source_dense_row_batching`
+### `merlin.compiler.transforms.dense_row_batching:plan_source_dense_row_batching`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|
 | 0 | dense-row-source | - | source | - | False | linalg |
 | 1 | dense-row-batching | source | - | * | True | linalg |
 
-### `merlin.transforms.pipeline:apply_common_pipeline.register`
+### `merlin.compiler.transforms.pipeline:apply_common_pipeline.register`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
 |---|---|---|---|---|---|---|

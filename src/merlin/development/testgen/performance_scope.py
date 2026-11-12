@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from collections import Counter
 
-from merlin.targetgen.corpus_spec import scope_chain_region_ops
-from merlin.targetgen.software_spec import admit_operation
+from merlin.development.targetgen.corpus_spec import scope_chain_region_ops
+from merlin.development.targetgen.software_spec import admit_operation
 
 
 def _dtype(row: dict) -> str | None:

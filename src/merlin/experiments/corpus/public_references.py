@@ -137,7 +137,7 @@ def stage_bank(source: Path, sha256: str, destination: Path) -> dict:
     import shutil
 
     try:
-        from merlin.mining.reference_subsets import verify_bank
+        from merlin.analysis.mining.reference_subsets import verify_bank
     except ImportError as exc:
         raise SpecError("CCA bank staging requires the mining workflow from 'merlin[mining]'") from exc
     try:

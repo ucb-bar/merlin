@@ -1,6 +1,6 @@
 """Write captured compute groups as corpus capsules through the one Phase 0 writer.
 
-The binding and the interface are core (:mod:`merlin.targetgen.group_capsule_entries`), so a
+The binding and the interface are core (:mod:`merlin.development.targetgen.group_capsule_entries`), so a
 whole-program build can ask a package for a group without importing this package. Materializing a
 group as a capsule on disk -- golden, instruction classes, declared blocks, path scrubbing -- is the
 Phase 0 writer's job and happens only here, for every derived group capsule: model forms, form-perf
@@ -13,8 +13,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.development.targetgen.group_capsule_entries import interface_entry
 from merlin.development.testgen import provenance, writer
-from merlin.targetgen.group_capsule_entries import interface_entry
 
 
 def write_group_capsule(

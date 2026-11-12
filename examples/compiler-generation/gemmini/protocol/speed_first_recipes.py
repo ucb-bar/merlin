@@ -15,7 +15,7 @@ import yaml
 
 from merlin.common.paths import repo_root
 from merlin.compiler.quantization import methodology as M
-from merlin.targetgen import quant_recipe_policy as P
+from merlin.development.targetgen import quant_recipe_policy as P
 
 
 def generate(directory: Path, *, spec: Path, contract: Path) -> dict:

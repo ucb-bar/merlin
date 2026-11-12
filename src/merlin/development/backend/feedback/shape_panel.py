@@ -26,7 +26,7 @@ The panel defaults to Spike: it includes large scalability cases and uses the se
 without gSIM runs; ``--sim gsim`` asks for RTL cycles on the core roster.
 
 FEEDS A SHAPE POLICY. Each graded class also carries a ``shape_policy`` record in the vocabulary of
-:mod:`merlin.transforms.shape_policy` (``ExplorationGeometry`` fields and ``CompletedObservation``
+:mod:`merlin.compiler.transforms.shape_policy` (``ExplorationGeometry`` fields and ``CompletedObservation``
 fields, with the identity pins the row states). The pins that describe the author's own pipeline
 session are listed as ``author_supplies`` and never invented; :func:`completed_observation` builds
 the typed observation once they are given. Only cycle evidence is ``timing_status: complete``.
@@ -161,7 +161,7 @@ AUTHOR_PINS = (
 #: ``ExplorationIdentity.basis`` of each evidence kind (a Spike count states none; only cycle evidence is complete).
 BASIS = {"gsim_measured": "measured_roi", "calibrated_model": "modeled_roi", "provisional_model": "modeled_roi"}
 FEED = (
-    "Each class's `shape_policy` record maps onto merlin.transforms.shape_policy inputs: "
+    "Each class's `shape_policy` record maps onto merlin.compiler.transforms.shape_policy inputs: "
     "ExplorationGeometry(**geometry) and CompletedObservation(ExplorationIdentity(**identity, <your session's "
     "author_supplies pins>), **observation), paired per alternative in ShapeCaseFeedback. Only cycle evidence "
     "carries timing_status 'complete', including identity-bound complete provisional modeled estimates. "
@@ -175,7 +175,7 @@ def _pin(value) -> str | None:
 
 
 def policy_record(pick: dict, row: dict, kind, cycles, *, family: str) -> dict:
-    """One class's observation in the vocabulary of :mod:`merlin.transforms.shape_policy` (see :data:`FEED`)."""
+    """One class's observation in the vocabulary of :mod:`merlin.compiler.transforms.shape_policy` (see :data:`FEED`)."""
     import hashlib
 
     performance = row.get("performance") if isinstance(row.get("performance"), dict) else {}
@@ -216,8 +216,8 @@ def completed_observation(record: dict, **pins):
     Raises when a pin the record leaves to the author is missing or the record carries none of its own:
     an observation is never minted with an invented identity.
     """
-    from merlin.transforms.evaluated_exploration import CompletedObservation, ExplorationIdentity
-    from merlin.transforms.pass_exploration import ExplorationGeometry
+    from merlin.compiler.transforms.evaluated_exploration import CompletedObservation, ExplorationIdentity
+    from merlin.compiler.transforms.pass_exploration import ExplorationGeometry
 
     identity = {**{k: v for k, v in record["identity"].items() if v is not None}, **pins}
     missing = [f for f in (*AUTHOR_PINS, "basis", "facts_sha256", "scope_sha256") if identity.get(f) is None]

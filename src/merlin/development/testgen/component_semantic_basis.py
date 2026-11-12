@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import is_sha256
-from merlin.targetgen.frontend_trace import original_operation_semantics
+from merlin.development.targetgen.frontend_trace import original_operation_semantics
 
 SCHEMA = "merlin.component_semantic_basis.v1"
 PROVENANCE = {"role": "independent_training_example", "visibility": "public", "selection": "before_authoring"}

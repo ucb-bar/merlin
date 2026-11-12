@@ -1312,7 +1312,7 @@ def _validated_external_kernel_launch(
     if not isinstance(resource_claims, dict):
         raise ValueError(f"{kind} launch requires command-buffer resource claims")
 
-    from merlin.targetgen.rtl.facts import load_facts
+    from merlin.development.targetgen.rtl.facts import load_facts
 
     document = load_facts(model.target)
     facts = document.get("facts") if isinstance(document, dict) else None

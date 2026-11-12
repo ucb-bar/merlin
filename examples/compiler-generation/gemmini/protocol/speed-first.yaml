@@ -34,7 +34,7 @@ arithmetic:
 references:
   capture: fresh_preselected_canonical_sealed_M2M_issue_and_independent_replay
   preparation: prepared_ungrouped_quantized_IR_with_selected_host_math
-  execution: merlin.model_check.chain.run_reference
+  execution: merlin.evaluation.model.chain.run_reference
   state: every_next_step_binds_the_actual_selected_quantized_previous_output
   tiny_llama:
     layers: 22

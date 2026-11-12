@@ -15,11 +15,11 @@ from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf.dma_volume import physical_volume_from_counters
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization import measurement_evidence as ME
 from merlin.development.backend.optimization import measurement_support as MS
 from merlin.development.testgen.performance_scope import validate_performance_scope
-from merlin.perf.dma_volume import physical_volume_from_counters
 
 SCHEMA = "merlin.phase2.bottleneck_priority.v2"
 

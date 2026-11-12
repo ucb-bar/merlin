@@ -1,6 +1,6 @@
 """Agent-generated Gemmini kernel codegen (Claude Code CLI, Opus).
 
-Produced by merlin.targetgen.agent.kernel_slot: the agent saw the command-buffer ABI + a
+Produced by merlin.development.targetgen.agent.kernel_slot: the agent saw the command-buffer ABI + a
 Gemmini ISA reference + C0/C1 single-tile EXAMPLES (no reference outputs), and synthesized
 this generate_driver. CERTIFIED bit-exact on HELD-OUT shapes it never saw (C4 multi-tile,
 C4e zero-padded, C5 reuse) against the three-way gate. Round 0, first attempt. Do not edit

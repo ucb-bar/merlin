@@ -90,7 +90,7 @@ class FnBuilderIndexAdapter:
         from xdsl.dialects.builtin import IntegerAttr, i64
         from xdsl.ir import Block
 
-        from merlin.llvmlower.llvm_loop_metadata import disable_loop_unroll
+        from merlin.compiler.lower.model.llvm_loop_metadata import disable_loop_unroll
 
         if (
             any(type(v) is not int for v in (start, stop, step))

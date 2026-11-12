@@ -76,7 +76,7 @@ def substrate(board: Board) -> str:
     """The measurement-substrate label this board's numbers are recorded under.
 
     Target contracts name the same label as a measurement authority (``measurement.wall_from``) and
-    :func:`merlin.kernels.measurement.pick` matches measurements on it, so callers read it from the
+    :func:`merlin.analysis.kernels.measurement.pick` matches measurements on it, so callers read it from the
     board instead of restating it. Defaults to the board name.
     """
     return _require_linux(board).substrate or board.name
@@ -950,7 +950,7 @@ def _resolve_openmp_selection(*, parallel: bool, parallel_harts: int | None, hos
             None,
         )
 
-    from ..llvmlower.host_policy import HostLoweringEffects
+    from merlin.compiler.lower.model.host_policy import HostLoweringEffects
 
     if not isinstance(host_effects, HostLoweringEffects):
         raise TypeError("host_effects must be HostLoweringEffects or None")
@@ -1117,7 +1117,7 @@ def build_binary(
     # object indexing a transposed weight that the blob stores untransposed. Measured on silicon,
     # interleaved same-session: 1.70x on small_llama int8. The rewrite is cached per (bundle,
     # rewrite) and NEVER mutates the source recapture, which every other session reads.
-    from ..llvmlower import weight_prepack as _wp
+    from merlin.compiler.lower.model import weight_prepack as _wp
 
     _wp.ensure_registered()  # unregistered => `_composes` swallows the KeyError and never proposes it
     if _wp.FEATURE in (getattr(pkg, "compiler_features", None) or ()):
@@ -1139,7 +1139,7 @@ def build_binary(
     # same kind of ABI-bearing bundle rewrite as prepacking above: the prepared compiler input and
     # c_runtime's argument table must both see the rewritten signature + payload. Apply it after
     # layout prepacking so two requested bundle transforms form one explicit provenance chain.
-    from ..llvmlower import weight_prequant as _wq
+    from merlin.compiler.lower.model import weight_prequant as _wq
 
     _wq.ensure_registered()
     if _wq.FEATURE in (getattr(pkg, "compiler_features", None) or ()):
@@ -1162,8 +1162,9 @@ def build_binary(
     if not ld.is_file():
         ld = Path(shutil.which("ld") or "ld")
 
-    from ..llvmlower import c_runtime, toolchain
-    from ..llvmlower.lower import lower_model_file
+    from merlin.compiler.lower.model import c_runtime, toolchain
+    from merlin.compiler.lower.model.lower import lower_model_file
+
     from ..runtime.backends import zephyr_model as zm
 
     # 1. model.mlir -> normalize (same prep passes as the package/spike build) -> model.ll.
@@ -1219,7 +1220,7 @@ def build_binary(
     # see. Runs LAST (after any kernel-backend rewrite) so a routed matmul is profiled as the call
     # it became. The id->op table is written next to the build for the driver to join against.
     if op_profile:
-        from ..llvmlower import op_profile as opf
+        from merlin.compiler.lower.model import op_profile as opf
 
         instrumented, prof_table = opf.instrument(prepared.read_text())
         prepared = work / "model.prepared.opprof.mlir"
@@ -1336,7 +1337,7 @@ def build_binary(
     # complete call set of malloc/memset/roundevenf. Nothing between here and the board could see
     # it. The bound is derived from the prepared IR (one instruction per structured op that reaches
     # an output) and carries no constant; it raises, so an erased model cannot be timed.
-    from ..llvmlower.codegen_census import require_commensurate as _census_require
+    from merlin.compiler.lower.model.codegen_census import require_commensurate as _census_require
 
     _object_census = _census_require(prepared, model_o, "forward")
     print(f"[census gate object] {_object_census.as_dict()}", flush=True)
@@ -1532,10 +1533,10 @@ def build_session_binary(
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     cc, root = _require_toolchain(p)
+    from merlin.compiler.lower.model import session_bundle, toolchain
+    from merlin.compiler.lower.model.lower import lower_model_file
     from merlin.compiler.lower.native.pipeline import PipelineError
 
-    from ..llvmlower import session_bundle, toolchain
-    from ..llvmlower.lower import lower_model_file
     from ..runtime.backends import zephyr_model as zm
 
     generated = work / "session_gen"
@@ -1606,7 +1607,7 @@ def build_session_binary(
         _run([clang23, p.target_flag, *_stage_flags, "-c", lowered.ll_path, "-o", model_object])
         # Same post-codegen census as the primary site (see there): a staged sibling that skipped it
         # would be the one path on which an erased model still reaches a timing run.
-        from ..llvmlower.codegen_census import require_commensurate as _census_require_stage
+        from merlin.compiler.lower.model.codegen_census import require_commensurate as _census_require_stage
 
         _stage_census = _census_require_stage(prepared, model_object, str(record["entrypoint"]))
         print(f"[census gate object] stage {name!r} {_stage_census.as_dict()}", flush=True)
@@ -1692,7 +1693,7 @@ def build_session_binary(
         raise RemoteLinuxError(f"{p.name} session cross-compile produced no binary at {binary}")
     # As in the single-program path, retain the object census as the erasure gate and report each
     # preserved stage entry from the linked artifact that actually runs.
-    from ..llvmlower.codegen_census import require_commensurate as _census_require_linked
+    from merlin.compiler.lower.model.codegen_census import require_commensurate as _census_require_linked
 
     linked_stages = []
     for prepared, entrypoint, object_census in stage_censuses:
@@ -2322,7 +2323,7 @@ def run(
             # id->op table the build emitted. Absent (or empty) unless op_profile=True.
             tbl = bwork / "opprof_table.json"
             if op_profile and tbl.is_file():
-                from ..llvmlower.op_profile import parse_prof_lines
+                from merlin.compiler.lower.model.op_profile import parse_prof_lines
 
                 table = json.loads(tbl.read_text())
                 ticks = parse_prof_lines(r["console"])

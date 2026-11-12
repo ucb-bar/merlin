@@ -7,9 +7,14 @@ from pathlib import Path
 import pytest
 import sim_toolchain
 
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces, audit_tokens, weight_files
-from merlin.targetgen.sandbox.preflight import probe_sandbox
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox.answer_surfaces import (
+    AnswerSurface,
+    answer_surfaces,
+    audit_tokens,
+    weight_files,
+)
+from merlin.development.targetgen.sandbox.preflight import probe_sandbox
 
 _SANDBOX = probe_sandbox()
 _NO_SANDBOX = None if _SANDBOX.usable else _SANDBOX.describe()

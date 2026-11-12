@@ -15,8 +15,8 @@ from hashlib import sha256
 from itertools import product
 from typing import Any
 
-from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType
+from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
+from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
 
 from .intake import (
     SourceValueRef,

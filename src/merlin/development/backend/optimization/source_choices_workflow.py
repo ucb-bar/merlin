@@ -86,7 +86,7 @@ class SourceChoicesPolicy(WorkflowPolicy):
     workflow_id = SOURCE_CHOICES_V1
 
     def __init__(self, *, candidate, target_experiment, receipt_path, source_choices):
-        from merlin.llvmlower.source_choices import SourceDenseChoices
+        from merlin.compiler.lower.model.source_choices import SourceDenseChoices
 
         if type(source_choices) is not SourceDenseChoices:
             raise StageGateError("source choices require the exact live original owner")

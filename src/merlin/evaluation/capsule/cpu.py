@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from merlin.development.backend.feedback import setup_timing as _host_timing
+from merlin.development.targetgen import capsule_golden as CG
 from merlin.evaluation.capsule.numerics import _match_by_policy
 from merlin.evaluation.capsule.source import _capture_compiler_source, _finish_compiler_source
-from merlin.targetgen import capsule_golden as CG
 
 
 def _grade_cpu_step(function, /, *args, **kwargs):
@@ -24,7 +24,7 @@ def _grade_cpu_step(function, /, *args, **kwargs):
     from contextlib import ExitStack
 
     from merlin.common.cpu_pool import shared_compute_pool
-    from merlin.targetgen import grade_offload
+    from merlin.development.targetgen import grade_offload
 
     name = _grade_cpu_stages().get(id(function)) or getattr(function, "__name__", "step").lstrip("_")
     with ExitStack() as lease:
@@ -40,11 +40,11 @@ def _grade_cpu_stages() -> dict[int, str]:
     Each takes and returns plain data and reads only its arguments and capsule files, which is what
     :func:`.grade_offload.register` requires. Anything not listed stays on the grading thread. Looked
     up per call, so a replaced function (a test's stub) is matched by its own identity, never an old one."""
-    from merlin.benchharness import hash_tree
-    from merlin.perf.work_volume import command_buffer_evidence
+    from merlin.analysis.perf.work_volume import command_buffer_evidence
+    from merlin.development.targetgen import grade_offload
+    from merlin.evaluation.harness import hash_tree
     from merlin.runtime.reference import reference_outputs
     from merlin.runtime.simulator import simulate
-    from merlin.targetgen import grade_offload
 
     named = {
         "golden": CG.golden,

@@ -43,9 +43,9 @@ def writer_binding(
     *, descriptor: Path, recipe: Path, performance_template: Path, software_spec: Path, facts: dict
 ) -> tuple[Any, dict]:
     """The corpus binding and datapath an ordinary generation of this recipe selects."""
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen.profiles import load_profile
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(descriptor)
     profile = load_profile(
@@ -72,9 +72,9 @@ def derive_chains(
     output: Path,
 ) -> dict[str, Any]:
     """Write ``plan.json``, ``chain-profile.yaml`` and ``sources/`` under a fresh ``output``."""
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen.claim_boundary import held_out_models
     from merlin.development.testgen.writer import _write_capsule
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     if output.exists():
         raise ValueError("chain demand needs a fresh output directory")

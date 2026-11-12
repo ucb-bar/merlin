@@ -56,7 +56,7 @@ class GroupPlan:
     _decisions: str
 
     def require_current(self, module, target: str, *, weight_args=None) -> None:
-        from merlin.transforms.certificates import ir_digest
+        from merlin.compiler.transforms.certificates import ir_digest
 
         if module is not self.source or target != self.target:
             raise ValueError("group plan belongs to another source or target")
@@ -75,7 +75,7 @@ class GroupPlan:
 
     def report(self) -> dict:
         """Describe the selected groups without another grouping decision."""
-        from merlin.xdsl_dialects.lowering import compute_groups
+        from merlin.compiler.dialects.lowering import compute_groups
 
         self.require_current(self.source, self.target, weight_args=self.weight_args)
         result = compute_groups.plan(self.source, self.target, oracle=self.oracle, groups=self.groups)
@@ -85,8 +85,8 @@ class GroupPlan:
 
 def plan_groups(module, target: str, *, oracle=None, weight_args=None) -> GroupPlan:
     """Select groups once using the existing source and target legality owner."""
-    from merlin.transforms.certificates import ir_digest
-    from merlin.xdsl_dialects.lowering import compute_groups
+    from merlin.compiler.dialects.lowering import compute_groups
+    from merlin.compiler.transforms.certificates import ir_digest
 
     before = ir_digest(module)
     operations = tuple(module.walk())

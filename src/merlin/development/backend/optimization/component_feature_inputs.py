@@ -22,9 +22,9 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
 )
 from merlin.development.backend.optimization.feedback_protocol import FeedbackValueLimits, encode_feedback_value
+from merlin.development.targetgen import capsule_inputs, component_program, input_palette
 from merlin.development.testgen import component_execution_budget as B
 from merlin.runtime import commandbuffer, tensor
-from merlin.targetgen import capsule_inputs, component_program, input_palette
 
 _PREPARED = WeakKeyDictionary()
 
@@ -134,7 +134,7 @@ def prepare_feature_inputs(*, corpus, scope, execution_budget, destination, limi
     replace captured/raw floating inputs, independently checked references, or
     permit new huge tensors merely because their metadata is small.
     """
-    from merlin.perf.component_cost import ComponentCostScope
+    from merlin.analysis.perf.component_cost import ComponentCostScope
 
     if type(corpus) is not C.FrozenPerformanceCorpus or type(scope) is not ComponentCostScope:
         raise StageGateError("feature preparation requires its exact corpus and complete scope")

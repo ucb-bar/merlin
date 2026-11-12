@@ -2,7 +2,7 @@
 
 from functools import wraps
 
-from merlin.targetgen.host_admission_preparation import PreparedHostCapabilities
+from merlin.development.targetgen.host_admission_preparation import PreparedHostCapabilities
 
 
 def prepared_host_admission(function):

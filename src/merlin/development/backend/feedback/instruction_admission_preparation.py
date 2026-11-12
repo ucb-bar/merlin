@@ -16,7 +16,7 @@ from pathlib import Path
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.development.backend.feedback import private_instruction_coordinator as C
 from merlin.development.backend.feedback import private_instruction_declaration as D
-from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
 
 @dataclass(frozen=True)

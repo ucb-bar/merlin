@@ -14,10 +14,10 @@ from pathlib import Path
 
 from merlin.development.backend.generated_isa_library import prepare_library
 from merlin.development.backend.optimization.compiler_library_state import load_selection
-from merlin.targetgen.compiler_library import CompilerLibrarySelection, freeze_compiler_library
-from merlin.targetgen.compiler_library_fork import REVIEW_PREFIX, enabled
-from merlin.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
-from merlin.targetgen.tool_registry import ARM_TOOLS
+from merlin.development.targetgen.compiler_library import CompilerLibrarySelection, freeze_compiler_library
+from merlin.development.targetgen.compiler_library_fork import REVIEW_PREFIX, enabled
+from merlin.development.targetgen.tool_profile_shared import prepare_shared_source_release, reviewed_shared_manifest
+from merlin.development.targetgen.tool_registry import ARM_TOOLS
 
 
 def _require_source_revision(repo: Path, expected: str) -> None:
@@ -30,7 +30,7 @@ def _require_source_revision(repo: Path, expected: str) -> None:
             raise ValueError("compiler source release contains uncommitted edits")
         return
     from merlin.common.provenance import UNKNOWN
-    from merlin.targetgen.provenance import source_revision
+    from merlin.development.targetgen.provenance import source_revision
 
     actual = source_revision(repo)
     if actual == UNKNOWN or actual != expected:
@@ -198,8 +198,8 @@ def reviewed_view_modules(modules, *, existing, source_modules, enabled=False):
     requested = tuple(modules)
     if not enabled:
         return requested
-    leaf = "merlin.transforms.tensor_views"
-    if "merlin.transforms.certificates" not in set(source_modules) | set(requested):
+    leaf = "merlin.compiler.transforms.tensor_views"
+    if "merlin.compiler.transforms.certificates" not in set(source_modules) | set(requested):
         raise ValueError("reviewed tensor views requires its certificates source owner")
     if leaf not in existing and leaf not in requested:
         requested += (leaf,)
@@ -227,7 +227,7 @@ def reviewed_package_sources(additions, source_root):
     """A reviewed name that is a package, not a leaf, selects that package's own initializer.
 
     A reviewed leaf can import a module of a package the previous library does not contain (SDK V24's
-    ``merlin.transforms.head_batching`` imports ``merlin.compiler.ir.contraction_shapes``). The
+    ``merlin.compiler.transforms.head_batching`` imports ``merlin.compiler.ir.contraction_shapes``). The
     library's ``merlin`` tree shadows the SDK's, so that package needs its initializer in the library;
     the operator names the package explicitly, exactly like a leaf. Nothing is added implicitly.
     """

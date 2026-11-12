@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
 from merlin.development.backend.optimization import agent_workspace as AW
 from merlin.development.backend.optimization import broker_policy as BP
 from merlin.development.backend.optimization import candidate_record as RECORD
@@ -34,8 +35,7 @@ from merlin.development.backend.optimization.functional_inputs import (
     StageFunctionalRun,
     _frozen_path_for_destination,
 )
-from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 
 @dataclass(frozen=True)
@@ -105,8 +105,8 @@ def prepare_component_prompt_inputs(
     not admit that view or start a session. The normal launcher currently refuses
     the profile until a qualified fresh isolated transport is available.
     """
-    from merlin.benchharness import hash_tree
     from merlin.development.backend.optimization.component_workflow import ComponentOnlyPolicy
+    from merlin.evaluation.harness import hash_tree
 
     if type(policy) is not ComponentOnlyPolicy or policy.workflow_id != BP.COMPONENT_ONLY_V1:
         raise StageGateError("component prompt requires the explicit component-only policy")

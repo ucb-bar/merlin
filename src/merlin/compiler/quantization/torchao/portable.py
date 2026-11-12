@@ -64,7 +64,7 @@ CONSTANTS = {
     "_INHERITED_META",
 }
 _ROOT = Path(__file__).resolve().parent
-_TARGETGEN = _ROOT.parents[2] / "targetgen"
+_TARGETGEN = _ROOT.parents[2] / "development" / "targetgen"
 _LOCK = threading.RLock()
 
 
@@ -97,7 +97,7 @@ def helper(name):
     path = _TARGETGEN / (name + ".py")
     with _LOCK:
         selected = None
-        for spelling in ("merlin.targetgen." + name, name):
+        for spelling in ("merlin.development.targetgen." + name, name):
             existing = sys.modules.get(spelling)
             if existing is None:
                 continue
@@ -108,7 +108,7 @@ def helper(name):
             selected = existing
         if selected is None:
             before = _bytes(path)
-            canonical = "merlin.targetgen." + name
+            canonical = "merlin.development.targetgen." + name
             spec = importlib.util.spec_from_file_location(canonical, path)
             selected = importlib.util.module_from_spec(spec)
             sys.modules[name] = selected
@@ -126,7 +126,7 @@ def helper(name):
             raise ImportError(f"selected recipe dependency changed after loading: {path}")
         selected.__recipe_source_sha256__ = observed
         sys.modules[name] = selected
-        sys.modules["merlin.targetgen." + name] = selected
+        sys.modules["merlin.development.targetgen." + name] = selected
         return selected
 
 

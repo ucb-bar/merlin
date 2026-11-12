@@ -129,7 +129,7 @@ def capture_tier(name, tier, result, *, generated, package_dir, shas):
         return
     from merlin.common import invocation_record as I
     from merlin.common.tree_hash import hash_tree
-    from merlin.targetgen import executed_program as E
+    from merlin.development.targetgen import executed_program as E
 
     generated = Path(generated)
     try:
@@ -303,10 +303,10 @@ def prepare(*, context, contract, source, runs, graded_root):
     from merlin.development.backend.feedback.compiler_profile_runtime import active_original_execution
     from merlin.development.backend.feedback.joint_physical_correctness import roster
     from merlin.development.backend.feedback.loop_grading import _suite_for
+    from merlin.development.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.model_gate_continuation import ModelGatePrerequisites
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.evaluation.capsule.eligibility import _gate_counts
-    from merlin.targetgen.capsule_common import discover_capsules
-    from merlin.targetgen.model_gate_continuation import ModelGatePrerequisites
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     keys = ("MERLIN_SELFCHECK_PROMOTION_WS", "MERLIN_SELFCHECK_PROMOTION_ROOT", "MERLIN_SELFCHECK_PROMOTION_SHA256")
     values = tuple(os.environ.get(k) for k in keys)

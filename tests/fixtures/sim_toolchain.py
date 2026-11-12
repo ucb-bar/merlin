@@ -24,7 +24,7 @@ def stand_in_absent_chipyard(monkeypatch: pytest.MonkeyPatch, root: Path) -> Non
     lazy resolver here and restored afterwards: a stand-in resolved for one test must not become the
     family every later test in the worker sees.
     """
-    from merlin.targetgen.sandbox import toolchain
+    from merlin.development.targetgen.sandbox import toolchain
 
     if external_sources.missing("chipyard"):
         root.mkdir(parents=True, exist_ok=True)

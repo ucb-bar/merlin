@@ -1,7 +1,7 @@
 # GENERATED from ../../target/contracts/residual.yaml plus this provider's plugin block by
 # build_tools/scripts/sync_support_contract.py. Edit the reviewed contract, then re-run it.
 # Residual side-input for the target-agnostic capability deriver
-# (merlin.targetgen.capability_manifests.manifest_for). This is the human intent + prose + ABI
+# (merlin.development.targetgen.capability_manifests.manifest_for). This is the human intent + prose + ABI
 # encoding surface the RTL facts cannot ground; the mesh / memory capacities / datapath dtypes /
 # encoding CODES are layered on from facts.json when a residual declares `facts_source: rtl`.
 #
@@ -11,7 +11,7 @@
 # (explicitly selected external facts), never re-declared here. So the deriver
 # reproduces this residual field-for-field (adding only the empty `legality` default), letting gemmini
 # be REGENERATED as an out-of-tree target package via
-# `merlin.targetgen.capability_manifests.write_oot_target("gemmini", <root>)` — the same deterministic
+# `merlin.development.targetgen.capability_manifests.write_oot_target("gemmini", <root>)` — the same deterministic
 # path every other target uses, discoverable via MERLIN_TARGET_PATH.
 #
 # This file is pinned to the curated reference `contracts/target_contract.yaml` (they must stay
@@ -23,8 +23,8 @@ family: tensor_resident
 plugin:
   backend: merlin.runtime.backends.chipyard_rocc
   isa_headers: isa_headers.yaml
-  rocc_semantics: merlin.targetgen.rocc.semantics
-  rtl_checks: merlin.targetgen.rtl_checks_generic
+  rocc_semantics: merlin.development.targetgen.rocc.semantics
+  rtl_checks: merlin.development.targetgen.rtl_checks_generic
 # Reference metadata has no executable backend. The explicitly selected OOT support
 # provider owns its plugin declaration and implementation.
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
@@ -132,7 +132,7 @@ encoding:
     LOOP_CONV: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
     LOOP_WS: [MVIN, PRELOAD, COMPUTE_PRELOADED, MVOUT]
 # RoCC OPERAND ROLES — what each decoded field of each instruction class MEANS, consumed by the generic
-# RoCC semantics (merlin.targetgen.rocc.semantics). Bit POSITIONS and WIDTHS are never written here: a
+# RoCC semantics (merlin.development.targetgen.rocc.semantics). Bit POSITIONS and WIDTHS are never written here: a
 # field names a bundle + field of the CIRCT-extracted `register_bundle_layouts` fact (this target's own
 # Scala Bundles), so the offsets follow the RTL. This block supplies only what the RTL cannot ground:
 # which operand carries which bundle, and how a value is interpreted (an int, float32 bits, a
@@ -223,7 +223,7 @@ rocc_operand_roles:
           bundle: ConfigMvoutRs1
           names: [pool_stride, pool_size, pool_out_dim, porows, pocols, orows, ocols, upad, lpad]
 # RTL CHECKS — this target's RoCC protocol for the generic HARDWARE-LEGALITY rules
-# (merlin.targetgen.rtl_checks_generic). Rule kinds are target-independent code; this block only says
+# (merlin.development.targetgen.rtl_checks_generic). Rule kinds are target-independent code; this block only says
 # which instruction classes play which protocol ROLE, which decoded field carries which MEANING, which
 # fields are local addresses, and which rules apply. Every bound (legal functs, memory depths, address
 # selector) is an RTL fact or a contract encoding. Nothing here describes how a program should be
@@ -312,7 +312,7 @@ runtime:
   # dropping the OPU/Shuttle changes only host cycle counts, not the mesh or the ISA facts, and makes the
   # Verilator path coherent with the FireSim path). Change here + re-derive facts + re-cert to move.
   rtl_sim_config: GemminiRocketConfig
-# Datatype -> compute-unit -> op capability (parsed by merlin.targetgen.compute_units). The C0 systolic
+# Datatype -> compute-unit -> op capability (parsed by merlin.development.targetgen.compute_units). The C0 systolic
 # mesh is int8 (i8 x i8 -> i32). The input/accumulator dtypes are themselves CIRCT-extracted facts
 # (datapaths), so the (in,weight)->acc `accumulate` matrix is NOT re-declared here. `requant` is an
 # OPAQUE reference to Gemmini's own accumulator-scale lowering (rounding-shift / FP-scale-multiply) —
@@ -345,7 +345,7 @@ compute_units:
       # Three other targets already ship batched capsules (atlas AF12, mx_gemmini MF5, radiance
       # RP10/R11); gemmini shipped none because of this line. Declaring a narrower rank set than the
       # target can execute is the same denominator loss the mx_gemmini rank bug was (see
-      # merlin/python/merlin/targetgen/eligibility.py). `batch` is already derived true, so it is NOT
+      # merlin/python/merlin/development/targetgen/eligibility.py). `batch` is already derived true, so it is NOT
       # re-declared here: over-declaring a derived axis is how a contract stops tracking its target.
       - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
       # STANDALONE, by operator decision 2026-10-01 via coordinating session, approving standalone
@@ -365,7 +365,7 @@ compute_units:
       #     from gemmini_params.h (`readout_operand_sum`: MVIN_SCALE, f32, half-even, saturating).
       #   - `standalone_evidence` records the roles that path uses, so an experiment's
       #     prohibited_instruction_roles policy can check it never depends on `loop_descriptor`
-      #     (merlin.targetgen.capability_roles).
+      #     (merlin.development.targetgen.capability_roles).
       # Family-granular: other elementwise_map members still need a device form of their own, which
       # compute_groups decides per region (the operand sum is one); none is placed on admission alone.
       - family: elementwise_map
@@ -390,7 +390,7 @@ capabilities: {}
 # number must reach before it may be quoted as a hardware result. It therefore belongs in the residual
 # with the other declarations, and lives here rather than only in the emitted contract -- hand-adding it
 # downstream meant the deriver could not reproduce its own curated contract, which is drift by
-# construction. Read by `merlin.kernels.measurement.authority_for`.
+# construction. Read by `merlin.analysis.kernels.measurement.authority_for`.
 measurement:
   cycles_from: spike          # the functional-cycles reference for this path
   wall_from: k1               # real silicon: the only wall-time authority
@@ -444,7 +444,7 @@ oracle_ladder:
   level_3: {name: firesim, derived_from_rtl: true}
 oracle_blind_spots:
   # What a tier of the ladder above cannot observe, in the vocabulary the capsule corpus states about
-  # itself. Read by merlin.targetgen.oracle_blind_spots: a capsule in one of these classes is not
+  # itself. Read by merlin.development.targetgen.oracle_blind_spots: a capsule in one of these classes is not
   # certified by a pass at a listed tier, whatever the pass says.
   - id: accumulator_base_rotation
     tiers: [L2]
@@ -503,9 +503,9 @@ notes: >-
 
 # How a runner-owned harness calls into this target's kernel. These are conventions of this target's
 # own bare-metal test environment, not RTL facts, so they cannot be derived and are declared here.
-# Consumed by merlin.targetgen.contract.harness_abi; previously hardcoded in the generic compile path.
+# Consumed by merlin.development.targetgen.contract.harness_abi; previously hardcoded in the generic compile path.
 # The includes are the C runtime plus the MINIMAL generated hardware-facts header (support provider
-# isa_headers.generated_header, merlin.targetgen.isa_header_gen): no vendor kernel library is on a
+# isa_headers.generated_header, merlin.development.targetgen.isa_header_gen): no vendor kernel library is on a
 # fresh experiment's include path. GEMMINI_FENCE is that header's completion fence.
 harness_abi:
   entry_symbol: gemmini_kernel
@@ -518,7 +518,7 @@ harness_abi:
   cycle_window_metric: cycle_window_gemmini_region
 
 # Registry pins (merlin/contract/hardware_pins.yaml) this target's results depend on. Read by
-# merlin.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
+# merlin.development.targetgen.provenance.toolchain_shas so a run record says which hardware revision it belongs to.
 hardware_pins:
   - gemmini_rtl
 
@@ -533,7 +533,7 @@ unmaterializable_families:
 
 # SOFTWARE execution capabilities of the runner-owned harness path (runtime.backends.base
 # EXECUTION_CAPABILITIES vocabulary), served by the generic chipyard RoCC backend from this block.
-# They are properties of the generic harness renderer (merlin.targetgen.contract.harness_render),
+# They are properties of the generic harness renderer (merlin.development.targetgen.contract.harness_render),
 # never of the RTL; an omitted name is false, and the renderer must implement every name kept here.
 execution_capabilities:
   whole_program_kernel_abi: >-
@@ -621,7 +621,7 @@ logical_harness:
   cycle_counter_asm: "rdcycle %0"
   completion_asm: "fence"
   # The header-free HARDWARE-COUNTER bracket (opt-in by MERLIN_HW_COUNTERS; never part of a default
-  # run). Consumed by merlin.targetgen.contract.counter_bracket, which issues the counter command as a
+  # run). Consumed by merlin.development.targetgen.contract.counter_bracket, which issues the counter command as a
   # raw RoCC instruction. Only what the extracted facts cannot ground is declared here:
   #   * `command` is a funct NAME; its CODE and the custom opcode are the RTL-decoded facts
   #     (funct_decode_table), never a literal;
@@ -668,7 +668,7 @@ logical_harness:
       counter_module: CounterController
     engine_kinds: {EX: compute, LD: movement, ST: movement}
 
-# WHICH elaboration this target's RTL facts are read from (merlin.targetgen.rtl.introspect
+# WHICH elaboration this target's RTL facts are read from (merlin.development.targetgen.rtl.introspect
 # declared_rtl_source). The chipyard checkout named by MERLIN_EXT_CHIPYARD at the pinned revision, its
 # gemmini gitlink, and the issued elaboration's exact bytes: artifact_sha256 equals the issued
 # operator-issued elaboration's SHA256SUMS (TestHarness.fir, top_module_hierarchy.json), so a checkout whose

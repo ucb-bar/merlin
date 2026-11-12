@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin/contract/performance_record.schema.json",
   "title": "Performance record",
-  "description": "The canonical record for ONE measured kernel on ONE target: its terms (each with provenance and a validity domain), the diagnostics that may never source a term, and -- required from the first record ever written -- the digest triple that says which hardware revision, which built artifact and which exact bytes the numbers came from. A commit sha alone is not provenance: pins whose checkouts carry declared local edits report permanent drift by design, so the bytes actually read must be digested separately (merlin.common.provenance.source_digest). Terms are validated against performance_term.schema.json in a second pass by merlin.perf.record (the contract loader resolves no cross-document $ref).",
+  "description": "The canonical record for ONE measured kernel on ONE target: its terms (each with provenance and a validity domain), the diagnostics that may never source a term, and -- required from the first record ever written -- the digest triple that says which hardware revision, which built artifact and which exact bytes the numbers came from. A commit sha alone is not provenance: pins whose checkouts carry declared local edits report permanent drift by design, so the bytes actually read must be digested separately (merlin.common.provenance.source_digest). Terms are validated against performance_term.schema.json in a second pass by merlin.analysis.perf.record (the contract loader resolves no cross-document $ref).",
   "type": "object",
   "required": ["schema_version", "kernel", "target", "digest", "sources", "terms", "diagnostics"],
   "properties": {

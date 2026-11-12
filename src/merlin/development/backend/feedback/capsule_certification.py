@@ -16,10 +16,10 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.common import invocation_record as IR
 from merlin.common import oot_repo as O
 from merlin.development.backend.feedback import hidden_capsule_policy as HCP
+from merlin.evaluation.harness import hash_tree
 
 SCHEMA = "merlin.phase1.capsule_certification.v1"
 SCOPES = ("full", "capsules")
@@ -246,7 +246,7 @@ def _phase(run_dir: Path, name: str, *, descriptor: Path, frozen: dict, hidden_p
 
 def _resources(run_dir: Path, record: dict, candidate_sha256: str) -> dict:
     from merlin.development.backend.feedback import compiler_profile_runtime, public_scalability_gate
-    from merlin.targetgen.public_codegen_budget import resources_complete
+    from merlin.development.targetgen.public_codegen_budget import resources_complete
 
     owner = compiler_profile_runtime.functional_service(run_dir)
     policy = public_scalability_gate.selected_policy(owner) if owner is not None else None
@@ -452,7 +452,7 @@ def _publication_inputs(run_dir, descriptor):
 
 
 def _author_integrity(run_dir, environment, summary):
-    from merlin.targetgen.sandbox.answer_surfaces import audit_hit_is_violation
+    from merlin.development.targetgen.sandbox.answer_surfaces import audit_hit_is_violation
 
     mask = environment.get("golden_mask_selftest") or {}
     snapshot = environment.get("bundle_input_snapshot") or {}
@@ -495,7 +495,7 @@ def publish_phase2_handoff(
     from merlin.development.backend import authoring_conformance as AC
     from merlin.development.backend import conformance
 
-    answer_surfaces = importlib.import_module("merlin.targetgen.sandbox.answer_surfaces")
+    answer_surfaces = importlib.import_module("merlin.development.targetgen.sandbox.answer_surfaces")
     run_dir, descriptor, transcript = Path(run_dir).absolute(), Path(descriptor).absolute(), Path(transcript).absolute()
     technical, summary_pin, telemetry_pin = _publication_inputs(run_dir, descriptor)
     environment = yaml.safe_load((run_dir / "environment.yaml").read_bytes())

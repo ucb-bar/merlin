@@ -17,23 +17,23 @@ from merlin.development.backend import full_compiler_workspace as full
 
 SCHEMA = "merlin.phase1.raw_interface_sources.v1"
 ENTRIES = (
-    "merlin.targetgen.contract.interface_emit",
-    "merlin.targetgen.contract.linalg_iface",
-    "merlin.targetgen.oot_starterkit.iface",
+    "merlin.development.targetgen.contract.interface_emit",
+    "merlin.development.targetgen.contract.linalg_iface",
+    "merlin.development.targetgen.oot_starterkit.iface",
 )
 SUPPORT = (
     "merlin.compiler.ir.logical_abi",
-    "merlin.xdsl_dialects.fp8",
-    "merlin.xdsl_dialects._common",
+    "merlin.compiler.dialects.fp8",
+    "merlin.compiler.dialects._common",
     "merlin.common.ir_lock",
     "merlin.common.dense_float_ir",
 )
 PACKAGES = (
     "merlin",
-    "merlin.targetgen",
-    "merlin.targetgen.contract",
-    "merlin.targetgen.oot_starterkit",
-    "merlin.xdsl_dialects",
+    "merlin.development.targetgen",
+    "merlin.development.targetgen.contract",
+    "merlin.development.targetgen.oot_starterkit",
+    "merlin.compiler.dialects",
     "merlin.common",
 )
 MODULES = frozenset((*ENTRIES, *SUPPORT, *PACKAGES))
@@ -41,9 +41,9 @@ MODULES = frozenset((*ENTRIES, *SUPPORT, *PACKAGES))
 # inputs contain no storage encoding. Default ABI path lookup is not a reader API.
 UNAVAILABLE = (
     "merlin.common.paths",
-    "merlin.perf.storage_encoding",
+    "merlin.analysis.perf.storage_encoding",
 )
-MUTABLE_NAMESPACES = ("merlin.targetgen",)
+MUTABLE_NAMESPACES = ("merlin.development.targetgen",)
 SCOPE = (
     "semantic interface input readers only; upstream frontend is harness-owned and provided as prelowered inputs; "
     "no author-callable frontend lowering, target dialect builders, C++ generators, scheduling, passes or extraction; "

@@ -10,7 +10,7 @@ deliberately regular enough that:
 
 - a registered **C++ MLIR dialect** parses it natively (`mlir-opt` / `gemmini-opt`), and
 - a **few-line regex parser** (any language) reads it — the reference Python implementation is
-  `merlin/targetgen/contract/interface_emit.py`.
+  `merlin/development/targetgen/contract/interface_emit.py`.
 
 It is **decoupled from xDSL**: producers emit plain text; consumers parse plain text. No xDSL is
 required to satisfy the contract.

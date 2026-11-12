@@ -17,7 +17,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.analysis.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import agent_workspace as AW
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
@@ -26,9 +28,7 @@ from merlin.development.backend.optimization.portfolio_checkpoint import (
     paired_context_decision_feedback,
     verify_changed_region_semantic_receipt,
 )
-from merlin.perf.agent_guidance import inspect_compiler_package
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
+from merlin.evaluation.harness import hash_tree
 
 
 def compiler_dependency_mounts(argv: Sequence[str], dependencies: Mapping[str, Any], overlay_root: Path) -> list[str]:
@@ -130,8 +130,8 @@ class PortfolioProbes:
         previous: bool,
         optimization_baseline: bool = False,
     ):
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker, _read_output, run_sandboxed_entrypoint
-        from merlin.targetgen import package_runtime as oot_runner
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker, _read_output, run_sandboxed_entrypoint
+        from merlin.development.targetgen import package_runtime as oot_runner
 
         started = time.monotonic()
         with self.analysis.session.action(candidate) as (_row, owns_action):
@@ -312,7 +312,7 @@ class PortfolioProbes:
 
     def native_probe_policy(self, candidate: Path, scratch: Path) -> dict[str, Any]:
         """Host-provider-only copy of the exact existing policy; this grants nothing new."""
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker
 
         row = self.analysis.session.current(candidate)
         if not isinstance(self.analysis.analyzer, IsolatedAnalysisWorker):
@@ -374,7 +374,7 @@ class PortfolioProbes:
         import math
         import subprocess
 
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker, _kill_group
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker, _kill_group
 
         started = time.monotonic()
         row = self.analysis.session.current(candidate)
@@ -394,7 +394,7 @@ class PortfolioProbes:
         with contextlib.ExitStack() as scope:
             prefix = list(sandbox["command_prefix"])
             if _build_dependencies is not None:
-                from merlin.targetgen.sandbox.build_dependencies import HostBuildDependencies
+                from merlin.development.targetgen.sandbox.build_dependencies import HostBuildDependencies
 
                 if type(_build_dependencies) is not HostBuildDependencies:
                     raise ValueError("build grants require an exact host-owned dependency capability")
@@ -405,7 +405,7 @@ class PortfolioProbes:
                     sandbox, argv, overlay_root=overlay, overlay_builder=compiler_dependency_mounts
                 )
             if _execution_dependencies is not None:
-                from merlin.targetgen.sandbox.executable_dependencies import HostExecutableDependencies
+                from merlin.development.targetgen.sandbox.executable_dependencies import HostExecutableDependencies
 
                 if type(_execution_dependencies) is not HostExecutableDependencies:
                     raise ValueError("runtime grants require an exact trusted executable capability")
@@ -456,7 +456,7 @@ class PortfolioProbes:
         """Broker preparation feedback only: never a semantic pass or simulator admission."""
         import math
 
-        from merlin.perf.source_convolution_preparation import prepare_source_convolution
+        from merlin.analysis.perf.source_convolution_preparation import prepare_source_convolution
 
         if comparison_arm not in {"optimization_baseline", "previous"}:
             raise ValueError("comparison_arm must explicitly select optimization_baseline or previous")
@@ -570,7 +570,7 @@ class PortfolioProbes:
         """Prepare a selected current-source pair, without granting runtime or semantic authority."""
         import math
 
-        from merlin.perf.source_contraction_preparation import prepare_source_contraction
+        from merlin.analysis.perf.source_contraction_preparation import prepare_source_contraction
 
         if (
             comparison_arm not in {"optimization_baseline", "previous"}
@@ -594,7 +594,7 @@ class PortfolioProbes:
             if entry is None:
                 # Older frozen descriptors omit entry. Select only a UNIQUE
                 # function from their already hash-bound source, never a guessed name.
-                from merlin.frontends.linalg_mlir import parse_mlir_text
+                from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
                 artifact = self.analysis.session.current_artifacts(candidate)
                 source = Path(artifact["interface"]).read_text()
@@ -1162,7 +1162,7 @@ class PortfolioProbes:
             "scope": "mechanism_probe_only",
             "full_model_cycles": None,
         }
-        from merlin.perf.probe_relevance import classify_probe_relevance
+        from merlin.analysis.perf.probe_relevance import classify_probe_relevance
 
         try:
             receipt["relevance"] = classify_probe_relevance(

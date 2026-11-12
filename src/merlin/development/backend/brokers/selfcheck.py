@@ -251,7 +251,7 @@ def _decorate_response(
 
 def _rtl_engines() -> tuple[str, ...]:
     try:
-        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+        from merlin.development.targetgen.rtl_engine_policy import ENGINE_PRIORITY
 
         return tuple(ENGINE_PRIORITY)
     except Exception:  # noqa: BLE001 -- closed historical set, never widen on import failure

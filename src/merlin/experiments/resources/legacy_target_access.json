@@ -1,13 +1,13 @@
 {
   "schema": "merlin.access.legacy.v1",
   "modules": [
-    {"identity": "merlin.targetgen.muon_oracles", "origin": "oracle", "directory": false, "aliases": []},
-    {"identity": "merlin.targetgen.eval.gemmini_conformance", "origin": "grader", "directory": false, "aliases": []},
-    {"identity": "merlin.targetgen.eval.gemmini_suite", "origin": "grader", "directory": false, "aliases": []},
-    {"identity": "merlin.targetgen.eval.gemmini_dispatcher", "origin": "grader", "directory": false, "aliases": []},
-    {"identity": "merlin.targetgen.agent.gemmini_kernel_slot", "origin": "grader", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.muon_oracles", "origin": "oracle", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.eval.gemmini_conformance", "origin": "grader", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.eval.gemmini_suite", "origin": "grader", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.eval.gemmini_dispatcher", "origin": "grader", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.agent.gemmini_kernel_slot", "origin": "grader", "directory": false, "aliases": []},
     {"identity": "gemmini_conformance", "origin": "grader", "directory": true, "aliases": []},
-    {"identity": "merlin.targetgen.oracle_helpers.npu_emit", "origin": "oracle", "directory": false, "aliases": []},
+    {"identity": "merlin.development.targetgen.oracle_helpers.npu_emit", "origin": "oracle", "directory": false, "aliases": []},
     {"identity": "atlas_program_emit", "origin": "oracle", "directory": false, "aliases": []}
   ]
 }

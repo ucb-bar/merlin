@@ -13,19 +13,19 @@ required_top_level_fields:
   - hardware_promises
   - runtime_promises
   - legality
-producer: merlin.targetgen.synthesize.target_contract (or hand-authored under experiments/reference-data/target-inputs/<t>/contracts/)
+producer: merlin.development.targetgen.synthesize.target_contract (or hand-authored under experiments/reference-data/target-inputs/<t>/contracts/)
 consumers:
   - merlin.python.merlin.kernels
   - merlin.python.merlin.analysis.dse.pressure
   - merlin.python.merlin.analysis.dse.search
-  - merlin.targetgen.synthesize.* (seeds the other plans)
+  - merlin.development.targetgen.synthesize.* (seeds the other plans)
 validation_notes: >-
   Required top-level fields must all be present. For toy_npu the synthesized contract also
   carries `features`, `ops`, `types`, and `runtime.backends`; real targets surface detected
   concepts under `capabilities.detected_concepts` and are flagged `requires_human_review: true`.
 
   OPTIONAL `compute_units` (the datatype -> unit -> op capability model; parsed by
-  `merlin.targetgen.compute_units`): a list of units, each `{name, kind (systolic|simt|vector|
+  `merlin.development.targetgen.compute_units`): a list of units, each `{name, kind (systolic|simt|vector|
   scalar), dtypes: [<quant_formats name>...], ops: [...], accumulate: [{in, weight, acc}] (the
   act x weight -> accumulator matrix), scaling: <quant_formats name>|none, requant: {ref: <id>}|none,
   contains: [<unit name>...]}`. `dtypes`/`scaling` REFERENCE the target-agnostic
@@ -34,7 +34,7 @@ validation_notes: >-
   out-of-tree lowering — Merlin does not interpret the requant arithmetic (it is target-specific:
   gemmini rounding-shift vs gemmini-mx E8M0 block-exponent + LUT vs radiance none). `contains`
   composes units (a gemmini-mx systolic unit can be embedded in a radiance cluster, or stand alone).
-  When present, `merlin.targetgen.rtl.introspect.validate_against_contract` cross-checks the units'
+  When present, `merlin.development.targetgen.rtl.introspect.validate_against_contract` cross-checks the units'
   dtypes/accumulators against the RTL-derived `datapaths`.
 
   OPTIONAL `rtl_extraction` declares source-location vocabulary for fallback RTL readers, not
@@ -46,7 +46,7 @@ validation_notes: >-
   the type and width come from that exact field, never a contract numeric literal.
   `boolean_feature_gate` has `feature`, `module`, `node`, `dynamic_operand_contains`, and
   `config_field`; the literal build-gate value is still read from exact elaborated FIRRTL.
-  `timing_structure` anchors `merlin.targetgen.rtl.timing_structure`: `dispatch: {module, classes:
+  `timing_structure` anchors `merlin.development.targetgen.rtl.timing_structure`: `dispatch: {module, classes:
   {<class>: <issue port prefix>}}`, `memory_protocol: {request, response, id, data, size,
   size_encoding}` (the bus field vocabulary), `memory_clients: {<client>: {module, port_prefix}}`,
   `dataflow: {cell_module, select_port}`, `latencies: {<name>: {module, from, to, mode?|pins?}}`,
@@ -57,12 +57,12 @@ validation_notes: >-
   and an anchor the RTL does not contain records that fact UNKNOWN.
   `dispatch.ordering: {reset, allocate: {valid, ready, funct, rs1, rs2}, issue: {valid, ready, id,
   funct, rs1, rs2} (suffixes after each class prefix), completion: {valid, id}, config_fields:
-  [{bundle, operand}]}` anchors `merlin.targetgen.rtl.command_ordering`, which drives that module
+  [{bundle, operand}]}` anchors `merlin.development.targetgen.rtl.command_ordering`, which drives that module
   alone to observe each command's queue, same- and cross-queue release points and span formulas.
   Missing declarations disable their optional reader, while malformed declarations fail closed.
   `output_epilogue: {module, value, scale, activation}` names the elaborated module that moves the
   accumulator out and, inside it, the accumulator element, the scale operand and the activation
-  selector; what that module does with them is read by `merlin.targetgen.rtl.output_epilogue`.
+  selector; what that module does with them is read by `merlin.development.targetgen.rtl.output_epilogue`.
 
   OPTIONAL `output_epilogue` (schema `output_epilogue_v1`, written by contract derivation, never
   authored): what the contraction unit's output path applies on move-out. Four capabilities, each
@@ -78,7 +78,7 @@ validation_notes: >-
   the accumulator a contraction then adds onto) and `full_width_readout` (the raw accumulator leaves
   the readout unmodified) are read the same way, and `scale.columns_per_scale` is the number of
   accumulator elements one scale operand covers. `output_path` (schema `output_path_v1`,
-  `merlin.targetgen.output_path`) restates all of it as one ordered, target-neutral sequence:
+  `merlin.development.targetgen.output_path`) restates all of it as one ordered, target-neutral sequence:
   `accumulator_stages` (`preload`, `accumulate`), `readout` (`activation` with its domain,
   `convert`, `scale` with granularity and `columns_per_scale`, `requant` with rounding and clamp,
   `pool`) and `exits` (`accumulator`, `requant`). The fusion pass reads only this sequence.
@@ -109,7 +109,7 @@ validation_notes: >-
   semantics, physical encoding, or executable instruction lowering.
 
   OPTIONAL `harness_abi` (how a runner-owned harness calls into this target's kernel; parsed by
-  `merlin.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
+  `merlin.development.targetgen.contract.harness_abi`): `{entry_symbol (REQUIRED), fence_symbol, includes: [...],
   cycle_window_metric, extern_decls: [...], kernel_abi_version}`. `kernel_abi_version` is 2 (the default:
   the logical ABI in `src/merlin/resources/contracts/mlir_oot_backend_contract.yaml`) or 1 (the version-1 resident ABI in
   `src/merlin/resources/contracts/legacy/kernel_abi_v1.yaml`, selected only by a support package whose harness implements it). These are conventions of the target's own bare-metal test
@@ -149,7 +149,7 @@ validation_notes: >-
   Strategy rules (tiling, reuse, issue order, balance) and unimplemented checks refuse.
 
   OPTIONAL `plugin` (the package's extension points; recognised keys are declared once in
-  `merlin.targetgen.plugins.PLUGIN_KEYS` and validated by `load_target`). A reference is a path
+  `merlin.development.targetgen.plugins.PLUGIN_KEYS` and validated by `load_target`). A reference is a path
   relative to the package root, a dotted module, or `module:attribute`. Two rules matter more than the
   list of keys. An UNRECOGNISED key is an ERROR, not something to ignore — a misspelled `backend` is
   not a broken backend, it is no backend at all, found much later as a missing feature. And every

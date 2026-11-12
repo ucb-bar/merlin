@@ -71,7 +71,7 @@ class MatrixRouting:
 
     def provider(self):
         """Resolve executable support explicitly, never from the unit's name."""
-        from merlin.targetgen.plugins import PluginError, load_declared
+        from merlin.development.targetgen.plugins import PluginError, load_declared
 
         provider = load_declared(self.support_target, "matrix_lowering")
         required = ("geometry", "selector", "rewrite_prepared_file", "load_signatures", "build_object")
@@ -94,7 +94,7 @@ class MatrixRouting:
 
     def route_feature(self) -> str | None:
         """The feature name that requests this routing, as the selected extension declares it."""
-        from merlin.targetgen.plugins import load_declared
+        from merlin.development.targetgen.plugins import load_declared
 
         bound = load_declared(self.support_target, "extension").bind(self)
         name = getattr(bound, "route_feature_name", None)

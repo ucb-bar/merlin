@@ -183,7 +183,7 @@ class SealedCaptureSource(PytorchRefSource):
             m2m_root=Path(self.config["m2m_root"]),
             frozen_origin=self.config.get("frozen_origin"),
             workload_root=workload,
-            worker=merlin_root / "targetgen/_m2m_capture_worker.py",
+            worker=merlin_root / "development/targetgen/_m2m_capture_worker.py",
             venv=Path(self.config["venv"]),
             schemas_root=schemas_root,
             run_dir=slot / "run",

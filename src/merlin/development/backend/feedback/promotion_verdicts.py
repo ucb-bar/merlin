@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from merlin.targetgen.oracle_schedule import FAIL as _FAIL
-from merlin.targetgen.oracle_schedule import PASS as _PASS
+from merlin.development.targetgen.oracle_schedule import FAIL as _FAIL
+from merlin.development.targetgen.oracle_schedule import PASS as _PASS
 
 
 def row_status(row) -> str | None:

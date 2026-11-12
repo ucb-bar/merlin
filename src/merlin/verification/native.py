@@ -16,9 +16,9 @@ def verify_report(args, *, load_request):
     from merlin.compiler.frontend.layouts import bind_physical_layouts, check_layout_artifact
     from merlin.compiler.frontend.native import load_selected_request
     from merlin.compiler.frontend.tiling import prepare_ordered_request
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
-    from merlin.semantic_compiler.snapshot import open_native_snapshot
-    from merlin.semantic_compiler.target_binding import (
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.snapshot import open_native_snapshot
+    from merlin.compiler.semantic.target_binding import (
         NativeCompilationError,
         load_native_target_binding,
         verify_native_publication,

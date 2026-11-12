@@ -13,7 +13,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-from merlin.targetgen.generalization_prompt import append_general_compiler_contract
+from merlin.development.targetgen.generalization_prompt import append_general_compiler_contract
 
 
 class PerfPromptContractError(ValueError):
@@ -852,7 +852,7 @@ mask enforcement, or its receipt channel is absent, stop with **NO-GO**. The com
 
 For every family, the run must record: the declared traits and emitter status; exact correctness and L3
 timing rows; the measured negative-control result; whether the declared falsifier fired and why; and a
-`merlin.perf.differential` comparability decision proving that unpriced demands cancel (or explicitly
+`merlin.analysis.perf.differential` comparability decision proving that unpriced demands cancel (or explicitly
 refusing the comparison). A capsule declaration may state what would falsify a claim, but only run-authored
 evidence may state whether it fired. Correctness alone is never a performance falsifier on an interlocked
 machine.

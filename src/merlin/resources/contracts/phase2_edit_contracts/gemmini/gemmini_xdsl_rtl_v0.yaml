@@ -1,6 +1,6 @@
 # THE EDITABLE SURFACE OF ONE CERTIFIED COMPILER PACKAGE, declared so phase 2 is a controlled test.
 #
-# WHY THIS FILE EXISTS. `merlin.perf.compiler_edit_scope` has implemented a host-frozen AST edit
+# WHY THIS FILE EXISTS. `merlin.analysis.perf.compiler_edit_scope` has implemented a host-frozen AST edit
 # authority since before this file was written, and NOTHING EVER DECLARED ONE. A search for
 # `compiler_edit_contract_v1` across the repo returns the module, its own test, `agent_guidance`, and
 # four work-order tests that each build a throwaway contract inline. So every phase-2 fork ran with

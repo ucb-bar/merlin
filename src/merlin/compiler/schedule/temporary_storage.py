@@ -15,9 +15,9 @@ from math import lcm
 from merlin.compiler.kernel_ir.ir import Call, Kernel, check_structure
 from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
-from merlin.semantic_compiler.allocate import allocate, check_assignment
-from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
-from merlin.semantic_compiler.rules import AddressConstraint
+from merlin.compiler.semantic.allocate import allocate, check_assignment
+from merlin.compiler.semantic.allocation_types import CandidateGraph, Reservation, StorageBank, Value
+from merlin.compiler.semantic.rules import AddressConstraint
 
 
 class StorageOptimizationUnavailable(ValueError):

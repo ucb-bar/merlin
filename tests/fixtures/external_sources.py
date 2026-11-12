@@ -53,8 +53,8 @@ def missing_rtl(target: str) -> list[str]:
     even with its support selected, raises here: that is a defect in the target, never a reason to skip.
     """
     from merlin.common.paths import is_external_path_unset
-    from merlin.targetgen import target_registry
-    from merlin.targetgen.rtl.introspect import RtlSourceInvalid, RtlSourceUndeclared, declared_rtl_source
+    from merlin.development.targetgen import target_registry
+    from merlin.development.targetgen.rtl.introspect import RtlSourceInvalid, RtlSourceUndeclared, declared_rtl_source
 
     try:
         source = declared_rtl_source(target)
@@ -89,7 +89,7 @@ def rtl_presence(targets) -> tuple[list[str], list[str]]:
     For a test that derives over the registry instead of naming a target: it may skip only when every
     target that could have grounded the fact is missing its checkout, never when one is present.
     """
-    from merlin.targetgen.rtl.introspect import RtlSourceInvalid, RtlSourceUndeclared
+    from merlin.development.targetgen.rtl.introspect import RtlSourceInvalid, RtlSourceUndeclared
 
     present, absent = [], []
     for target in targets:

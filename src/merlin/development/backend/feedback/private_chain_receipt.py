@@ -8,10 +8,10 @@ from pathlib import Path
 from merlin.common.digest import sha256_file
 from merlin.common.tree_hash import hash_tree
 from merlin.development.backend import launch_config as L
-from merlin.model_check import full_output_audit as audit
-from merlin.model_check.cli import tree_sha256
-from merlin.model_check.full_chain_validation import report_complete
-from merlin.model_check.models import load as load_models
+from merlin.evaluation.model import full_output_audit as audit
+from merlin.evaluation.model.cli import tree_sha256
+from merlin.evaluation.model.full_chain_validation import report_complete
+from merlin.evaluation.model.models import load as load_models
 
 SCHEMA = "merlin.phase1.selected_quantized_full_chain.v1"
 _CACHE = {}

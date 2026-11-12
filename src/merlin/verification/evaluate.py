@@ -29,7 +29,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
+from merlin.development.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 from .faults import CB_CORPUS, CORPUS, Fault
 
@@ -65,10 +65,10 @@ class Detection:
 
 
 def _lower_to_interface(m: int, k: int, n: int, reuse: int, *, target: str):
-    from merlin.xdsl_dialects.lowering.contract_facts import lower_to_contract
-    from merlin.xdsl_dialects.lowering.interface_lowering import lower_to_interface
-    from merlin.xdsl_dialects.lowering.pipeline import build_input_module, load_curated_contract
-    from merlin.xdsl_dialects.lowering.schedule_decisions import lower_to_schedule
+    from merlin.compiler.dialects.lowering.contract_facts import lower_to_contract
+    from merlin.compiler.dialects.lowering.interface_lowering import lower_to_interface
+    from merlin.compiler.dialects.lowering.pipeline import build_input_module, load_curated_contract
+    from merlin.compiler.dialects.lowering.schedule_decisions import lower_to_schedule
 
     tc = load_curated_contract(target)
     if tc.get("name") != target:
@@ -79,10 +79,10 @@ def _lower_to_interface(m: int, k: int, n: int, reuse: int, *, target: str):
 
 def _finish_lowering(interface_module, tc):
     """Continue interface -> target -> runtime -> command buffer, as the pipeline does."""
-    from merlin.targetgen.target_registry import backend_for
-    from merlin.xdsl_dialects.lowering.emit_command_buffer import emit_command_buffer
-    from merlin.xdsl_dialects.lowering.runtime_lowering import lower_to_runtime
-    from merlin.xdsl_dialects.lowering.target_lowering import lower_to_target
+    from merlin.compiler.dialects.lowering.emit_command_buffer import emit_command_buffer
+    from merlin.compiler.dialects.lowering.runtime_lowering import lower_to_runtime
+    from merlin.compiler.dialects.lowering.target_lowering import lower_to_target
+    from merlin.development.targetgen.target_registry import backend_for
 
     name = tc["name"]
     backend = backend_for(name)
@@ -97,8 +97,8 @@ def _finish_lowering(interface_module, tc):
 def _static(interface_module) -> tuple[bool, str]:
     """FileCheck the structural obligations over the module's printed form."""
     from merlin.common.paths import repo_root
+    from merlin.compiler.dialects import _common
     from merlin.verification.tools import find_filecheck
-    from merlin.xdsl_dialects import _common
 
     fc = find_filecheck()
     checks = repo_root() / "tests" / "data" / "lit" / "core" / "materialize_interface_residency.mlir"
@@ -428,7 +428,7 @@ def _write_product(rec: dict[str, Any]) -> Path:
         version=1,
         sources=[
             f"fault corpus: merlin.verification.faults.CORPUS ({len(rec['faults'])} seeded faults)",
-            f"program under test: merlin.xdsl_dialects.lowering.pipeline.lower_repeated_rhs_matmul"
+            f"program under test: merlin.compiler.dialects.lowering.pipeline.lower_repeated_rhs_matmul"
             f"(m={shape['m']}, k={shape['k']}, n={shape['n']}, reuse={shape['reuse']})",
             "static layer checks: tests/data/lit/core/materialize_interface_residency.mlir",
             f"solver: {z3_version} (bound {rec.get('timeout_ms', 'UNKNOWN')} ms per attempt)",

@@ -9,7 +9,7 @@ from ``.saturn_vec``) and the codegen/MLIR submodules callers reach
 
 The three modules keep their sibling ``from .saturn_vec_codegen import ...`` relative imports (they load as
 submodules of this package); their PARENT imports were rewritten absolute (``merlin.runtime.*`` /
-``merlin.llvmlower.*``) so they resolve out-of-tree.
+``merlin.compiler.lower.model.*``) so they resolve out-of-tree.
 """
 
 from __future__ import annotations

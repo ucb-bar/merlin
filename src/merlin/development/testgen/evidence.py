@@ -119,9 +119,9 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
     import numpy as np
 
     from merlin.common.mlir_query import forward_signature
+    from merlin.development.targetgen.application_inventory import verify_capture_receipt
     from merlin.experiments import model_qualification as qualification
     from merlin.runtime.dispatch_runtime import resolve_forward_args
-    from merlin.targetgen.application_inventory import verify_capture_receipt
 
     if not isinstance(selections, Mapping) or set(selections) - set(applications):
         raise ValueError("native qualifications require explicit selected application labels")
@@ -216,9 +216,9 @@ def _native_baseline_observations(selections, applications, observe) -> dict:
         producer_raw = observe(
             qualification._plain(Path(producer["path"])), "native-qualification-producer", required=True
         )
-        if compiler.get("route") != "merlin.llvmlower.lower_model_file:host" or _digest(producer_raw) != producer.get(
-            "sha256"
-        ):
+        if compiler.get("route") != "merlin.compiler.lower.model.lower_model_file:host" or _digest(
+            producer_raw
+        ) != producer.get("sha256"):
             raise ValueError("native qualification producer identity changed or selects another route")
         policy = request.get("numeric_policy")
         if (
@@ -428,10 +428,10 @@ def select_evidence(
     Missing native evidence produces diagnostic unknowns. Malformed explicitly
     selected documents fail rather than selecting another source implicitly.
     """
-    from merlin.perf.profile import derive_profile
+    from merlin.analysis.perf.profile import derive_profile
+    from merlin.development.targetgen import readout_facet, target_registry
+    from merlin.development.targetgen.rtl import facts as rtl_facts
     from merlin.runtime.backends import base, chipyard_rocc
-    from merlin.targetgen import readout_facet, target_registry
-    from merlin.targetgen.rtl import facts as rtl_facts
 
     if hardware_intake is not None:
         from merlin.development.testgen.rtl_intake import IndependentHardwareIntake, RtlIntakeRefusal
@@ -568,7 +568,7 @@ def select_evidence(
                     capture_attestations and set(capture_attestations) != set(observed)
                 ):
                     raise ValueError("capture execution attestations must cover exactly the selected applications")
-                from merlin.targetgen.application_inventory import application_graph_inventory
+                from merlin.development.targetgen.application_inventory import application_graph_inventory
 
                 for label, application in sorted(observed.items()):
                     # Only fresh inventories retain the exact capture owner.
@@ -681,7 +681,7 @@ def select_evidence(
         raise ValueError("selected backend capability contract differs from selected target")
     datapath = {}
     if software_spec is not None:
-        from merlin.targetgen.software_spec import (
+        from merlin.development.targetgen.software_spec import (
             capability_contract,
             numerical_datapath,
             software_spec_references,
@@ -785,8 +785,8 @@ def select_evidence(
             observe(record["source"], "readout-register-source")
     taxonomy = copy.deepcopy(body.get("isa_taxonomy") or {})
     if descriptor_path is not None and hardware_intake is None:
-        from merlin.targetgen import isa_taxonomy
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen import isa_taxonomy
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         try:
             te = descriptor if hasattr(descriptor, "isa_headers") else load_target_experiment(descriptor_path)
@@ -908,7 +908,7 @@ def select_evidence(
     # the authored bytes stay the selected source identity.
     software_derivation = None
     if software_spec is not None:
-        from merlin.targetgen import spec_fact_drift
+        from merlin.development.targetgen import spec_fact_drift
 
         # Some capability helpers still resolve by target name. Their reads
         # must use this selection too, never extract from an ambient provider.
@@ -959,7 +959,7 @@ def select_evidence(
     # equivalence. Keep absent production receipts visible in diagnostic runs.
     consistency = loaded_facts.get("source_consistency") or {}
     if inputs.get("source_bundle_path"):
-        from merlin.targetgen.rtl import source_selection
+        from merlin.development.targetgen.rtl import source_selection
 
         observe(Path(source_selection.__file__), "rtl-production-reader", required=True)
         try:
@@ -1059,7 +1059,7 @@ def select_evidence(
             }
         )
     try:
-        from merlin.targetgen.rtl.mlc_bridge import toolchain_identity
+        from merlin.development.targetgen.rtl.mlc_bridge import toolchain_identity
 
         observed_toolchain = toolchain_identity()
     except Exception as exc:  # noqa: BLE001 -- unavailable tool identity stays unknown
@@ -1069,7 +1069,7 @@ def select_evidence(
         "observed_at_selection": observed_toolchain,
         "scope": "current tool observations do not identify the tools that produced unstamped facts",
     }
-    from merlin.targetgen import aten_coverage
+    from merlin.development.targetgen import aten_coverage
 
     # Observe the framework selected for capture, never a convenient host torch.
     # Replays use the serialized result below and do not relaunch this worker.
@@ -1200,8 +1200,8 @@ def evidence_artifacts(selection: EvidenceSelection) -> dict[str, bytes]:
     if selection.instruction_semantics_source is not None:
         outputs["software/instruction-semantics-authored.yaml"] = selection.instruction_semantics_source
     from merlin.compiler.quantization.admission import build_quantization_contract, capture_recipe_candidates
-    from merlin.targetgen.operation_accounting import build_operation_accounting
-    from merlin.targetgen.performance_basis import build_performance_basis
+    from merlin.development.targetgen.operation_accounting import build_operation_accounting
+    from merlin.development.targetgen.performance_basis import build_performance_basis
 
     accounting = build_operation_accounting(
         getattr(selection, "application_inventory", None),

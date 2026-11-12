@@ -13,6 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from weakref import WeakKeyDictionary
 
+from merlin.analysis.perf.component_applicability import ComponentApplicabilityCoordinates, ComponentApplicabilityDomain
+from merlin.analysis.perf.component_cost import ComponentCostScope
+from merlin.analysis.perf.component_screen import qualify_component_screen, validate_component_screen_report
+from merlin.analysis.perf.fast_estimate_validation import Observation
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 from merlin.development.backend.optimization.component_applicability import (
     applicability_observation,
     qualify_required_applicability_strata,
@@ -51,11 +56,6 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
     write_json,
 )
-from merlin.perf.component_applicability import ComponentApplicabilityCoordinates, ComponentApplicabilityDomain
-from merlin.perf.component_cost import ComponentCostScope
-from merlin.perf.component_screen import qualify_component_screen, validate_component_screen_report
-from merlin.perf.fast_estimate_validation import Observation
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
 _ISSUED = WeakKeyDictionary()
 _METHODS = (

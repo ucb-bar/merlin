@@ -14,11 +14,11 @@ from functools import wraps
 from pathlib import Path
 from types import MethodType
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
-from merlin.targetgen.compiler_pass_selection import _tree as pass_tree
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.development.targetgen.compiler_pass_selection import _tree as pass_tree
+from merlin.evaluation.harness import hash_tree
 
 POLICY_SCHEMA = "merlin.compiler_pass_preparation.v1"
 PAIR_SCHEMA = "merlin.prepared_compiler_pair.v1"

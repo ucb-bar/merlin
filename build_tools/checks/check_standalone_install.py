@@ -103,10 +103,10 @@ retired = sorted(name for name in payload
                  if name.startswith(("merlin_dse/", "merlin_experiments/"))
                  or name in {"merlin_dse.py", "merlin_experiments.py"})
 assert not retired, "retired namespace payload remains installed: " + repr(retired)
-for module in ("merlin.targetgen.aet_bridge",
-               "merlin.targetgen.experiment_tokens", "merlin.targetgen.heavy_oracles",
-               "merlin.perf.source_program_pair_provider", "merlin.experiments",
-               "merlin.targetgen.group_capsules", "merlin.targetgen.numeric_falsifiability",
+for module in ("merlin.development.targetgen.aet_bridge",
+               "merlin.development.targetgen.experiment_tokens", "merlin.development.targetgen.heavy_oracles",
+               "merlin.analysis.perf.source_program_pair_provider", "merlin.experiments",
+               "merlin.development.targetgen.group_capsules", "merlin.development.targetgen.numeric_falsifiability",
                ):
     path = module.replace(".", "/")
     if path + ".py" in payload or path + "/__init__.py" in payload:
@@ -123,11 +123,11 @@ for module in ("merlin.targetgen.aet_bridge",
     assert spec is not None and spec.origin is None and spec.loader is None, (module, spec)
     assert tuple(Path(item).resolve() for item in spec.submodule_search_locations or ()) == (directory,), module
     assert all(Path(main.locate_file(name)).is_file() for name in members), module
-from merlin.targetgen.contract.matmul_interface import emit_interface_mlir
+from merlin.development.targetgen.contract.matmul_interface import emit_interface_mlir
 assert 'merlin_iface.target = "probe_device"' in emit_interface_mlir(
     lhs="A", weight="W", out="Y", M=2, K=3, N=4, epilogue=[],
     output_dtype="i32", target="probe_device")
-from merlin.targetgen import elf_lanes
+from merlin.development.targetgen import elf_lanes
 assert elf_lanes.LINKED_ELF_EVIDENCE not in elf_lanes.EXECUTED_LANE_EVIDENCE
 assert set(elf_lanes.EXECUTED_LANE_EVIDENCE) < set(elf_lanes.negative_lane_evidence())
 import sys

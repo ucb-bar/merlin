@@ -36,10 +36,10 @@ from merlin.development.backend.optimization.contracts import (
 from merlin.development.backend.optimization.edit_authority import FrozenEditAuthority
 from merlin.development.backend.optimization.public_native_exploration import PublicNativeExploration
 from merlin.development.backend.optimization.retained_revisions import RetainedRevision, source_inventory
-from merlin.targetgen.common_transforms import CommonTransformService
-from merlin.targetgen.compiler_library import CompilerLibrarySelection
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.common_transforms import CommonTransformService
+from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 SCHEMA = "merlin.public_source_diagnostic_policy.v1"
 FEEDBACK_SCHEMA = "merlin.public_source_diagnostic_feedback.v1"

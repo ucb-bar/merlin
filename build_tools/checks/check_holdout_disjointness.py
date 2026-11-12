@@ -276,8 +276,8 @@ def audit(target: str) -> dict:
             "rather than compared at an assumed tile edge.",
         }
 
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     public = yaml.safe_load(public_path.read_text(encoding="utf-8")) or {}
     hidden = yaml.safe_load(hidden_path.read_text(encoding="utf-8")) or {}

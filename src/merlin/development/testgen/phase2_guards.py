@@ -15,10 +15,10 @@ import yaml
 
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.source_inputs import fingerprint
+from merlin.development.targetgen import conformance
 from merlin.development.testgen.coverage_commitment import INPUT_SCHEMA, _digest, _selected_program
 from merlin.experiments.corpus.coverage import _selected_contract, merlin_supplied_host_axis
 from merlin.experiments.corpus.phase_selection import validate_phase_selections
-from merlin.targetgen import conformance
 
 SCHEMA = "merlin.phase0.phase2_functional_guards.v1"
 

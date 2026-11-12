@@ -17,8 +17,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen.contract.interface_emit import parse_interface_mlir
 
 REPO = Path(__file__).resolve().parents[4]
 NAMES = ("SY_contraction_i8_aligned", "SY_contraction_i8_partial")

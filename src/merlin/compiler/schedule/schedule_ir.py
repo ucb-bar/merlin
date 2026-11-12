@@ -17,9 +17,9 @@ from xdsl.ir import Block, Region
 from xdsl.parser import Parser
 from xdsl.printer import Printer
 
-from merlin.transforms.dense_ir import DenseScheduleOp, dense_schedule_op
-from merlin.transforms.dense_planning import dense_blocks
-from merlin.xdsl_dialects.schedule import BindOp, HandleType, LoopTransformOp, PanelPipelineOp, PlanOp, get_dialect
+from merlin.compiler.dialects.schedule import BindOp, HandleType, LoopTransformOp, PanelPipelineOp, PlanOp, get_dialect
+from merlin.compiler.transforms.dense_ir import DenseScheduleOp, dense_schedule_op
+from merlin.compiler.transforms.dense_planning import dense_blocks
 
 
 def dense_schedule_text(plan):

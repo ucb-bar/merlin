@@ -19,8 +19,8 @@ from typing import Any
 
 def refused_part(variants: list[dict], base: dict, *, software_spec: dict | None, binding) -> dict | None:
     """The first ``part`` member every matching declaration refuses, with the decisions, or ``None``."""
-    from merlin.targetgen.semantic_families import from_op
-    from merlin.targetgen.software_spec import admit_operation
+    from merlin.development.targetgen.semantic_families import from_op
+    from merlin.development.targetgen.software_spec import admit_operation
 
     if not software_spec:
         return None
@@ -67,9 +67,9 @@ def refused_emitted_part(entries: list[dict], *, binding, evidence) -> dict | No
     screen, not a numerical or execution proof. Unknown admissions remain for the written capsule's
     full screen.
     """
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.semantic_families import from_op
     from merlin.development.testgen.program_admission import account_interface_text, summarize
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.semantic_families import from_op
 
     for entry in entries:
         group = entry.get("comparison_group")

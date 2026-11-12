@@ -92,7 +92,7 @@ def build_independent_component_rtl_provider(
         DevelopmentGsimFeedback,
         prepare_development_feedback,
     )
-    from merlin.targetgen.target_experiment import TargetExperiment
+    from merlin.development.targetgen.target_experiment import TargetExperiment
 
     runtime = _inputs(independent_runtime, baseline_admission, "rtl_executor")
     if (

@@ -14,10 +14,10 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import component_program, phase_policy
+from merlin.development.targetgen.op_form_regimes import Bound, boundary_witnesses
+from merlin.development.targetgen.semantic_families import from_op
 from merlin.development.testgen.component_generation import digest
-from merlin.targetgen import component_program, phase_policy
-from merlin.targetgen.op_form_regimes import Bound, boundary_witnesses
-from merlin.targetgen.semantic_families import from_op
 
 SCHEMA = "merlin.phase0.source_performance_preparation.v1"
 SCHEMA_V2 = "merlin.phase0.source_performance_preparation.v2"
@@ -456,7 +456,7 @@ def materialize(entry, binding, *, point, gate, selection=SCHEMA):
         "operand_dtype": binding.operand_dtype,
         "accum_dtype": binding.accum_dtype,
         "datatype_basis": "independently selected source integer semantics",
-        "builder": "merlin.targetgen.corpus_spec.build",
+        "builder": "merlin.development.targetgen.corpus_spec.build",
         "scope": "original source only",
     }
     if selection == SCHEMA_V2:

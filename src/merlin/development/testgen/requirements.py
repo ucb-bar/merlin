@@ -14,6 +14,9 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import application_inventory, conformance, corpus_synth, target_registry
+from merlin.development.targetgen.rtl.facts import observed_facts
+from merlin.development.targetgen.target_experiment import load_target_experiment
 from merlin.development.testgen.certification_floor import require_direct_tier, selected_floor
 from merlin.development.testgen.declarations import from_definition
 from merlin.development.testgen.evidence import _materialize_evidence, export_evidence, select_evidence
@@ -23,9 +26,6 @@ from merlin.development.testgen.program_admission import entry_refusal_is_final
 from merlin.development.testgen.software_screen import diagnostic_entry, intersect_requirement, screen_entry
 from merlin.development.testgen.typed_scope import typed_required_instances
 from merlin.experiments.definition import engine_definitions, load_spec
-from merlin.targetgen import application_inventory, conformance, corpus_synth, target_registry
-from merlin.targetgen.rtl.facts import observed_facts
-from merlin.targetgen.target_experiment import load_target_experiment
 
 
 def _json(value) -> bytes:
@@ -463,12 +463,12 @@ def grouping_oracle(target: str, prohibited_roles):
     ``None`` (the grouping's own default oracle) when the experiment prohibits nothing. Otherwise a
     standalone form whose every evidence path needs a prohibited role -- a residual add licensed only
     by a hardware loop descriptor, say -- is refused at grouping, so no form the policy forbids reaches
-    the requirement (``merlin.targetgen.capability_roles``).
+    the requirement (``merlin.development.targetgen.capability_roles``).
     """
     roles = tuple(prohibited_roles or ())
     if not roles:
         return None
-    from merlin.xdsl_dialects.lowering import compute_groups as CG
+    from merlin.compiler.dialects.lowering import compute_groups as CG
 
     return CG.TargetOracle(target, prohibited_roles=roles)
 
@@ -727,7 +727,7 @@ def derive(
         recipe_doc, planned_tiers = _recipe_tier_declarations(declaration.recipe)
     if independent_public != _independent_public_sources(declaration.recipe):
         raise ValueError("public source policy changed during derivation")
-    from merlin.targetgen.column_readout_capsules import with_profile
+    from merlin.development.targetgen.column_readout_capsules import with_profile
 
     requirement = with_profile(requirement, recipe_doc.get("column_readout_profile"))
     requirement["oracle_tiers_declared"] = planned_tiers
@@ -810,10 +810,10 @@ def derive(
     # The two capture-derived stages share ONE grouping and ONE binding (the corpus binding under the
     # selected recipe, contract and facts), read only the declared ITERATION captures, and refuse any
     # held-out model. Their outputs are byte-bound here with every other derived member.
+    from merlin.development.targetgen.group_capsule_entries import group_binding
     from merlin.development.testgen.claim_boundary import held_out_models
     from merlin.development.testgen.form_perf import derive_form_scope
     from merlin.development.testgen.model_forms import derive_model_forms
-    from merlin.targetgen.group_capsule_entries import group_binding
 
     held_out = held_out_models(te)
     stage_binding = group_binding(

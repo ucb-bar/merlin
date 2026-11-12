@@ -19,8 +19,7 @@ from typing import Any
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
 from merlin.common.jsonio import strict_json_equal
-from merlin.development.backend.feedback.private_control_support import _record_matches_selected
-from merlin.frontends.bucketize_source import (
+from merlin.compiler.frontend.bucketize_source import (
     BF16_BUCKETIZE_COUNT_OPERATION,
     BUCKETIZE_COUNT_OPERATION,
     STATIC_BUCKETIZE_SOURCE_BODY_SCHEMA,
@@ -29,9 +28,10 @@ from merlin.frontends.bucketize_source import (
     literal_bucketize_boundary_fact,
     screen_bucketize_source,
 )
-from merlin.frontends.linalg_patterns import InvalidLinalgPattern
+from merlin.compiler.frontend.linalg_patterns import InvalidLinalgPattern
+from merlin.development.backend.feedback.private_control_support import _record_matches_selected
+from merlin.development.targetgen.application_inventory import verify_capture_receipt
 from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
-from merlin.targetgen.application_inventory import verify_capture_receipt
 
 FIELD = "bucketize_host_support"
 PENDING = "source_bucketize_host_pending_build"

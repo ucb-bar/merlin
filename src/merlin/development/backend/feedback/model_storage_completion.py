@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower.completed_host_storage import _from_trusted_worker, digest, export_completed_storage
+from merlin.compiler.lower.model.completed_host_storage import _from_trusted_worker, digest, export_completed_storage
 
 FIELD = "_completed_host_storage_return_v1"
 _SIGNING_KEY = contextvars.ContextVar("trusted_model_storage_return_key", default=None)
@@ -35,8 +35,12 @@ def _signature(key, payload):
 def implementation_pins():
     import sys
 
-    from merlin.llvmlower import borrowed_arena, completed_host_storage, host_storage_policy
-    from merlin.targetgen import owned_host_model_execution, owned_host_selections, source_composition_preferences
+    from merlin.compiler.lower.model import borrowed_arena, completed_host_storage, host_storage_policy
+    from merlin.development.targetgen import (
+        owned_host_model_execution,
+        owned_host_selections,
+        source_composition_preferences,
+    )
 
     modules = (
         borrowed_arena,

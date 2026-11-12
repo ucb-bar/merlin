@@ -81,7 +81,7 @@ def shape_of(fn: ast.FunctionDef) -> str:
 
 
 #: ``(directory holding one package per child, glob of a package's implementation files)``. The vendored
-#: support directory name is ``merlin.targetgen.target_registry.IN_REPO_SUPPORT_DIR``; this gate stays
+#: support directory name is ``merlin.development.targetgen.target_registry.IN_REPO_SUPPORT_DIR``; this gate stays
 #: free of a merlin import so it runs before the tree is importable.
 PACKAGE_ROOTS = (("experiments/inputs/target-inputs", "*/**/*.py"), ("examples", "*/*/support/**/*.py"))
 #: A package's own test directory: provider contract tests repeat by design and implement nothing.

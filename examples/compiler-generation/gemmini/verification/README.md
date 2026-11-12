@@ -88,7 +88,7 @@ establish a quantizer scale/zero-point or whole-operation overflow policy.
 Produce a new source bundle from the exact selected FIRRTL:
 
 ```sh
-python -m merlin.targetgen.rtl.source_selection \
+python -m merlin.development.targetgen.rtl.source_selection \
   --target gemmini --generator gemmini --config GemminiRocketConfig \
   --core-root Gemmini --firrtl /selected/elaboration/design.fir \
   --hierarchy /selected/elaboration/top_module_hierarchy.json \
@@ -96,7 +96,7 @@ python -m merlin.targetgen.rtl.source_selection \
   --drop-annotation-class 'chisel3.experimental.EnumAnnotations$EnumComponentAnnotation' \
   --drop-annotation-class 'chisel3.experimental.EnumAnnotations$EnumDefAnnotation' \
   --drop-annotation-class 'chisel3.experimental.EnumAnnotations$EnumVecAnnotation'
-python -m merlin.targetgen.rtl.circt_introspect --target gemmini \
+python -m merlin.development.targetgen.rtl.circt_introspect --target gemmini \
   --source-bundle /generated/gemmini/source-1/source-selection.json \
   --out /generated/gemmini/source-1/facts.json
 merlin-target-tools rtl-source-audit \

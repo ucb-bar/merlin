@@ -6,8 +6,8 @@ from pathlib import Path
 from packing_execution_inputs import actual_observation, pin
 
 from merlin.common import invocation_record
-from merlin.llvmlower.compilation_recipe import verify_completed_recipe
-from merlin.llvmlower.device_offload import SIDECAR_NAME
+from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+from merlin.compiler.lower.model.device_offload import SIDECAR_NAME
 
 
 def descriptor_abi(elf):

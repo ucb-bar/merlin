@@ -11,10 +11,10 @@ import math
 from collections import Counter
 from collections.abc import Mapping
 
+from merlin.analysis.perf.component_screen import ComponentOpportunity, rank_component_opportunities
 from merlin.common.jsonio import canonical_json
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256
-from merlin.perf.component_screen import ComponentOpportunity, rank_component_opportunities
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
 BASIS = "equal generated families and equal members within family"
 _FIELDS = {"schema", "order", "evidence", "work_shares_sha256", "promotion"}

@@ -16,6 +16,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi
 from merlin.development.testgen import component_compile_graphs as G
 from merlin.development.testgen import component_compile_plan as P
 from merlin.development.testgen.rtl_intake import (
@@ -28,7 +29,6 @@ from merlin.development.testgen.rtl_intake import (
     _plain,
 )
 from merlin.development.testgen.software_intake import IndependentSoftwareIntake
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi
 
 SCHEMA = "merlin.independent_compile_only_roster.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -321,11 +321,11 @@ def issue_independent_compile_only_roster(
             P.__name__,
             G.__name__,
             "merlin.development.testgen.component_graph_variants",
-            "merlin.targetgen.component_program",
-            "merlin.targetgen.contract.compile_only",
-            "merlin.targetgen.contract.linalg_iface",
-            "merlin.targetgen.corpus_spec",
-            "merlin.targetgen.semantic_families",
+            "merlin.development.targetgen.component_program",
+            "merlin.development.targetgen.contract.compile_only",
+            "merlin.development.targetgen.contract.linalg_iface",
+            "merlin.development.targetgen.corpus_spec",
+            "merlin.development.targetgen.semantic_families",
             "merlin.common.quant_formats",
         )
     ]

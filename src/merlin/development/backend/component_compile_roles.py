@@ -20,8 +20,8 @@ from merlin.development.backend.component_origin import FreshCompilerOrigin, _au
 from merlin.development.backend.component_package_execution import qualified_package_execution
 from merlin.development.backend.optimization import contracts as C
 from merlin.development.backend.optimization.component_instruction_audit import IndependentLinkedInstructionCheck
-from merlin.targetgen.compile_only_execution import compile_source_only, verify_compile_only_report
-from merlin.targetgen.contract.build_service import BuildOnlyService
+from merlin.development.targetgen.compile_only_execution import compile_source_only, verify_compile_only_report
+from merlin.development.targetgen.contract.build_service import BuildOnlyService
 
 _ISSUED: dict[object, tuple] = {}
 SCHEMA = "merlin.component_compile_role_evaluation.v1"

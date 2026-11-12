@@ -11,7 +11,9 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
+from merlin.analysis.perf.functional_gate import load_functional_gate_config
+from merlin.analysis.perf.gate_discrimination import require_discriminating
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import agent_workspace as AW
 from merlin.development.backend.optimization import authoring as AUTHORING
@@ -33,11 +35,9 @@ from merlin.development.backend.optimization.global_inputs import FrozenPhase1, 
 from merlin.development.backend.optimization.portfolio_authoring import PortfolioAuthoring
 from merlin.development.backend.optimization.portfolio_options import PortfolioInvocation
 from merlin.development.backend.optimization.portfolio_sandbox import PortfolioSandboxFactory
-from merlin.perf.agent_guidance import inspect_compiler_package
-from merlin.perf.functional_gate import load_functional_gate_config
-from merlin.perf.gate_discrimination import require_discriminating
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen.target_experiment import TargetExperiment
 
 
 @dataclass(frozen=True)
@@ -105,7 +105,7 @@ def declared_instruction_set_brief(target: str) -> dict[str, Any]:
     coverage produced by not looking.
     """
     try:
-        from merlin.perf.task_instruction_evidence import declared_instruction_set, target_instruction_facts
+        from merlin.analysis.perf.task_instruction_evidence import declared_instruction_set, target_instruction_facts
 
         return declared_instruction_set(target_instruction_facts(target))
     except Exception as exc:  # noqa: BLE001 - an underivable ISA is stated, never assumed complete
@@ -300,7 +300,7 @@ def run(invocation: PortfolioInvocation, config: Mapping[str, Any], *, context: 
     frozen_functional = FI.load_frozen_functional_inputs(
         functional, public_manifest_path=stage_root / "_public_functional_snapshot.json"
     )
-    from merlin.perf.external_objective import load_external_objective
+    from merlin.analysis.perf.external_objective import load_external_objective
 
     primary_external = (
         load_external_objective(
@@ -521,7 +521,7 @@ def run(invocation: PortfolioInvocation, config: Mapping[str, Any], *, context: 
             static_analysis_seed_sha256=args.static_analysis_seed_sha256,
         )
     if not args.validation_only:
-        from merlin.perf.agent_guidance import build_compiler_edit_contract
+        from merlin.analysis.perf.agent_guidance import build_compiler_edit_contract
 
         source_pins = None
         host_surfaces = None

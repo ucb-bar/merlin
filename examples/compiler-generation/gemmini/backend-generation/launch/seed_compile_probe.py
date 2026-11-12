@@ -46,7 +46,7 @@ class SeedCompileError(ValueError):
 
 def granted_sources(bundle: dict, repo: Path, destination: Path) -> Path:
     """The bundle's public common sources at their package paths: the import root a sandbox grants."""
-    from merlin.targetgen.sandbox import bwrap
+    from merlin.development.targetgen.sandbox import bwrap
 
     rows = (bundle.get("compiler_tool_profile") or {}).get("common_sources") or ()
     grants = [row["path"] for row in bundle.get("allowed", ()) if isinstance(row.get("path"), str)]
@@ -83,7 +83,7 @@ def _python_tool(tool: Path) -> bool:
 
 def invoker(granted: Path):
     """An entrypoint runner with the sandbox's Merlin import roots, for ``lower_interface(invoke=)``."""
-    from merlin.targetgen import package_runtime as P
+    from merlin.development.targetgen import package_runtime as P
 
     def invoke(pkg, name, input_mlir, output_json=None, *, timeout=TIMEOUT_S, **_):
         argv = P._resolve_argv(pkg, name, Path(input_mlir), Path(output_json) if output_json else None)
@@ -96,7 +96,7 @@ def invoker(granted: Path):
 
 
 def smallest_public_cases(corpus_roots, *, contract=None, count=ATTEMPTS) -> list[dict]:
-    from merlin.targetgen import capsule_common as CC
+    from merlin.development.targetgen import capsule_common as CC
 
     cases = []
     for capsule in CC.discover_capsules(list(corpus_roots), labels={"public"}, contract=contract):
@@ -110,8 +110,8 @@ def smallest_public_cases(corpus_roots, *, contract=None, count=ATTEMPTS) -> lis
 
 def compile_one(submission: Path, cases, *, granted: Path, work: Path, contract=None) -> dict:
     """The staged package lowers at least one case; otherwise every case's first error is reported."""
-    from merlin.targetgen import capsule_common as CC
-    from merlin.targetgen.package_runtime import build_package, load_package
+    from merlin.development.targetgen import capsule_common as CC
+    from merlin.development.targetgen.package_runtime import build_package, load_package
 
     package = load_package(submission, contract=contract)
     build_package(package)

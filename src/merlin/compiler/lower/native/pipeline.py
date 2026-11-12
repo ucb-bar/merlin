@@ -14,6 +14,9 @@ from merlin.compiler.lower.llvm.normalize import normalize_float_literals as _fi
 from merlin.compiler.lower.llvm.normalize import normalize_hex_literals as _fix_f0x_literals
 from merlin.compiler.lower.llvm.passes import INDEX_CONVERSION_PASSES
 from merlin.compiler.lower.llvm.passes import bind_index_width as _bind_index_width
+from merlin.compiler.lower.model.optional_passes import child_environment
+from merlin.compiler.lower.model.source_scalar_carrier_binding import host_admitted
+from merlin.compiler.lower.model.toolchain import m2m_python
 from merlin.compiler.lower.native.arguments import build_command
 from merlin.compiler.lower.native.invoke import _harvest_native
 from merlin.compiler.lower.native.invoke import apply_passes as apply_passes
@@ -34,9 +37,6 @@ from merlin.compiler.lower.native.vector import vec_pre_schedule
 from merlin.compiler.passes import native as native_passes
 from merlin.compiler.passes import parallel as parallel_schedule
 from merlin.compiler.passes.contract import PipelineError as PipelineError
-from merlin.llvmlower.optional_passes import child_environment
-from merlin.llvmlower.source_scalar_carrier_binding import host_admitted
-from merlin.llvmlower.toolchain import m2m_python
 
 _INDEX_CONVERSION_PASSES = INDEX_CONVERSION_PASSES
 PARALLEL_ENTRY = parallel_schedule.PARALLEL_ENTRY
@@ -76,8 +76,8 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.passes.features",
         "merlin.compiler.selection.features",
         "merlin.compiler.selection.shared",
-        "merlin.llvmlower.optional_passes",
-        "merlin.llvmlower.automatic_host_features",
+        "merlin.compiler.lower.model.optional_passes",
+        "merlin.compiler.lower.model.automatic_host_features",
         "merlin.compiler.transforms.host",
         "merlin.compiler.transforms.host_contraction",
         "merlin.compiler.transforms.host_reduction",
@@ -133,7 +133,7 @@ def lower_to_llvm_ir(
     ``transform_schedule`` overrides its schedule and ``pipeline`` overrides
     either default pipeline. ``parallel_harts`` additionally layers OpenMP
     forall chunks under vector scheduling; ``parallel`` selects scalar OpenMP.
-    See :func:`merlin.llvmlower.lower.lower_model` for the end-to-end options.
+    See :func:`merlin.compiler.lower.model.lower.lower_model` for the end-to-end options.
     """
     if type(retain_llvm_dialect) is not bool:
         raise ValueError("retain_llvm_dialect requires an explicit bool")
@@ -150,20 +150,20 @@ def lower_to_llvm_ir(
     # looking current, including failures before feature/pipeline resolution.
     (work / _RECIPE_FILENAME).unlink(missing_ok=True)
     if borrowed_buffer_calls is not None:
-        from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferCalls
+        from merlin.compiler.lower.model.borrowed_buffer_calls import BorrowedBufferCalls
 
         if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
             raise ValueError("explicit original borrowed-buffer selection required")
         borrowed_buffer_calls.revalidate(mlir_text)
-    from merlin.llvmlower.source_observation_stage import CHECKPOINT as _SOURCE_CHECKPOINT
-    from merlin.llvmlower.source_observation_stage import REPORT as _SOURCE_REPORT
+    from merlin.compiler.lower.model.source_observation_stage import CHECKPOINT as _SOURCE_CHECKPOINT
+    from merlin.compiler.lower.model.source_observation_stage import REPORT as _SOURCE_REPORT
 
     (work / _SOURCE_CHECKPOINT).unlink(missing_ok=True)
     (work / _SOURCE_REPORT).unlink(missing_ok=True)
     recipe_sources = {
         "pipeline_driver": Path(__file__),
         "native_stage_invocation": Path(native_passes.__file__),
-        "loop_ownership_checker": module_source_path("merlin.llvmlower.dealloc_lifetime"),
+        "loop_ownership_checker": module_source_path("merlin.compiler.lower.model.dealloc_lifetime"),
         "translation_transport": module_source_path("merlin.compiler.lower.native.transport"),
     }
     recipe_sources.update(
@@ -177,9 +177,9 @@ def lower_to_llvm_ir(
         masked_contraction_effects=masked_contraction_effects,
         source_observation_effects=source_observation_effects,
     )
-    from merlin.llvmlower.masked_contraction import FEATURE as _MASKED_FEATURE
-    from merlin.llvmlower.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
-    from merlin.llvmlower.toolchain import _env
+    from merlin.compiler.lower.model.masked_contraction import FEATURE as _MASKED_FEATURE
+    from merlin.compiler.lower.model.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
+    from merlin.compiler.lower.model.toolchain import _env
 
     driver = _env("MERLIN_COMPILER_DRIVER", "python")
     if driver not in {"python", "stock-cli"}:
@@ -210,9 +210,9 @@ def lower_to_llvm_ir(
                 "borrowed_buffer_calls": borrowed_buffer_calls is not None,
             },
         )
-    from merlin.llvmlower.llvm_loop_outline import FEATURE as _OUTLINE_LOOPS
-    from merlin.llvmlower.llvm_loop_outline import MERGE_FEATURE as _OUTLINE_MERGE_LOOPS
-    from merlin.llvmlower.llvm_loop_outline import outline_loops
+    from merlin.compiler.lower.model.llvm_loop_outline import FEATURE as _OUTLINE_LOOPS
+    from merlin.compiler.lower.model.llvm_loop_outline import MERGE_FEATURE as _OUTLINE_MERGE_LOOPS
+    from merlin.compiler.lower.model.llvm_loop_outline import outline_loops
 
     if _OUTLINE_LOOPS in feats and _OUTLINE_MERGE_LOOPS in feats:
         raise PipelineError("Select one explicit LLVM loop outlining policy")
@@ -288,12 +288,14 @@ def lower_to_llvm_ir(
             raise ValueError("explicit index width requires selected compiler data layout")
         pipeline = _bind_index_width(pipeline, index_bits)
     if _SOURCE_OBSERVATION_FEATURE in feats:
-        from merlin.llvmlower.source_observation_stage import validate_pipeline as _validate_observation_pipeline
+        from merlin.compiler.lower.model.source_observation_stage import (
+            validate_pipeline as _validate_observation_pipeline,
+        )
 
         _validate_observation_pipeline(pipeline)
     scalar_stage = None
     if source_scalar_carrier is not None:
-        from merlin.llvmlower.source_stage_transport import insert_marker
+        from merlin.compiler.lower.model.source_stage_transport import insert_marker
 
         if source_observation_effects is not None and source_observation_effects != source_scalar_carrier.effects:
             raise ValueError("source observation and scalar rewrite require the same explicit effects")
@@ -301,8 +303,8 @@ def lower_to_llvm_ir(
         scalar_stage = work / "source_scalar_carrier"
         scalar_stage.mkdir(exist_ok=False)
         recipe_sources.update(
-            scalar_carrier_binding=module_source_path("merlin.llvmlower.source_scalar_carrier_binding"),
-            scalar_stage_transport=module_source_path("merlin.llvmlower.source_stage_transport"),
+            scalar_carrier_binding=module_source_path("merlin.compiler.lower.model.source_scalar_carrier_binding"),
+            scalar_stage_transport=module_source_path("merlin.compiler.lower.model.source_stage_transport"),
         )
     src = work / "model.mlir"
     out = work / "model.ll"
@@ -339,7 +341,7 @@ def lower_to_llvm_ir(
         printing=(native[1], native[2]) if native is not None else (True, True),
     )
     if scalar_stage is not None:
-        from merlin.llvmlower.source_stage_transport import bind_runner as _bind_scalar_runner
+        from merlin.compiler.lower.model.source_stage_transport import bind_runner as _bind_scalar_runner
 
         runner_src = _bind_scalar_runner(
             runner_src,
@@ -349,14 +351,14 @@ def lower_to_llvm_ir(
             timeout=timeout,
         )
     if borrowed_buffer_calls is not None:
-        from merlin.llvmlower.borrowed_buffer_calls import prepare_native
+        from merlin.compiler.lower.model.borrowed_buffer_calls import prepare_native
 
         if "optimize-allocation-liveness" not in pipeline:
             raise ValueError("borrowed lifetime selection requires the checked post-deallocation boundary")
         runner_src, roster = prepare_native(borrowed_buffer_calls, mlir_text, runner_src, work)
         recipe_sources.update(
             borrowed_buffer_calls=roster,
-            borrowed_call_contracts=module_source_path("merlin.llvmlower.borrowed_buffer_calls"),
+            borrowed_call_contracts=module_source_path("merlin.compiler.lower.model.borrowed_buffer_calls"),
         )
     runner.write_text(runner_src, encoding="utf-8")
     # argv[4] gates the self-copy erase, so the frozen hand_v0 control keeps its byte-identical
@@ -383,7 +385,7 @@ def lower_to_llvm_ir(
     recipe = LoweringRecipe(work, features=feats, sources=recipe_sources)
     recipe.command(command)
     if audit is not None and audit.directory is not None:
-        from merlin.targetgen.provenance import toolchain_provenance
+        from merlin.development.targetgen.provenance import toolchain_provenance
 
         audit.command(command, sources=(__file__, runner), provenance=toolchain_provenance())
     proc = run_translation(
@@ -435,7 +437,7 @@ def lower_to_llvm_ir(
                 + ", ".join(residual_vector_ops)
                 + f"\nLLVM-dialect artifact: {stage_out}"
             )
-        from merlin.llvmlower.toolchain import mlir_translate
+        from merlin.compiler.lower.model.toolchain import mlir_translate
 
         translate_command = [str(mlir_translate()), "--mlir-to-llvmir", str(stage_out), "-o", str(out)]
         recipe.command(translate_command)
@@ -461,7 +463,7 @@ def lower_to_llvm_ir(
         retention.bind(recipe, lowering_selection, source=src, runner=runner, llvm_ir=result)
     recipe.returned(result)
     if borrowed_buffer_calls is not None and borrowed_arena_lifetimes is not None:
-        from merlin.llvmlower.borrowed_arena import _from_verified_native
+        from merlin.compiler.lower.model.borrowed_arena import _from_verified_native
 
         borrowed_arena_lifetimes.append(
             _from_verified_native(borrowed_buffer_calls, mlir_text, work, result, checked, runner)

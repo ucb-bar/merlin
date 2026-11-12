@@ -9,7 +9,7 @@ candidate or used as a baseline.
   (`isa/A1_mvin_mvout`) and one DIMxDIM i8 x i8 -> i32 single-tile matmul
   (`isa/A2_single_tile_matmul`). No tiling, no epilogue, no other operation.
 - Every encoding constant is read from `gemmini_isa.h`, a snapshot of the header Merlin generates
-  from the verified RTL facts and the target contract (`merlin.targetgen.isa_header_gen`; RTL facts
+  from the verified RTL facts and the target contract (`merlin.development.targetgen.isa_header_gen`; RTL facts
   sha256 recorded in its first comment). The protocol choices the header cannot state -- weight-
   stationary dataflow value, unit float scales, the all-ones "no operand" address -- are named
   constants in `probe_compiler.py`, taken from the public Gemmini ISA description.

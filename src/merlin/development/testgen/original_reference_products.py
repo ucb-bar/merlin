@@ -7,9 +7,9 @@ from pathlib import Path
 
 from merlin.common.jsonio import canonical_json
 from merlin.common.strict_json import loads
+from merlin.development.targetgen.original_reference_values import TypedReferenceTensor, format_record
 from merlin.development.testgen import original_reference_plan as P
 from merlin.development.testgen.operator_schema_intake import _selection
-from merlin.targetgen.original_reference_values import TypedReferenceTensor, format_record
 
 SCHEMA = "merlin.original_reference_roster.v1"
 
@@ -74,8 +74,8 @@ def native_outputs(contract, path):
 def finite_transpose_alias(contract, inputs, path):
     """Reopen a distinct finite storage observation; equality grants no alias fact."""
     metadata = contract.verify()
-    from merlin.targetgen.original_operator_reference import _roster
-    from merlin.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
+    from merlin.development.targetgen.original_operator_reference import _roster
+    from merlin.development.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
 
     if type(contract.policy) is not OriginalTransposeReferencePolicy:
         raise ValueError("finite transpose alias observation needs its exact original reference contract")

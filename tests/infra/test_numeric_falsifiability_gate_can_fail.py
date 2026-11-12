@@ -70,8 +70,8 @@ def _corpus(tmp_path, atol: float):
 def golden_spread(tmp_path):
     """The golden this corpus derives, and the half-spread a constant answer must miss it by."""
     corpus = _corpus(tmp_path, atol=0.0)
-    from merlin.targetgen import capsule_common as CC
-    from merlin.targetgen import capsule_golden as CG
+    from merlin.development.targetgen import capsule_common as CC
+    from merlin.development.targetgen import capsule_golden as CG
 
     directory = next(corpus.iterdir())
     values = CG.golden(CC.load_capsule(directory), directory)

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.llvmlower.compilation_recipe import FILENAME, CompilationRecipe
+from merlin.compiler.lower.model.compilation_recipe import FILENAME, CompilationRecipe
 from merlin.runtime.backends import spike_model
 
 

@@ -91,7 +91,7 @@ def _tool(path):
 
 
 def _tools(emission):
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     driver = toolchain._env("MERLIN_COMPILER_DRIVER", "python")
     if driver == "stock-cli":
@@ -110,7 +110,7 @@ def _tools(emission):
 def _source(request):
     from xdsl.dialects.builtin import VectorType
 
-    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     module = parse_mlir_text(request.source.text)
     module.verify()
@@ -134,7 +134,7 @@ def _call_selection(request):
     if entry is None:
         return None
     from merlin.compiler.lower.llvm.call import prepare
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     if request.source.kind != "mlir":
         raise ValueError("scalar call requires the original tensor MLIR source, not prepared buffer IR")
@@ -159,7 +159,7 @@ def validate(request):
 def _call_artifacts(call, native, output, values, tools):
     from merlin.compiler.lower.llvm import call as owner
     from merlin.compiler.lower.llvm import copies as memory_owner
-    from merlin.llvmlower import codegen
+    from merlin.compiler.lower.model import codegen
 
     original = native / "model.llvm.mlir"
     before = digest(original)
@@ -258,9 +258,9 @@ def _call_artifacts(call, native, output, values, tools):
 
 def compile(request):
     from merlin.compiler.build.objects import compile_llvm_object
+    from merlin.compiler.lower.model import codegen
+    from merlin.compiler.lower.model.target_data_layout import observe_index_width
     from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
-    from merlin.llvmlower import codegen
-    from merlin.llvmlower.target_data_layout import observe_index_width
 
     emission, flags = _parameters(request)
     _source(request)
@@ -278,7 +278,7 @@ def compile(request):
     try:
         native = output / "native"
         if request.source.kind == "mlir":
-            from merlin.llvmlower.lower import lower_model
+            from merlin.compiler.lower.model.lower import lower_model
 
             lowered = lower_model(
                 call.source if call is not None else request.source.text,

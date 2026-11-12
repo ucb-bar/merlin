@@ -7,10 +7,10 @@ from xdsl.interpreter import Interpreter, InterpreterFunctions, impl, register_i
 from xdsl.interpreters.arith import ArithFunctions
 from xdsl.interpreters.linalg import LinalgFunctions
 
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower.automatic_host import optimize_host_quantization, prepare_automatic_host
-from merlin.llvmlower.quant_round_check import verify_quantization_rewrite
-from merlin.transforms.certificates import ir_text
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.lower.model.automatic_host import optimize_host_quantization, prepare_automatic_host
+from merlin.compiler.lower.model.quant_round_check import verify_quantization_rewrite
+from merlin.compiler.transforms.certificates import ir_text
 
 
 def _source(width=8, dtype="f32", *, divisor="1.0"):

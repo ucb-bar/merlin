@@ -7,7 +7,7 @@ packing that feed the accelerator, im2col, command issue. Pure host compute is M
 (``docs/design/merlin_supplied_host_placement.md``): Merlin's own host package compiles it, so it is
 neither the candidate's work nor something a candidate may be scored on.
 
-The split is the frozen Phase 0 placement (:mod:`merlin.targetgen.frozen_placement`), never the
+The split is the frozen Phase 0 placement (:mod:`merlin.development.targetgen.frozen_placement`), never the
 candidate's output:
 
 * operations Phase 0 placed on the **accelerator** are the candidate's scored work;
@@ -84,7 +84,7 @@ def declared_scope(declaration: Mapping[str, Any]) -> dict[str, Any]:
 
 def bound_scope(declaration: Mapping[str, Any], directory: str | Path) -> dict[str, Any]:
     """:func:`declared_scope` bound to the capsule's program bytes, with per-operation lanes."""
-    from merlin.targetgen import frozen_placement
+    from merlin.development.targetgen import frozen_placement
 
     try:
         frozen = frozen_placement.read(declaration, directory)

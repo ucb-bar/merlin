@@ -11,9 +11,9 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower import source_optimization_policy as P
-from merlin.llvmlower import source_optimization_selection as S
-from merlin.llvmlower.source_optimization_request import request_from_record
+from merlin.compiler.lower.model import source_optimization_policy as P
+from merlin.compiler.lower.model import source_optimization_selection as S
+from merlin.compiler.lower.model.source_optimization_request import request_from_record
 
 
 def _pin(path):
@@ -41,7 +41,7 @@ class SourceOptimizationBuild:
         if backend is not None and backend not in ("scalar", "rvv"):
             raise ValueError("selected compiler backend has no source optimization consumer")
         self._original = _record(selection.record())
-        from merlin.llvmlower import automatic_destinations, automatic_gathers
+        from merlin.compiler.lower.model import automatic_destinations, automatic_gathers
 
         directory = Path(S.__file__).parent
         self._library = [
@@ -87,7 +87,7 @@ class SourceOptimizationBuild:
             if _record(report) != _record(expected):
                 raise ValueError("consumed source optimization report does not match original selection")
         if self._completed is not None:
-            from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+            from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
 
             recipe, executable = self._completed
             if _pin(recipe["path"]) != recipe or _pin(executable["path"]) != executable:
@@ -135,7 +135,9 @@ class SourceOptimizationBuild:
         report = Path(workdir) / "tensor-preparation-cse.json"
         if report.is_file():
             compilation.bind_preparation("tensor_preparation_sharing", report)
-            compilation.bind_preparation("tensor_preparation_shared_source", Path(workdir) / "model.tensor-preparations.mlir")
+            compilation.bind_preparation(
+                "tensor_preparation_shared_source", Path(workdir) / "model.tensor-preparations.mlir"
+            )
         if self.selection is None:
             return
         if self._guard is None:

@@ -161,7 +161,7 @@ def _capture_sources() -> tuple[Path, Path]:
     package = module_source_path("merlin").parent
     bundled = package / "_data/schemas"
     schemas = bundled if "MERLIN_SCHEMAS_DIR" not in os.environ and bundled.is_dir() else schemas_dir()
-    return package / "targetgen/_m2m_capture_worker.py", schemas
+    return package / "development/targetgen/_m2m_capture_worker.py", schemas
 
 
 def _dashboard_arguments(dashboard: argparse.ArgumentParser) -> None:
@@ -231,7 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     if raw[:1] == ["census"]:
         # Exact, unpriced censuses of one observed execution, from records `inspect --trace` (locality)
         # or a target provider (call and stack boundaries) wrote.
-        from merlin.perf import census_cli
+        from merlin.analysis.perf import census_cli
 
         return census_cli.main(raw[1:])
     if raw[:1] == ["instruction-admission"]:
@@ -245,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
         return private_source_preflight.main(raw[1:])
     if raw[:1] == ["study"]:
         # A comparison study's register beside its run matrices, and the baseline its arms are scored on.
-        from merlin.benchharness import study_status
+        from merlin.evaluation.harness import study_status
 
         return study_status.main(raw[1:])
     if raw[:1] == ["model-observe"]:
@@ -712,7 +712,7 @@ def main(argv: list[str] | None = None) -> int:
     variants.add_argument("--template", type=Path, required=True)
     variants.add_argument("--loader", type=Path, required=True)
     variants.add_argument("--output", type=Path, required=True, help="fresh generated capture-input directory")
-    from merlin.targetgen import group_capsules
+    from merlin.development.targetgen import group_capsules
 
     groups = operations.add_parser(
         "groups",
@@ -735,7 +735,7 @@ def main(argv: list[str] | None = None) -> int:
         help="also prepare an optional ISA-generation or interactive Lean level; never changes existing runs",
     )
     prepare.add_argument("--lean-toolchain-manifest", type=Path, help="explicit pinned Lean executable/import closure")
-    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+    from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
 
     prepare.add_argument(
         "--common-substrate",
@@ -1052,7 +1052,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.verb == "stop":
             result = _measured(lambda measured: measured.stop(args.run_dir, why=args.why))
         elif args.verb == "lineage":
-            from merlin.targetgen import target_index
+            from merlin.development.targetgen import target_index
 
             from .history import lineage
 
@@ -1064,7 +1064,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = lineage(args.run_dir)
                 result["target_index"] = target_index.rows_citing(result["target"], result["run_dir"])
         elif args.verb == "index":
-            from merlin.targetgen import target_index
+            from merlin.development.targetgen import target_index
 
             if args.check:
                 current = target_index.is_current(args.target)

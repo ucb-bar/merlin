@@ -34,7 +34,7 @@ def verify_shared_input(
     This proves increasing, complete products without expanding M*K*N scalar
     products. Complete output intervals are checked independently at the end.
     """
-    from merlin.transforms.dense_planning import DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseResources
 
     if type(group) is not SharedInputGroup or type(resources) is not DenseResources:
         raise ValueError("shared-input checking requires original source and selected resources")

@@ -930,7 +930,10 @@ def prepare_plan(
             f"{_TIMEOUT_SECONDS} and {_MAX_SELECTED_CAPTURE_SECONDS} seconds"
         )
     merlin_root = worker.parents[1]
-    if worker != merlin_root / "targetgen/_m2m_capture_worker.py" or not (merlin_root / "__init__.py").is_file():
+    if (
+        worker != merlin_root / "development/targetgen/_m2m_capture_worker.py"
+        or not (merlin_root / "__init__.py").is_file()
+    ):
         raise SealedM2MError("selected worker must belong to the selected Merlin source package")
     if schemas_root not in {
         merlin_root / "resources/schemas",

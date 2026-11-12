@@ -13,10 +13,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.analysis.perf.storage_encoding import GroupedAxesStorage
 from merlin.common import jsonio as _mjson
-from merlin.frontends.argument_identity import ArgumentIdentityBridge
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.perf.storage_encoding import GroupedAxesStorage
+from merlin.compiler.frontend.argument_identity import ArgumentIdentityBridge
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 from .captured_constants import CapturedConstant
 

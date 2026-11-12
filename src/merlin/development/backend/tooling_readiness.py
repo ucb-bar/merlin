@@ -19,9 +19,9 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import module_source_path, python_source_dir
-from merlin.targetgen import oracle_policy as capsule_oracle_policy
-from merlin.targetgen import tool_registry as TR
-from merlin.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen import oracle_policy as capsule_oracle_policy
+from merlin.development.targetgen import tool_registry as TR
+from merlin.development.targetgen.sandbox import bwrap as BW
 
 
 def _check(name: str, ok: bool, detail: str) -> dict:
@@ -132,7 +132,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
                 ]
         if profile.raw_rtl_study and profile.level == 2:
             lines += [
-                "from merlin.targetgen.oot_starterkit import iface",
+                "from merlin.development.targetgen.oot_starterkit import iface",
                 "_source = {'abi_version': '0.1', 'target': 'readiness',",
                 "           'tensors': {'A': {'shape': [1, 1], 'dtype': 'i32', 'role': 'input'}},",
                 "           'commands': []}",
@@ -141,7 +141,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
             ]
         else:
             lines += [
-                "from merlin.targetgen.generate import mlir_scaffold, llvm_plan, target_repo",
+                "from merlin.development.targetgen.generate import mlir_scaffold, llvm_plan, target_repo",
                 "_plan = {'target': 'readiness', 'dialect_name': 'readiness',",
                 "         'ops': [{'name': 'stage'}], 'types': []}",
                 "_artifacts = mlir_scaffold.generate(_plan)",
@@ -156,31 +156,31 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
     elif not profile.fresh10:
         negative += [
             "merlin.compiler.kernel_ir.ir",
-            "merlin.transforms.dense_planning",
+            "merlin.compiler.transforms.dense_planning",
             "merlin.compiler.schedule.schedule_ir",
-            "merlin.targetgen.oot_starterkit.transforms",
+            "merlin.development.targetgen.oot_starterkit.transforms",
         ]
         if profile.level == 2:
-            negative += ["merlin.targetgen.generate.xdsl"]
+            negative += ["merlin.development.targetgen.generate.xdsl"]
             if profile.raw_rtl_study:
                 negative += [
-                    "merlin.targetgen.generate.mlir_scaffold",
-                    "merlin.xdsl_dialects.interface",
-                    "merlin.xdsl_dialects.schedule",
-                    "merlin.perf.storage_encoding",
-                    "merlin.targetgen.oot_starterkit.dialect",
-                    "merlin.targetgen.oot_starterkit.cmdbuf",
+                    "merlin.development.targetgen.generate.mlir_scaffold",
+                    "merlin.compiler.dialects.interface",
+                    "merlin.compiler.dialects.schedule",
+                    "merlin.analysis.perf.storage_encoding",
+                    "merlin.development.targetgen.oot_starterkit.dialect",
+                    "merlin.development.targetgen.oot_starterkit.cmdbuf",
                 ]
             else:
                 negative += ["xdsl.ir"]
     if profile.fresh10:
-        negative += ["merlin.mining", "merlin.kernels", "merlin.xdsl_dialects.cca"]
+        negative += ["merlin.analysis.mining", "merlin.analysis.kernels", "merlin.compiler.dialects.cca"]
         if not profile.allows("scheduling_semantics"):
-            negative += ["merlin.compiler.kernel_ir.ir", "merlin.xdsl_dialects.schedule"]
+            negative += ["merlin.compiler.kernel_ir.ir", "merlin.compiler.dialects.schedule"]
         if not profile.allows("transform_library"):
             negative += [
-                "merlin.transforms.tensor_views",
-                "merlin.transforms.pipeline",
+                "merlin.compiler.transforms.tensor_views",
+                "merlin.compiler.transforms.pipeline",
                 "merlin.compiler.schedule.dense_panel_epochs",
                 "merlin.compiler.kernel_ir.primitives",
             ]
@@ -212,21 +212,21 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
         lines += [
             f"_schema = Path({str(schema)!r})",
             "assert _schema.is_file(), 'selected public command-buffer schema is unavailable'",
-            "from merlin.targetgen.oot_starterkit.cmdbuf import CommandBufferBuilder",
-            "from merlin.targetgen.oot_starterkit.verify import validate as _validate",
+            "from merlin.development.targetgen.oot_starterkit.cmdbuf import CommandBufferBuilder",
+            "from merlin.development.targetgen.oot_starterkit.verify import validate as _validate",
             "_builder = CommandBufferBuilder('readiness', schema_path=_schema).command('EVICT')",
             "_buffer = _builder.to_dict()",
             "assert _validate(cb=_buffer, schema_path=_schema)['ok']",
             "_invalid = dict(_buffer, commands=[{'opcode': '__invalid_readiness_opcode__'}])",
             "_verdict = _validate(cb=_invalid, schema_path=_schema)",
             "assert not _verdict['ok'] and any('schema:' in item for item in _verdict['findings'])",
-            "from merlin.targetgen.generate import xdsl as _generator",
+            "from merlin.development.targetgen.generate import xdsl as _generator",
             "_generated = next(a for a in _generator.generate(_plan) if a.relpath.endswith('_dialect.py'))",
             "_namespace = {'__name__': '_readiness_generated_dialect'}",
             "exec(compile(_generated.content, _generated.relpath, 'exec'), _namespace)",
             "assert _namespace['HAS_XDSL'] and _namespace['get_dialect']() is not None",
-            "from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context",
-            "from merlin.targetgen.oot_starterkit.verify import verify_module",
+            "from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context",
+            "from merlin.development.targetgen.oot_starterkit.verify import verify_module",
             "from xdsl.parser import Parser",
             "_parsed = Parser(make_llvm_context(), 'builtin.module {}').parse_module()",
             "assert verify_module(_parsed) == []",
@@ -251,8 +251,8 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
             "os.environ['MERLIN_TARGET_PATH'] = str(_provider)",
             "os.environ['MERLIN_TARGET_CONTRACT'] = str(_provider / 'contracts/target_contract.yaml')",
             "try:",
-            "    from merlin.targetgen.evidence.store import Evidence",
-            "    from merlin.targetgen import synthesize as _synthesis",
+            "    from merlin.development.targetgen.evidence.store import Evidence",
+            "    from merlin.development.targetgen import synthesize as _synthesis",
             "    _evidence = Evidence(target='profile_readiness', sources={})",
             "    _contract = _synthesis.synthesize_target_contract(_evidence, 'profile_readiness')",
             "    assert isinstance(_contract, dict) and _contract",
@@ -357,8 +357,8 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
 
 def _frozen_rtl_checks(te, ws: Path, bundle: dict, public_root: Path, *, repo: Path) -> list[dict]:
     """Compile a check from the run's frozen facts and public capsule bytes."""
-    from merlin.targetgen import rtl_check_runner as RUN
-    from merlin.targetgen.sandbox import toolchain as TC
+    from merlin.development.targetgen import rtl_check_runner as RUN
+    from merlin.development.targetgen.sandbox import toolchain as TC
 
     selected = bundle.get("selected_rtl_facts_file")
     source = Path(selected) if selected is not None else BW.resolve_grant(str(te.rtl_facts_pin), repo=repo)
@@ -368,8 +368,8 @@ def _frozen_rtl_checks(te, ws: Path, bundle: dict, public_root: Path, *, repo: P
     body = facts.get("facts") or {}
     if not isinstance(body, dict) or not body:
         raise RuntimeError("frozen RTL facts are empty")
-    from merlin.targetgen import rtl_check_compiler as CC
-    from merlin.targetgen.rtl import facts as FACTS
+    from merlin.development.targetgen import rtl_check_compiler as CC
+    from merlin.development.targetgen.rtl import facts as FACTS
 
     capsules = sorted(public_root.rglob("capsule.yaml"))
     if not capsules:
@@ -403,7 +403,7 @@ def _frozen_rtl_checks(te, ws: Path, bundle: dict, public_root: Path, *, repo: P
 
 def _asm_probe(context) -> str:
     from merlin.development.backend.brokers.isa_tools import is_rocc_endpoint
-    from merlin.targetgen.isa_model import isa_model_for_target
+    from merlin.development.targetgen.isa_model import isa_model_for_target
 
     if is_rocc_endpoint(capsule_oracle_policy._endpoint_of(context.target)[0]):
         return "FENCE"
@@ -419,7 +419,7 @@ def _asm_probe(context) -> str:
 def _selected_library_probe() -> str:
     """Import every exact public leaf inside the selected execution namespace."""
     from merlin.development.backend.optimization.compiler_libraries import guest_root
-    from merlin.targetgen.compiler_library import active_compiler_library
+    from merlin.development.targetgen.compiler_library import active_compiler_library
 
     selection = active_compiler_library()
     if selection is None:
@@ -476,7 +476,7 @@ def _sandbox_probe(
     if not external and not projected_source:
         lines += _selected_library_probe().splitlines()
     if common_substrate and not external:
-        from merlin.targetgen.tool_profile import COMMON_PUBLIC_MODULES
+        from merlin.development.targetgen.tool_profile import COMMON_PUBLIC_MODULES
 
         lines += ["import importlib"]
         modules = COMMON_PUBLIC_MODULES if common_modules is None else common_modules
@@ -491,7 +491,7 @@ def _sandbox_probe(
         lines += [
             "from pathlib import Path",
             "import hashlib",
-            "from merlin.transforms.client import apply_transform",
+            "from merlin.compiler.transforms.client import apply_transform",
             f"source_ir = {source!r}",
             "result = apply_transform(Path.cwd(), source_ir,",
             "    {'normalize_shapes': False, 'simplify_integers': True, 'reuse_buffers': False}, wait_seconds=120)",
@@ -506,8 +506,8 @@ def _sandbox_probe(
             lines += [f"assert result.get('compiler_tool_profile_sha256') == {common_profile_sha256!r}, result"]
     if "isa_dialect_generation" in has:
         lines += [
-            "from merlin.targetgen.isa_spec import resolve_isa",
-            "from merlin.targetgen.isa_dialect_gen import generate_package",
+            "from merlin.development.targetgen.isa_spec import resolve_isa",
+            "from merlin.development.targetgen.isa_dialect_gen import generate_package",
             "assert callable(resolve_isa) and callable(generate_package)",
         ]
     if "lean_proof_authoring" in has:
@@ -517,10 +517,10 @@ def _sandbox_probe(
         ]
     if "xdsl_kit" in has:
         lines += [
-            "from merlin.targetgen.evidence.store import Evidence",
-            "from merlin.targetgen import synthesize as S, generate as G",
-            "from merlin.targetgen.generate import target_repo",
-            "from merlin.targetgen.contract.interface_emit import emit_interface_mlir",
+            "from merlin.development.targetgen.evidence.store import Evidence",
+            "from merlin.development.targetgen import synthesize as S, generate as G",
+            "from merlin.development.targetgen.generate import target_repo",
+            "from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir",
             "from merlin.runtime.commandbuffer import pool_params",
             "from merlin.runtime.tensor import pool_out_dims",
             f"e = Evidence(target={target!r}, sources={{}})",
@@ -540,15 +540,15 @@ def _sandbox_probe(
         # The CCA modules are withheld from the author (recorded bundle denials): the spine grant is
         # rtl_backend only, and bijection / escalation ladder go through the cca_tools broker probe.
         lines += [
-            "from merlin.targetgen import rtl_backend as RB",
+            "from merlin.development.targetgen import rtl_backend as RB",
             f"profile = RB.target_profile({target!r})",
             "assert not profile.discovered_nothing",
             "assert not profile.has_mesh or RB.derived_levers(profile)",
         ]
     elif "cca_spine" in has:
         lines += [
-            "from merlin.targetgen import rtl_backend as RB",
-            "from merlin.kernels import cca_contract, action_catalog",
+            "from merlin.development.targetgen import rtl_backend as RB",
+            "from merlin.analysis.kernels import cca_contract, action_catalog",
             f"profile = RB.target_profile({target!r})",
             "assert not profile.discovered_nothing",
             "axes = sorted(cca_contract.leverable_axes(profile.target))",
@@ -562,7 +562,7 @@ def _sandbox_probe(
         lines += [
             "import shutil",
             "assert shutil.which('FileCheck'), 'FileCheck is absent inside the selected sandbox'",
-            "from merlin.targetgen.rtl import facts, gen_numeric_facts, gen_isa_module, gen_rtl_digest",
+            "from merlin.development.targetgen.rtl import facts, gen_numeric_facts, gen_isa_module, gen_rtl_digest",
             f"doc = facts.load_facts({target!r})",
             "assert isinstance(doc.get('facts'), dict) and doc['facts']",
             "assert gen_numeric_facts.generate(doc).strip()",
@@ -790,7 +790,7 @@ def assess(
         from merlin.development.backend.feedback import snapshot_execution
 
         if profile is not None and not snapshot_execution.selected():
-            from merlin.targetgen.tool_profile import verify_tool_profile
+            from merlin.development.targetgen.tool_profile import verify_tool_profile
 
             verified_profile = verify_tool_profile(bundle, tools=selected)
             toolchain = verified_profile.get("lean_toolchain") or {}

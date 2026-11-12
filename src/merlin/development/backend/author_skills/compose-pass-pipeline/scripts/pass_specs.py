@@ -1,6 +1,6 @@
 """List every declared pass contract (``PassSpec``) in a compiler source tree, and check an order.
 
-The library states pass ordering as data: each ``merlin.transforms.pipeline_state.PassSpec`` names its
+The library states pass ordering as data: each ``merlin.compiler.transforms.pipeline_state.PassSpec`` names its
 stage, the analyses it ``requires`` and ``produces``, what it ``invalidates`` and whether it mutates IR,
 and ``validate_pass_order`` rejects an order whose prerequisites are missing or stale. This script reads
 those declarations structurally (``ast``; nothing is imported from the scanned tree) so you can see the
@@ -196,7 +196,7 @@ def _jsonable(rows):
 
 def check(rows, function, order=None):
     """Validate one function's constant declarations in ``order`` with the library's own checker."""
-    from merlin.transforms.pipeline_state import PassSpec, validate_pass_order
+    from merlin.compiler.transforms.pipeline_state import PassSpec, validate_pass_order
 
     matches = [key for key in pipelines(rows) if function in key]
     if len(matches) != 1:

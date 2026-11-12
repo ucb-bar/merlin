@@ -11,10 +11,10 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction, generate_package
-from merlin.targetgen.isa_spec import resolve_isa
-from merlin.targetgen.rtl.circt_introspect import extract_funct_table
-from merlin.targetgen.rtl.firrtl_operand_slices import derive_operand_layouts
+from merlin.development.targetgen.isa_dialect_gen import decode_instruction, encode_instruction, generate_package
+from merlin.development.targetgen.isa_spec import resolve_isa
+from merlin.development.targetgen.rtl.circt_introspect import extract_funct_table
+from merlin.development.targetgen.rtl.firrtl_operand_slices import derive_operand_layouts
 
 FIELDS = ("opcode", "rd", "xs2", "xs1", "xd", "rs1", "rs2", "funct")
 # An explicit initial coverage choice, not an inferred complete ISA.

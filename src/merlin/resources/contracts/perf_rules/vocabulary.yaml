@@ -2,7 +2,7 @@
 #
 # This directory is DATA. A rule expressed as code is a rule that eventually gets a target baked
 # into it -- and `check_no_target_name.py` scans a `.py` here while it does not scan YAML, so the
-# separation is enforced as well as intended. Keep logic in `merlin/python/merlin/perf/harvest.py`;
+# separation is enforced as well as intended. Keep logic in `merlin/python/merlin/analysis/perf/harvest.py`;
 # keep every fact about which rules exist, what they gate on, and which experiment settles them,
 # here.
 #

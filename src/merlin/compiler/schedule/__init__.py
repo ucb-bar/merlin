@@ -43,7 +43,7 @@ from merlin.compiler.schedule.blocks import (
     schedule_interface_program,
 )
 from merlin.compiler.schedule.derive import geometry_from_address_space
-from merlin.transforms.dense_planning import (
+from merlin.compiler.transforms.dense_planning import (
     DenseBlock,
     DenseChoice,
     DenseProblem,

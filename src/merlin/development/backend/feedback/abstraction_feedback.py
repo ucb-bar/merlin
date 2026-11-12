@@ -209,7 +209,7 @@ def seed_selection():
 
 
 def _seed_package(selection, contract):
-    from merlin.targetgen import package_runtime as P
+    from merlin.development.targetgen import package_runtime as P
 
     key = (str(selection.package), selection.sha256, str(contract))
     with _LOCK:
@@ -225,7 +225,7 @@ def _seed_package(selection, contract):
 
 def seed_emission(selection, interface, *, contract, timeout, artifact_name=ARTIFACT):
     """The seed's emission digests for one exact input, computed once and cached."""
-    from merlin.targetgen.capsule_common import lower_interface
+    from merlin.development.targetgen.capsule_common import lower_interface
 
     text = Path(interface).read_bytes()
     key = _sha(b"\0".join((selection.sha256.encode(), text, artifact_name.encode(), str(contract).encode())))
@@ -370,8 +370,8 @@ def census(artifact_text, *, target):
     class (``movement``, ``synchronization``) comes from the shared family vocabulary. Unresolved
     widths or counts stay UNKNOWN/None.
     """
-    from merlin.targetgen.rocc.decode import decode_text
-    from merlin.targetgen.semantic_families import from_isa_class
+    from merlin.development.targetgen.rocc.decode import decode_text
+    from merlin.development.targetgen.semantic_families import from_isa_class
 
     trace = decode_text(artifact_text, target=target)
     fences = {"static_sites": 0, "dynamic": 0}
@@ -473,8 +473,8 @@ def _synthetic_capsule(template_yaml, cb, *, name, directory, interface_text):
 def _numerical(submission, capsule_root, *, runs_root, context, contract, timeout):
     from merlin.development.backend.feedback.public_scalability import _readback, _sim_via
     from merlin.development.backend.feedback.selfcheck import _adapters
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen.capsule_common import tier_status
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen.capsule_common import tier_status
 
     adapters, engine = _adapters("spike", context.target, _sim_via(context), **_readback(context))
     if engine != "spike" or set(adapters) != {"L2"}:
@@ -532,9 +532,9 @@ def coverage_sweep(
     ``resize(cb, shape) -> cb`` is the caller's existing case-resizing path. Only ``template`` (one of
     ``allowed_templates`` directly under ``public_cases``) is read; shapes are labelled by position.
     """
-    from merlin.targetgen import package_runtime as P
-    from merlin.targetgen.capsule_common import lower_interface
-    from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+    from merlin.development.targetgen import package_runtime as P
+    from merlin.development.targetgen.capsule_common import lower_interface
+    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
     if type(shapes) is not list or not 0 < len(shapes) <= max_shapes:
         raise ValueError(f"coverage sweep accepts 1 to {max_shapes} shapes per request")

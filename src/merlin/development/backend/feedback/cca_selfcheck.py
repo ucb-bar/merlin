@@ -175,7 +175,7 @@ def _selfcheck_record(
         if not regions:
             failed[case] = "no accelerator region in the linked kernel"
         members.extend((dict(region, case=case) for region in regions))
-    from merlin.kernels.mechanism_applicability import selected_geometry
+    from merlin.analysis.kernels.mechanism_applicability import selected_geometry
 
     geometry, reason = selected_geometry(
         target, facts_doc if facts_doc is not None else json.loads(Path(decoder_files["facts"]).read_text())

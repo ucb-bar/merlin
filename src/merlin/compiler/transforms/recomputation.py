@@ -21,10 +21,10 @@ from xdsl.ir.affine import AffineMap
 
 from merlin.common.digest import sha256_file
 from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
+from merlin.compiler.transforms import recomputation_check as check
+from merlin.compiler.transforms.certificates import ir_digest, parse_ir
 from merlin.compiler.transforms.multioutput import read_source_multioutput
-from merlin.transforms import recomputation_check as check
-from merlin.transforms.certificates import ir_digest, parse_ir
-from merlin.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
 
 _ISSUED = WeakKeyDictionary()
 
@@ -145,10 +145,10 @@ def _rewrite(candidate, ordinals, source):
 
 
 def _functions():
+    from merlin.compiler.lower.model import layout_conformance
     from merlin.compiler.schedule import fusion_semantics, pointwise_source
+    from merlin.compiler.transforms import certificates, dense_ir, pure_scalar
     from merlin.compiler.transforms import multioutput as multioutput_fusion
-    from merlin.llvmlower import layout_conformance
-    from merlin.transforms import certificates, dense_ir, pure_scalar
 
     return (
         _digest,
@@ -201,8 +201,8 @@ def implementation_paths():
     """Direct semantic owners; this is not arbitrary transitive qualification."""
     import inspect
 
-    from merlin.llvmlower import quant_round_check
-    from merlin.transforms import dense_ir, pure_scalar
+    from merlin.compiler.lower.model import quant_round_check
+    from merlin.compiler.transforms import dense_ir, pure_scalar
 
     return tuple(
         dict.fromkeys(

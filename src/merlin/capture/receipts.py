@@ -91,7 +91,10 @@ def _require_pt2e_integerization_receipt(
     """
     receipt = meta.get("integerization_receipt")
     if isinstance(receipt, dict) and receipt.get("schema") == "merlin.dynamic_integer_reference.v1":
-        from merlin.targetgen.application_inventory import verified_static_integerization, verify_capture_receipt
+        from merlin.development.targetgen.application_inventory import (
+            verified_static_integerization,
+            verify_capture_receipt,
+        )
 
         if capture_root is None:
             raise M2MUnavailable("dynamic independent reference needs its complete capture directory")
@@ -267,7 +270,7 @@ def _require_materialized_contraction(program: str, *, dtype: str) -> int:
     shared numeric format registry, not a target name.
     """
     from merlin.common import mlir_query as query
-    from merlin.targetgen.corpus_spec import dtype_info
+    from merlin.development.targetgen.corpus_spec import dtype_info
 
     try:
         _, element, _, integer = dtype_info(dtype)

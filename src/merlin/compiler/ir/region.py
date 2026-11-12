@@ -13,7 +13,7 @@ from xdsl.ir import Block, Region
 
 from merlin.compiler.ir.boundary import live_values
 from merlin.compiler.ir.semantics import region_semantic_attributes
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 from merlin.verification.partition import verify_region_preview
 
 

@@ -301,7 +301,7 @@ class Progress:
             except (OSError, ValueError):
                 tier_state = None
         from merlin.development.backend.feedback.loop_grading import _history_runs_roots
-        from merlin.targetgen.capsule_scheduling import newest_outcomes
+        from merlin.development.targetgen.capsule_scheduling import newest_outcomes
 
         outcomes = newest_outcomes(_history_runs_roots(self.root.parent.parent))
         try:
@@ -508,7 +508,7 @@ SNAPSHOT_ADMISSION_S = 300
 
 @contextmanager
 def admission(progress, *, timeout, remaining_s, history):
-    from merlin.targetgen.capsule_scheduling import measured_costs, rolling_admission
+    from merlin.development.targetgen.capsule_scheduling import measured_costs, rolling_admission
 
     # With no time left there is no admission window: the already-expired deadline alone closes
     # admission (no new member starts) while started work drains. A zero window would be refused by
@@ -548,8 +548,8 @@ def native(
 ):
     """Exact frozen context enables scheduling reuse; missing identity only disables reuse."""
     from merlin.development.backend import joint_control
+    from merlin.development.targetgen.tier_cache import instrument_digest
     from merlin.runtime.backends.base import get_backend
-    from merlin.targetgen.tier_cache import instrument_digest
 
     state = joint_control.selected()
     if state is None:

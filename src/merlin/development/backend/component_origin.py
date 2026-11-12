@@ -27,8 +27,8 @@ from merlin.development.backend.optimization.component_experiment import (
     strict_tool_policy,
     verify_component_view,
 )
-from merlin.targetgen.compiler_library import CompilerLibraryContract
-from merlin.targetgen.generalization_prompt import append_general_compiler_contract
+from merlin.development.targetgen.compiler_library import CompilerLibraryContract
+from merlin.development.targetgen.generalization_prompt import append_general_compiler_contract
 
 _ISSUED: dict[object, tuple] = {}
 _DRIVER = '''"""Structure-only OOT entrypoint. Author the compiler in this package."""
@@ -175,7 +175,7 @@ class FreshPhase1Inputs:
         return self.author_sandbox.source
 
     def verify(self) -> dict:
-        from merlin.targetgen.target_experiment import TargetExperiment
+        from merlin.development.targetgen.target_experiment import TargetExperiment
 
         try:
             from merlin.development.backend.optimization.component_runtime import IndependentComponentRuntime
@@ -474,7 +474,7 @@ def run_fresh_component_phase1(
         inputs=(prompt_path, *(initial / relative for relative in inert_scaffold(inputs.target_experiment.target))),
         dependencies=(
             Path(__file__),
-            module_source_path("merlin.targetgen.generalization_prompt"),
+            module_source_path("merlin.development.targetgen.generalization_prompt"),
             *tuple(row.source for row in inputs.control_runtime),
         ),
     ) as observation:

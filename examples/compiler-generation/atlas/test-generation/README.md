@@ -124,7 +124,7 @@ NumPy and Torch before loading the model and requires deterministic algorithms.
 Use the same explicitly selected model2MLIR interpreter/build for all four.
 
 ```sh
-"$CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \

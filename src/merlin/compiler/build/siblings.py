@@ -38,10 +38,10 @@ def _read(capsule, *, target):
     import yaml
 
     from merlin.compiler.build.spatial import _local_document
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.llvmlower.borrowed_effects import BorrowedBufferEffects
-    from merlin.llvmlower.source_region_host import prepare_sibling_source_host, tensor_abi
-    from merlin.targetgen.frozen_placement import read as placement
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+    from merlin.compiler.lower.model.borrowed_effects import BorrowedBufferEffects
+    from merlin.compiler.lower.model.source_region_host import prepare_sibling_source_host, tensor_abi
+    from merlin.development.targetgen.frozen_placement import read as placement
 
     root = Path(capsule["__dir__"]).absolute()
     if root != root.resolve() or any(p.is_symlink() for p in (root, *root.parents)):
@@ -107,7 +107,7 @@ def _read(capsule, *, target):
     # Reopen independent source eligibility. No emitted field may create a
     # placement, dtype or supporting-device grant. This initial route supports
     # exactly the source's signed integer sibling roots as accelerator work.
-    from merlin.targetgen.frozen_source_eligibility import census as independent_frozen_source_eligibility
+    from merlin.development.targetgen.frozen_source_eligibility import census as independent_frozen_source_eligibility
 
     certificate = independent_frozen_source_eligibility({**declaration, "__dir__": str(root)}, target=target)
     eligible = [row for row in certificate.get("regions", []) if row.get("target_eligible") is True]
@@ -143,8 +143,8 @@ def compiler_input(capsule, generated, *, target):
     from xdsl.dialects import func
     from xdsl.dialects.builtin import StringAttr
 
-    from merlin.targetgen.contract.linalg_iface import bind_logical_io_metadata
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.dialects._common import text
+    from merlin.development.targetgen.contract.linalg_iface import bind_logical_io_metadata
 
     prepared, declaration, pins, validate, certificate = _read(capsule, target=target)
     core = prepared.core.clone()
@@ -194,8 +194,8 @@ def full_command_buffer(capsule, private):
     from copy import deepcopy
 
     from merlin.compiler.build.spatial import _local_document
-    from merlin.frontends.linalg_mlir import parse_mlir_text
-    from merlin.llvmlower.source_region_host import tensor_abi
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+    from merlin.compiler.lower.model.source_region_host import tensor_abi
 
     path, raw = _local_document(Path(capsule["__dir__"]), capsule["owned_host_source"]["source_graph"])
     ins, outs = tensor_abi(parse_mlir_text(raw.decode()))
@@ -234,18 +234,18 @@ def emit_selected(capsule, candidate_llvm, command_buffer, output, *, target, ti
     from xdsl.parser import Parser
 
     from merlin.compiler.build.spatial import normalize_unused_void_asm_results
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.lower.model import codegen, target_data_layout, toolchain
+    from merlin.compiler.lower.model.arena_bind import heap_demand
+    from merlin.compiler.lower.model.borrowed_buffer_calls import from_writers
+    from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
+    from merlin.compiler.lower.model.device_shim import LogicalBuffer, emit_logical_translation_unit
+    from merlin.compiler.lower.model.host_builder import PTR, FnBuilder, append_void_region
+    from merlin.compiler.lower.model.source_region_host import emit_ranked_source_entry
     from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
-    from merlin.llvmlower import codegen, target_data_layout, toolchain
-    from merlin.llvmlower.arena_bind import heap_demand
-    from merlin.llvmlower.borrowed_buffer_calls import from_writers
-    from merlin.llvmlower.compilation_recipe import CompilationRecipe
-    from merlin.llvmlower.device_shim import LogicalBuffer, emit_logical_translation_unit
-    from merlin.llvmlower.host_builder import PTR, FnBuilder, append_void_region
-    from merlin.llvmlower.source_region_host import emit_ranked_source_entry
+    from merlin.development.targetgen.contract.harness_abi import for_target
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
     from merlin.runtime.backends.base import harness_build_recipe
-    from merlin.targetgen.contract.harness_abi import for_target
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-    from merlin.xdsl_dialects._common import text
 
     prepared, declaration, pins, validate, certificate = _read(capsule, target=target)
     if command_buffer.get("target") != target:

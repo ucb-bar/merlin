@@ -2,7 +2,7 @@
 
 Owns standalone candidate-side clients: ISA assembly/inspection, CCA/lever
 inspection, self-check requests, simulator-job requests, and verdict waiting.
-`merlin.targetgen.tool_registry` maps exact modules to their staged CLI filenames.
+`merlin.development.targetgen.tool_registry` maps exact modules to their staged CLI filenames.
 Copy only those declared files, never this directory or its parent.
 
 Each client must run as a copied file with standard-library-only Python, without

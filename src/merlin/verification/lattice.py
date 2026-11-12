@@ -126,7 +126,7 @@ def sweep(
                 v = validate_compilation(iface, cb, acc_width=acc_width, timeout_ms=timeout_ms)
                 status = v.status
             except Exception as exc:  # noqa: BLE001 — a failed lowering/solver cannot count as proof
-                from merlin.xdsl_dialects.lowering.interface_lowering import LoweringError
+                from merlin.compiler.dialects.lowering.interface_lowering import LoweringError
 
                 from .smt_semantics import UnsupportedSemantics
 
@@ -213,7 +213,7 @@ def witnesses_declared(target: str) -> dict[str, Any]:
     """
     import yaml
 
-    from merlin.targetgen.corpora import graded_capsule_roots
+    from merlin.development.targetgen.corpora import graded_capsule_roots
 
     roots = graded_capsule_roots(target)
     if not roots:

@@ -4,8 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from merlin.development.targetgen.oracle_policy import (
+    _SIM_ORACLES,
+    _bespoke_sim_via,
+    _endpoint_of,
+    _ensure_sim_oracles_discovered,
+)
 from merlin.evaluation.capsule.adapters import mlc_arc_adapter, oracle_adapters
-from merlin.targetgen.oracle_policy import _SIM_ORACLES, _bespoke_sim_via, _endpoint_of, _ensure_sim_oracles_discovered
 
 
 def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str]:
@@ -28,7 +33,7 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
     (``sim_via == "cyclotron"``, a self-hosted SIMT core) is probed FIRST and takes precedence over the
     ``external_backend`` program-oracle default (a SIMT core's endpoint is also external_backend, but the
     arc command-buffer path grades the wrong artifact for it, so arc_available must NOT false-green it)."""
-    from merlin.targetgen.rtl import mlc_bridge
+    from merlin.development.targetgen.rtl import mlc_bridge
 
     _ensure_sim_oracles_discovered()  # wire any target-contributed plugin.sim_oracle
     if sim_via is None:
@@ -48,8 +53,8 @@ def oracle_available(target: str, sim_via: str | None = None) -> tuple[bool, str
                 f"external_backend target {target!r}: contract declares no runner.model_ext — "
                 f"cannot resolve the model-venv oracle"
             )
-        from merlin.targetgen.program_oracle import OracleUnavailable as _PU
-        from merlin.targetgen.program_oracle import _model_venv_python
+        from merlin.development.targetgen.program_oracle import OracleUnavailable as _PU
+        from merlin.development.targetgen.program_oracle import _model_venv_python
 
         try:
             _model_venv_python(model_ext)
@@ -81,9 +86,9 @@ def _arc_answers_a_buffer(target: str) -> tuple[bool, str]:
     raise is reported as "cannot grade" with the reason — never swallowed, since a swallowed probe would
     restore the false green it exists to remove.
     """
+    from merlin.development.targetgen.corpus_spec import _tile_dim
+    from merlin.development.targetgen.target_experiment import load_capability_manifest
     from merlin.runtime.reference import reference_outputs
-    from merlin.targetgen.corpus_spec import _tile_dim
-    from merlin.targetgen.target_experiment import load_capability_manifest
 
     try:
         contract = load_capability_manifest(target).contract

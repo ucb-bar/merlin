@@ -12,13 +12,13 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from merlin.analysis.perf.capsule_roofline import compute_peak_from_facts
+from merlin.analysis.perf.model_macs import observe_model_macs
 from merlin.common.digest import is_sha256
 from merlin.development.backend.optimization import _public_native_exploratory_estimate as ESTIMATE
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256
 from merlin.development.backend.optimization.exploratory_development_priority import _estimate, _signature
 from merlin.development.backend.optimization.search_inputs import ORDINARY_FAST_KIND, ORDINARY_SELECTED_FAST_KIND
-from merlin.perf.capsule_roofline import compute_peak_from_facts
-from merlin.perf.model_macs import observe_model_macs
 
 SCHEMA = "merlin.exploratory_capsule_priorities.v1"
 MAX_SOURCE_BYTES = 16 << 20

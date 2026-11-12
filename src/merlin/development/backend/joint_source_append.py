@@ -12,9 +12,9 @@ from merlin.experiments.corpus.projection_shapes import contractions
 
 def verified_members(evidence):
     """Recompute each reviewed independent integer contraction's geometry."""
+    from merlin.compiler.lower.model.device_shim import logical_buffers
     from merlin.development.backend.joint_source_revision import _capsule
-    from merlin.llvmlower.device_shim import logical_buffers
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     if set(evidence) != {"schema", "members"} or evidence["schema"] != "merlin.source_member_append_review.v1":
         raise ValueError("source append requires an explicit member review")

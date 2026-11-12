@@ -28,8 +28,8 @@ from merlin.compiler.schedule.dense_shared_rhs_check import DenseRHSReuseLaw, sh
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.schedule_ir import dense_schedule_text
 from merlin.compiler.schedule.shared_rhs_schedule_ir import make_shared_rhs_schedule_plan, read_shared_rhs_schedule_plan
-from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
+from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 
 
 def _emit(problems, blocks, storages, encode_member, name, dtypes, readouts):

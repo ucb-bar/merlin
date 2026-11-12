@@ -170,11 +170,11 @@ and require the ordinary correctness/performance checks for every accepted chang
 The source APIs live in the optional mining package:
 
 ```sh
-python -m merlin.mining.reference_subsets prepare \
+python -m merlin.analysis.mining.reference_subsets prepare \
   --corpus "$CORPUS_ROOT" --out "$NEW_PRODUCT_ROOT" \
   --artifact jack-resnet50 --artifact jack-smolvla --artifact jack-tinyllama \
   --sizes 4 8 16 32
-python -m merlin.mining.reference_subsets query \
+python -m merlin.analysis.mining.reference_subsets query \
   --bank "$SUBSET_ROOT/conditions/cca-4" \
   --instruction MVIN --field rows --limit 3
 ```

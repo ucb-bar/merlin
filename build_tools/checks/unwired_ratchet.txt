@@ -1,6 +1,10 @@
 # Modules under the instrumented packages that no production code imports.
 # May only shrink: wire the module into a production path, or delete it.
 # growth-accepted: the gate is new; this is debt it discovered, not debt added.
+# growth-accepted: these three were counted as wired only through the sealed fresh10 tooling
+# projection, which admits a module by its exact published bytes; the top-level regroup rewrote their
+# imports, so the projection no longer admits them. No current code imports them. Recorded until the
+# development/targetgen folder review decides to wire or delete each (2026-11-11).
 merlin/python/merlin/perf/emitter_reach.py
 merlin/python/merlin/perf/explicit_plan_adapter.py
 merlin/python/merlin/targetgen/_aten_opset_worker.py
@@ -12,3 +16,6 @@ merlin/python/merlin/targetgen/oracle_helpers/isa_introspect.py
 merlin/python/merlin/targetgen/oracle_helpers/program_cosim.py
 merlin/python/merlin/verify/ablation.py
 merlin/python/merlin/verify/proofs.py
+merlin/python/merlin/targetgen/oot_starterkit/passes.py
+merlin/python/merlin/targetgen/rtl/firrtl_scalar_cutpoints.py
+merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py

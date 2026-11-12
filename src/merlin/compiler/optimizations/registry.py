@@ -11,6 +11,9 @@ import os
 import tempfile
 from pathlib import Path
 
+from merlin.compiler.lower.model.copy_expand import FEATURE as _EXPAND_COPY_FEATURE
+from merlin.compiler.lower.model.selfcopy import FEATURE as _SELF_COPY_FEATURE
+from merlin.compiler.lower.model.transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 from merlin.compiler.passes.features import (
     _PROMOTE_STACK_DEFAULT_BYTES as _PROMOTE_STACK_DEFAULT_BYTES,
 )
@@ -49,9 +52,6 @@ from merlin.compiler.passes.features import (
 )
 from merlin.compiler.selection.features import CompositionError as CompositionError
 from merlin.compiler.selection.features import FeatureRegistry, ImprFeature
-from merlin.llvmlower.copy_expand import FEATURE as _EXPAND_COPY_FEATURE
-from merlin.llvmlower.selfcopy import FEATURE as _SELF_COPY_FEATURE
-from merlin.llvmlower.transpose_fuse import FEATURE as _FUSE_TRANSPOSE_FEATURE
 
 _FEATURES = FeatureRegistry(lambda name: _try_lazy_register(name))
 
@@ -526,18 +526,18 @@ register(
     )
 )
 
-from merlin.llvmlower.reduce_vec import ensure_registered as _ensure_amax_reduction
+from merlin.compiler.lower.model.reduce_vec import ensure_registered as _ensure_amax_reduction
 
 VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()
 
-from merlin.llvmlower.bufferized_result_identity import ensure_registered as _ensure_buffer_identity
+from merlin.compiler.lower.model.bufferized_result_identity import ensure_registered as _ensure_buffer_identity
 
 BUFFERIZED_RESULT_IDENTITY_NAME = _ensure_buffer_identity()
 
-from merlin.llvmlower.scalar_squared_sum import ensure_registered as _ensure_squared_sum
+from merlin.compiler.lower.model.scalar_squared_sum import ensure_registered as _ensure_squared_sum
 
 SCALAR_SQUARED_SUM_NAME = _ensure_squared_sum()
 
-from merlin.llvmlower.tensor_helper_inlining import ensure_registered as _ensure_tensor_helper_inlining
+from merlin.compiler.lower.model.tensor_helper_inlining import ensure_registered as _ensure_tensor_helper_inlining
 
 TENSOR_HELPER_INLINING_NAME = _ensure_tensor_helper_inlining()

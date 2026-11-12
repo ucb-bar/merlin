@@ -238,7 +238,7 @@ def require_observation_selection(record, *, indices, max_bytes):
 def setup_readback(cgen, model_dir, info, compilation, full, indices, max_bytes):
     """Prepare the existing full-output transport and optional argument observer."""
     if full:
-        from merlin.llvmlower.c_runtime import _out_specs
+        from merlin.compiler.lower.model.c_runtime import _out_specs
 
         from .whole_model_readback import render_outputs_header
 

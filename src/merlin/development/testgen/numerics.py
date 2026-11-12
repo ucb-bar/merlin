@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from merlin.common.paths import _dotenv  # noqa: E402
-from merlin.targetgen import corpus_spec as CS  # noqa: E402
+from merlin.development.targetgen import corpus_spec as CS  # noqa: E402
 
 
 # ------------------------------------------------------------------------------------------------
@@ -87,12 +87,12 @@ def _det_fp8(D, name, shape, salt, fmt_token, d_fp8, *, palette=None, palette_dt
     """Structured, format-DERIVED operand bytes: distinct rows AND columns + asymmetric (so a wrong row
     stride / base offset / transposed load changes the output), spanning the fp8 format's representable
     range. Replaces the old 11-magnitude flat-hash fill (~6 distinct values, ~11/32 distinct rows) that hid
-    those bug classes. See merlin.targetgen.corpus_operands."""
-    from merlin.targetgen import corpus_operands as CO
+    those bug classes. See merlin.development.targetgen.corpus_operands."""
+    from merlin.development.targetgen import corpus_operands as CO
 
     salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
     if palette is not None:
-        from merlin.targetgen.input_palette import realize
+        from merlin.development.targetgen.input_palette import realize
 
         vals = realize(palette, name=name, shape=shape, dtype=palette_dtype or fmt_token)
     else:
@@ -143,7 +143,7 @@ def float_semantics(entry, binding, *, semantics=None):
     Legacy callers retain their old answer, not an implied newly reviewed spec.
     New recipes carry this mapping on the entry, so cache identities bind it.
     """
-    from merlin.targetgen.software_spec import validate_numerical_semantics
+    from merlin.development.targetgen.software_spec import validate_numerical_semantics
 
     selected = semantics if semantics is not None else entry.get("numerical_semantics")
     if selected is None:
@@ -282,7 +282,7 @@ def _float_golden(entry, binding, *, semantics=None):
         Returns the decoded values (not raw codes): everything downstream of an accumulator-format
         operand is float arithmetic, and the byte-level palette-preload path is for input operands.
         """
-        from merlin.targetgen import corpus_operands as CO
+        from merlin.development.targetgen import corpus_operands as CO
 
         if len(shape) == 2:
             _, vals = _det_fp8(
@@ -303,7 +303,7 @@ def _float_golden(entry, binding, *, semantics=None):
             # axis. So distinctness ALONG the vector is asserted here instead of skipped.
             (n,) = shape
             salt_int = sum((i + 1) * ord(c) for i, c in enumerate(f"{salt}|{name}")) or 1
-            from merlin.targetgen.input_palette import realize
+            from merlin.development.targetgen.input_palette import realize
 
             explicit = (
                 realize(entry["input_palette"], name=name, shape=shape, dtype=selected["accumulator_dtype"])
@@ -564,8 +564,8 @@ def _mx_golden(entry, binding):
     """MX matmul golden (bf16 output) + provenance, computed by mx_ref in hardware semantics. Operands are
     format-derived + rigor-gated; the E8M0 block-scale streams are rigor-gated too (a mis-indexed per-lane
     scale must change the output)."""
+    from merlin.development.targetgen import corpus_operands as CO
     from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
-    from merlin.targetgen import corpus_operands as CO
 
     mx = _mx_ref()
     tok = canonical_float(binding.operand_dtype)  # fp8_e4m3 / fp6_e3m2 / fp4_e2m1
@@ -718,7 +718,7 @@ def _mx_safe_palette(mx, tok: str) -> list:
     the operand synthesizer uses (so a requant code never overflows the 4-bit column accumulator). fp6 is
     capped to the SAME 16-value pool the synthesizer draws from (``derive_palette(...,16)``), so the fused
     PV union LUT (P-codes ∪ V-codes) stays within the 16-entry fp6 LUT."""
-    from merlin.targetgen import corpus_operands as CO
+    from merlin.development.targetgen import corpus_operands as CO
 
     if tok == "fp6_e3m2":
         return sorted(CO.derive_palette("fp6_e3m2", 16, mag_cap=4.0))
@@ -841,8 +841,8 @@ def _mx_attention_golden(entry, binding):
 
     import numpy as np
 
+    from merlin.development.targetgen import corpus_operands as CO
     from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
-    from merlin.targetgen import corpus_operands as CO
 
     mx = _mx_ref()
     tok = canonical_float(binding.operand_dtype)  # fp8_e4m3 / fp6_e3m2 / fp4_e2m1
@@ -911,7 +911,7 @@ def _mx_attention_golden(entry, binding):
         # e4m3 requant of the UNNORMALIZED P, the PV MX matmul, then finalize O = O_unnorm * bf16(1/bf16(l)).
         # The reference (mx_flash_ref) is validated bit-exact vs the cyclotron RTL, so the generator and the
         # kernel share ONE arithmetic — a regeneration reproduces exactly what the kernel computes.
-        from merlin.targetgen import mx_flash_ref as MXF
+        from merlin.development.targetgen import mx_flash_ref as MXF
 
         O_arr, _P_codes, SA_p, _l, P_dec, pv_art = MXF.flash_attention_fp8(
             mx, S_rows, V, SB_v, M=M, Skv=Skv, Dv=Dv, att_scale=att_scale, softcap=softcap
@@ -999,8 +999,8 @@ def _mx_gemv_batched_golden(entry, binding):
     on the mx_ref datapath; this is the faithful batched analog.) mxfp8 only; golden from mlc mx_ref."""
     import numpy as np
 
+    from merlin.development.targetgen import corpus_operands as CO
     from merlin.runtime.fp8_formats import canonical_float, e8m0_decode
-    from merlin.targetgen import corpus_operands as CO
 
     mx = _mx_ref()
     tok = canonical_float(binding.operand_dtype)
@@ -1087,8 +1087,8 @@ def _simt_golden(entry, binding):
     """SIMT (CVFPU) golden in ordinary IEEE float — fp32 accumulate, format-rounded operands. Covers the
     matmul / attention / rmsnorm shapes; independent of any accelerator model (the SIMT cores do plain IEEE
     math). Operands are format-derived + rigor-gated."""
+    from merlin.development.targetgen import corpus_operands as CO
     from merlin.runtime.fp8_formats import canonical_float
-    from merlin.targetgen import corpus_operands as CO
 
     tok = canonical_float(binding.operand_dtype)  # fp16 / bf16 / f32
     dim = binding.tile_dim
@@ -1104,7 +1104,7 @@ def _simt_golden(entry, binding):
         return a.astype(np.float32).astype(np.float64)
 
     def synth(name, shape):
-        from merlin.targetgen.input_palette import realize
+        from merlin.development.targetgen.input_palette import realize
 
         explicit = (
             realize(entry["input_palette"], name=name, shape=shape, dtype=tok)

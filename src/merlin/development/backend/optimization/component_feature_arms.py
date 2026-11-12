@@ -15,7 +15,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from types import MethodType
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.component_cost import ComponentCostRegion, ComponentFeatureObservation
 from merlin.common import invocation_record as I
 from merlin.development.backend.optimization.component_experiment import RuntimeGrant
 from merlin.development.backend.optimization.component_feature_inputs import PreparedFeatureInputs, pin, plain
@@ -26,7 +26,7 @@ from merlin.development.backend.optimization.feedback_protocol import (
     _syntax_depth,
     encode_feedback_value,
 )
-from merlin.perf.component_cost import ComponentCostRegion, ComponentFeatureObservation
+from merlin.evaluation.harness import hash_tree
 
 _TOKENS = {
     "{compiler}": "/compiler",

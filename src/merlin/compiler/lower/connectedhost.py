@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from hashlib import sha256
 
-from merlin.llvmlower.borrowed_buffer_calls import BorrowedBufferEffects
+from merlin.compiler.lower.model.borrowed_buffer_calls import BorrowedBufferEffects
 from merlin.runtime.connected import ConnectedProgram
 
 _C_KEYWORDS = frozenset(

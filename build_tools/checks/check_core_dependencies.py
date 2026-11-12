@@ -19,8 +19,12 @@ import _source_layout  # noqa: E402
 # Core operations never invoke these optional research entrypoints themselves.
 COMPATIBILITY_IMPORTS = frozenset(
     {
-        ("merlin.mining.from_strategy", ("mint_fork",), "merlin.mining.fork"),
-        ("merlin.targetgen.package_runtime", ("__getattr__",), "merlin.targetgen.package_certification"),
+        ("merlin.analysis.mining.from_strategy", ("mint_fork",), "merlin.analysis.mining.fork"),
+        (
+            "merlin.development.targetgen.package_runtime",
+            ("__getattr__",),
+            "merlin.development.targetgen.package_certification",
+        ),
     }
 )
 

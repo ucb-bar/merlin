@@ -5,9 +5,9 @@ extension admits only aliases with identical positive executable extents in the
 actual ELF. It changes no code, selected symbol, counter boundary or simulator.
 """
 
+from merlin.analysis.perf import compiled_static_features as SYMBOLS
+from merlin.analysis.perf import debug_companion as ELF
 from merlin.development.backend import annotated_spike_evidence as ORIGINAL
-from merlin.perf import compiled_static_features as SYMBOLS
-from merlin.perf import debug_companion as ELF
 
 REVIEW_SCHEMA = "merlin.counter_window_review.v2"
 

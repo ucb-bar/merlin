@@ -115,7 +115,7 @@ def validate(spec: dict, *, owner: str) -> None:
 
 def derive(spec, *, owner, axis, target, tile, dtype, fixed, evidence, resolve_extent):
     """Return extents, labels and inequalities through the normal sweep resolver."""
-    from merlin.targetgen import address_space as AS
+    from merlin.development.targetgen import address_space as AS
 
     validate(spec, owner=owner)
     quantum = resolve_extent(spec["quantum"], tile)

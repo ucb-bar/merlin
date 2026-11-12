@@ -30,9 +30,9 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured.identity import epoch_of, read_json
-from merlin.perf import whole_model_verdict as V
 
 #: The outcomes that are verdicts about the bytes (a refusal is one unless it is the host's fault).
 VERDICT_STATUSES = (V.TIMING_MEASURED, V.TIMING_MEASURED_INVALID)

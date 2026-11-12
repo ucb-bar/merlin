@@ -43,11 +43,11 @@ start disagreeing about one state.
   - `service` / `worker` / `batch`: asynchronous jobs keyed by exact package bytes, one detached job run
     to a result document, and one board batch judged by the reference control measured inside it (a
     batch whose control drifted re-measures its candidates alone before the drift refuses them).
-  - `merlin.perf.whole_model_builder` and `merlin.perf.whole_model_verdict` (core, shared with the
+  - `merlin.analysis.perf.whole_model_builder` and `merlin.analysis.perf.whole_model_verdict` (core, shared with the
     whole-model build and the reference arm): the service builder and the protocol-log reader, which
     makes any failure `MEASURED_INVALID`.
   - `fast`: the fast tiers (structure on the functional model, the changed groups timed on the RTL
-    emulator through `merlin.perf.whole_model_group_timing`, one group's check), exposed as broker
+    emulator through `merlin.analysis.perf.whole_model_group_timing`, one group's check), exposed as broker
     actions and never the objective.
   - `retention` / `store_admin`: what a finished job keeps, and logged operator edits to a store that
     state why and delete nothing.
@@ -60,7 +60,7 @@ start disagreeing about one state.
     coverage of the forms that hold a model's cycles. Data for the agent, never a remedy.
   - `ledger`: the run's `oot/` history. The harness commits each candidate (tree digest equals the
     store's package digest), tags `measured/<n>` when it lands, moves `best` only on a confirmed win,
-    and assembles champion evidence for `merlin.targetgen.champions`.
+    and assembles champion evidence for `merlin.development.targetgen.champions`.
 - Cell mode
   - `cells` / `cell_prep` / `cell_runs` / `group_capsules` / `group_capsules_board`: a cell's groups (and
     held-out and collateral groups) built as one-group programs by the target's own driver, both arms

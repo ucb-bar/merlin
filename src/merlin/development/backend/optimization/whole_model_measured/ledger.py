@@ -7,7 +7,7 @@ tree digest IS the store's package digest; the commit record -- never a copy of 
 iteration row (``iterations.jsonl``).  When a candidate's measurement lands it is tagged
 ``measured/<n>`` (immutable); ``best`` moves only on a CONFIRMED win: the objective's best, held up by
 its solo repeat and, where the run has a certifier, certified.  :func:`champion_records` assembles the
-evidence :func:`merlin.targetgen.champions.export_champion` requires, from the store's own results.
+evidence :func:`merlin.development.targetgen.champions.export_champion` requires, from the store's own results.
 """
 
 from __future__ import annotations
@@ -17,9 +17,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.common import oot_repo
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
-from merlin.perf import whole_model_verdict as V
 
 ITERATIONS = "iterations.jsonl"
 LANDED = (V.TIMING_MEASURED, V.TIMING_MEASURED_INVALID, V.TIMING_REFUSED)
@@ -142,7 +142,7 @@ class OotLedger:
                 event = {"kind": "best", "n": by_digest[winner]["n"], "package_sha256": winner, "at": self.clock()}
                 self._append(event)
                 events.append(event)
-                from merlin.targetgen import target_index
+                from merlin.development.targetgen import target_index
 
                 target_index.refresh_for_run(self.repo.parent, 2)  # the index lists the run's new best
         return events
@@ -172,7 +172,7 @@ def champion_records(
     phase0_evidence_digest: str,
     roles: Sequence[str],
 ) -> dict[str, dict[str, Any]]:
-    """The four records :func:`merlin.targetgen.champions.export_champion` requires, read from the
+    """The four records :func:`merlin.development.targetgen.champions.export_champion` requires, read from the
     store's own results for ``digest``: the board measurement (batched, with the in-batch control), the
     certifier's verdict, and the whole-ELF instruction scan.  A field the store cannot support is left
     out, so the export refuses it rather than defaulting it."""
@@ -231,7 +231,7 @@ def exactness_record(result: Mapping[str, Any]) -> dict[str, Any] | None:
     """The exactness contract a measurement was graded under, as a champion records it: the contract's
     identity, the label (``exact`` only when every group was held exact) and each group's contract.
     None when the measurement recorded none -- the export then refuses it rather than assume ``exact``."""
-    from merlin.perf import exactness as EX
+    from merlin.analysis.perf import exactness as EX
 
     applied = (result.get("verdict") or {}).get("exactness") or result.get("exactness")
     if not isinstance(applied, Mapping) or not applied.get("contract"):
@@ -251,7 +251,7 @@ def export_best(
     objective: Any, ledger: OotLedger, *, target: str, package_id: str, roles: Sequence[str], **provenance: str
 ) -> Path:
     """Export the run's ``best`` as a champion, with its records assembled from the store."""
-    from merlin.targetgen import champions
+    from merlin.development.targetgen import champions
 
     best = ledger.oot.tags(ledger.repo).get(ledger.oot.BEST_TAG)
     row = next((r for r in ledger.candidates() if r["commit"]["commit"] == best), None)

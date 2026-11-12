@@ -75,7 +75,7 @@ checkout directory. Repository inputs and generated results stay outside it.
 | Path | Responsibility |
 | --- | --- |
 | `src/merlin/compiler/` | Backend protocols, planning, quantization, lowering and build orchestration |
-| `src/merlin/transforms/`, `src/merlin/sched/` | Shared transformations and scheduling primitives |
+| `src/merlin/compiler/transforms/`, `src/merlin/sched/` | Shared transformations and scheduling primitives |
 | `src/merlin/runtime/`, `src/merlin/verification/` | Artifact execution and independent verification, with separate contracts |
 | `src/merlin/development/` | Test generation and backend authoring engines |
 | `src/merlin/experiments/`, `src/merlin/analysis/` | Experiment selection, tracking and analysis |

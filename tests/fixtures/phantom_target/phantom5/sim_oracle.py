@@ -11,7 +11,7 @@ mistaken for a runnable oracle.
 
 from __future__ import annotations
 
-from merlin.targetgen.oracle_policy import OracleTierPlan, register_sim_oracle
+from merlin.development.targetgen.oracle_policy import OracleTierPlan, register_sim_oracle
 
 
 def _adapters(target: str) -> dict:

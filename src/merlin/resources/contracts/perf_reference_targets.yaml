@@ -21,7 +21,7 @@
 # the first entry added from the other one would be matched across devices silently by a lookup that
 # keys on `design`. So each measured entry states `device`, the artifact name in
 # src/merlin/resources/contracts/hardware_pins.yaml, which IS unique per device; `design` stays for readers and is
-# no longer sufficient to select on. See merlin/python/merlin/perf/design_identity.py.
+# no longer sufficient to select on. See merlin/python/merlin/analysis/perf/design_identity.py.
 #
 # ⚠️ CYCLES ARE NOT COMPARABLE ACROSS PROGRAM IDENTITIES EITHER, and this is the refusal that was
 # missing. FOUR different programs in this project carry whole-model numbers for the same network,
@@ -30,7 +30,7 @@
 # the four runs a batch of four and publishes that divided by four, which no batch-1 program can be
 # ranked against and no compiler edit changes.
 # `program_identities` below declares them; every measured entry names the one it belongs to; and
-# merlin/python/merlin/perf/program_identity.py refuses a cross-identity comparison the way
+# merlin/python/merlin/analysis/perf/program_identity.py refuses a cross-identity comparison the way
 # `find_reference` refuses a cross-design one. The reason it must REFUSE rather than warn: no
 # compiler edit moves a candidate from one identity to another, because the identity is a property
 # of the lowering and of the capture it came from, not of the compiler's quality. A gap the loop
@@ -614,7 +614,7 @@ references:
       sealed: false
       sealed_reason: >-
         The run IS bound to its bytes -- this queue revision records `stage_from_sha256`, which the
-        699-731 range did not -- but `merlin.perf.firesim_receipt` accepts only the v1 policy shape,
+        699-731 range did not -- but `merlin.analysis.perf.firesim_receipt` accepts only the v1 policy shape,
         and this run was gated against the v2 shape (per-group checksums), which is the stronger
         oracle. `observed`, for that reason alone.
     measured:

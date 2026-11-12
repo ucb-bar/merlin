@@ -6,7 +6,7 @@ validation admits it like compare, and ``reference_bank.handle`` opens both side
 compare path, so pins, bank verification and every refusal are identical to compare. Instead of the
 comparison record, the bank owner hands the two analyzed regions to :func:`respond`: the candidate's
 decoded effects are derived with the same selected decoder/role structure the bank was built with,
-and :mod:`merlin.kernels.mechanism_applicability` reports differences, routes from the scheduling
+and :mod:`merlin.analysis.kernels.mechanism_applicability` reports differences, routes from the scheduling
 catalog, their admission over the candidate's shape and the selected RTL facts, and any missing
 capability. Only a bank arm is served. Nothing is ranked, recommended or applied; semantic
 equivalence and performance stay unknown.
@@ -43,7 +43,7 @@ def _contract_document(contract, target, descriptor):
     import yaml
 
     if descriptor is not None:
-        from merlin.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
+        from merlin.development.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
 
         experiment = load_target_experiment(descriptor)
         if experiment.target != target:
@@ -57,8 +57,8 @@ def _contract_document(contract, target, descriptor):
 def _candidate_effects(selector, region, *, workspace, facts, contract, target, descriptor):
     """Decoded-command effects of the candidate's selected span, via the bank's own derivation."""
     from merlin.analysis.artifact_reader import PinnedELF
+    from merlin.analysis.kernels.decoded_effects import decoded_commands, derive_effects, selected_structure
     from merlin.development.backend.feedback import reference_analysis as A
-    from merlin.kernels.decoded_effects import decoded_commands, derive_effects, selected_structure
 
     decoder = A._operand_decoder(contract, facts, target, descriptor=descriptor, include_structure=True)
     structure = selected_structure(decoder, _contract_document(contract, target, descriptor)) if decoder else None
@@ -102,7 +102,7 @@ def _with_stream_facts(effects, rows, region, decoder, structure, evidence_id):
     """Add width, buffering and overlap facts from a proved bounded execution of the owned candidate.
 
     Owned artifacts have concrete shapes, so control usually proves; otherwise the facts stay unknown."""
-    from merlin.kernels.mechanism_applicability import (
+    from merlin.analysis.kernels.mechanism_applicability import (
         EXTRA_FACTS,
         NO_STREAM,
         STREAM_FACTS,
@@ -270,8 +270,8 @@ def respond(
     decoding_context=None,
 ):
     """Decode with the compare selection; resource admission keeps the run's selected RTL facts."""
+    from merlin.analysis.kernels.mechanism_applicability import applicability, selected_geometry
     from merlin.development.backend.feedback.result_details import compact_row
-    from merlin.kernels.mechanism_applicability import applicability, selected_geometry
 
     reference, candidate = left["regions"][0], dict(right["regions"][0])
     decoding_context = decoding_context or dict(facts=facts, contract=contract, target=target, descriptor=descriptor)
@@ -280,7 +280,7 @@ def respond(
             value["candidate"], candidate, workspace=workspace, **decoding_context
         )
     except (AttributeError, IndexError, LookupError, TypeError, ValueError) as error:
-        from merlin.kernels.decoded_effects import derive_effects
+        from merlin.analysis.kernels.decoded_effects import derive_effects
 
         # The candidate's decoded effects stay unknown; its summary facts still compare.
         effects, structure = derive_effects(candidate, {}), None

@@ -2,7 +2,7 @@
 
 Kept apart from the scheduling algorithms so the derived standalone artifact
 has no Merlin runtime dependency. This projection meets the selected facts in
-:mod:`merlin.targetgen.address_space`.
+:mod:`merlin.development.targetgen.address_space`.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from merlin.compiler.schedule.blocks import BlockScheduleError, Geometry
-from merlin.targetgen.address_space import ADDRESSABLE, accumulator_kind, operand_store
+from merlin.development.targetgen.address_space import ADDRESSABLE, accumulator_kind, operand_store
 
 __all__ = ["geometry_from_address_space", "geometry_from_machine"]
 
@@ -67,14 +67,14 @@ def geometry_from_machine(machine: Any) -> Geometry:
 
 
 def geometry_from_address_space(space: Any) -> Geometry:
-    """Derive from :class:`~merlin.targetgen.address_space.AddressSpace`, or refuse.
+    """Derive from :class:`~merlin.development.targetgen.address_space.AddressSpace`, or refuse.
 
     Refuses rather than defaults on: no array geometry, a non-square array (this weight-stationary
     model has one square block edge, and which edge a rectangular array's block spans is a choice
     no fact here makes), a missing operand or accumulator store, and a store whose row count the
     facts could not derive. Stores are resolved to their roles by ROW WIDTH
-    (:func:`~merlin.targetgen.address_space.operand_store`,
-    :func:`~merlin.targetgen.address_space.accumulator_store`), never by the name an extractor
+    (:func:`~merlin.development.targetgen.address_space.operand_store`,
+    :func:`~merlin.development.targetgen.address_space.accumulator_store`), never by the name an extractor
     happened to give them, and a refusal quotes the resolver's reason.
     """
     if space.array_rows is None or space.array_cols is None:

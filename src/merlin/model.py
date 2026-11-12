@@ -40,11 +40,11 @@ from merlin.verification.model import (
 )
 
 if TYPE_CHECKING:
-    from merlin.llvmlower.graph_optimizations import GraphOptimizationContract
-    from merlin.llvmlower.host_graph_policy import HostGraphPolicy
-    from merlin.llvmlower.source_dense import SourceDenseLowering
-    from merlin.llvmlower.source_pointwise import SourcePointwiseLowering
-    from merlin.llvmlower.source_rows import SourceRowLowering
+    from merlin.compiler.lower.model.graph_optimizations import GraphOptimizationContract
+    from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
+    from merlin.compiler.lower.model.source_dense import SourceDenseLowering
+    from merlin.compiler.lower.model.source_pointwise import SourcePointwiseLowering
+    from merlin.compiler.lower.model.source_rows import SourceRowLowering
 
 
 def implementation_functions():
@@ -131,7 +131,7 @@ def compile_saved_model(
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
     ``blob_weights`` stores each routed weight once: the device-layout copy goes to the weights blob and
-    the original the device alone read is dropped (:mod:`merlin.llvmlower.blob_weights`).
+    the original the device alone read is dropped (:mod:`merlin.compiler.lower.model.blob_weights`).
 
     ``weights_source`` reuses an immutable existing blob only after this stage
     independently derives identical complete bytes, size and hash.
@@ -511,7 +511,7 @@ def compile_saved_model(
         raise
     (output_path / "baremetal_model.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     if storage_policy is not None:
-        from merlin.llvmlower.borrowed_arena import retain_borrowed_lifetime
+        from merlin.compiler.lower.model.borrowed_arena import retain_borrowed_lifetime
 
         return retain_borrowed_lifetime(receipt, receipt_borrowed_lifetime(built))
     return receipt

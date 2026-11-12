@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from merlin.development.targetgen import conformance
+from merlin.development.targetgen.contract import materialize
+from merlin.development.targetgen.contract.materialize import validate_materialized_cohort
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen import conformance
-from merlin.targetgen.contract import materialize
-from merlin.targetgen.contract.materialize import validate_materialized_cohort
 
 __all__ = [
     "conformance_spec",
@@ -32,8 +32,8 @@ def constructed_oracle_tiers(target: str) -> list:
     failures into an empty observation, never an invented cheaper tier.
     """
     try:
-        from merlin.targetgen import corpora
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen import corpora
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         desc = corpora.standard_descriptor_path(str(target))
         if not desc.is_file():

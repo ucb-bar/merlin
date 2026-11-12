@@ -109,6 +109,6 @@ machines:
   # The certifier: the elaborated-RTL emulator, graded from its memory dump.
   gsim_certifier:
     kind: contract
-    measurer: merlin.perf.whole_model_gsim:measure
+    measurer: merlin.analysis.perf.whole_model_gsim:measure
     registry_machine: gemmini_gsim_emulator
     adjudicates: [correctness]

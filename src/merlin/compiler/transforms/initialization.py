@@ -14,7 +14,7 @@ from xdsl.dialects.linalg.abstract_ops import LinalgStructuredOperation
 from xdsl.dialects.linalg.ops import FillOp
 from xdsl.rewriter import Rewriter
 
-from merlin.llvmlower.prov_cse import PROV_PREFIX
+from merlin.compiler.lower.model.prov_cse import PROV_PREFIX
 
 
 def _eligible(operation):

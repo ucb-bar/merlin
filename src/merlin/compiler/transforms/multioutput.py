@@ -32,8 +32,8 @@ from merlin.compiler.schedule.schedule_pipeline import (
 )
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, TemporaryObject
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.certificates import ir_digest
+from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 
 _ISSUED = WeakKeyDictionary()
 
@@ -132,7 +132,7 @@ def implementation_paths() -> tuple[Path, ...]:
     from merlin.common import dense_float_ir
     from merlin.compiler.schedule import compact_dense_group, multioutput_fusion_check
     from merlin.compiler.schedule.library_sources import library_modules
-    from merlin.transforms import certificates
+    from merlin.compiler.transforms import certificates
 
     return tuple(
         dict.fromkeys(

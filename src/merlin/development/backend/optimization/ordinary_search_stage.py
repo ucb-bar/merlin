@@ -51,7 +51,7 @@ def prepare_round(
     if capsule_development is not None:
         from merlin.development.backend.optimization import capsule_ordinary_scope as C
         from merlin.development.backend.optimization import capsule_source_development as D
-        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin.development.targetgen.compiler_library import active_compiler_library
 
         if archive_screen_selection is not None or selection.document.get("build_runtime") is not None:
             raise StageGateError("public source development cannot silently install ordinary RTL/build screening")

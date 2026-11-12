@@ -35,8 +35,8 @@ The `route` and `entrypoint` fields of a row name the realizer for that opportun
 
 ## 2. State what the hardware applies, from your target's facts
 - Build an `output_path_v1` mapping from your workspace's capability facts:
-  - From a derived output-epilogue record, use `merlin.targetgen.output_path.from_record`.
-  - For a mapping you build yourself, check it with `merlin.targetgen.output_path.validate`.
+  - From a derived output-epilogue record, use `merlin.development.targetgen.output_path.from_record`.
+  - For a mapping you build yourself, check it with `merlin.development.targetgen.output_path.validate`.
   - Omit any field you cannot establish. The pass then refuses whatever needs that field, which is
     correct.
 - To pick the readout for a set of stages, use
@@ -47,8 +47,8 @@ The `route` and `entrypoint` fields of a row name the realizer for that opportun
 Cuts are tried longest first: pool, requant, accumulator, bare.
 
 ```python
-from merlin.targetgen import output_path as OP
-from merlin.xdsl_dialects.lowering import output_fusion as OF
+from merlin.development.targetgen import output_path as OP
+from merlin.compiler.dialects.lowering import output_fusion as OF
 
 def epilogue_cut(root, declared_path, extents, values=None):
     values = values or OF.Values()
@@ -63,9 +63,9 @@ use the two-pass `fused_groups` in the reference.
 ## 4. Keep the numeric contract
 - Keep the source's order of scales and activation, its half-even rounding, its clamp range and
   its zero point. `decide` proves equality over the whole accumulator range.
-- Fold a scale chain only through `merlin.llvmlower.requantization.prove_scale`, which raises with
+- Fold a scale chain only through `merlin.compiler.lower.model.requantization.prove_scale`, which raises with
   a witness accumulator value. Derive integer bias preloads with
-  `merlin.llvmlower.requantization.synthesize_bias`; a channel it returns as `None` stays on the
+  `merlin.compiler.lower.model.requantization.synthesize_bias`; a channel it returns as `None` stays on the
   host.
 - `merlin.compiler.schedule.fusion.plan_fusion` admits only total integer scalar IR on adjacent
   synchronous calls with equal element counts and a private, unobserved intermediate.

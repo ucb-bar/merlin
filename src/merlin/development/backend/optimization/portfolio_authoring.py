@@ -13,7 +13,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
+from merlin.analysis.perf.execution_policy import GLOBAL_AUTHORING_ROUND_MAX_SECONDS, ITERATION_MAX_SECONDS
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import agent_view as AV
 from merlin.development.backend.optimization import agent_workspace as AW
@@ -31,10 +32,9 @@ from merlin.development.backend.optimization import telemetry as TEL
 from merlin.development.backend.optimization import transcript_audit as TA
 from merlin.development.backend.optimization.global_experiment import GlobalPerfExperiment
 from merlin.development.backend.optimization.portfolio_sandbox import PortfolioSandboxFactory
-from merlin.perf.agent_guidance import inspect_compiler_package
-from merlin.perf.execution_policy import GLOBAL_AUTHORING_ROUND_MAX_SECONDS, ITERATION_MAX_SECONDS
-from merlin.targetgen.contract.schemas import load_schema
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.contract.schemas import load_schema
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 
 
 def _retryable_capacity_failure(stage_root: Path, round_index: int, terminal: Mapping[str, Any]) -> bool:

@@ -2,7 +2,7 @@
 
 ``dashboard --target T --explorer`` reads:
 
-* Phase 0 releases from the target index (:func:`merlin.targetgen.target_index.build_index`) plus each
+* Phase 0 releases from the target index (:func:`merlin.development.targetgen.target_index.build_index`) plus each
   release's ``private/preparation.json`` admission counts and ``private/seal.json`` reviewer (the review
   note only in operator-private mode), and the Phase 0 run directories under ``out/runs/<target>/phase0``;
 * every Phase 1 run under ``out/runs/<target>/phase1`` through :mod:`.records` and its ``environment.yaml``
@@ -225,7 +225,7 @@ def phase2_row(run_dir: Path, now: float, *, operator_private: bool) -> dict[str
 
 
 def collect(target: str, now: float, *, operator_private: bool) -> dict[str, Any]:
-    from merlin.targetgen import target_index
+    from merlin.development.targetgen import target_index
 
     problems: list[dict[str, Any]] = []
     try:

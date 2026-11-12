@@ -17,9 +17,7 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.development.backend.feedback import private_control_support as control_support
-from merlin.development.backend.feedback import private_linked_source_preparation as preparation
-from merlin.frontends.linalg_boolean_patterns import (
+from merlin.compiler.frontend.linalg_boolean_patterns import (
     DYNAMIC_BOOLEAN_CAST_SOURCE_BODY_SCHEMA,
     STATIC_BOOLEAN_SOURCE_BODY_SCHEMA,
     dynamic_boolean_cast_ordered_types,
@@ -31,43 +29,43 @@ from merlin.frontends.linalg_boolean_patterns import (
     validate_serialized_static_boolean_pattern,
     validate_static_boolean_source_body,
 )
-from merlin.frontends.linalg_composite_math import (
+from merlin.compiler.frontend.linalg_composite_math import (
     SCHEMA as COMPOSITE_SOURCE_SCHEMA,
 )
-from merlin.frontends.linalg_composite_math import (
+from merlin.compiler.frontend.linalg_composite_math import (
     STATIC_COMPOSITE_MATH_SOURCE_BODY_SCHEMA,
     recognize_static_composite_math_body,
     static_composite_math_ordered_types,
     validate_serialized_static_composite_math_pattern,
     validate_static_composite_math_source_body,
 )
-from merlin.frontends.linalg_embedding_gather import (
+from merlin.compiler.frontend.linalg_embedding_gather import (
     SCHEMA as EMBEDDING_GATHER_SCHEMA,
 )
-from merlin.frontends.linalg_embedding_gather import (
+from merlin.compiler.frontend.linalg_embedding_gather import (
     TYPES as EMBEDDING_GATHER_TYPES,
 )
-from merlin.frontends.linalg_embedding_gather import (
+from merlin.compiler.frontend.linalg_embedding_gather import (
     recognize as recognize_embedding_gather,
 )
-from merlin.frontends.linalg_embedding_gather import (
+from merlin.compiler.frontend.linalg_embedding_gather import (
     validate_pattern as validate_embedding_gather_pattern,
 )
-from merlin.frontends.linalg_embedding_gather import (
+from merlin.compiler.frontend.linalg_embedding_gather import (
     validate_source_body as validate_embedding_gather_body,
 )
-from merlin.frontends.linalg_math_patterns import (
+from merlin.compiler.frontend.linalg_math_patterns import (
     STATIC_F32_MATH_SOURCE_BODY_SCHEMA,
     recognize_static_f32_math_body,
     static_f32_math_ordered_types,
     validate_static_f32_math_source_body,
 )
-from merlin.frontends.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
-from merlin.frontends.linalg_mixed_patterns import ordered_types as mixed_ordered_types
-from merlin.frontends.linalg_mixed_patterns import recognize as recognize_mixed
-from merlin.frontends.linalg_mixed_patterns import validate_declaration as validate_mixed
-from merlin.frontends.linalg_mixed_patterns import validate_pattern as validate_mixed_pattern
-from merlin.frontends.linalg_patterns import (
+from merlin.compiler.frontend.linalg_mixed_patterns import SCHEMA as MIXED_SCHEMA
+from merlin.compiler.frontend.linalg_mixed_patterns import ordered_types as mixed_ordered_types
+from merlin.compiler.frontend.linalg_mixed_patterns import recognize as recognize_mixed
+from merlin.compiler.frontend.linalg_mixed_patterns import validate_declaration as validate_mixed
+from merlin.compiler.frontend.linalg_mixed_patterns import validate_pattern as validate_mixed_pattern
+from merlin.compiler.frontend.linalg_patterns import (
     STATIC_POINTWISE_SOURCE_BODY_SCHEMA,
     STATIC_PROJECTED_POINTWISE_BODY_SCHEMA,
     InvalidLinalgPattern,
@@ -79,11 +77,13 @@ from merlin.frontends.linalg_patterns import (
     validate_static_pointwise_source_body,
     validate_static_projected_pointwise_source_body,
 )
-from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
-from merlin.targetgen.host_linkage_contract import (
+from merlin.development.backend.feedback import private_control_support as control_support
+from merlin.development.backend.feedback import private_linked_source_preparation as preparation
+from merlin.development.targetgen.host_linkage_contract import (
     required_composite_math_symbol,
     validate_source_linkage_contract,
 )
+from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
 PENDING = "source_linalg_host_support_pending_build"
 LINKED = "source_linalg_host_support_linked"

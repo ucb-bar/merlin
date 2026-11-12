@@ -269,7 +269,7 @@ def cmd_export(ctx: Context, args) -> int:
         raise SpecError("git archive failed")
     # The export has no .git: record its own revision, or every provenance read inside it would walk up
     # to whichever checkout encloses it and report that branch's moving HEAD instead.
-    from merlin.targetgen.provenance import write_source_record
+    from merlin.development.targetgen.provenance import write_source_record
 
     write_source_record(framework, head)
     # Repository-local configuration that git archive cannot carry.
@@ -329,7 +329,7 @@ def cmd_inputs(ctx: Context, args) -> int:
 ORDERING_SCRIPT = """
 import json, sys
 from pathlib import Path
-from merlin.targetgen.rtl import command_ordering_selection as owner
+from merlin.development.targetgen.rtl import command_ordering_selection as owner
 target, facts, contract, declarations, output = sys.argv[1:6]
 pin = owner.prepare(target=target, facts=Path(facts), contract=Path(contract),
                     declarations=Path(declarations), output=Path(output))
@@ -391,7 +391,7 @@ def prepare_command_recorder(ctx: Context) -> int:
         ctx.x("${PYTHON}"),
         "-B",
         "-m",
-        "merlin.perf.command_recorder",
+        "merlin.analysis.perf.command_recorder",
         "--engine",
         str(ctx.path(config["engine"])),
         "--include",
@@ -410,7 +410,7 @@ def command_recorder_pin(ctx: Context) -> dict | None:
     manifest = ctx.path(config["output"]) / "manifest.json"
     try:
         doc = json.loads(manifest.read_text())
-        source = ctx.path("${FRAMEWORK}") / "src/merlin/perf/spike_command_recorder.cc"
+        source = ctx.path("${FRAMEWORK}") / "src/merlin/analysis/perf/spike_command_recorder.cc"
         engine = ctx.path(config["engine"]).resolve()
         if (
             doc["schema"] != "merlin.command_recorder.v1"
@@ -609,7 +609,7 @@ def require_bank_dependencies(environment, profile):
     if not any(entry.parts[-3:] == ("packages", "merlin-mining", "src") for entry in entries):
         raise SpecError(
             "a CCA bank arm needs packages/merlin-mining/src on plan.environment.PYTHONPATH "
-            "(the broker verifies the bank with merlin.mining.reference_subsets)"
+            "(the broker verifies the bank with merlin.analysis.mining.reference_subsets)"
         )
 
 

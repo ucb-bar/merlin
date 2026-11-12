@@ -294,7 +294,7 @@ def _verify_contexts(path: str | Path, wanted: dict[str, list[tuple[str, dict]]]
                             ) or {}
                             buffer = result.get("command_buffer_artifact") or {}
                             # An embedded buffer, or the inline summary of one stored beside
-                            # the result (merlin.perf.command_buffer_store): shapes only.
+                            # the result (merlin.analysis.perf.command_buffer_store): shapes only.
                             tensors = (buffer.get("command_buffer") or buffer.get("command_buffer_summary") or {}).get(
                                 "tensors"
                             ) or {}

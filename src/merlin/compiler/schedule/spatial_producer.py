@@ -314,9 +314,9 @@ def spatial_producer_pass_space(
     EmittedProgram bound to alternative.identity. Neither counts nor these
     choices supply a cycle score; original source/target review remains separate.
     """
-    from merlin.transforms.pass_exploration import EmittedProgram, PassFamily, generate_candidates
-    from merlin.transforms.pipeline_policy import RegisteredPass
-    from merlin.transforms.pipeline_state import PassSpec
+    from merlin.compiler.transforms.pass_exploration import EmittedProgram, PassFamily, generate_candidates
+    from merlin.compiler.transforms.pipeline_policy import RegisteredPass
+    from merlin.compiler.transforms.pipeline_state import PassSpec
 
     if (
         type(source) is not SpatialProducerPlan
@@ -416,8 +416,8 @@ def explore_spatial_producer(source, space, *, context, verify_source, feedback=
     """Use the existing explorer, actual emitted bytes and optional real cycles."""
     import copy
 
-    from merlin.transforms.pass_exploration import explore_candidates
-    from merlin.transforms.pipeline_policy import PolicyFacts
+    from merlin.compiler.transforms.pass_exploration import explore_candidates
+    from merlin.compiler.transforms.pipeline_policy import PolicyFacts
 
     def verify(current):
         if type(current) is not SpatialProducerPlan:

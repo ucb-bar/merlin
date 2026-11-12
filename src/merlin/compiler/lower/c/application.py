@@ -7,8 +7,8 @@ from math import prod
 
 import numpy as np
 
-from merlin.llvmlower.c_runtime import DT_BYTES, embed_array
-from merlin.semantic_compiler.model import KernelRequest
+from merlin.compiler.lower.model.c_runtime import DT_BYTES, embed_array
+from merlin.compiler.semantic.model import KernelRequest
 
 from .sources import c_source_pair
 
@@ -117,7 +117,7 @@ def emit_application_c(
             staged.append({"id": key, "offset": offset, "bytes": size})
             offset = align(offset + size)
     if offset > capacity:
-        from merlin.semantic_compiler.target_binding import NativeCompilationError
+        from merlin.compiler.semantic.target_binding import NativeCompilationError
 
         raise NativeCompilationError(
             "resource_limit", "application tensor arena and output staging exceed the byte budget"

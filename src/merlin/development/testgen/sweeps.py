@@ -5,6 +5,9 @@ from __future__ import annotations
 import copy
 import hashlib
 
+from merlin.analysis.perf import workload_gen as WG  # noqa: E402
+from merlin.analysis.perf.profile import TRAITS, derive_profile  # noqa: E402
+from merlin.development.targetgen import corpus_spec as CS  # noqa: E402
 from merlin.development.testgen.capture_residency import _bound_capture_inventory, _capture_residency_sweep
 from merlin.development.testgen.profiles import (
     _DERIVED_AXES,
@@ -15,10 +18,7 @@ from merlin.development.testgen.profiles import (
     pending_host_source_basis,
 )
 from merlin.development.testgen.provenance import _document_digest
-from merlin.perf import workload_gen as WG  # noqa: E402
-from merlin.perf.profile import TRAITS, derive_profile  # noqa: E402
 from merlin.runtime.backends.base import EXECUTION_CAPABILITIES, execution_capability_facts  # noqa: E402
-from merlin.targetgen import corpus_spec as CS  # noqa: E402
 
 #: Extent tokens a sweep axis may use, resolved against the binding's tile edge.
 #: Spelled the way `kernels/opu_corpus.py` already spells tile-relative extents
@@ -118,13 +118,13 @@ def target_encodings(target: str, *, contract: dict | None = None) -> list[str]:
     gate refuses it with evidence rather than this inventing one.
     """
     try:
-        from merlin.targetgen.conformance import capsule_dtype
-        from merlin.targetgen.eligibility import capability_map_for_target
+        from merlin.development.targetgen.conformance import capsule_dtype
+        from merlin.development.targetgen.eligibility import capability_map_for_target
 
         if contract is None:
             cap = (capability_map_for_target(target) or {}).get("contraction")
         else:
-            from merlin.targetgen.compute_units import compute_units, semantic_capability_map
+            from merlin.development.targetgen.compute_units import compute_units, semantic_capability_map
 
             cap = semantic_capability_map(compute_units(contract)).get("contraction")
     except Exception:  # noqa: BLE001 -- an unresolvable map is no choice
@@ -259,7 +259,7 @@ def _memory_regime_axis(
     property of one shape family and crossing it with a second parallel extent would put two different
     residency ladders under one name.
     """
-    from merlin.targetgen import memory_regime as MR
+    from merlin.development.targetgen import memory_regime as MR
 
     regimes = [str(r) for r in (spec.get("regimes") or MR.ORDER)]
     points_per_regime = int(spec.get("points_per_regime", 2))
@@ -283,7 +283,7 @@ def _memory_regime_axis(
         extents[axis] = extent
     selected_store = {}
     if evidence is not None:
-        from merlin.targetgen import address_space as AS
+        from merlin.development.targetgen import address_space as AS
 
         space = AS.derive_address_space(target, facts=evidence.refreshed_facts)
         resolved_store = AS.operand_store(space, dtype=dtype)
@@ -490,9 +490,9 @@ def _accum_for_encoding(target: str, operand: str, fallback: str | None) -> str:
     raises when there is no fallback either: a member whose accumulator is unknown cannot be built,
     and guessing one emits a capsule that measures arithmetic the target does not perform.
     """
-    from merlin.targetgen import compute_units as _cu
-    from merlin.targetgen.routing import OpDemand, _legal_on  # noqa: PLC2701 -- one predicate
-    from merlin.targetgen.target_registry import load_contract
+    from merlin.development.targetgen import compute_units as _cu
+    from merlin.development.targetgen.routing import OpDemand, _legal_on  # noqa: PLC2701 -- one predicate
+    from merlin.development.targetgen.target_registry import load_contract
 
     demand = OpDemand(op="matmul", in_fmt=operand, weight_fmt=operand, site="encoding_probe")
     try:
@@ -533,7 +533,7 @@ def _resolve_target_oracle_evidence(
     kind_pending = isinstance(kind_placeholder, str) and kind_placeholder.startswith("$target_oracle_kind:")
     if not pending and not kind_pending:
         return performance
-    from merlin.targetgen.target_experiment import load_capability_manifest
+    from merlin.development.targetgen.target_experiment import load_capability_manifest
 
     contract = load_capability_manifest(target).contract
     declared = (contract.get("runner") or {}).get("tier_sim") or {}
@@ -558,7 +558,7 @@ def _resolve_target_oracle_evidence(
             # Phase 0's frozen derivation wheel does not and must not import that owner merely
             # to name the engine. An unavailable metadata route still fails below rather than
             # substituting the generic fidelity label for a concrete simulator.
-            from merlin.targetgen.oracle_policy import selected_l3_engine_report
+            from merlin.development.targetgen.oracle_policy import selected_l3_engine_report
 
             selection = selected_l3_engine_report(target)
             if selection.get("available") and selection.get("engine"):
@@ -631,7 +631,7 @@ def _materialize_performance_entry(entry: dict, binding, *, oracle_selection: di
         datatype_basis = "corpus_binding"
     else:
         operand_dtype, accum_dtype = WG.datapath_formats(target, accum_dtype=binding_accum)
-        datatype_basis = "merlin.perf.workload_gen.datapath_formats"
+        datatype_basis = "merlin.analysis.perf.workload_gen.datapath_formats"
     op = str(entry.get("op") or "")
     if op not in CS.BUILDERS:
         raise ValueError(
@@ -650,7 +650,7 @@ def _materialize_performance_entry(entry: dict, binding, *, oracle_selection: di
         "operand_dtype": operand_dtype,
         "accum_dtype": accum_dtype,
         "datatype_basis": datatype_basis,
-        "builder": "merlin.targetgen.corpus_spec.build",
+        "builder": "merlin.development.targetgen.corpus_spec.build",
     }
     if derived_axes:
         # THE UNREACHABLE REGIMES TRAVEL WITH THE CAPSULE. The derivation knows which bands it could

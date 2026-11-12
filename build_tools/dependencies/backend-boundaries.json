@@ -19,7 +19,7 @@
     {
       "id": "rvv",
       "repository": "https://github.com/ucb-bar/rvv-mlir.git",
-      "revision": "1960c773f3462edee08233193ec58c28bc27310b",
+      "revision": "3528a770d0c29dbaad11dc9b3f3fd8a72d78d1a5",
       "xdsl": "0.68.0",
       "provider_module": "merlin_rvv.service",
       "tests": [
@@ -32,7 +32,7 @@
     {
       "id": "gemmini",
       "repository": "https://github.com/ucb-bar/gemmini-mlir.git",
-      "revision": "d3bfde32e421daa6b2c64d976b4b4939e29d612f",
+      "revision": "bcde3f1f585494b03631955e8758b050dbcbf330",
       "xdsl": "0.68.0",
       "provider_module": "gemmini",
       "tests": [
@@ -47,7 +47,7 @@
     {
       "id": "kodiak",
       "repository": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "revision": "1a28f2f56cee7462233d6b36fada5cc2cb079244",
+      "revision": "37d7ebf81061a23ffa12a282952c44ce3b57b245",
       "xdsl": "0.68.0",
       "provider_module": "merlin_kodiak.service",
       "tests": [
@@ -60,7 +60,7 @@
     {
       "id": "iris",
       "repository": "https://github.com/ucb-bar/iris-mlir.git",
-      "revision": "7130c4f40705dc9e56ac0bf29600cc344ffb45d6",
+      "revision": "2670e9b223761120425bcc7b8ce7e7f0cf818bb5",
       "xdsl": "0.68.0",
       "provider_module": "merlin_iris.service",
       "tests": [
@@ -73,7 +73,7 @@
     {
       "id": "atlas",
       "repository": "https://github.com/ucb-bar/atlas-mlir.git",
-      "revision": "b8d4fd88beb903dca0cd22b1b68ce6a8e5f74150",
+      "revision": "1ceaa4394c72f848600dab6a18466d9ef3484c7c",
       "xdsl": "0.68.0",
       "provider_module": "atlas_mlir_native.backend",
       "tests": [
@@ -89,7 +89,7 @@
     {
       "id": "mx-gemmini",
       "repository": "https://github.com/ucb-bar/mx-gemmini-mlir.git",
-      "revision": "b048deff76d3df19c19aec2dde828d392773964b",
+      "revision": "6a36d7e788e8b6bc7c36a47d1c4208e47a0c13f8",
       "xdsl": "0.65.0",
       "provider_module": "mx_gemmini_support.backend",
       "tests": [

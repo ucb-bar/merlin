@@ -38,9 +38,9 @@ It stops at the first failing stage, where the grader would stop.
 
 - **Interface input.** The grammar is in `interface_grammar.md` and the contract in `interface_dialect_contract.yaml`. Print the library's reading of the input and compare its `commands` with your `command_buffer.json`. A difference is a front-end bug.
   ```
-  python -c "import json,sys; from merlin.targetgen.contract.interface_emit import parse_interface_mlir; print(json.dumps(parse_interface_mlir(open(sys.argv[1]).read()), indent=1))" $TMPDIR/ir-stages/CASE/input.interface.mlir
+  python -c "import json,sys; from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir; print(json.dumps(parse_interface_mlir(open(sys.argv[1]).read()), indent=1))" $TMPDIR/ir-stages/CASE/input.interface.mlir
   ```
-- **Linalg-on-tensors sources:** `merlin.targetgen.contract.linalg_iface.parse_linalg_mlir` returns ops with `kind`, `extents`, `reduction_dims` and `prov`.
+- **Linalg-on-tensors sources:** `merlin.development.targetgen.contract.linalg_iface.parse_linalg_mlir` returns ops with `kind`, `extents`, `reduction_dims` and `prov`.
 - **Your dense, plan and schedule IR:** print them from your code with `dense_schedule_text`, `Kernel.text()` or `compact_text` (see the reference).
 - **Target IR:** recorded as evidence, not semantically gated. It must be non-empty, parseable MLIR.
 - **Lowered artifact:** this is what gets compiled. See the `inspect-kernel` skill.
@@ -57,7 +57,7 @@ The check covers four things:
 - whether the lowered module defines a function.
 
 A linalg source that carries `params.global_program_plan` also has a plan preflight:
-`python -m merlin.targetgen.oot_starterkit.plan validate --source IN.mlir --command-buffer CB.json --lowered-mlir L.mlir`.
+`python -m merlin.development.targetgen.oot_starterkit.plan validate --source IN.mlir --command-buffer CB.json --lowered-mlir L.mlir`.
 
 ## 5. Bisect a miscompile
 

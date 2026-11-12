@@ -11,11 +11,11 @@ from hashlib import sha256
 from pathlib import Path
 
 from merlin.common import mlir_query as mq
+from merlin.compiler.dialects._common import text
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+from merlin.compiler.lower.model.target_data_layout import selected_index_bits
 from merlin.development.backend.feedback import private_index_source as index
 from merlin.development.backend.feedback import private_literal_arange as arange
-from merlin.frontends.capture_normalization import normalize_capture_mlir
-from merlin.llvmlower.target_data_layout import selected_index_bits
-from merlin.xdsl_dialects._common import text
 
 
 def _read(path, expected):
@@ -32,7 +32,7 @@ def _root_body(op):
     """Canonical typed body with explicit external SSA; provenance is checked separately."""
     from xdsl.ir import Block, Operation
 
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.dialects._common import text
 
     inside = set(op.walk())
     blocks = {block for nested in inside for region in nested.regions for block in region.blocks}

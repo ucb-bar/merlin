@@ -16,7 +16,14 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
+from merlin.analysis.perf.functional_gate import STATUS_NOT_RUN as FUNCTIONAL_GATE_NOT_RUN
+from merlin.analysis.perf.functional_gate import (
+    FunctionalGateConfig,
+    FunctionalGateResult,
+    gate_result_for_selection,
+    run_functional_gate,
+)
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization import emission_analysis as EA
@@ -27,14 +34,7 @@ from merlin.development.backend.optimization import static_cache as SC
 from merlin.development.backend.optimization import static_identity as SI
 from merlin.development.backend.optimization.revision_session import RevisionSession
 from merlin.development.backend.optimization.stage_inputs import sentinel_identity
-from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS
-from merlin.perf.functional_gate import STATUS_NOT_RUN as FUNCTIONAL_GATE_NOT_RUN
-from merlin.perf.functional_gate import (
-    FunctionalGateConfig,
-    FunctionalGateResult,
-    gate_result_for_selection,
-    run_functional_gate,
-)
+from merlin.evaluation.harness import hash_tree
 
 
 def _host_memory_available_bytes() -> int:
@@ -128,7 +128,7 @@ class PortfolioAnalysis:
         """Read bounded exact cache receipts without loading large emitted artifacts."""
         if self.baseline_emission_cache_binding is None:
             return {}
-        from merlin.targetgen import package_runtime as OR
+        from merlin.development.targetgen import package_runtime as OR
 
         package = OR.load_package(self.session.inputs.optimization_baseline)
         entrypoints = OR.analysis_emission_entrypoints(package)
@@ -289,7 +289,7 @@ class PortfolioAnalysis:
         analyzer_override: Callable[..., Mapping[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any], Mapping[str, Any] | None]:
         """Compile one full graph with member-local artifacts and analyzer state."""
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker
 
         retained: dict[str, Any] = {}
         analyzer = analyzer_override or self.analyzer
@@ -321,7 +321,7 @@ class PortfolioAnalysis:
             analysis = dict(analyzer(self.session.inputs.optimization_baseline, submitted, sentinel, **kwargs))
             analysis["compiler_edit_scope"] = copy.deepcopy(scope)
             if self.session.edit_authority.guidance_inventory is not None:
-                from merlin.perf.agent_guidance import guidance_for_emission_analysis
+                from merlin.analysis.perf.agent_guidance import guidance_for_emission_analysis
 
                 analysis["optimization_brief"] = guidance_for_emission_analysis(
                     analysis["diagnostics"], self.session.edit_authority.guidance_inventory
@@ -358,7 +358,7 @@ class PortfolioAnalysis:
 
     def _member_analyzer(self) -> Callable[..., Mapping[str, Any]]:
         """Give concurrent isolated members independent mutable worker bookkeeping."""
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker
 
         if isinstance(self.analyzer, IsolatedAnalysisWorker):
             return IsolatedAnalysisWorker(
@@ -582,7 +582,7 @@ class PortfolioAnalysis:
         if remaining <= 0:
             raise TimeoutError("exact analysis reuse verification exhausted the iteration budget")
         if self.completion_contract is not None and current_artifacts:
-            from merlin.perf.completion_delta import qualify_relative_completion_delta
+            from merlin.analysis.perf.completion_delta import qualify_relative_completion_delta
 
             relative_semantics = qualify_relative_completion_delta(
                 previous_analysis=self.session.journal.iterations[-1]["analysis"],
@@ -935,7 +935,7 @@ class PortfolioAnalysis:
         }
         remaining = budget_seconds - (time.monotonic() - started)
         if self.completion_contract is not None and remaining > 0:
-            from merlin.perf.completion_delta import qualify_relative_completion_delta
+            from merlin.analysis.perf.completion_delta import qualify_relative_completion_delta
 
             relative_semantics = qualify_relative_completion_delta(
                 previous_analysis=self.session.journal.iterations[-1]["analysis"]
@@ -1303,7 +1303,7 @@ class PortfolioAnalysis:
             sealed a round at -2 host operations, and nothing in the loop could say that the model
             being optimized had no destination to be optimized toward.
             """
-            from merlin.perf.target_reference import estimate_cycles, find_reference_for_capsule
+            from merlin.analysis.perf.target_reference import estimate_cycles, find_reference_for_capsule
 
             capsule = str(((analysis.get("workload") or {}).get("capsule")) or "")
             if not capsule:
@@ -1346,7 +1346,7 @@ class PortfolioAnalysis:
             for name in right
             if isinstance(right[name], (int, float)) and isinstance(left.get(name), (int, float))
         }
-        from merlin.perf.structural_delta import compare_full_model_structure
+        from merlin.analysis.perf.structural_delta import compare_full_model_structure
 
         return {
             "structural_change": compare_full_model_structure(previous, current)

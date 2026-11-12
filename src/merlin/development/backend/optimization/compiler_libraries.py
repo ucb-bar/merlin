@@ -19,13 +19,17 @@ from merlin.common.cpu_pool import AUTHOR, cpu_priority, shared_compute_pool
 from merlin.development.backend.feedback import setup_timing
 from merlin.development.backend.feedback.compiler_pass_delegation import scoped_selected_parent_pass_delegation
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.compiler_library import CompilerLibrarySelection, active_compiler_library, scoped_compiler_library
-from merlin.targetgen.compiler_pass_selection import (
+from merlin.development.targetgen.compiler_library import (
+    CompilerLibrarySelection,
+    active_compiler_library,
+    scoped_compiler_library,
+)
+from merlin.development.targetgen.compiler_pass_selection import (
     CompilerPassSelection,
     active_compiler_passes,
     scoped_compiler_passes,
 )
-from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+from merlin.development.targetgen.compiler_profile_admission import active_compiler_imports
 
 
 def stage_selection(function):
@@ -69,7 +73,7 @@ def original_agent_sources(functional):
         return
     from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.development.backend.optimization import functional_inputs
-    from merlin.targetgen.compiler_profile_admission import original_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import original_compiler_imports
 
     if functional.host_provenance is None:
         raise StageGateError("additional author library requires the original frozen source provenance")
@@ -204,8 +208,8 @@ def scoped_policy(function):
 def _original_sources(owner):
     """Reopen exact public Python owners; do not copy a directory grant."""
     from merlin.common.bundle_snapshot import guarded_projection
-    from merlin.targetgen import tool_registry
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen import tool_registry
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     if owner is None:
         return {}
@@ -303,7 +307,7 @@ def apply(policy):
     root = Path("/perf-compiler-library") / record["contract_sha256"] / "python"
     sources = _original_sources(active_compiler_imports())
     sources.update({member.path: selection.root / member.path for member in selection.contract.members})
-    from merlin.targetgen.compiler_library_fork import candidate_sources
+    from merlin.development.targetgen.compiler_library_fork import candidate_sources
 
     fork, fork_sha256 = candidate_sources(selection, package)
     previous_fork = getattr(policy, "compiler_fork_sha256", None)

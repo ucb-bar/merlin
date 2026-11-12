@@ -7,11 +7,11 @@ qualification flags. Ordinary Phase 1, corpus and final gates run unchanged.
 from dataclasses import dataclass, fields
 from pathlib import Path
 
+from merlin.compiler.lower.model.reviewed_pass_capabilities import ReviewedPassCapability
 from merlin.development.backend.optimization.archive_evidence import AdditionalArchiveEvidence
 from merlin.development.backend.optimization.archive_spike_runtime import ArchiveSpikeRuntime
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.ordinary_archive_screen import issue_archive_screen
-from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapability
 
 
 @dataclass(frozen=True)

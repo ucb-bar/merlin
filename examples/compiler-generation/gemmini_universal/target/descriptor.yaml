@@ -72,7 +72,7 @@ hardware_spec:
   # THE HEADER GRANTS POINT AT THE SIBLING `contracts/isa_include/`, NOT AT THE COPY INSIDE THE
   # HWBRINGUP SET, and that is a sandbox-mechanics requirement rather than a preference. `bwrap`'s
   # grant assembler mounts a FILE grant at `realpath(parent)/name` and first `--dir`s that parent
-  # (merlin/python/merlin/targetgen/sandbox/bwrap.py, "Binding a FILE needs its parent DIRECTORY to
+  # (merlin/python/merlin/development/targetgen/sandbox/bwrap.py, "Binding a FILE needs its parent DIRECTORY to
   # exist inside the box"). If that parent sits inside another grant's read-only bind, bwrap cannot
   # create the mountpoint and the WHOLE SANDBOX dies before the agent runs a turn -- measured here as
   # `bwrap: Can't create file at .../isa_include/gemmini.h: No such file or directory` on all 15
@@ -161,7 +161,7 @@ grading:
   # readout-dtype axis in the capability model, so that recompute reproduces exactly the 11 bf16 rows
   # and nothing else -- and the 70 int32-output rows read back as `extra_hardware`, declared-but-not-
   # proven. Two ways to close it existed:
-  #   (a) a readout/output dtype axis in `merlin.targetgen.eligibility` that this target's contract
+  #   (a) a readout/output dtype axis in `merlin.development.targetgen.eligibility` that this target's contract
   #       `readout:` block feeds -- the derive-first fix, and the one that would make the gate PROVE
   #       the list. NOT taken: it edits `capsule_runner`, which two live runs import on every grade
   #       interval, and a shared-module change for one target's launch is the wrong trade.
@@ -401,7 +401,7 @@ workload_spec:
 # provenance value.
 #
 # ⚠️ ONE REAL CONSEQUENCE, stated because it is easy to miss: `generate_bundles._host_lane_grants` is the
-# ONLY source of the `merlin/python/merlin/llvmlower/` DENIAL, so this target's generated bundles will
+# ONLY source of the `merlin/python/merlin/compiler/lower/model/` DENIAL, so this target's generated bundles will
 # NOT deny the host compiler. On gemmini that denial is what stops a submission from winning by
 # rewriting the CPU backend. Whoever launches this track must decide whether that denial is needed here
 # (this cohort has 9 host-lane rows) and, if so, close it before launch -- either by minting a scalar
@@ -426,7 +426,7 @@ gaps:
   - >-
     NO host lane is declared (see the block above). Two consequences: any capsule that falls back to the
     host is unpriced, so the 9 host-lane negative rows in the graded cohort have no frozen lane to be
-    measured against; and the generated bundles carry NO `merlin/python/merlin/llvmlower/` denial,
+    measured against; and the generated bundles carry NO `merlin/python/merlin/compiler/lower/model/` denial,
     because `_host_lane_grants` is its only source. On gemmini that denial is what stops a submission
     from winning by rewriting the CPU backend.
   - >-

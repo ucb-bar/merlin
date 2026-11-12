@@ -39,8 +39,8 @@ from merlin.development.backend.feedback.loop_probes import (
 )
 from merlin.development.backend.feedback.stage_timing import measure
 from merlin.development.backend.joint_model_activation import admit_grade, grade_model_scope
+from merlin.development.targetgen.target_experiment import load_target_experiment
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen.target_experiment import load_target_experiment
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ def declared_loop_tiers(policy_roots: tuple[Path, ...]) -> set:
     Read from the corpus roots (not the materialized subset, which is derived FROM this) and handed to
     ``qa_loop_adapters`` so the per-round loop tier is one the capsules actually declared, rather than
     whichever endpoint tier happens to be fastest."""
-    from merlin.targetgen.contract.materialize import declared_oracle_tiers
+    from merlin.development.targetgen.contract.materialize import declared_oracle_tiers
 
     try:
         return declared_oracle_tiers(*policy_roots)
@@ -451,8 +451,8 @@ def grade(
         if no_oracle:
             argv.append("--no-oracle")
         from merlin.development.backend.feedback import grade_lanes, qa
-        from merlin.targetgen.capsule_scheduling import admission_relevance, timing_history
-        from merlin.targetgen.seeded_grade import workspace_gap
+        from merlin.development.targetgen.capsule_scheduling import admission_relevance, timing_history
+        from merlin.development.targetgen.seeded_grade import workspace_gap
 
         relevance = (
             admission_relevance(
@@ -784,7 +784,7 @@ def _completed_loop_promoter(ws, frozen_source, runs, loop, cert, cover, *, inpu
     import sys
 
     from merlin.development.backend.feedback import promotion, qa, tier_boundary_join
-    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.capsule_common import discover_capsules
 
     te = load_target_experiment(inputs.context.descriptor)
     root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
@@ -898,7 +898,7 @@ def fast_grade(
     from merlin.development.backend.feedback import qa as _qc
     from merlin.development.backend.feedback.background_admission import BackgroundGuard, source_digest
     from merlin.development.backend.feedback.grade_progress import SnapshotProgress
-    from merlin.targetgen import capsule_grade as _CG
+    from merlin.development.targetgen import capsule_grade as _CG
 
     cand = run_dir / "_qa_work" / f"fcand_{tick}" / "submission"
     public_root = inputs.public_root() if callable(inputs.public_root) else inputs.public_root
@@ -944,8 +944,8 @@ def fast_grade(
             completed_promotion = _completed_loop_promoter(ws, cand.parent, fruns, loop, cert, cover, inputs=inputs)
     except Exception as exc:  # noqa: BLE001 -- scheduling cannot invalidate completed loop evidence
         print(f"[first-grade] streaming promotion unavailable: {type(exc).__name__}: {exc}", flush=True)
-    from merlin.targetgen.capsule_scheduling import admission_relevance, timing_history
-    from merlin.targetgen.seeded_grade import workspace_gap
+    from merlin.development.targetgen.capsule_scheduling import admission_relevance, timing_history
+    from merlin.development.targetgen.seeded_grade import workspace_gap
 
     progress = SnapshotProgress(ws, fruns, snapshot_digest, background_guard)
     from merlin.development.backend.feedback import joint_curriculum
@@ -1323,7 +1323,7 @@ def _record_plateau(run_dir: Path, *, current_source_sha256: str | None = None) 
     schedule actually produces, so that is the unit here.
     """
     try:
-        from merlin.targetgen import plateau as _PL
+        from merlin.development.targetgen import plateau as _PL
 
         history = run_dir / "qa_history"
         # Keep pre-shape archives, but use the completed record for that exact
@@ -1397,7 +1397,7 @@ def _write_stage_ledger(
     Never raises. This is diagnostics — it must not be able to fail a round that otherwise graded fine.
     """
     try:
-        from merlin.targetgen import stage_ledger as SL
+        from merlin.development.targetgen import stage_ledger as SL
 
         led_dir = run_dir / "rounds"
         led_dir.mkdir(parents=True, exist_ok=True)

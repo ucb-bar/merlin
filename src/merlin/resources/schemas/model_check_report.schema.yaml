@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=none
-# merlin schema (not yet formal JSON Schema; merlin.model_check.report checks the top-level fields).
+# merlin schema (not yet formal JSON Schema; merlin.evaluation.model.report checks the top-level fields).
 title: Full-Model Check Report
 purpose: >-
   One judgement of a device submission on complete quantized models: build and link status, the
@@ -8,7 +8,7 @@ purpose: >-
   Full mode explicitly selects host-twin (default) or direct quantized-reference integration;
   the latter records fixed floating tolerances and sealed reference/configuration identities,
   compares every declared judged output, and does not claim CPU host-twin evidence. Produced by
-  merlin.model_check; consumed by the Phase 1 harness (in-run gate, official grade). Contract:
+  merlin.evaluation.model; consumed by the Phase 1 harness (in-run gate, official grade). Contract:
   docs/reference/model_check.md.
 
 required_top_level_fields:
@@ -21,11 +21,11 @@ required_top_level_fields:
   - failures
 
 example: |
-  schema: merlin.model_check.report.v1
+  schema: merlin.evaluation.model.report.v1
   command: check
   status: fail                       # pass | fail | error
   exit_code: 1
-  tool: {name: merlin.model_check, contract: "1.0", commit: <sha>}
+  tool: {name: merlin.evaluation.model, contract: "1.0", commit: <sha>}
   submission: {path: <dir>, tree_sha256: <sha256>}
   model: tiny_llama
   split: visible                     # visible | sealed | all

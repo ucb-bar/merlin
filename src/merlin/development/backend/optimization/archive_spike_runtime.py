@@ -114,7 +114,7 @@ class ArchiveSpikeRuntime:
 
     def observation_limits(self, remaining_s):
         """Resource-only opt-in; the same cap brackets both count commands."""
-        from merlin.perf.dynamic_census import WALL_600S_PROTOCOL, WALL_900S_PROTOCOL, CensusLimits
+        from merlin.analysis.perf.dynamic_census import WALL_600S_PROTOCOL, WALL_900S_PROTOCOL, CensusLimits
 
         self.verify()
         protocol = {

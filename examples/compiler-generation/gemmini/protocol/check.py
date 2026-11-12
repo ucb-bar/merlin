@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 from merlin.compiler.quantization.capabilities import digest
-from merlin.model_check import models as MD
+from merlin.evaluation.model import models as MD
 
 
 def selected_input_manifest(spec_path: Path, spec: dict, selected: Path | None) -> Path:
@@ -162,7 +162,7 @@ def resolved_contract(spec_path: Path, *, evaluation_input_manifest: Path | None
     if "models_configuration" in spec["authority"]:
         payload = MD._protocol_models_bytes(numerical_bytes, spec)
         configuration = {
-            "schema": "merlin.model_check.resolved_configuration.v1",
+            "schema": "merlin.evaluation.model.resolved_configuration.v1",
             "configuration": yaml.safe_load(payload),
             "sha256": hashlib.sha256(payload).hexdigest(),
             "sources": {

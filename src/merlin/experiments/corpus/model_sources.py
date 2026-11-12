@@ -15,6 +15,7 @@ from merlin.capture.artifacts import (
 )
 from merlin.capture.numerics import _flatten, _model_output_numeric_policy, _tol, compile_dtype, derived_recipe
 from merlin.capture.pytorch import PytorchRefSource
+from merlin.development.targetgen.golden_store import write_golden
 from merlin.experiments.corpus.model_inputs import (
     freeze_materialized_loader_profile,
     freeze_model_loader_dependencies,
@@ -26,7 +27,6 @@ from merlin.experiments.corpus.model_inputs import (
 )
 from merlin.experiments.corpus.model_requirements import _checked_lanes, _model_semantic_block, model_accelerator_demand
 from merlin.experiments.corpus.source_evidence import _freeze_selected_m2m_tool, _write_frontend_evidence
-from merlin.targetgen.golden_store import write_golden
 
 
 def write_model_capsule(
@@ -321,7 +321,7 @@ def write_model_capsule(
     }
     if getattr(art, "float_reference", None) is not None:
         # The float model's outputs, before the capture's quantization or precision cast: the reference
-        # the whole-model gate judges accuracy against (:mod:`merlin.perf.float_accuracy`).
+        # the whole-model gate judges accuracy against (:mod:`merlin.analysis.perf.float_accuracy`).
         floats = list(art.float_reference) if len(output_abi) > 1 else [art.float_reference]
         golden["float_reference"] = {
             "source": "the loader's model before quantization or precision conversion, host torch-eager",
@@ -335,7 +335,7 @@ def write_model_capsule(
     if src is not None:
         cap["capture_tool"] = _freeze_selected_m2m_tool(src.m2m_dir, d)
     if artifact is not None and art.meta["materialized_capture"].get("workload_role") == "performance_scale":
-        from merlin.targetgen.capsule_privacy import capture_reference_closure
+        from merlin.development.targetgen.capsule_privacy import capture_reference_closure
 
         cap["reference_closure"] = capture_reference_closure(
             art.meta["materialized_artifact_identities"],
@@ -358,8 +358,8 @@ def write_model_capsule(
             (d / "capsule.pytorch.py").write_bytes(loader_bytes)
         if art.meta["materialized_capture"].get("workload_role") == "performance_scale":
             origin = Path(art.meta["materialized_capture"]["path"]).parent
-            from merlin.targetgen.materialized_integer_capture import reference_members, selected
-            from merlin.targetgen.materialized_reference import reference_members as float_reference_members
+            from merlin.development.targetgen.materialized_integer_capture import reference_members, selected
+            from merlin.development.targetgen.materialized_reference import reference_members as float_reference_members
 
             references = (
                 reference_members(art.meta["materialized_artifact_identities"])

@@ -37,7 +37,7 @@ backend_package_dir: experiments/inputs/target-inputs/muon
 # Registry pins (src/merlin/resources/contracts/hardware_pins.yaml) this target's hardware sources live behind.
 # Declared so a tool asking "where is this target's RTL" resolves it the same way every other target
 # does -- through the pin registry, which verifies BY CONTENT -- instead of carrying a path of its own.
-# Consumed by merlin.targetgen.isa_rtl_crosscheck.rtl_source_roots (the encoding cross-check reads this
+# Consumed by merlin.development.targetgen.isa_rtl_crosscheck.rtl_source_roots (the encoding cross-check reads this
 # target's Chisel decode patterns) and by the provenance recorder.
 hardware_pins:
   - radiance_muon_rtl
@@ -330,4 +330,4 @@ host_lane:
   # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
   # and "read-only" would silently become "invisible".
   deny_modification:
-    - merlin/python/merlin/llvmlower/
+    - merlin/python/merlin/compiler/lower/model/

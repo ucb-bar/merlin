@@ -15,8 +15,8 @@ from pathlib import Path
 import numpy as np
 
 from merlin.compiler.frontend.inputs import _WEIGHT_DTYPES, load_compile_inputs, load_lifted_argument_bytes
-from merlin.llvmlower.c_runtime import DT_BYTES, embed_array
-from merlin.llvmlower.weights_pack import DTYPE_BYTES, WeightEntry, checked_payload, pack
+from merlin.compiler.lower.model.c_runtime import DT_BYTES, embed_array
+from merlin.compiler.lower.model.weights_pack import DTYPE_BYTES, WeightEntry, checked_payload, pack
 
 
 @dataclass(frozen=True)

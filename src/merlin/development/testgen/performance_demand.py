@@ -331,7 +331,7 @@ def _render(template: Path, member: Mapping[str, Any], plan_sha256: str):
     """One raw int8-to-int32 contract from the reviewed template, with this member's provenance."""
     import yaml
 
-    from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
     cap = yaml.safe_load((template / "capsule.yaml").read_text())
     program = parse_interface_mlir((template / cap["interface_mlir"]).read_text())

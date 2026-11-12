@@ -442,7 +442,7 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
     if not _is_number(bound.get("absolute_floor_cycles")) or not _is_number(bound.get("observed_cycle_fraction")):
         raise _Refusal("the residual bound is not fully specified")
 
-    from merlin.perf import claim_reach
+    from merlin.analysis.perf import claim_reach
 
     try:
         schedule = claim_reach.replicate_contract(members[0]["performance"])

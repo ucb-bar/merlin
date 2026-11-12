@@ -13,6 +13,8 @@ import os
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from merlin.analysis.perf.component_screen import ComponentScreenPolicy, qualify_component_screen
+from merlin.analysis.perf.fast_estimate_validation import Observation, fit_linear_screen
 from merlin.common import invocation_record as I
 from merlin.development.backend.optimization import ordinary_fast_feedback as FAST
 from merlin.development.backend.optimization import ordinary_screen_features as FEATURES
@@ -24,9 +26,7 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
     write_json,
 )
-from merlin.perf.component_screen import ComponentScreenPolicy, qualify_component_screen
-from merlin.perf.fast_estimate_validation import Observation, fit_linear_screen
-from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
 _ISSUER = object()
 PARTITION_SCHEMA = "merlin.ordinary_public_screen_partition.v1"
@@ -248,7 +248,7 @@ class OrdinaryCalibration:
                 value = cell[arm]
                 prediction = model.predict(FEATURES.project(value["compiled"]), domain_sha256=self.domain_sha256)
                 if value["functional_status"] != "PASS":
-                    from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
+                    from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 
                     prediction = CycleInterval.unknown("ordinary compile/Spike functional observation is incomplete")
                 predictions.append(prediction.to_dict())
@@ -292,7 +292,7 @@ class _ResidualScreen:
     observed_domains: tuple
 
     def predict(self, features, *, domain_sha256):
-        from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
+        from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 
         for key, bounds in self.observed_domains:
             value = features.get(key)

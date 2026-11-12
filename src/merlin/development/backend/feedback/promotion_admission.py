@@ -14,7 +14,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.targetgen.oracle_schedule import CapsuleState, Verdict, valid_execution_digest
+from merlin.development.targetgen.oracle_schedule import CapsuleState, Verdict, valid_execution_digest
 
 
 @dataclass(frozen=True)

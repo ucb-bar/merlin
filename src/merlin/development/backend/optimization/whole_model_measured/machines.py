@@ -32,9 +32,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import emulator_capture
+from merlin.analysis.perf.execution_policy import FIRESIM_QUEUE_OPERATION
 from merlin.common import provenance
-from merlin.perf import emulator_capture
-from merlin.perf.execution_policy import FIRESIM_QUEUE_OPERATION
 
 UNKNOWN = "UNKNOWN"
 
@@ -200,7 +200,7 @@ class GsimMachine:
         }
 
     def identity(self) -> DeviceIdentity:
-        from merlin.targetgen import gsim_emulator
+        from merlin.development.targetgen import gsim_emulator
 
         citation = gsim_emulator.citation(self.target)
         if self._emulator is not None:
@@ -262,7 +262,7 @@ class GsimMachine:
         started = time.time()
         with uart.open("wb") as out:
             # The diagnostics are bounded on disk and the run ends at its first hardware assertion
-            # (merlin.perf.emulator_capture: one failing design wrote 8.5 GB of assertions per run).
+            # (merlin.analysis.perf.emulator_capture: one failing design wrote 8.5 GB of assertions per run).
             capture = emulator_capture.run_capped(
                 argv,
                 stdout=out,

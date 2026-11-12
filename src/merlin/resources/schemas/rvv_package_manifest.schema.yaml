@@ -38,7 +38,7 @@ example: |
     certified_execution_reproducible: true
     package_regenerable_from_source: true   # verbatim capture of pipeline.RVV_TRANSFORM_SCHEDULE
   inputs:
-    source: "merlin/python/merlin/llvmlower/pipeline.py:RVV_TRANSFORM_SCHEDULE + runtime/backends/zephyr_model.py:RVV_CFLAGS"
+    source: "merlin/python/merlin/compiler/lower/model/pipeline.py:RVV_TRANSFORM_SCHEDULE + runtime/backends/zephyr_model.py:RVV_CFLAGS"
   outputs:
     schedule: schedule.mlir
     knobs: knobs.yaml

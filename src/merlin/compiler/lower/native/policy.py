@@ -27,7 +27,7 @@ def _sink_deallocs() -> bool:
     read per build instead of frozen at import."""
     import os
 
-    from merlin.llvmlower.optional_passes import switched
+    from merlin.compiler.lower.model.optional_passes import switched
 
     return switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
 
@@ -144,7 +144,7 @@ def _par_residue_parallel(features=frozenset()) -> bool:
     """
     import os
 
-    from merlin.llvmlower.residual_parallel import threshold_of
+    from merlin.compiler.lower.model.residual_parallel import threshold_of
 
     return threshold_of(features) is not None or bool(os.environ.get("MERLIN_PAR_RESIDUE_PARALLEL"))
 

@@ -14,12 +14,12 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.common import invocation_record as IR
 from merlin.common import oot_repo as O
 from merlin.development.backend.feedback import capsule_certification as C
 from merlin.development.backend.feedback import hidden_capsule_policy as HCP
 from merlin.development.backend.feedback import public_scalability_gate as G
+from merlin.evaluation.harness import hash_tree
 
 SCHEMA = "merlin.phase1.capsule_qualification_handoff.v1"
 RECEIPT = "capsule_qualification_handoff.json"

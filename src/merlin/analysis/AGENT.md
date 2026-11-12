@@ -2,8 +2,8 @@
 
 The observation SDK owners at this level observe actual IR, instruction words, artifact bytes and selected
 target declarations. They supply no kernels, schedules, tuned choices, measured
-answers, reference runtime or acceptance policy. These SDK owners must not import `merlin.kernels`,
-`merlin.mining`, experiment engines or graders, even lazily. Candidate staging
+answers, reference runtime or acceptance policy. These SDK owners must not import `merlin.analysis.kernels`,
+`merlin.analysis.mining`, experiment engines or graders, even lazily. Candidate staging
 must preserve the explicit selected source closure and withheld identities.
 
 The RV64 observation implementation has separate real owners:

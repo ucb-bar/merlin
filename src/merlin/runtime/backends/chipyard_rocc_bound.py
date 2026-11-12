@@ -22,8 +22,8 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import checkout_root, python_source_dir
-from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
-from merlin.targetgen.contract.readback_policy import (
+from merlin.development.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
+from merlin.development.targetgen.contract.readback_policy import (
     COHERENT_DUMP_V1,
     COHERENT_PACKET_V1,
     COHERENT_PACKET_V2,
@@ -361,10 +361,10 @@ class BoundRoCCBackend:
 
     def operand_source_relocations(self, original_facts_path):
         """Reopen the original selected observer's byte-identical source moves."""
-        from merlin.targetgen.rocc.selected_operand_protocol import (
+        from merlin.development.targetgen.rocc.selected_operand_protocol import (
             selected_source_relocations,
         )
-        from merlin.targetgen.rocc.semantics import BoundSemantics
+        from merlin.development.targetgen.rocc.semantics import BoundSemantics
 
         data = self._data()
         selection = data["contract"].get("rocc_operand_selection")
@@ -541,8 +541,8 @@ class BoundRoCCBackend:
         return from_contract(self._data()["contract"])
 
     def build_source_paths(self):
-        from merlin.perf import factored_storage as tensor_storage
-        from merlin.perf import storage_encoding
+        from merlin.analysis.perf import factored_storage as tensor_storage
+        from merlin.analysis.perf import storage_encoding
         from merlin.runtime import (
             captured_constants,
             complete_call_timing,
@@ -631,7 +631,7 @@ class BoundRoCCBackend:
                 "selected_engine_timeout_s": block["max_timeout_s"],
             }
         if engine == "gsim":
-            from merlin.targetgen import gsim_emulator as GE
+            from merlin.development.targetgen import gsim_emulator as GE
 
             receipt = _check_pin(block["receipt"])
             status, _, lineage = GE._validate_receipt(self.target, binary, block["binary"]["sha256"], receipt)
@@ -669,7 +669,7 @@ class BoundRoCCBackend:
             except (OSError, ValueError, KeyError, TypeError) as exc:
                 raise RoCCExecutionError("selected elaborated RTL build identity is unavailable or changed") from exc
         else:
-            from merlin.targetgen import spike_extension, target_registry
+            from merlin.development.targetgen import spike_extension, target_registry
 
             contract = self._data()["contract"]
             selected = contract["runner"]["spike_extension"]
@@ -717,7 +717,7 @@ class BoundRoCCBackend:
         return self.gsim_status()
 
     def gsim_resolution(self):
-        from merlin.targetgen.gsim_emulator import Resolution
+        from merlin.development.targetgen.gsim_emulator import Resolution
 
         identity = self._engine_identity("gsim")
         return Resolution(
@@ -905,7 +905,7 @@ class BoundRoCCBackend:
             dependencies.append(Path(_chipyard_memory_readback.__file__).resolve())
             process_inputs.append(export.regions_path)
         if declared_model_machine:
-            from merlin.llvmlower import toolchain
+            from merlin.compiler.lower.model import toolchain
             from merlin.runtime.backends import spike_model
 
             selected_machine_tools = (toolchain.nm(), toolchain.readelf())
@@ -948,7 +948,7 @@ class BoundRoCCBackend:
 
         forget_native_observation()
         if simulator == "gsim" and export is None and active_native_runtime() is not None:
-            from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+            from merlin.development.targetgen.rtl_engine_policy import gsim_runtime_slot
 
             with gsim_runtime_slot(wait_timeout_s=timeout):
                 selected_result = run_in_native_view(
@@ -989,7 +989,7 @@ class BoundRoCCBackend:
             outputs=(export.output_path,) if export is not None else (),
             dependencies=dependencies,
         ) as observed:
-            from merlin.targetgen.rtl_engine_policy import simulation_runtime_slot
+            from merlin.development.targetgen.rtl_engine_policy import simulation_runtime_slot
 
             slot = simulation_runtime_slot(simulator, wait_timeout_s=timeout)
             with slot:
@@ -1072,7 +1072,7 @@ def _bounded_process(argv, *, cwd, env, timeout, max_bytes, observed):
 
 
 def _execution_binding(facts, config):
-    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+    from merlin.development.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
 
     try:
         return execution_binding(facts, config=config)
@@ -1131,8 +1131,8 @@ def bind(*, target, contract, facts):
     binding = _execution_binding(facts, block["config"])
     _sha(inputs.get("fir_sha256"))
     _sha(binding["firrtl"]["sha256"])
+    from merlin.development.targetgen.rocc.semantics import bind as bind_semantics
     from merlin.runtime.harness_render import validate_contract
-    from merlin.targetgen.rocc.semantics import bind as bind_semantics
 
     abi = validate_contract(contract)
     _require(abi.readback_policy.transport == FULL_VALUES_B64, "selected execution has no coherent readback transport")

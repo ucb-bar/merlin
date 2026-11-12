@@ -8,15 +8,15 @@ related: [07-building, 10-compiler-generation, ../reference/repo_structure]
 code_refs:
   - src/merlin/compiler/quantization/contract.py
   - src/merlin/compiler/quantization/admission.py
-  - src/merlin/transforms/validation.py
+  - src/merlin/compiler/transforms/validation.py
   - src/merlin/verification/cli.py
   - src/merlin/verification/scalar_ir.py
   - src/merlin/verification/partition.py
   - src/merlin/verification/lean_checker.py
-  - src/merlin/model_check/metrics.py
-  - src/merlin/model_check/full_quantized.py
-  - src/merlin/model_check/full_chain_validation.py
-  - src/merlin/model_check/binding.py
+  - src/merlin/evaluation/model/metrics.py
+  - src/merlin/evaluation/model/full_quantized.py
+  - src/merlin/evaluation/model/full_chain_validation.py
+  - src/merlin/evaluation/model/binding.py
   - src/merlin/evaluation/capsule/numerics.py
   - src/merlin/runtime/dispatch_placement.py
   - src/merlin/runtime/elf_audit.py

@@ -6,15 +6,15 @@ owner: core
 last_verified: 2026-11-09
 related: [10-compiler-generation, 12-experiments]
 code_refs:
-  - src/merlin/transforms/pipeline.py
-  - src/merlin/transforms/pipeline_state.py
-  - src/merlin/transforms/pipeline_policy.py
+  - src/merlin/compiler/transforms/pipeline.py
+  - src/merlin/compiler/transforms/pipeline_state.py
+  - src/merlin/compiler/transforms/pipeline_policy.py
   - src/merlin/compiler/schedule/block.py
   - src/merlin/compiler/schedule/derive.py
   - src/merlin/compiler/optimizations/registry.py
-  - src/merlin/kernels/cca.py
-  - src/merlin/kernels/cca_compare.py
-  - src/merlin/kernels/action_catalog.py
+  - src/merlin/analysis/kernels/cca.py
+  - src/merlin/analysis/kernels/cca_compare.py
+  - src/merlin/analysis/kernels/action_catalog.py
   - src/merlin/development/backend/optimization_suggestions.py
   - src/merlin/development/backend/operation_optimizations.py
   - src/merlin/development/backend/authoring.py
@@ -41,7 +41,7 @@ Three things have different jobs:
 
 | What | Where | What to open |
 | --- | --- | --- |
-| Callable transformations | `src/merlin/transforms/` | `pipeline.py`, then the pass owner |
+| Callable transformations | `src/merlin/compiler/transforms/` | `pipeline.py`, then the pass owner |
 | Command scheduling | `src/merlin/compiler/schedule/` | `block.py`, `residency.py`, `derive.py` |
 | Selectable optimization strategies | `src/merlin/compiler/optimizations/` | `registry.py`, then the selected strategy |
 | Authoring advice | `src/merlin/resources/optimizations/` | The four JSON catalogs below |

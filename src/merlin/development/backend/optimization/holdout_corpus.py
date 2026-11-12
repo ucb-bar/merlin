@@ -188,7 +188,7 @@ def _pk_sweep(profile_path: Path) -> dict[str, Any]:
         base.get("op") != "matmul"
         or performance.get("family") != "PK"
         or performance.get("claim") != "PREDICTS"
-        or (performance.get("emitter") or {}).get("entry") != "merlin.targetgen.corpus_spec.build"
+        or (performance.get("emitter") or {}).get("entry") != "merlin.development.targetgen.corpus_spec.build"
     ):
         raise HoldoutError("shared PK family is not the runnable corpus_spec matmul contract")
     return sweep
@@ -202,11 +202,11 @@ def _source_paths(
 
     from merlin.common.paths import module_source_path
     from merlin.common.source_membership import python_members
-    from merlin.targetgen import corpus_spec
+    from merlin.development.targetgen import corpus_spec
 
     expected_owners = {
         "merlin.development.testgen.generation": context.core_package_root / "development/testgen/generation.py",
-        "merlin.targetgen.corpus_spec": context.core_package_root / "targetgen/corpus_spec.py",
+        "merlin.development.targetgen.corpus_spec": context.core_package_root / "development/targetgen/corpus_spec.py",
         "merlin.evaluation.capsule.runner": context.core_package_root / "evaluation/capsule/runner.py",
     }
     for module_name, expected in expected_owners.items():
@@ -308,14 +308,14 @@ def verify_rtl_facts_provenance(
     inputs = recorded.get("inputs") or {}
     facts = recorded.get("facts") or {}
     if (
-        generator.get("name") != "merlin.targetgen.rtl.circt_introspect"
+        generator.get("name") != "merlin.development.targetgen.rtl.circt_introspect"
         or facts.get("target") != target
         or inputs.get("target") != target
     ):
         raise HoldoutError("RTL facts do not name the exact CIRCT extractor and target")
 
     if fact_builder is None or core_hw_resolver is None:
-        from merlin.targetgen.rtl import circt_introspect, mlc_bridge
+        from merlin.development.targetgen.rtl import circt_introspect, mlc_bridge
 
         fact_builder = fact_builder or circt_introspect.build_facts
         core_hw_resolver = core_hw_resolver or mlc_bridge.core_hw_mlir
@@ -379,7 +379,7 @@ def derive_domain(
     perf_profile_path = _assert_frozen_file(perf_profile_path, label="frozen shared performance profile")
     facts_document = _load_json(rtl_facts_path, label="frozen RTL/CIRCT facts")
     generator = facts_document.get("generator") or {}
-    if not str(generator.get("name") or "").startswith("merlin.targetgen.rtl.circt_introspect"):
+    if not str(generator.get("name") or "").startswith("merlin.development.targetgen.rtl.circt_introspect"):
         raise HoldoutError("facts were not produced by the CIRCT RTL introspector")
     facts = facts_document.get("facts") or {}
     if facts.get("target") != target:
@@ -785,9 +785,9 @@ def _verify_candidate_seals(expected_ids: Sequence[str], candidate_seals: Mappin
         extra = sorted(set(candidate_seals) - set(expected_ids))
         raise HoldoutError(f"candidate seal set is incomplete or foreign (missing={missing}, extra={extra})")
     try:
-        from merlin.benchharness import hash_tree
+        from merlin.evaluation.harness import hash_tree
     except ImportError as exc:
-        raise HoldoutError("merlin.benchharness.hash_tree is unavailable") from exc
+        raise HoldoutError("merlin.evaluation.harness.hash_tree is unavailable") from exc
     receipts: list[dict[str, str]] = []
     for candidate_id in expected_ids:
         path = _assert_frozen_file(Path(candidate_seals[candidate_id]), label=f"candidate seal {candidate_id}")
@@ -819,10 +819,10 @@ def _verify_candidate_seals(expected_ids: Sequence[str], candidate_seals: Mappin
 
 
 def _binding(target: str, domain: Mapping[str, Any], *, context: HoldoutSourceContext):
+    from merlin.development.targetgen import corpus_spec
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen.declarations import for_target
     from merlin.development.testgen.profiles import load_profile
-    from merlin.targetgen import corpus_spec
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     declaration = for_target(target, catalog_path=context.catalog_path)
     target_experiment = load_target_experiment(declaration.descriptor, source_root=context.source_root)
@@ -1068,7 +1068,7 @@ def reveal_and_materialize(
             "corpus": capsules,
             "generator": {
                 "entry": "merlin.development.testgen.writer._write_capsule",
-                "builder": "merlin.targetgen.corpus_spec.build",
+                "builder": "merlin.development.targetgen.corpus_spec.build",
                 "operands": "capsule_golden deterministic operand synthesis keyed by generated capsule name",
             },
         }

@@ -18,7 +18,10 @@ def test_public_builder_and_independent_original_stage_evaluators(bias, skip, ex
     (cap, interface) = CS.build(entry, binding)
     validate_capsule(cap)
     cb = parse_interface_mlir(interface)
-    from merlin.llvmlower.quantized_sum_source import plan_quantized_sum_commands, split_quantized_sum_commands
+    from merlin.compiler.lower.model.quantized_sum_source import (
+        plan_quantized_sum_commands,
+        split_quantized_sum_commands,
+    )
 
     bound_source = plan_quantized_sum_commands(cb)
     bound_source.revalidate()

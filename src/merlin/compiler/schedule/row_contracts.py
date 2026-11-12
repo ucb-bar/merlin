@@ -24,7 +24,7 @@ from merlin.compiler.schedule.row_softmax import (
     RowSoftmaxStep,
     RowSoftmaxUnavailable,
 )
-from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 READ_ROLES = ((), (0,), (0,), (), (1, 2), (2,), (1, 3))
 WRITE_ROLES = ((0,), (0,), (1,), (2,), (2,), (3,), ())

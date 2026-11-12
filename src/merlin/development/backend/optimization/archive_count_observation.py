@@ -9,6 +9,8 @@ import time
 from dataclasses import replace
 from pathlib import Path
 
+from merlin.analysis.perf import _census_process as PROCESS
+from merlin.analysis.perf.dynamic_census import CensusCleanupUnknown
 from merlin.common import invocation_record as I
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.development.backend import annotated_spike_evidence as E
@@ -18,8 +20,6 @@ from merlin.development.backend.optimization import census_launch as BOX
 from merlin.development.backend.optimization import normal_resource_launch as R
 from merlin.development.backend.optimization.archive_spike_runtime import ArchiveSpikeRuntime
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, write_json
-from merlin.perf import _census_process as PROCESS
-from merlin.perf.dynamic_census import CensusCleanupUnknown
 from merlin.runtime import _native_files as F
 
 _RETAINED = []

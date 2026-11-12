@@ -10,7 +10,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.common import source_membership
 from merlin.common.access import audit_token_in
 from merlin.common.digest import sha256_bytes as _sha256
@@ -33,10 +32,11 @@ from merlin.development.backend.optimization.functional_inputs import (
     verify_functional_host_lane_snapshot,
 )
 from merlin.development.backend.optimization.transcript_audit import audit_codex_transcript
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_tokens
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 from merlin.experiments import access_policy as historical_target_access_policy
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_tokens
-from merlin.targetgen.target_experiment import TargetExperiment
 
 
 def _round_audit_candidate(row: Mapping[str, Any]) -> Path:

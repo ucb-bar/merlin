@@ -18,7 +18,7 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     _project,
 )
-from merlin.semantic_compiler.allocation_types import StorageBank
+from merlin.compiler.semantic.allocation_types import StorageBank
 
 
 @dataclass(frozen=True)

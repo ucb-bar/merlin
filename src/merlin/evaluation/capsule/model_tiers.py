@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen.oracle_policy import _screen_tiers_of
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.targetgen.oracle_policy import _screen_tiers_of
 
 
 def _rtl_tiers_of(target: str | None) -> frozenset[str]:
@@ -12,8 +12,8 @@ def _rtl_tiers_of(target: str | None) -> frozenset[str]:
     if not target:
         return frozenset()
     try:
-        from merlin.targetgen.runner_config import runner_config_from_manifest
-        from merlin.targetgen.target_experiment import load_capability_manifest
+        from merlin.development.targetgen.runner_config import runner_config_from_manifest
+        from merlin.development.targetgen.target_experiment import load_capability_manifest
 
         return frozenset(runner_config_from_manifest(load_capability_manifest(target)).rtl_tiers)
     except Exception:  # noqa: BLE001 — unresolvable manifest
@@ -58,7 +58,7 @@ def _batched_tiers_of(target: str | None) -> frozenset[str]:
     empty set and every existing path is unchanged.
     """
     try:
-        from merlin.targetgen.target_experiment import batched_oracle_tiers
+        from merlin.development.targetgen.target_experiment import batched_oracle_tiers
 
         return batched_oracle_tiers(target)
     except Exception:  # noqa: BLE001 — unresolvable descriptor

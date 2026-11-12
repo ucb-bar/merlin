@@ -16,7 +16,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from ....llvmlower import int8_contractions
+from merlin.compiler.lower.model import int8_contractions
 
 _HERE = Path(__file__).resolve().parent
 _SHIM_SRC = _HERE / "outlined_gemm_i8_rvv.c"

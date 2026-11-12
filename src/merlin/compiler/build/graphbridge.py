@@ -14,7 +14,7 @@ from pathlib import Path
 def publish_graph_bridge(linalg, entry, *, compiled, device_symbol, out) -> tuple[int, dict]:
     """Return the original command status and response after checked publication."""
     from merlin.compiler.build.hostbridge import diagnostic_whole_graph_host_bridge
-    from merlin.semantic_compiler.target_binding import verify_native_publication
+    from merlin.compiler.semantic.target_binding import verify_native_publication
 
     output = Path(out)
     compiled = Path(compiled)

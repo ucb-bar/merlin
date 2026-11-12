@@ -162,9 +162,9 @@ def plan(caps, g, workspace_bytes=None):
 
 def execute(choice, image, weights, bias) -> dict:
     """Run the emitted chain on host integers; returns (pooled output, effect counts, receipt)."""
+    from merlin.compiler.lower.model.requantization import quantized
     from merlin.compiler.schedule.rolling_spatial import emit_rolling_spatial_producer
     from merlin.compiler.schedule.rolling_window import emit_rolling_window_lookup
-    from merlin.llvmlower.requantization import quantized
 
     S = _support()
     integers = S.Integers()
@@ -242,7 +242,7 @@ def execute(choice, image, weights, bias) -> dict:
 
 def reference(source, image, weights, bias) -> dict:
     """Independent source evaluation: conv + bias -> Q1 (relu) -> max pool over valid cells -> Q2."""
-    from merlin.llvmlower.requantization import quantized
+    from merlin.compiler.lower.model.requantization import quantized
 
     p, s = source.producer, source.spatial
     b, h, w, c = p.window.input_shape

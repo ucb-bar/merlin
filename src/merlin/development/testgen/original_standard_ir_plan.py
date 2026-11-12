@@ -7,11 +7,11 @@ import json
 import math
 from pathlib import Path
 
+from merlin.development.targetgen.original_reference_values import format_record
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen import original_reference_roster as R
 from merlin.development.testgen.command_intake import _git
 from merlin.development.testgen.original_call_sources import required_source_cohorts
-from merlin.targetgen.original_reference_values import format_record
 
 SCHEMA = "merlin.original_standard_ir_selection.v1"
 POINTWISE_SCHEMA = "merlin.original_standard_ir_selection.v2"

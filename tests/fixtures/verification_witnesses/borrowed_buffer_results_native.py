@@ -7,15 +7,21 @@ import numpy as np
 import pytest
 from xdsl.dialects import llvm
 
+from merlin.compiler.dialects._common import text
+from merlin.compiler.lower.model import abi, borrowed_buffer_calls, dealloc_lifetime, fresh_tensor_writer
+from merlin.compiler.lower.model.borrowed_buffer_calls import (
+    CHECKPOINT,
+    REPORT,
+    RESULTS_SCHEMA,
+    from_writers,
+    verify_native,
+)
+from merlin.compiler.lower.model.fresh_tensor_writer import prove_lowered_writer_results
 from merlin.compiler.lower.native import pipeline
 from merlin.compiler.lower.native import transport as llvm_dialect_product
 from merlin.compiler.lower.native.transport import verify_llvm_dialect_product
-from merlin.llvmlower import abi, borrowed_buffer_calls, dealloc_lifetime, fresh_tensor_writer
-from merlin.llvmlower.borrowed_buffer_calls import CHECKPOINT, REPORT, RESULTS_SCHEMA, from_writers, verify_native
-from merlin.llvmlower.fresh_tensor_writer import prove_lowered_writer_results
 from merlin.verification import host_call_alignment as host_call_alignment
 from merlin.verification.host_call_alignment import import_host_entry
-from merlin.xdsl_dialects._common import text
 from verification_witnesses.plural_fresh_tensor_writer import contract
 from verification_witnesses.plural_fresh_tensor_writer import fixture as tensor_fixture
 from verification_witnesses.plural_fresh_tensor_writer import (

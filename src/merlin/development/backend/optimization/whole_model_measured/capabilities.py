@@ -8,7 +8,7 @@ stdout -- when the chosen machine lacks a capability another machine registered 
 
 WHERE THE FACTS COME FROM.  A machine's software-visible capabilities are its own ABI header's: every
 object-like macro the header states (a flag -- defined with no value -- or an integer value such as a
-buffer's rows or a transfer's bytes), read structurally (:func:`merlin.targetgen.capability_discovery.
+buffer's rows or a transfer's bytes), read structurally (:func:`merlin.development.targetgen.capability_discovery.
 parse_c_header`), never by name.  The header is found BY CONTENT: the registry entry's
 ``program_header_sha256`` names it, and it is looked for among the section's own ``header`` and the
 registry's ``capability_headers`` (environment references).  A machine whose header cannot be found is
@@ -46,7 +46,7 @@ def _sha256(path: Path) -> str:
 def header_capabilities(path: str | Path) -> dict[str, Any]:
     """The capabilities a C header states: flags (object-like macros with no value), integer values, and
     the names of macros whose value is an expression (stated, not evaluated)."""
-    from merlin.targetgen.capability_discovery import parse_c_header
+    from merlin.development.targetgen.capability_discovery import parse_c_header
 
     model = parse_c_header(Path(path))
     flags, values, expressions = set(), {}, set()
@@ -247,7 +247,7 @@ def rtl_facts_citation(target: str) -> dict[str, Any]:
     if not target:
         return {"status": UNKNOWN, "why": "no target"}
     try:
-        from merlin.targetgen.rtl.facts import find_facts
+        from merlin.development.targetgen.rtl.facts import find_facts
 
         path = find_facts(target)
     except Exception as exc:  # noqa: BLE001 -- cited as unknown, never extracted at launch

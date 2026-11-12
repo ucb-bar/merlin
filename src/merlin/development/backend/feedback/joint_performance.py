@@ -14,9 +14,9 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
+from merlin.analysis.perf import capsule_roofline as R
 from merlin.common.tree_hash import hash_tree
 from merlin.development.backend.optimization.contracts import document_sha256
-from merlin.perf import capsule_roofline as R
 from merlin.runtime import _native_files as F
 
 ENV = "MERLIN_JOINT_PERFORMANCE_SELECTION"
@@ -444,7 +444,7 @@ def _seed_timing(root, epoch, selection, pin, source_capsule, result):
 
 
 def original_executable(root):
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
     root = F.canonical(Path(root))
     elf = F.canonical(root / PACKAGE_ELF_NAME)
@@ -456,7 +456,7 @@ def original_executable(root):
 def _observe(root, *, context, compiler, runtime, remaining_s, result=None, capsule=None):
     from merlin.development.backend.optimization import archive_count_observation as OBS
     from merlin.development.backend.optimization import campaign as PC
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     root = F.canonical(Path(root))
     # The native producer owns this exact slot. Retained execution snapshots

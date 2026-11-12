@@ -68,7 +68,7 @@ concerns:
   kernel-index: Kernel index, per framework.
   kernel-mining: Mined kernels, per target.
   measurements: Measurements keyed by substrate and model. See new_measurement().
-  model-inputs: Public model inputs and calibration sets prepared by `merlin.model_check inputs-prepare`, per target.
+  model-inputs: Public model inputs and calibration sets prepared by `merlin.evaluation.model inputs-prepare`, per target.
   optimization-surface: Optimization-surface products, per target.
   perf-bench: The performance campaign's products, per target.
   perf-studies: Standing performance instrumentation beside the campaign -- ledgers, calibration,

@@ -1,5 +1,5 @@
 # Which files bind Spike to the RTL and to the FPGA build for this target: the inputs of
-# `python -m merlin.model_check binding` (contract: docs/guides/09-verification.md section 7).
+# `python -m merlin.evaluation.model binding` (contract: docs/guides/09-verification.md section 7).
 #
 # Paths are relative to the RTL source checkout the selected target contract names
 # (rtl_source.ext_root, resolved through MERLIN_EXT_<ROOT>); {repo: P} is relative to this repository.
@@ -7,7 +7,7 @@
 # from the files named below. What this file does assert -- which file plays which role, which config
 # names and keys the FPGA build uses -- is cited under `citations`, and the receipt re-reads every
 # citation and fails closed when a cited source is missing or no longer says what it is cited for.
-schema: merlin.model_check.binding_spec.v1
+schema: merlin.evaluation.model.binding_spec.v1
 target: gemmini
 
 board_catalog: {repo: examples/compiler-generation/gemmini/platform/board-catalog.yaml}

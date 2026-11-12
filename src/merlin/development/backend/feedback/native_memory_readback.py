@@ -68,9 +68,9 @@ def select_memory_engine(
     rechecking the facts/FIRRTL and engine bytes. It is required before launch,
     after execution, and after decoding; no facts cache may be regenerated here.
     """
+    from merlin.development.targetgen.oracle_policy import selected_l3_engine_report
     from merlin.runtime.backends import base as backends
     from merlin.runtime.modelinputs import native_engine, selected_execution_firrtl
-    from merlin.targetgen.oracle_policy import selected_l3_engine_report
 
     facts_path = Path(facts_path)
 
@@ -91,7 +91,7 @@ def select_memory_engine(
             raise ValueError("memory runner differs from the selected target backend")
         facts = selected_facts()
         if simulator == "spike":
-            from merlin.targetgen.native_model_execution import _functional_engine
+            from merlin.development.targetgen.native_model_execution import _functional_engine
 
             actual, engine, revalidate_engine = _functional_engine(target)
             policy = None
@@ -132,7 +132,7 @@ class NativeMemoryReadback:
     """One-use trusted hook; no candidate command-buffer field can select it."""
 
     def __init__(self, *, facts_path: Path, policy=None) -> None:
-        from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
+        from merlin.development.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
 
         self.facts_path = Path(facts_path)
         self.policy = selected(policy)
@@ -141,7 +141,7 @@ class NativeMemoryReadback:
         self._prepared: dict[str, Any] | None = None
 
     def _transport(self, backend: Any, simulator: str) -> str:
-        from merlin.targetgen.contract.readback_policy import COHERENT_PACKET_V1, COHERENT_PACKET_V2
+        from merlin.development.targetgen.contract.readback_policy import COHERENT_PACKET_V1, COHERENT_PACKET_V2
 
         declared = getattr(backend, "memory_readback_transport", None)
         if not callable(declared):
@@ -391,7 +391,7 @@ class NativeLogicalMemoryReadback:
     """
 
     def __init__(self, *, facts_path: Path, policy) -> None:
-        from merlin.targetgen.contract.readback_policy import (
+        from merlin.development.targetgen.contract.readback_policy import (
             COHERENT_DUMP_V1,
             COHERENT_PACKET_V1,
             COHERENT_PACKET_V2,
@@ -583,9 +583,12 @@ class NativeLogicalMemoryReadback:
         return {"memory_readback": request}
 
     def decode(self, console):
+        from merlin.analysis.perf.whole_model_gsim import read_dump
         from merlin.development.backend.feedback.native_output_readback import _decode_physical_regions
-        from merlin.perf.whole_model_gsim import read_dump
-        from merlin.targetgen.contract.readback_policy import require_memory_completion, require_memory_value_roster
+        from merlin.development.targetgen.contract.readback_policy import (
+            require_memory_completion,
+            require_memory_value_roster,
+        )
 
         state = self._prepared
         if state is None or type(console) is not str:
@@ -736,7 +739,10 @@ def execute_memory_elf(
     The backend retains ordinary return-code, assertion and native-slot handling.
     """
     from merlin.common.digest import sha256_file
-    from merlin.targetgen.contract.readback_policy import require_memory_completion, require_memory_value_roster
+    from merlin.development.targetgen.contract.readback_policy import (
+        require_memory_completion,
+        require_memory_value_roster,
+    )
 
     if (
         type(expected_elf_sha256) is not str

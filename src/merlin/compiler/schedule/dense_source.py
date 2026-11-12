@@ -14,9 +14,9 @@ from xdsl.dialects import arith, builtin, tensor
 from merlin.compiler.schedule.compact_dense import CompactDenseResult, schedule_compact_dense
 from merlin.compiler.schedule.library_sources import shared_library_sources
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.dense_ir import static_zero_integer_matmul_geometry
-from merlin.transforms.pipeline_state import (
+from merlin.compiler.transforms.certificates import ir_digest
+from merlin.compiler.transforms.dense_ir import static_zero_integer_matmul_geometry
+from merlin.compiler.transforms.pipeline_state import (
     AnalysisStamp,
     PassSpec,
     PipelineContext,

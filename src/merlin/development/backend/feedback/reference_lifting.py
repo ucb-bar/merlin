@@ -19,7 +19,7 @@ from merlin.verification.lean_contract import document_digest
 
 
 def _source_summary(raw, format, offset, limit, *, symbol="", locator=None):
-    from merlin.kernels.reference_inventory import inspect_source
+    from merlin.analysis.kernels.reference_inventory import inspect_source
 
     result = inspect_source(raw, format)
     functions = result.get("functions", [])
@@ -91,19 +91,19 @@ def _lift(
     summary_only=False,
     entry_contexts=None,
 ):
-    from merlin.analysis.rocc_commands import audit_decoded, decode_stream
-    from merlin.kernels.kernel_evidence import ArtifactPin, KernelEvidence, cca_projection
-    from merlin.perf.pc_instruction_listing import (
+    from merlin.analysis.kernels.kernel_evidence import ArtifactPin, KernelEvidence, cca_projection
+    from merlin.analysis.perf.pc_instruction_listing import (
         control_flow,
         lift_schedule,
         listing_regions,
         normalized_text,
     )
+    from merlin.analysis.rocc_commands import audit_decoded, decode_stream
 
     locator = locator or {}
     extent = None
     if format == "elf" and symbol:
-        from merlin.perf.compiled_static_features import linked_entry_extent
+        from merlin.analysis.perf.compiled_static_features import linked_entry_extent
 
         try:
             from merlin.analysis.artifact_reader import PinnedELF
@@ -213,7 +213,7 @@ def _lift(
             raise ValueError("analysis_symbol_not_unique")
     result = []
     for scope, body in scopes[offset : offset + limit]:
-        from merlin.kernels.instruction_comparison import instruction_summary
+        from merlin.analysis.kernels.instruction_comparison import instruction_summary
 
         if summary_only:
             result.append(
@@ -260,7 +260,7 @@ def _lift(
         context = (entry_contexts or {}).get(scope["region_id"]) or {}
         alternates = []
         if model and decoder:
-            from merlin.kernels.machine_evidence import machine_projection, projection_summary
+            from merlin.analysis.kernels.machine_evidence import machine_projection, projection_summary
 
             projected, projection = machine_projection(
                 body,
@@ -336,9 +336,9 @@ def _lift(
                     code="selected_decoder_unavailable" if fact_pin is None else "runtime_operand_projection_required",
                     missing_frontend="control-flow-aware machine-register known-bits analysis",
                     library_routes=[
-                        "merlin.targetgen.rocc.selected_operand_protocol:bind_original_operand_selection",
-                        "merlin.targetgen.rocc.static_operands:known_integer_bits",
-                        "merlin.perf.dma_volume:propagate_constants",
+                        "merlin.development.targetgen.rocc.selected_operand_protocol:bind_original_operand_selection",
+                        "merlin.development.targetgen.rocc.static_operands:known_integer_bits",
+                        "merlin.analysis.perf.dma_volume:propagate_constants",
                     ],
                     next_action="Use read-command-buffer and actual schedule consumer receipts; instruction sites alone "
                     "do not establish residency, overlap or execution counts.",

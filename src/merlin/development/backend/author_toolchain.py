@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.text_tokens import is_identifier
-from merlin.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox import toolchain as TC
 
 
 @dataclass(frozen=True)

@@ -17,6 +17,8 @@ import yaml
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.frontend_operator_effects import original_operator_effects
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 from merlin.development.testgen.command_intake import _tracked_source
 from merlin.development.testgen.rtl_intake import (
     RtlIntakePin,
@@ -28,8 +30,6 @@ from merlin.development.testgen.rtl_intake import (
     _plain,
 )
 from merlin.development.testgen.software_intake import IndependentSoftwareIntake
-from merlin.targetgen.frontend_operator_effects import original_operator_effects
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 SCHEMA = "merlin.independent_operator_schema_intake.v1"
 SELECTION_SCHEMA = "merlin.independent_operator_schema_selection.v1"
@@ -115,7 +115,7 @@ def verify_record(record):
     git = _tracked_source(Path(source["checkout"]), Path(source["path"]), source["commit"])
     if git != record["tracked_source"] or selected["software_intake_sha256"] != record["software_intake_sha256"]:
         raise RtlIntakeRefusal("operator schema source/software correspondence changed")
-    observer = module_source_path("merlin.targetgen.torch_schema_observer")
+    observer = module_source_path("merlin.development.targetgen.torch_schema_observer")
     if record["observer_path"] != str(observer):
         raise RtlIntakeRefusal("operator schema replay requires its actual selected fixed reader")
     if tensor:
@@ -282,7 +282,7 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
     checkout, declarations = _plain(source["checkout"], directory=True), _plain(source["path"])
     python = Path(selected["python"]).absolute()
     native_python = python.resolve(strict=True)
-    observer = module_source_path("merlin.targetgen.torch_schema_observer")
+    observer = module_source_path("merlin.development.targetgen.torch_schema_observer")
     for path in (checkout, declarations, python, native_python, observer):
         _outside(path, forbidden)
     git = _tracked_source(checkout, declarations, source["commit"])
@@ -293,10 +293,10 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
         *(
             _pin("operator-schema-reader", module_source_path(name), forbidden)
             for name in (
-                "merlin.targetgen.torch_schema_observer",
-                "merlin.targetgen.frontend_operator_effects",
-                "merlin.targetgen.frontend_use_def",
-                "merlin.targetgen.frontend_trace",
+                "merlin.development.targetgen.torch_schema_observer",
+                "merlin.development.targetgen.frontend_operator_effects",
+                "merlin.development.targetgen.frontend_use_def",
+                "merlin.development.targetgen.frontend_trace",
                 "merlin.development.testgen.command_intake",
                 "merlin.development.testgen.rtl_intake",
                 "merlin.common.invocation_record",
@@ -337,7 +337,7 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
         pins += [
             _pin("tensor-argument-reader", module_source_path(name), forbidden)
             for name in (
-                "merlin.targetgen.torch_tensor_argument_observer",
+                "merlin.development.targetgen.torch_tensor_argument_observer",
                 "merlin.development.testgen.tensor_argument_intake",
             )
         ]
@@ -353,7 +353,7 @@ def issue_independent_operator_schema_intake(*, software, selection, forbidden_r
         pins += [
             _pin("zero-return-reader", module_source_path(name), forbidden)
             for name in (
-                "merlin.targetgen.torch_zero_return_observer",
+                "merlin.development.targetgen.torch_zero_return_observer",
                 "merlin.development.testgen.zero_return_intake",
             )
         ]

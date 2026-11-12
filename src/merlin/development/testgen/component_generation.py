@@ -15,8 +15,8 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen import corpus_spec, phase_policy, software_spec
-from merlin.targetgen.semantic_families import from_op
+from merlin.development.targetgen import corpus_spec, phase_policy, software_spec
+from merlin.development.targetgen.semantic_families import from_op
 
 SCHEMA = "merlin.phase0.component_generation.v1"
 DECLARATION = "merlin.component_performance.v1"
@@ -165,31 +165,31 @@ def bind_entries(
 
     source_paths = [*Path(__file__).parent.glob("*.py")]
     source_paths += [Path(owner.__file__) for owner in (corpus_spec, phase_policy, software_spec)]
-    source_paths.append(module_source_path("merlin.targetgen.contract.description"))
+    source_paths.append(module_source_path("merlin.development.targetgen.contract.description"))
     if coverage_plan_sha256 is not None:
-        from merlin.targetgen.capture_cache import CAPTURE_IMPLEMENTATIONS
+        from merlin.development.targetgen.capture_cache import CAPTURE_IMPLEMENTATIONS
 
         source_paths += [
             module_source_path(name)
             for name in (
-                "merlin.targetgen.component_program",
-                "merlin.targetgen.component_sources",
-                "merlin.targetgen.capsule_results",
-                "merlin.targetgen.capsule_golden",
-                "merlin.targetgen.capsule_inputs",
-                "merlin.targetgen.capsule_source",
+                "merlin.development.targetgen.component_program",
+                "merlin.development.targetgen.component_sources",
+                "merlin.development.targetgen.capsule_results",
+                "merlin.development.targetgen.capsule_golden",
+                "merlin.development.targetgen.capsule_inputs",
+                "merlin.development.targetgen.capsule_source",
                 *CAPTURE_IMPLEMENTATIONS,
-                "merlin.targetgen._m2m_capture_worker",
-                "merlin.targetgen._m2m_capture_values",
+                "merlin.development.targetgen._m2m_capture_worker",
+                "merlin.development.targetgen._m2m_capture_values",
                 "merlin.runtime.tensor",
                 "merlin.runtime.commandbuffer",
-                "merlin.targetgen.operation_accounting",
-                "merlin.targetgen.application_inventory",
-                "merlin.targetgen.address_space",
-                "merlin.targetgen.golden_store",
-                "merlin.targetgen.corpus_operands",
-                "merlin.targetgen.model_coverage",
-                "merlin.targetgen.input_palette",
+                "merlin.development.targetgen.operation_accounting",
+                "merlin.development.targetgen.application_inventory",
+                "merlin.development.targetgen.address_space",
+                "merlin.development.targetgen.golden_store",
+                "merlin.development.targetgen.corpus_operands",
+                "merlin.development.targetgen.model_coverage",
+                "merlin.development.targetgen.input_palette",
                 "merlin.runtime.fp8_formats",
                 "merlin.common.quant_formats",
             )
@@ -294,7 +294,7 @@ def bind_entries(
         if source_preparation is not None:
             if family not in selected or entry.get("op") != "component_program":
                 raise ValueError("source development family needs its exact reviewed objective and tensor DAG")
-            from merlin.targetgen import component_program
+            from merlin.development.targetgen import component_program
 
             program = component_program.analyze(
                 entry["program"],

@@ -38,8 +38,8 @@ from itertools import combinations
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
-from merlin.perf import whole_model_verdict as V
 
 SCHEMA = "merlin.phase2.whole_model_measured.machine_noise.v1"
 #: How many same-day solo readings of one program establish a machine's noise.

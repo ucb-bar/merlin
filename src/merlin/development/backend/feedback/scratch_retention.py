@@ -12,7 +12,7 @@ What the readers that outlive a grade actually open, and so what is kept:
 * ``capsule_result.json``, byte-identical: the correctness curriculum reuses a pass only when its
   pinned result still verifies, scheduling history prices capsules from it, and the operator audits,
   convergence report and calibration-index readers count from it -- together with the expanded command
-  buffer it references (:mod:`merlin.perf.command_buffer_store`), which used to be embedded in it.
+  buffer it references (:mod:`merlin.analysis.perf.command_buffer_store`), which used to be embedded in it.
   A finished self-check drops that buffer: its only reader was the check itself, which has written its
   response by then, and every later reader of the result (audits, timing archives) takes the tensor
   shapes from the inline summary. It was 90% of a retained scalability check -- 1.1 GB of the 1.2 GB a
@@ -49,7 +49,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
 
-from merlin.perf.command_buffer_store import is_stored_name
+from merlin.analysis.perf.command_buffer_store import is_stored_name
 
 SCHEMA = "merlin.scratch_retention.v1"
 MARKER = "retention.json"

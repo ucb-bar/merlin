@@ -36,7 +36,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from merlin.perf import package_identity as PI
+from merlin.analysis.perf import package_identity as PI
 
 BUILD_SCHEMA = "merlin_whole_model_build_record_v1"
 IDENTITY_SCHEMA = "merlin.phase2.whole_model_measured.builder_identity.v2"
@@ -47,7 +47,7 @@ class IdentityError(RuntimeError):
 
 
 def package_digest(package: Path) -> str:
-    """The digest the rest of the loop names candidates by (:mod:`merlin.perf.package_identity`)."""
+    """The digest the rest of the loop names candidates by (:mod:`merlin.analysis.perf.package_identity`)."""
     try:
         return PI.package_digest(package)
     except PI.PackageIdentityError as exc:
@@ -364,7 +364,7 @@ def normalize_build_record(record: Mapping[str, Any], *, package_sha256: str) ->
     bounds, and the oracle classification).  ``groups`` (the per-group route census) is optional but is
     what makes the feedback actionable, so its absence is recorded.
     """
-    from merlin.perf import whole_model_verdict as V
+    from merlin.analysis.perf import whole_model_verdict as V
 
     if not isinstance(record, Mapping):
         raise IdentityError("the builder returned no record")

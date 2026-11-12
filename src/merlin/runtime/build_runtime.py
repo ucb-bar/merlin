@@ -165,10 +165,10 @@ class BuildRuntimeView:
                     "merlin.common.proc",
                     "merlin.common.cpu_pool",
                     "merlin.common.execution_deadline",
-                    "merlin.llvmlower.codegen",
-                    "merlin.llvmlower.toolchain",
-                    "merlin.targetgen.contract.compile",
-                    "merlin.targetgen.contract.ordinary_inputs",
+                    "merlin.compiler.lower.model.codegen",
+                    "merlin.compiler.lower.model.toolchain",
+                    "merlin.development.targetgen.contract.compile",
+                    "merlin.development.targetgen.contract.ordinary_inputs",
                     "merlin.compiler.build.objects",
                     "merlin.compiler.build.process",
                     "merlin.compiler.build.shared",
@@ -748,9 +748,12 @@ def run_in_build_view(
             scope["eligible"] = False
         return None
     try:
-        from merlin.targetgen.contract import build_products
+        from merlin.development.targetgen.contract import build_products
     except ImportError as exc:
-        if getattr(exc, "name", None) not in ("merlin.targetgen.contract.build_products", "merlin.targetgen.contract"):
+        if getattr(exc, "name", None) not in (
+            "merlin.development.targetgen.contract.build_products",
+            "merlin.development.targetgen.contract",
+        ):
             raise
         build_products = None
     cached = (

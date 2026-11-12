@@ -20,9 +20,9 @@ from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization.broker import BROKER_NAME, BrokerAction
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import audit_tokens
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox.answer_surfaces import audit_tokens
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 
 def _heredoc_delimiter(line: str) -> str | None:

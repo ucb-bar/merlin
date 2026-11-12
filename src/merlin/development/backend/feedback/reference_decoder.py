@@ -60,7 +60,7 @@ _LISTING_DECODER_ISA = dict(value=None, source="supplied_listing", status="not_s
 def _instructions(raw, format, *, extent=None, declared_isa=None):
     from merlin.analysis.artifact_reader import PinnedELF
     from merlin.analysis.disassembly import objdump_bin, tokenize_text
-    from merlin.perf.pc_instruction_listing import read_listing
+    from merlin.analysis.perf.pc_instruction_listing import read_listing
 
     if isinstance(raw, PinnedELF):
         if declared_isa is not None:
@@ -197,19 +197,19 @@ def _protocol_decoder_structure(selection):
     """
     if not isinstance(selection, dict) or "sidecar" not in selection:
         return {}
-    from merlin.targetgen.rocc import selected_operand_protocol as protocol
+    from merlin.development.targetgen.rocc import selected_operand_protocol as protocol
 
     declared = getattr(protocol, "selected_decoder_structure", None)
     if declared is not None:
         result = {key: value for key, value in declared(selection).items() if value}
     else:
-        from merlin.kernels.decoded_effects import read_pinned_sidecar
+        from merlin.analysis.kernels.decoded_effects import read_pinned_sidecar
 
         sidecar = read_pinned_sidecar(selection) or {}
         result = {key: sidecar[key] for key in ("operand_field_kinds", "operand_layout_roster") if sidecar.get(key)}
     if "operand_layout_roster" not in result:
-        from merlin.kernels.decoded_effects import read_pinned_sidecar
-        from merlin.targetgen.rocc.operand_selection_recipe import layout_field_roster
+        from merlin.analysis.kernels.decoded_effects import read_pinned_sidecar
+        from merlin.development.targetgen.rocc.operand_selection_recipe import layout_field_roster
 
         sidecar = read_pinned_sidecar(selection) or {}
         try:
@@ -224,7 +224,7 @@ def _protocol_decoder_structure(selection):
 def _operand_decoder(contract, facts, target, *, descriptor=None, include_structure=False):
     """Original host selections only; the artifact bundle cannot supply these inputs."""
     if descriptor is not None:
-        from merlin.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
+        from merlin.development.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
 
         experiment = load_target_experiment(descriptor)
         if experiment.target != target:
@@ -237,7 +237,7 @@ def _operand_decoder(contract, facts, target, *, descriptor=None, include_struct
         return {}
     import yaml
 
-    from merlin.targetgen.rocc.semantics import bind
+    from merlin.development.targetgen.rocc.semantics import bind
 
     contract_raw, contract_pin = _read(Path(contract).absolute(), "selected_target_contract")
     facts_raw, facts_pin = _read(Path(facts).absolute(), "selected_rtl_facts")

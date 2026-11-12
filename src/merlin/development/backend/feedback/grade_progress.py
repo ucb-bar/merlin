@@ -11,7 +11,7 @@ from merlin.development.backend.feedback.qualification_summary import summarize
 
 def observed_failures(rows, source):
     """Group only observed, redacted failures; never infer failure of unrun cases."""
-    from merlin.targetgen.bundle_harness import unresolved_symbols
+    from merlin.development.targetgen.bundle_harness import unresolved_symbols
 
     grouped = {}
     total = 0

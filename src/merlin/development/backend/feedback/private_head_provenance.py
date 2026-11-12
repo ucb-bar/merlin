@@ -17,15 +17,19 @@ def join_heads(
     whole_batch=False,
     shared_rhs_row_views=False,
 ):
+    from merlin.compiler.dialects.lowering import output_fusion as OF
+    from merlin.compiler.lower.model.device_offload import rewrite_groups_to_device
+    from merlin.compiler.lower.model.head_source_route import (
+        project_heads,
+        validate_head_member_ranges,
+        whole_head_entries,
+    )
+    from merlin.compiler.lower.model.sibling_source_route import _sha, _text
     from merlin.compiler.planning.complete import select_complete_group
     from merlin.compiler.selection.mesh import _mesh_tile_binding
     from merlin.development.backend.feedback.private_component_provenance import source_subset
     from merlin.development.backend.feedback.private_group_provenance import join_routed_source_groups
-    from merlin.llvmlower.device_offload import rewrite_groups_to_device
-    from merlin.llvmlower.head_source_route import project_heads, validate_head_member_ranges, whole_head_entries
-    from merlin.llvmlower.sibling_source_route import _sha, _text
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.xdsl_dialects.lowering import output_fusion as OF
+    from merlin.development.targetgen import corpus_spec as CS
 
     before = _text(module)
     if type(whole_batch) is not bool:
@@ -35,8 +39,8 @@ def join_heads(
         capture = capture / "model.mlir"
     projected_source = module
     if preparation_receipt is not None:
-        from merlin.frontends.linalg_mlir import parse_mlir_file
-        from merlin.llvmlower.weight_prepack import revalidate_build_preparation
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+        from merlin.compiler.lower.model.weight_prepack import revalidate_build_preparation
 
         path = Path(preparation_receipt)
         if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):
@@ -50,7 +54,7 @@ def join_heads(
     projection = project_heads(projected_source, shared_rhs_row_views=shared_rhs_row_views, capture=capture)
     actual = projection.module.clone()
     if shared_input_siblings:
-        from merlin.llvmlower.sibling_components import prepare_sibling_components
+        from merlin.compiler.lower.model.sibling_components import prepare_sibling_components
 
         siblings = prepare_sibling_components(
             projection.module, effects=effects, output_path=OF.declared_path(target), values=OF.Values(capture)
@@ -218,9 +222,9 @@ def join_heads(
 
 def source_metrics(assigned, source, composition):
     """Device-object budgets are per invocation; source totals stay separate."""
+    from merlin.compiler.lower.model.head_source_route import validate_head_member_ranges
     from merlin.development.backend.feedback.private_component_provenance import source_subset
     from merlin.development.backend.feedback.private_group_provenance import join_routed_source_groups
-    from merlin.llvmlower.head_source_route import validate_head_member_ranges
 
     if (
         composition.get("schema") != "merlin.original_head_source_composition.v1"

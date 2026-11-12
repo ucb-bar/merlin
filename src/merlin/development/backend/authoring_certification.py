@@ -19,8 +19,8 @@ from merlin.development.backend.feedback import certification as CERT
 from merlin.development.backend.feedback import lifecycle as FL
 from merlin.development.backend.feedback import loop_grading as LG
 from merlin.development.backend.providers import execution as EX
+from merlin.development.targetgen import experiment_tokens as ET
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen import experiment_tokens as ET
 
 
 def grade_checkpoint(
@@ -31,7 +31,7 @@ def grade_checkpoint(
     context = session.context
     session.verify_inputs()
     from merlin.development.backend.feedback import qa as _qc
-    from merlin.targetgen import capsule_grade as _CG
+    from merlin.development.targetgen import capsule_grade as _CG
 
     _cert_tier = CERT._cert_tier_name(inputs=session.grading_inputs)
     if driver_receipt is not None:
@@ -94,7 +94,7 @@ def grade_checkpoint(
     # now run identical sims; the wrap only adds telemetry for the rtlchecks arm.
     if session.bundle_id.find("rtlchecks") >= 0:
         try:
-            from merlin.targetgen import circt_gate as _GATE
+            from merlin.development.targetgen import circt_gate as _GATE
 
             _glog: list = []
             adapters = {t: _GATE.gated_adapter(adp, log=_glog, target=_te_ck.target) for t, adp in adapters.items()}

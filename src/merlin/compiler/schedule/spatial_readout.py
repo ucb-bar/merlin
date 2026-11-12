@@ -11,8 +11,8 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-from merlin.llvmlower.integer_readout import derive, evaluate
-from merlin.llvmlower.requantization import quantized
+from merlin.compiler.lower.model.integer_readout import derive, evaluate
+from merlin.compiler.lower.model.requantization import quantized
 
 
 @dataclass(frozen=True)

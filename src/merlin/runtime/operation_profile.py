@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from merlin.llvmlower.op_profile import resolve_category
+from merlin.compiler.lower.model.op_profile import resolve_category
 
 
 class OperationProfileError(ValueError):
@@ -45,9 +45,14 @@ def summarize(table: Sequence[Mapping], console: str) -> dict:
         parts = line.split()
         if not parts:
             continue
-        selected = parts[0] == "PROF" or (len(parts) > 1 and parts[:2] in (
-            ["METRIC", "prof_total_ticks"], ["METRIC", "prof_marks"],
-        ))
+        selected = parts[0] == "PROF" or (
+            len(parts) > 1
+            and parts[:2]
+            in (
+                ["METRIC", "prof_total_ticks"],
+                ["METRIC", "prof_marks"],
+            )
+        )
         if done and (selected or parts[0] == "DONE"):
             raise OperationProfileError("operation observations after terminal DONE")
         if parts[0] == "DONE":
@@ -93,10 +98,16 @@ def summarize(table: Sequence[Mapping], console: str) -> dict:
     for record in table:
         ticks, hits = observations[record["id"]]
         category, source = resolve_category(record)
-        operations.append({
-            **record, "counter_ticks": ticks, "hits": hits,
-            "category": category, "category_source": source, "execution_owner": "unknown",
-        })
+        operations.append(
+            {
+                **record,
+                "counter_ticks": ticks,
+                "hits": hits,
+                "category": category,
+                "category_source": source,
+                "execution_owner": "unknown",
+            }
+        )
         categories[category] = categories.get(category, 0) + ticks
     return {
         "schema": "merlin.operation_profile.v1",

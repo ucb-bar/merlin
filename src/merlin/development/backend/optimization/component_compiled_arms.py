@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf import compiled_static_features, component_source_demand
+from merlin.analysis.perf.component_cost import ComponentCostRegion, ComponentFeatureObservation
 from merlin.development.backend.component_package_execution import qualified_package_execution
 from merlin.development.backend.optimization import component_compiled_features
 from merlin.development.backend.optimization.component_compiled_features import (
@@ -28,10 +29,9 @@ from merlin.development.backend.optimization.contracts import (
     mapping_file,
     sha256_file,
 )
-from merlin.perf import compiled_static_features, component_source_demand
-from merlin.perf.component_cost import ComponentCostRegion, ComponentFeatureObservation
-from merlin.targetgen import compile_only_execution, component_program
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.development.targetgen import compile_only_execution, component_program
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.evaluation.harness import hash_tree
 
 _DEFAULT_VERIFICATION = object()
 

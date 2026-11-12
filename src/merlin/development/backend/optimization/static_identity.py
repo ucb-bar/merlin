@@ -16,11 +16,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import authoring as AUTHORING
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization.broker_evidence import _is_sha256
 from merlin.development.backend.optimization.contracts import sha256_file as _sha256_file
+from merlin.evaluation.harness import hash_tree
 
 
 def compiler_dependency_content_sha256(record: Mapping[str, Any]) -> str:
@@ -175,7 +175,7 @@ def compiler_dependency_record(candidate: Path, *, shared_source_root: Path) -> 
     but an edit to one invalidates the compiler identity just as an edit inside the package does.
     External Python/toolchain installations belong to the launch environment identity separately.
     """
-    from merlin.perf.static_imports import imported_attribute_paths, resolve_lazy_export
+    from merlin.analysis.perf.static_imports import imported_attribute_paths, resolve_lazy_export
 
     root = shared_source_root.resolve()
     if not root.is_dir() or not (root / "__init__.py").is_file():

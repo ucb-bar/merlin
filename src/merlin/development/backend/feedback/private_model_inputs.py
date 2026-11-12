@@ -253,8 +253,8 @@ def _selected_admission_views(
     host_capabilities_sha256: str,
 ) -> tuple[dict, dict]:
     """Use only a resolved exported spec and the exact selected host profile."""
-    from merlin.targetgen.host_capabilities import validate_host_capabilities
-    from merlin.targetgen.software_spec import validate_software_spec
+    from merlin.development.targetgen.host_capabilities import validate_host_capabilities
+    from merlin.development.targetgen.software_spec import validate_software_spec
 
     if not isinstance(software, Mapping) or not isinstance(software.get("operations"), list):
         raise ValueError("selected software admission view is not a normalized specification")

@@ -21,7 +21,7 @@ def verify_checkpoint_catalog(
     """Verify a checkpoint's local frozen catalog without depending on its original host path."""
     if binding is None:
         return
-    from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+    from merlin.analysis.perf.compiler_edit_scope import validate_mechanism_catalog
 
     if not isinstance(authority, Mapping) or not isinstance(binding, Mapping):
         raise ValueError("checkpoint mechanism catalog has no frozen edit authority")

@@ -13,7 +13,7 @@ from xdsl.dialects import builtin, func
 from xdsl.ir import Attribute
 
 from merlin.compiler.sourceguard import validator_identity
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.transforms.certificates import ir_digest
 
 
 def _source_members():

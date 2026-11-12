@@ -48,7 +48,7 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "original_head_batch_request",
                 (
-                    "merlin.llvmlower.head_source_route.HeadBatchSourceRoute",
+                    "merlin.compiler.lower.model.head_source_route.HeadBatchSourceRoute",
                     "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="optional independent_heads, whole_head_batches and shared_rhs_row_views Booleans in ordinary "
@@ -73,12 +73,12 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "independent_head_and_plane_products",
                 (
-                    "merlin.transforms.head_batching.plan_independent_head_batching",
+                    "merlin.compiler.transforms.head_batching.plan_independent_head_batching",
                     "merlin.compiler.schedule.batched_dense.BatchMatrixView",
                     "merlin.compiler.schedule.batched_dense.BatchedDenseProblem",
                     "merlin.compiler.schedule.batched_dense.counted_batched_dense_products",
-                    "merlin.llvmlower.logical_borrowed_batch_abi.emit_borrowed_batch_translation_unit",
-                    "merlin.llvmlower.integer_batched_matmul_calls.lower_integer_batched_matmul_program",
+                    "merlin.compiler.lower.model.logical_borrowed_batch_abi.emit_borrowed_batch_translation_unit",
+                    "merlin.compiler.lower.model.integer_batched_matmul_calls.lower_integer_batched_matmul_program",
                 ),
                 consumer="ordinary source host with an explicitly supplied per-product primitive or ranked-batch consumer",
                 access="additional_compiler_sources",
@@ -111,7 +111,7 @@ def composition_capabilities(*, selected_modules=None):
                 "whole_model_source_coverage_and_work",
                 (
                     "merlin.compiler.planning.coverage.plan_model_coverage",
-                    "merlin.perf.model_group_work.summarize_group_work",
+                    "merlin.analysis.perf.model_group_work.summarize_group_work",
                 ),
                 consumer="current source groups, descriptive shape profiles and original SSA boundaries",
                 access="additional_compiler_sources",
@@ -160,9 +160,9 @@ def composition_capabilities(*, selected_modules=None):
                     "merlin.compiler.lower.connected.compile_connected_region",
                     "merlin.runtime.connected.ConnectedProgram",
                     "merlin.compiler.lower.connectedhost.emit_connected_host_c",
-                    "merlin.xdsl_dialects.lowering.global_plan.GlobalPlan",
-                    "merlin.xdsl_dialects.lowering.global_plan.verify_global_plan",
-                    "merlin.xdsl_dialects.lowering.global_plan_emission.emit_global_plan",
+                    "merlin.compiler.dialects.lowering.global_plan.GlobalPlan",
+                    "merlin.compiler.dialects.lowering.global_plan.verify_global_plan",
+                    "merlin.compiler.dialects.lowering.global_plan_emission.emit_global_plan",
                 ),
                 consumer="source-bound stages, ordered runtime/host calls and checked global-plan emission",
                 stage="checked_sequential_or_explicit_global_plan_composition",
@@ -172,8 +172,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "original_ssa_region_and_views",
                 (
-                    "merlin.llvmlower.source_region.extract_source_region",
-                    "merlin.transforms.tensor_views.canonicalize_tensor_views",
+                    "merlin.compiler.lower.model.source_region.extract_source_region",
+                    "merlin.compiler.transforms.tensor_views.canonicalize_tensor_views",
                 ),
                 consumer="exact extracted source with original free inputs and all externally observed outputs",
                 stage="source_transform",
@@ -182,7 +182,7 @@ def composition_capabilities(*, selected_modules=None):
             ),
             row(
                 "original_ssa_diagnostic_outputs",
-                ("merlin.llvmlower.source_region.append_source_observations",),
+                ("merlin.compiler.lower.model.source_region.append_source_observations",),
                 consumer="optional diagnostic clone with bounded original SSA values appended to its outputs",
                 stage="source_diagnostics",
                 requires=("explicit original tensor values and total observation element bound",),
@@ -193,7 +193,7 @@ def composition_capabilities(*, selected_modules=None):
             ),
             row(
                 "independent_shared_input_components",
-                ("merlin.llvmlower.sibling_components.prepare_sibling_components",),
+                ("merlin.compiler.lower.model.sibling_components.prepare_sibling_components",),
                 consumer="original-owner partial sibling route and actual ordinary unmatched groups",
                 access="additional_compiler_sources",
                 stage="source_host_device_component_emission",
@@ -207,8 +207,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "source_program_component_emission",
                 (
-                    "merlin.llvmlower.source_program.prepare_source_program",
-                    "merlin.llvmlower.source_program.emit_source_program",
+                    "merlin.compiler.lower.model.source_program.prepare_source_program",
+                    "merlin.compiler.lower.model.source_program.emit_source_program",
                 ),
                 consumer="actual host/device emitter products and original logical pointer transports",
                 access="additional_compiler_sources",
@@ -237,10 +237,10 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "source_sibling_host_preparation",
                 (
-                    "merlin.llvmlower.source_region.outline_sibling_contractions",
-                    "merlin.llvmlower.source_region_host.outline_source_siblings",
-                    "merlin.llvmlower.source_region_host.prepare_sibling_source_host",
-                    "merlin.llvmlower.source_region_host.emit_ranked_source_entry",
+                    "merlin.compiler.lower.model.source_region.outline_sibling_contractions",
+                    "merlin.compiler.lower.model.source_region_host.outline_source_siblings",
+                    "merlin.compiler.lower.model.source_region_host.prepare_sibling_source_host",
+                    "merlin.compiler.lower.model.source_region_host.emit_ranked_source_entry",
                 ),
                 consumer="explicit source-owner preparation and ordinary closed-core build",
                 stage="source_host_preparation",
@@ -250,7 +250,7 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "sibling_original_host_route",
                 (
-                    "merlin.llvmlower.sibling_source_route.SiblingSourceRoute",
+                    "merlin.compiler.lower.model.sibling_source_route.SiblingSourceRoute",
                     "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="OwnedHostModelCompiler.compile(sibling_source=original_typed_route)",
@@ -298,8 +298,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "connected_spatial_original_host_route",
                 (
-                    "merlin.llvmlower.connected_spatial.group_connected_spatial",
-                    "merlin.llvmlower.connected_spatial_route.ConnectedSpatialRoute",
+                    "merlin.compiler.lower.model.connected_spatial.group_connected_spatial",
+                    "merlin.compiler.lower.model.connected_spatial_route.ConnectedSpatialRoute",
                     "merlin.compiler.build.owned.OwnedHostModelCompiler",
                 ),
                 consumer="OwnedHostModelCompiler.compile(connected_spatial=original_typed_route)",
@@ -321,7 +321,7 @@ def composition_capabilities(*, selected_modules=None):
                     "merlin.compiler.schedule.rolling_spatial.propose_rolling_spatial_choices",
                     "merlin.compiler.schedule.rolling_spatial.emit_rolling_spatial_producer",
                     "merlin.compiler.schedule.rolling_window.materialize_rolling_window",
-                    "merlin.llvmlower.convolution_packing.emit_nhwc_halo_panel",
+                    "merlin.compiler.lower.model.convolution_packing.emit_nhwc_halo_panel",
                 ),
                 consumer="actual counted row/cache/panel transfers and existing dense producer emission",
                 stage="checked_geometry_storage_and_emission",
@@ -344,9 +344,9 @@ def composition_capabilities(*, selected_modules=None):
                 "private_intermediate_storage",
                 (
                     "merlin.compiler.schedule.temporary_storage.allocate_temporary_storage",
-                    "merlin.llvmlower.fresh_tensor_writer.rewrite_fresh_tensor_writers",
-                    "merlin.llvmlower.private_workspace_pool.pool_private_writer_workspaces",
-                    "merlin.llvmlower.weight_prepack.prepacked_bundle",
+                    "merlin.compiler.lower.model.fresh_tensor_writer.rewrite_fresh_tensor_writers",
+                    "merlin.compiler.lower.model.private_workspace_pool.pool_private_writer_workspaces",
+                    "merlin.compiler.lower.model.weight_prepack.prepacked_bundle",
                     "merlin.compiler.observations.install_prepared_observed",
                 ),
                 consumer="actual source owners, checked temporary placements and exact immutable preparation bytes",
@@ -357,9 +357,9 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "connected_host_layout_selection",
                 (
-                    "merlin.llvmlower.host_layout_planning.plan_islands",
-                    "merlin.llvmlower.host_layout_realization.rewrite_module",
-                    "merlin.llvmlower.graph_optimizations.optimize_host_graph",
+                    "merlin.compiler.lower.model.host_layout_planning.plan_islands",
+                    "merlin.compiler.lower.model.host_layout_realization.rewrite_module",
+                    "merlin.compiler.lower.model.graph_optimizations.optimize_host_graph",
                 ),
                 consumer="actual rewritten source enters ordinary host/device grouping and lowering",
                 access="additional_compiler_sources",
@@ -377,9 +377,9 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "completed_host_allocation_reuse",
                 (
-                    "merlin.llvmlower.host_storage_policy.prepare",
-                    "merlin.llvmlower.host_storage_policy.recheck",
-                    "merlin.llvmlower.arena_bind.bind_arena",
+                    "merlin.compiler.lower.model.host_storage_policy.prepare",
+                    "merlin.compiler.lower.model.host_storage_policy.recheck",
+                    "merlin.compiler.lower.model.arena_bind.bind_arena",
                 ),
                 consumer="reuse_intermediate_storage request through the original host compiler and its exact LLVM",
                 access="original_host_owner",
@@ -399,8 +399,8 @@ def composition_capabilities(*, selected_modules=None):
                 (
                     "merlin.compiler.schedule.spatial_readout.prove_spatial_readout",
                     "merlin.compiler.schedule.spatial_readout_cache.propose_spatial_readout_cache",
-                    "merlin.llvmlower.quantized_affine_pair.propose_exact_affine_pair",
-                    "merlin.llvmlower.quantized_affine_pair.prove_ordered_loaded_sum",
+                    "merlin.compiler.lower.model.quantized_affine_pair.propose_exact_affine_pair",
+                    "merlin.compiler.lower.model.quantized_affine_pair.prove_ordered_loaded_sum",
                 ),
                 consumer="existing typed readout/finite-domain proofs plus actual target adapter emission",
                 stage="source_exact_readout_proposals",
@@ -410,8 +410,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "real_transform_ordering",
                 (
-                    "merlin.transforms.pass_exploration.explore_candidates",
-                    "merlin.transforms.pass_exploration.rank_performance_variants",
+                    "merlin.compiler.transforms.pass_exploration.explore_candidates",
+                    "merlin.compiler.transforms.pass_exploration.rank_performance_variants",
                     "merlin.compiler.schedule.loop_schedule.tile_loop_nest_transforms",
                     "merlin.compiler.schedule.loop_schedule.partition_counted_loop",
                     "merlin.compiler.schedule.scf_commands.materialize_scf_commands",
@@ -445,7 +445,7 @@ def composition_capabilities(*, selected_modules=None):
             ),
             row(
                 "counted_emitted_work",
-                ("merlin.perf.emitted_work.summarize_emitted_work",),
+                ("merlin.analysis.perf.emitted_work.summarize_emitted_work",),
                 consumer="own-artifact diagnostics or explicit original emitted LLVM analysis",
                 access="additional_compiler_sources",
                 stage="emitted_program_observation",
@@ -477,8 +477,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "explicit_host_graph_optimization",
                 (
-                    "merlin.llvmlower.graph_optimizations.GraphOptimizationContract",
-                    "merlin.llvmlower.graph_optimizations.optimize_host_graph",
+                    "merlin.compiler.lower.model.graph_optimizations.GraphOptimizationContract",
+                    "merlin.compiler.lower.model.graph_optimizations.optimize_host_graph",
                 ),
                 consumer="ordinary host compilation with source-bound graph selection",
                 access="original_host_owner",

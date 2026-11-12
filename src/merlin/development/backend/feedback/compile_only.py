@@ -25,12 +25,12 @@ from merlin.common import invocation_record
 from merlin.development.backend.brokers.common_transforms import CommonTransformService
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization.contracts import exact_tree_record, sha256_file
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen import compile_only_execution as CO
+from merlin.development.targetgen import package_runtime as P
+from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.development.targetgen.rtl.facts import observed_facts
 from merlin.development.testgen import public_compile_sources as SOURCES
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen import compile_only_execution as CO
-from merlin.targetgen import package_runtime as P
-from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
-from merlin.targetgen.rtl.facts import observed_facts
 
 SCHEMA = "merlin.public_compile_only_feedback.v1"
 ACTION = "compile-only"
@@ -100,7 +100,7 @@ def _request_snapshot_entry(owner):
 
 def _verified_substrate(owner):
     """Whether this profile's operations verify the frozen input snapshot."""
-    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+    from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
 
     return owner.profile.get("common_substrate") == CURRENT_COMMON_SUBSTRATE
 
@@ -135,9 +135,9 @@ def _compile_imports(owner):
 def _emit_scale_case(candidate, source, output, *, contract, target, timeout_s, ir_budget):
     """The ordinary package pipeline only; no object, linker, tensor or engine."""
     from merlin.common.cpu_pool import shared_compute_pool
-    from merlin.llvmlower.device_ir_scalability import DeviceIRBudget, analyze_device_ir
-    from merlin.llvmlower.toolchain import mlir_translate
-    from merlin.targetgen import capsule_common as CC
+    from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget, analyze_device_ir
+    from merlin.compiler.lower.model.toolchain import mlir_translate
+    from merlin.development.targetgen import capsule_common as CC
 
     if ir_budget is not None and type(ir_budget) is not DeviceIRBudget:
         raise ValueError("scale probe budget must be the original typed host selection")
@@ -381,8 +381,8 @@ class _InstructionPolicy:
         self.target, self.roles, self.facts, self.facts_path = target, roles, facts, facts_path
 
     def evaluate(self, *, elf, evidence_root):
-        from merlin.perf.isa_prohibition import scan_elf
-        from merlin.targetgen.elf_lanes import executable_sections
+        from merlin.analysis.perf.isa_prohibition import scan_elf
+        from merlin.development.targetgen.elf_lanes import executable_sections
 
         if self.roles:
             with observed_facts(self.target, self.facts, self.facts_path):
@@ -451,7 +451,7 @@ def _case_instruction_policy(capsule, *, target):
         except (ValueError, AttributeError, TypeError):
             return unavailable("invalid_capsule_instruction_policy", field)
     if os.environ.get("MERLIN_TARGET_EXPERIMENT"):
-        from merlin.targetgen import native_model_policy
+        from merlin.development.targetgen import native_model_policy
 
         try:
             # Source-only inspection consumes the corpus's static prohibitions.
@@ -552,10 +552,10 @@ def _observe(
     metadata. Source/ABI construction and build callbacks stay in
     this original service. Direct saved success claims are never inputs.
     """
-    from merlin.llvmlower.toolchain import readelf
-    from merlin.perf import isa_prohibition
-    from merlin.targetgen import elf_lanes
-    from merlin.targetgen.native_model_execution import _build_service_for
+    from merlin.analysis.perf import isa_prohibition
+    from merlin.compiler.lower.model.toolchain import readelf
+    from merlin.development.targetgen import elf_lanes
+    from merlin.development.targetgen.native_model_execution import _build_service_for
 
     observation_started = time.monotonic()
     if type(common_service) is not CommonTransformService:

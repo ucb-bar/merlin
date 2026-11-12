@@ -22,7 +22,7 @@ or an opcode, and a readout the target does not describe is UNKNOWN rather than 
 assuming would reproduce the silent-discard defect on the next target instead of catching it.
 
 WHAT A CALLER DOES WITH THE VERDICT. :data:`REFUSING_STATUSES` mirrors
-:mod:`merlin.perf.lowering_obligation` so a caller decides whether a status is fatal for its tier. A
+:mod:`merlin.analysis.perf.lowering_obligation` so a caller decides whether a status is fatal for its tier. A
 ``discarded`` verdict means the emitted program computes something other than what it declares, which
 is a correctness defect and not a performance one -- but flipping a long-passing capsule to failing
 is a corpus decision, so this module reports and the caller chooses.

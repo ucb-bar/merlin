@@ -2,7 +2,7 @@
 
 A recipe (:mod:`merlin.compiler.quantization.capabilities`) says which number formats a unit computes. That is
 not enough to quantize a model the way the unit computes it. A contraction unit's output path
-(:mod:`merlin.targetgen.output_path`) fixes much more: which value is preloaded into the
+(:mod:`merlin.development.targetgen.output_path`) fixes much more: which value is preloaded into the
 accumulator (a bias), which rectifier runs in which domain, how many columns share ONE scale, the
 rounding, the clamp, the window maximum. A model quantized without those facts computes a
 different function: a float bias off the accumulator grid, or three float roundings where the unit
@@ -35,7 +35,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from merlin.compiler.quantization import static as QR
-from merlin.targetgen import output_path as OP
+from merlin.development.targetgen import output_path as OP
 
 SCHEMA = "merlin.quantization_methodology.v1"
 EPILOGUE_SCHEMA = "integer_epilogue_v1"
@@ -529,7 +529,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     import argparse
     from pathlib import Path
 
-    from merlin.targetgen.software_spec import load_software_spec
+    from merlin.development.targetgen.software_spec import load_software_spec
 
     parser = argparse.ArgumentParser(
         prog="python -m merlin.compiler.quantization.methodology", description=derive.__doc__

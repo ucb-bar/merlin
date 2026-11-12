@@ -17,11 +17,11 @@ def compile_model(compiler, *, compiler_package, original_inputs, **options):
     can freeze actual inputs first. It then revalidates that live selection.
     This does not restore a selection from saved records or widen any grants.
     """
-    module = sys.modules.get("merlin.targetgen.compiler_pass_selection")
+    module = sys.modules.get("merlin.development.targetgen.compiler_pass_selection")
     selection = None if module is None else module._ACTIVE.get()
     if selection is None or "source_optimizations_v1" not in selection.mechanisms:
         return compiler(**options)
-    from merlin.targetgen.compiler_source_optimizations import compile_with_source_optimizations
+    from merlin.development.targetgen.compiler_source_optimizations import compile_with_source_optimizations
 
     def current_inputs(reader=original_inputs):
         # This original companion and the actual caller reader/default are both

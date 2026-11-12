@@ -16,7 +16,7 @@ import numpy as np
 from xdsl.dialects.builtin import TensorType as XdslTensorType
 
 from merlin.compiler.frontend.inputs import load_compile_inputs
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 from .intake import SourceValueRef
 from .transform import DiagnosticMatmulTile

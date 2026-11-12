@@ -13,7 +13,7 @@ each realized through the checked entry ``dense_ready_readout.schedule_dense_pip
 
 Each non-fallback variant carries its LEGALITY predicate (a capacity-legal block exists for its premise,
 as a ``ResourcePredicate`` over facts derived from the RTL capacities). The PERFORMANCE choice is
-``merlin.transforms.shape_policy``: two ``ShapeScheduleClass`` guards over accumulator fit
+``merlin.compiler.transforms.shape_policy``: two ``ShapeScheduleClass`` guards over accumulator fit
 (``accumulator_output_copies >= 1`` / ``accumulator_output_stores_needed >= 2``), each with the incumbent
 ``compact`` and a frozen ``ValidationPartition`` of the panel geometries (``--holdout`` classes held out).
 
@@ -81,7 +81,7 @@ class DenseSource:
 
 
 def session(source, caps):
-    from merlin.transforms.pipeline_state import PipelineContext, PipelineSession
+    from merlin.compiler.transforms.pipeline_state import PipelineContext, PipelineSession
 
     def verify(module):
         if type(module) is not DenseSource:
@@ -119,7 +119,7 @@ def _full_k_blocks(p, s, r):
 
 def facts_for(sess, caps):
     """PolicyFacts of the current source: shapes as declared, resources derived from the capacities."""
-    from merlin.transforms.pipeline_policy import PolicyFacts
+    from merlin.compiler.transforms.pipeline_policy import PolicyFacts
 
     S = _support()
     src = sess.module
@@ -159,8 +159,8 @@ def registry(caps):
         make_dense_schedule_plan,
         parse_dense_schedule_plan,
     )
-    from merlin.transforms.pipeline_policy import RegisteredPass
-    from merlin.transforms.pipeline_state import PassSpec
+    from merlin.compiler.transforms.pipeline_policy import RegisteredPass
+    from merlin.compiler.transforms.pipeline_state import PassSpec
 
     S = _support()
     ex = S.example()
@@ -265,7 +265,7 @@ def registry(caps):
 
 
 def variants():
-    from merlin.transforms.pipeline_policy import PipelineVariant, ResourcePredicate
+    from merlin.compiler.transforms.pipeline_policy import PipelineVariant, ResourcePredicate
 
     return (
         PipelineVariant("compact", ("dense_capacity_view", "compact_dense")),
@@ -354,13 +354,13 @@ def demo_panels(caps) -> tuple[dict, dict]:
 
 def feedback(panels, pins, caps):
     """ShapeCaseFeedback per panel geometry, pairing the variants' observations of that geometry."""
-    from merlin.transforms.evaluated_exploration import (
+    from merlin.compiler.transforms.evaluated_exploration import (
         CompletedObservation,
         ExplorationIdentity,
         exploration_context_identity,
     )
-    from merlin.transforms.pass_exploration import ExplorationGeometry
-    from merlin.transforms.shape_policy import ShapeCaseFeedback
+    from merlin.compiler.transforms.pass_exploration import ExplorationGeometry
+    from merlin.compiler.transforms.shape_policy import ShapeCaseFeedback
 
     cases, skipped = {}, []
     for variant, panel in panels.items():
@@ -401,9 +401,9 @@ def feedback(panels, pins, caps):
 
 
 def assess(cases, holdout):
-    from merlin.transforms.pass_exploration import ValidationPartition
-    from merlin.transforms.pipeline_policy import ResourcePredicate
-    from merlin.transforms.shape_policy import ShapeScheduleClass, assess_shape_policy
+    from merlin.compiler.transforms.pass_exploration import ValidationPartition
+    from merlin.compiler.transforms.pipeline_policy import ResourcePredicate
+    from merlin.compiler.transforms.shape_policy import ShapeScheduleClass, assess_shape_policy
 
     training = tuple(c.geometry for klass, c in cases if klass not in holdout)
     held = tuple(c.geometry for klass, c in cases if klass in holdout)
@@ -502,9 +502,9 @@ def target_example(owner):
     Its terminal registered pass must return EmittedProgram at the exact boundary
     named by the observation. No neutral registry or global identity pins apply.
     """
-    from merlin.transforms.pass_exploration import EmittedProgram
-    from merlin.transforms.pipeline_policy import PipelinePolicy, execute_policy
-    from merlin.transforms.shape_policy import PerformanceDomain, propose_shape_policies
+    from merlin.compiler.transforms.pass_exploration import EmittedProgram
+    from merlin.compiler.transforms.pipeline_policy import PipelinePolicy, execute_policy
+    from merlin.compiler.transforms.shape_policy import PerformanceDomain, propose_shape_policies
 
     if any(not callable(getattr(owner, name, None)) for name in ("prepare", "evaluate", "binding")):
         raise ValueError("target adapter requires prepare, evaluate and binding hooks")
@@ -533,7 +533,7 @@ def target_example(owner):
     requests = proposal.requests(training)
     if requests["missing_boundary_sources"] and callable(getattr(owner, "boundaries", None)):
         facts = tuple(owner.boundaries(requests))
-        from merlin.transforms.pass_exploration import ExplorationGeometry
+        from merlin.compiler.transforms.pass_exploration import ExplorationGeometry
 
         proposal = proposal.freeze_boundaries(
             tuple(ExplorationGeometry(training[0].geometry.family, f.shapes) for f in facts), facts=facts
@@ -600,7 +600,7 @@ def target_example(owner):
 
 
 def example(facts=None, panel_files=None, pins_file=None, holdout=("model_layer", "thin"), extra=()) -> dict:
-    from merlin.transforms.shape_policy import PerformanceDomain
+    from merlin.compiler.transforms.shape_policy import PerformanceDomain
 
     S = _support()
     caps = S.capacities(facts)

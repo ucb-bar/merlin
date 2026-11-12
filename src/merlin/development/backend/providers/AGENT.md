@@ -15,7 +15,7 @@ Mount-table tests do not qualify kernel isolation; payload integrity remains the
 native snapshot verification boundary, not a repeated full-corpus hash on every shell command.
 Never recreate a second sandbox policy here. No composition mounts the operator's `~/.claude` or
 `~/.claude.json`; a command that runs the `claude` CLI gets a fresh per-launch home from
-`merlin.targetgen.sandbox.claude_home`, whose only operator bind is the OAuth credential file.
+`merlin.development.targetgen.sandbox.claude_home`, whose only operator bind is the OAuth credential file.
 Startup call observations use `telemetry.startup` around the original callbacks.
 Preserve call order and count, arguments, return values, exceptions and all native
 checks. No new verification, credential inspection or policy caching belongs in

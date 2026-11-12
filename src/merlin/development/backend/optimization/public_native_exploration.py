@@ -16,6 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import MethodType
 
+from merlin.compiler.lower.model import reviewed_metadata as METADATA
+from merlin.compiler.lower.model.reviewed_pass_capabilities import (
+    PassCapabilityBinding,
+    ReviewedPassCapabilities,
+    ReviewedPassCapability,
+)
 from merlin.development.backend.optimization import _archive_feedback as HISTORY
 from merlin.development.backend.optimization import _archive_source_domain as DOMAIN
 from merlin.development.backend.optimization import _native_direct_source_domain as DIRECT
@@ -30,12 +36,6 @@ from merlin.development.backend.optimization import archive_screen_review as REV
 from merlin.development.backend.optimization.archive_screen_selection import NativeArchiveScreenSelection
 from merlin.development.backend.optimization.archive_spike_runtime import ArchiveSpikeRuntime
 from merlin.development.backend.optimization.contracts import StageGateError, canonical_json, document_sha256
-from merlin.llvmlower import reviewed_metadata as METADATA
-from merlin.llvmlower.reviewed_pass_capabilities import (
-    PassCapabilityBinding,
-    ReviewedPassCapabilities,
-    ReviewedPassCapability,
-)
 from merlin.runtime import _native_files as F
 
 SCHEMA = "merlin.public_native_exploration.v1"

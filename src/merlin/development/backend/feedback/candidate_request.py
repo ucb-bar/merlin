@@ -25,8 +25,8 @@ def public_capsules_root(descriptor):
     if descriptor is None:
         return None
     try:
+        from merlin.development.targetgen.target_experiment import load_target_experiment
         from merlin.experiments.corpus.admission import public_capsules_for
-        from merlin.targetgen.target_experiment import load_target_experiment
 
         return public_capsules_for(load_target_experiment(descriptor))
     except Exception:  # noqa: BLE001 -- declared shapes then stay unknown, never guessed
@@ -74,7 +74,7 @@ def _contract_document(contract, descriptor):
     import yaml
 
     if descriptor is not None:
-        from merlin.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
+        from merlin.development.targetgen.target_experiment import load_target_experiment, selected_experiment_contract
 
         contract = selected_experiment_contract(load_target_experiment(descriptor), environment=os.environ)
     return (yaml.safe_load(Path(contract).read_bytes()) or {}) if contract is not None else {}

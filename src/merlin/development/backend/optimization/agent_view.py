@@ -190,7 +190,7 @@ def agent_analysis_view(
     record: Mapping[str, Any], *, complete_evidence: str, context_provider_installed: bool | None = None
 ) -> dict[str, Any]:
     """Keep priorities in the immediate response; the complete, unpruned graph stays available."""
-    from merlin.perf.structural_delta import compare_machine_objects
+    from merlin.analysis.perf.structural_delta import compare_machine_objects
 
     view = copy.deepcopy(dict(record))
     brief = view.setdefault("analysis", {}).setdefault("optimization_brief", {})

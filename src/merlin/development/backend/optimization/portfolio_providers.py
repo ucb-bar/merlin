@@ -7,16 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from merlin.perf.controlled_context_provider import ControlledSourcePrefixProvider
-from merlin.perf.host_physical_transition_qualifier import (
+from merlin.analysis.perf.controlled_context_provider import ControlledSourcePrefixProvider
+from merlin.analysis.perf.host_physical_transition_qualifier import (
     ChangedRegionQualifierDispatch,
     HostPhysicalTransitionQualifier,
 )
-from merlin.perf.host_region_qualifier import HostChangedRegionQualifier
-from merlin.perf.isolated_probe_provider import IsolatedPrimitiveProbeProvider
-from merlin.perf.lane_migration_qualifier import LaneMigrationContractionQualifier
-from merlin.perf.paired_context_provider import PairedControlledContextProvider
-from merlin.perf.source_program_pair_provider import SourceProgramPairProvider
+from merlin.analysis.perf.host_region_qualifier import HostChangedRegionQualifier
+from merlin.analysis.perf.isolated_probe_provider import IsolatedPrimitiveProbeProvider
+from merlin.analysis.perf.lane_migration_qualifier import LaneMigrationContractionQualifier
+from merlin.analysis.perf.paired_context_provider import PairedControlledContextProvider
+from merlin.analysis.perf.source_program_pair_provider import SourceProgramPairProvider
 
 
 @dataclass(frozen=True)

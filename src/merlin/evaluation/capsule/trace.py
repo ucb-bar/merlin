@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 
+from merlin.development.targetgen import trace_check as TCK
+from merlin.development.targetgen.capsule_common import _cat
+from merlin.development.targetgen.contract import schemas
+from merlin.development.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
+from merlin.development.targetgen.package_runtime import CertFailure
+from merlin.development.targetgen.rocc import decode as RD
 from merlin.evaluation.capsule.cpu import _grade_cpu_step
 from merlin.evaluation.capsule.instructions import enforce_executed_stream
 from merlin.evaluation.capsule.lanes import accelerator_lane_violated
-from merlin.targetgen import trace_check as TCK
-from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.contract import schemas
-from merlin.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
-from merlin.targetgen.package_runtime import CertFailure
-from merlin.targetgen.rocc import decode as RD
 
 
 def check_trace(capsule, paths, cfg, contract, eff_target, required, no_oracle, evidence):
@@ -59,9 +59,9 @@ def check_trace(capsule, paths, cfg, contract, eff_target, required, no_oracle, 
         # map, ISA legality) + this decoded trace, never a target literal, and — like trace_check — is
         # advisory: it writes liveness_report.json for the author and never gates or crashes the capsule.
         try:
-            from merlin.liveness import Program as _LProg
-            from merlin.liveness import assess as _lassess
-            from merlin.targetgen.dram_facts import dram_window_for
+            from merlin.development.targetgen.dram_facts import dram_window_for
+            from merlin.verification.liveness import Program as _LProg
+            from merlin.verification.liveness import assess as _lassess
 
             _lname = capsule.get("id") or capsule.get("name") or "kernel"
             # THE DRAM WINDOW IS A DERIVABLE FACT AND WAS NEVER HANDED OVER. The screen's address-map

@@ -1,4 +1,4 @@
-# Corpus locations the library reads. Resolved ONLY through merlin.targetgen.corpora — no library
+# Corpus locations the library reads. Resolved ONLY through merlin.development.targetgen.corpora — no library
 # module spells a corpus path, checkout directory or corpus-selecting environment variable itself, so
 # adding a corpus (or moving one) is an edit here, not in core code.
 

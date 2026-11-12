@@ -10,9 +10,9 @@ from collections import Counter
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType, ModuleOp, UnitAttr
 from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType, LLVMVoidType
 
-from merlin.perf.constant_control_cfg import integer_operation
-from merlin.perf.host_cfg_activity import _payload_bytes
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.analysis.perf.constant_control_cfg import integer_operation
+from merlin.analysis.perf.host_cfg_activity import _payload_bytes
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
 
 _CASTS = {"llvm.zext", "llvm.sext", "llvm.trunc", "llvm.bitcast"}
 _PACKING = {"llvm.and", "llvm.or", "llvm.xor", "llvm.shl", "llvm.lshr", "llvm.ashr"}
@@ -127,7 +127,7 @@ def _storage(address, function):
 
 
 def _slice(address, storage, observer, isa):
-    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn
+    from merlin.development.targetgen.rocc.decode import _asm_template, _parse_insn
 
     pointers, loads, packing, endpoints = {address.result}, set(), set(), set()
     queue = [address.result]
@@ -210,8 +210,8 @@ def prove_command_parameters(function, activity, *, target):
 
 
 def _prove(function, activity, *, target):
-    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, _semantics
-    from merlin.targetgen.rocc.normalized_operands import BoundOperandObserver
+    from merlin.development.targetgen.rocc.decode import _asm_template, _parse_insn, _semantics
+    from merlin.development.targetgen.rocc.normalized_operands import BoundOperandObserver
 
     observer = getattr(_semantics(target), "operand_observer", None) if target is not None else None
     if type(observer) is not BoundOperandObserver:

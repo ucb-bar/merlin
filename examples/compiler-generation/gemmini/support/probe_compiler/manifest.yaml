@@ -1,5 +1,5 @@
 # A PROBE package, not a solution: exercises Merlin's grading path for two ISA capsules only.
-# See README.md. Every encoding comes from gemmini_isa.h, which merlin.targetgen.isa_header_gen
+# See README.md. Every encoding comes from gemmini_isa.h, which merlin.development.targetgen.isa_header_gen
 # generated from the verified RTL facts and the target contract.
 artifact_type: mlir_oot_target_backend
 target: gemmini

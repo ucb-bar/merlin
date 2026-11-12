@@ -7,8 +7,8 @@ not timing-sensitive environment interactions or physical target state.
 
 from __future__ import annotations
 
-from merlin.transforms.scalar_witness import ScalarRewriteWitness
-from merlin.transforms.unrolling import UnrollWitness
+from merlin.compiler.transforms.scalar_witness import ScalarRewriteWitness
+from merlin.compiler.transforms.unrolling import UnrollWitness
 
 
 def extended_obligations(change) -> tuple[list[str], list[str]]:

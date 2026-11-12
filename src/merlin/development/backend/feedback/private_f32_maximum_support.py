@@ -16,17 +16,17 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.development.backend.feedback import private_control_support as control
-from merlin.development.backend.feedback import private_linked_source_preparation as preparation
-from merlin.development.backend.feedback.private_index_source import _same_json_value
-from merlin.frontends.capture_normalization import normalize_capture_mlir
-from merlin.frontends.linalg_f32_maximum_patterns import (
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+from merlin.compiler.frontend.linalg_f32_maximum_patterns import (
     STATIC_F32_MAXIMUM_SOURCE_BODY_SCHEMA,
     recognize_static_f32_maximum,
     serialized_f32_maximum_pattern,
 )
-from merlin.frontends.linalg_patterns import InvalidLinalgPattern
-from merlin.llvmlower.target_data_layout import selected_index_bits
+from merlin.compiler.frontend.linalg_patterns import InvalidLinalgPattern
+from merlin.compiler.lower.model.target_data_layout import selected_index_bits
+from merlin.development.backend.feedback import private_control_support as control
+from merlin.development.backend.feedback import private_linked_source_preparation as preparation
+from merlin.development.backend.feedback.private_index_source import _same_json_value
 from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
 
 FIELD = "f32_maximum_host_support"

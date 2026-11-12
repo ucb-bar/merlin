@@ -40,7 +40,7 @@ with the same geometry are aliases: they merge into the first one (`aliases` in 
   `static_emitted_ir` (a static count you chose as the objective, e.g. operand bytes from
   `explore-schedules`); `cycles` is that one objective. Missing or non-positive `cycles` is unknown.
   A row may instead carry `"observation"`: an `asdict(CompletedObservation)` from
-  `merlin.transforms.evaluated_exploration` (plus optional `implementation_sha256`). Its own rule
+  `merlin.compiler.transforms.evaluated_exploration` (plus optional `implementation_sha256`). Its own rule
   applies (passing numerics, complete timing over the complete ROI, known cycles), and its domain is
   the `PerformanceDomain` fields of its identity, so the rows you give `shape_policy` read the same here.
 * self-check responses (`agent_selfcheck.py --attach ID --out FILE`), as a list of paths or documents,

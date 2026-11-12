@@ -137,7 +137,7 @@ def attach_source_record(result: dict[str, Any], proof: Mapping[str, Any] | None
 def _record_matches_selected(actual: Mapping[str, Any] | None, selected: Mapping[str, Any] | None) -> bool:
     """Exact preflight/post-preparation join, including effective pass options."""
     from merlin.common.digest import is_sha256
-    from merlin.llvmlower.target_data_layout import default_index_bits
+    from merlin.compiler.lower.model.target_data_layout import default_index_bits
 
     if not isinstance(actual, Mapping) or not isinstance(selected, Mapping):
         return False

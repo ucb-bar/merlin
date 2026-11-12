@@ -103,7 +103,7 @@ def decode_lowered(text, decoder):
     """The host decoder's trace of emitted LLVM; ``None`` when no selected decoder exists."""
     if not decoder or decoder.get("semantics") is None:
         return None
-    from merlin.targetgen.rocc.decode import _parse_module, decode_module
+    from merlin.development.targetgen.rocc.decode import _parse_module, decode_module
 
     module = _parse_module(text)
     if module is None:
@@ -146,14 +146,14 @@ def _compiled_stream(lowered, decoder, symbol, build, *, _elf_stream):
     import subprocess
     import tempfile
 
-    from merlin.kernels.mechanism_applicability import NO_STREAM
+    from merlin.analysis.kernels.mechanism_applicability import NO_STREAM
 
     source = dict(kind="host_compiled_lowered_mlir", symbol=symbol, relaxation="-mno-relax")
     flags = list((build or {}).get("flags") or ())
     if not any((f.startswith("-march=") for f in flags)) or not any((f.startswith("-mabi=") for f in flags)):
         return (None, NO_STREAM + ": the selected contract declares no kernel -march/-mabi recipe", source)
     try:
-        from merlin.llvmlower import codegen, toolchain
+        from merlin.compiler.lower.model import codegen, toolchain
 
         clang = Path(toolchain.clang())
         translate = Path(toolchain.mlir_translate())
@@ -188,7 +188,7 @@ def _compiled_stream(lowered, decoder, symbol, build, *, _elf_stream):
 
 def _elf_stream(entry, decoder, symbol):
     """Decoded commands of a proved bounded execution of ``symbol`` in an ELF or relocatable object."""
-    from merlin.kernels.mechanism_applicability import NO_STREAM, command_stream
+    from merlin.analysis.kernels.mechanism_applicability import NO_STREAM, command_stream
 
     if entry is None or not symbol:
         return None, NO_STREAM + (

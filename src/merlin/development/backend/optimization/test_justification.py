@@ -16,10 +16,10 @@ import yaml
 
 from merlin.development.backend.optimization import contracts as C
 from merlin.development.backend.optimization.contracts import StageGateError
+from merlin.development.targetgen.application_inventory import verified_static_integerization
+from merlin.development.targetgen.performance_match import match_operation_form
 from merlin.development.testgen.performance_scope import validate_performance_scope
 from merlin.development.testgen.profiles import validate_host_source_basis
-from merlin.targetgen.application_inventory import verified_static_integerization
-from merlin.targetgen.performance_match import match_operation_form
 
 _GENERATOR = "experiments/corpora/generate_corpus.py"
 _FACTS = "hardware/effective-views/performance-facts.json"
@@ -57,7 +57,7 @@ def _host_basis(descriptor, directory: Path, gate) -> dict | None:
     operation = descriptor.get("operation") or {}
     original = (operation.get("attributes") or {}).get("program")
     source = directory / "capsule.interface.mlir"
-    from merlin.targetgen.component_program import render
+    from merlin.development.targetgen.component_program import render
 
     storage = program.get("selected_storage") or {}
     try:

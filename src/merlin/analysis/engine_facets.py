@@ -153,8 +153,8 @@ def engines_for(target: str) -> frozenset[str]:
     Callers that need an engine must fail closed on it; see ``facet_families_for``.
     """
     try:
-        from merlin.targetgen import target_registry as _tr
-        from merlin.targetgen.compute_units import compute_units
+        from merlin.development.targetgen import target_registry as _tr
+        from merlin.development.targetgen.compute_units import compute_units
     except ImportError:  # targetgen not installed in this sandbox
         return frozenset()
     try:

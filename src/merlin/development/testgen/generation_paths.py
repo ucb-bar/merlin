@@ -14,7 +14,7 @@ def _require_distinct_corpus_destinations(te, *, output_root: str | Path, eviden
     them so an alias cannot bypass this source-ownership check.
     """
     from merlin.common.paths import checkout_root
-    from merlin.targetgen.corpora import capsule_corpus_roots
+    from merlin.development.targetgen.corpora import capsule_corpus_roots
 
     # In source mode MERLIN_REPO_ROOT may select an external experiment
     # workspace that has no copy of this checkout's historical registry. The

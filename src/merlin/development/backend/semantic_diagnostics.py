@@ -13,11 +13,11 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from merlin.development.backend.source_inputs import fingerprint
+from merlin.development.targetgen.capsule_common import discover_capsules
+from merlin.development.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.semantic_search import SearchLimits, search_linalg_inventory
 from merlin.target.spec.instructions import validate_normalized_instruction_model
-from merlin.targetgen.capsule_common import discover_capsules
-from merlin.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.semantic_search import SearchLimits, search_linalg_inventory
 
 _SCHEMA = "merlin.phase1.semantic_search_diagnostic.v1"
 _RECEIPT = "semantic_search_diagnostic.json"

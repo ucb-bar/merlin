@@ -26,7 +26,7 @@ import yaml
 
 from merlin.development.backend.brokers.common_transforms import CommonTransformService
 from merlin.development.backend.feedback import setup_timing
-from merlin.targetgen import package_runtime as P
+from merlin.development.targetgen import package_runtime as P
 
 _INVOCATION_PUBLICATION = contextvars.ContextVar("original_snapshot_publication", default=None)
 _EMISSION_OBSERVATION = contextvars.ContextVar("original_profile_emission_observation", default=None)
@@ -60,7 +60,7 @@ def _checkpoint_command_admission():
     custody or while an owned child is running. Final frozen-compiler checks do
     not carry the background snapshot admission scope and remain eligible.
     """
-    from merlin.targetgen.capsule_scheduling import background_admission_selected
+    from merlin.development.targetgen.capsule_scheduling import background_admission_selected
 
     if not background_admission_selected():
         return
@@ -223,7 +223,7 @@ def selfcheck_execution(bundle_manifest, *, context, submission, work_root):
     """Close setup custody before grading; keep original execution scopes alive."""
     from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.development.backend.feedback import snapshot_execution
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     if bundle_manifest is None:
         if snapshot_execution.selected():
@@ -295,7 +295,7 @@ def selfcheck_compile_only(a, *, context):
 
         from merlin.development.backend.brokers.common_transforms import CommonTransformService
         from merlin.development.backend.feedback.compile_only import run
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         if a.compiler_bundle_manifest is None or a.rtl_facts is None or a.contract is None:
             raise ValueError("compile-only requires the original frozen bundle, facts and contract")
@@ -348,8 +348,8 @@ def selfcheck_compile_only(a, *, context):
 @setup_timing.measured("package_policy.public_python_roots")
 def _public_python_roots(owner):
     """Derive import roots from pinned public destinations, including split packages."""
-    from merlin.targetgen import tool_registry
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen import tool_registry
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     sources = list(owner.profile["common_sources"])
     for name in owner.profile["treatment_tools"]:
@@ -396,7 +396,7 @@ def _public_python_roots(owner):
 def _public_package_parts(argv, env_prefix, owner):
     """Compose exact original grants; internal callers must close masks last."""
     from merlin.development.backend.author_profiles import resolve, verify_bundle
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     author = owner.bundle.get("author_profile")
     if author is not None:
@@ -420,7 +420,10 @@ def _original_package_composition(target, inputs, scope):
         or not executor.concurrent_entrypoints_v1()
     ):
         return None
-    from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports, active_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import (
+        _issued_compiler_imports,
+        active_compiler_imports,
+    )
 
     owner = active_compiler_imports()
     if owner is None:
@@ -428,7 +431,7 @@ def _original_package_composition(target, inputs, scope):
 
     def compose(argv, env_prefix, *, target, scope, selected_surfaces):
         from merlin.common.cpu_pool import shared_compute_pool
-        from merlin.targetgen.sandbox.host_surfaces import _final_answer_policy
+        from merlin.development.targetgen.sandbox.host_surfaces import _final_answer_policy
 
         expected_surfaces = () if inputs is None else inputs.surfaces
         if (
@@ -476,7 +479,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
     from dataclasses import replace
 
     from merlin.common.cpu_pool import shared_compute_pool
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     # Alias discovery walks real runtime trees. Schedule this synchronous CPU
     # work with compilation/simulation, and release its slot before any RPC or
@@ -497,7 +500,7 @@ def public_package_policy(policy, *, target, owner, scope=None):
 
 def active_public_package_policy(policy, *, target, scope=None):
     """The normal package box consumes only a live original core admission."""
-    from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import active_compiler_imports
 
     owner = active_compiler_imports()
     return policy if owner is None else public_package_policy(policy, target=target, owner=owner, scope=scope)
@@ -509,7 +512,7 @@ def active_profile_service():
     if original is not None:
         original.owner._verify()
         return original.owner
-    from merlin.targetgen.compiler_profile_admission import active_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import active_compiler_imports
 
     admission = active_compiler_imports()
     if admission is None:
@@ -751,7 +754,7 @@ class _Executor:
         """Check issuer identity only; each real call still verifies all input bytes."""
         if type(self) is not _Executor or self not in _CONCURRENT_EXECUTORS:
             return None
-        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.development.targetgen.compiler_profile_admission import _issued_compiler_imports
         from merlin.verification import lean_emission_context as emission
 
         binding = self._concurrent_binding
@@ -819,7 +822,7 @@ class _Executor:
     @contextlib.contextmanager
     def _concurrent_lifetime(self):
         from merlin.common.access import ModuleLocationPlan
-        from merlin.targetgen.compiler_profile_admission import _issued_compiler_imports
+        from merlin.development.targetgen.compiler_profile_admission import _issued_compiler_imports
         from merlin.verification import lean_emission_context as emission
 
         admission, scope = _issued_compiler_imports(), emission._ACTIVE.get()
@@ -934,7 +937,7 @@ class _Executor:
             return
         from dataclasses import replace
 
-        from merlin.targetgen.contract import toolchain
+        from merlin.development.targetgen.contract import toolchain
 
         with tempfile.TemporaryDirectory(prefix="build-", dir=self.work_root) as temporary:
             policy = self._policy(Path(temporary), pkg.directory)
@@ -992,7 +995,7 @@ class _Executor:
             P._admit_artifact_protocol(pkg, artifact_profile)
             dependencies = ()
             if artifact_profile is not None:
-                from merlin.targetgen.artifact_bundle import require_profile
+                from merlin.development.targetgen.artifact_bundle import require_profile
 
                 require_profile(artifact_profile)
                 dependencies = (artifact_profile.path,)
@@ -1101,7 +1104,7 @@ def _request_snapshot_admission(service, candidate):
         raise ValueError("joint snapshot admission requires the original shared compute root")
     root = Path(raw) / "immutable-snapshots"
     key = snapshot_admission.identity(service, candidate)
-    from merlin.targetgen.capsule_scheduling import background_admission_selected
+    from merlin.development.targetgen.capsule_scheduling import background_admission_selected
 
     # Explicit final frozen checks are allowed after editing stops. Ordinary
     # background queue work observes the same trusted stop as command admission.
@@ -1121,7 +1124,10 @@ def original_compiler_execution(service, *, target_experiment, candidate, work_r
     """Batch only setup for an exact owner, never the grading lifetime."""
     from merlin.common.bundle_snapshot import verified_snapshot_scope
     from merlin.development.backend.feedback import snapshot_execution
-    from merlin.targetgen.compiler_library import active_compiler_library, guarded_compiler_library_verification
+    from merlin.development.targetgen.compiler_library import (
+        active_compiler_library,
+        guarded_compiler_library_verification,
+    )
 
     if snapshot_execution.selected():
         with snapshot_execution.execution(

@@ -32,19 +32,19 @@ from merlin.development.backend.optimization import campaign as C
 from merlin.development.backend.optimization import external_resources as resources
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.retained_revisions import source_inventory
-from merlin.evaluation.capsule import identity as capsule_identity
-from merlin.evaluation.capsule import model as capsule_model
-from merlin.evaluation.capsule import model_candidates as capsule_model_candidates
-from merlin.evaluation.capsule import processes as capsule_processes
-from merlin.targetgen import compiler_profile_admission as API
-from merlin.targetgen import package_runtime as P
-from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
-from merlin.targetgen.compiler_pass_selection import (
+from merlin.development.targetgen import compiler_profile_admission as API
+from merlin.development.targetgen import package_runtime as P
+from merlin.development.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+from merlin.development.targetgen.compiler_pass_selection import (
     CompilerPassSelection,
     active_compiler_passes,
     scoped_compiler_passes,
 )
-from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
+from merlin.development.targetgen.target_experiment import TargetExperiment, load_target_experiment
+from merlin.evaluation.capsule import identity as capsule_identity
+from merlin.evaluation.capsule import model as capsule_model
+from merlin.evaluation.capsule import model_candidates as capsule_model_candidates
+from merlin.evaluation.capsule import processes as capsule_processes
 
 SCHEMA = "merlin.original_model_child.v1"
 LIBRARY_SCHEMA = "merlin.original_model_child.v2"
@@ -184,8 +184,8 @@ def _inputs_record(inputs):
 
 
 def _restore_inputs(record):
-    from merlin.targetgen.sandbox import toolchain as TC
-    from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+    from merlin.development.targetgen.sandbox import toolchain as TC
+    from merlin.development.targetgen.sandbox.answer_surfaces import AnswerSurface
 
     if record["kind"] == "frozen":
         from merlin.development.backend.optimization.qualification_policy import restore
@@ -229,35 +229,35 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         "merlin.development.backend.feedback.scale_probe_child",
         "merlin.development.backend.feedback.scale_probe_batch",
         "merlin.development.backend.feedback.compile_only",
-        "merlin.targetgen.simulation_certificate",
-        "merlin.targetgen.shared_pass_context",
-        "merlin.targetgen.shared_pass_contract",
-        "merlin.llvmlower.target_schedule",
-        "merlin.llvmlower.device_target_passes",
+        "merlin.development.targetgen.simulation_certificate",
+        "merlin.development.targetgen.shared_pass_context",
+        "merlin.development.targetgen.shared_pass_contract",
+        "merlin.compiler.lower.model.target_schedule",
+        "merlin.compiler.lower.model.device_target_passes",
         "merlin.development.backend.feedback.model_storage_completion",
-        "merlin.llvmlower.completed_host_storage",
-        "merlin.llvmlower.host_storage_policy",
-        "merlin.llvmlower.borrowed_arena",
-        "merlin.targetgen.source_composition_preferences",
-        "merlin.targetgen.owned_host_model_execution",
-        "merlin.targetgen.owned_host_selections",
+        "merlin.compiler.lower.model.completed_host_storage",
+        "merlin.compiler.lower.model.host_storage_policy",
+        "merlin.compiler.lower.model.borrowed_arena",
+        "merlin.development.targetgen.source_composition_preferences",
+        "merlin.development.targetgen.owned_host_model_execution",
+        "merlin.development.targetgen.owned_host_selections",
     )
     if library:
         names += (
-            "merlin.targetgen.compiler_library",
+            "merlin.development.targetgen.compiler_library",
             "merlin.development.backend.optimization.compiler_library_state",
             "merlin.development.backend.optimization.compiler_libraries",
         )
     if passes:
         names += (
-            "merlin.targetgen.compiler_pass_selection",
-            "merlin.llvmlower.reviewed_pass_capabilities",
-            "merlin.llvmlower.reviewed_metadata",
+            "merlin.development.targetgen.compiler_pass_selection",
+            "merlin.compiler.lower.model.reviewed_pass_capabilities",
+            "merlin.compiler.lower.model.reviewed_metadata",
         )
     if checked_source:
         names += (
-            "merlin.targetgen.checked_source_model_diagnostic",
-            "merlin.targetgen.checked_source_model_diagnostic_execution",
+            "merlin.development.targetgen.checked_source_model_diagnostic",
+            "merlin.development.targetgen.checked_source_model_diagnostic_execution",
             "merlin.development.testgen.connected_integer_qualification",
         )
     if parent_delegation:
@@ -274,7 +274,7 @@ def _closure(*, library=False, passes=False, checked_source=False, parent_delega
         if row not in rows:
             rows.append(row)
     if source_optimizations:
-        from merlin.targetgen.compiler_source_optimizations import implementation_sources
+        from merlin.development.targetgen.compiler_source_optimizations import implementation_sources
 
         for path in implementation_sources():
             row = _pin(path)
@@ -310,7 +310,7 @@ def _selected_closure(document):
 
 
 def _owner_record(service):
-    from merlin.targetgen.sandbox import bwrap
+    from merlin.development.targetgen.sandbox import bwrap
 
     CommonTransformService._verify(service)
     return {
@@ -331,7 +331,7 @@ class ModelChildTransport:
         self.storage_return = ModelStorageReturn(document["host_sources"], document.get("storage_completion_key"))
         self.compiler_library_selection = active_compiler_library()
         self.compiler_pass_selection = active_compiler_passes()
-        from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
+        from merlin.development.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
 
         self.checked_source_diagnostic = active_checked_source_diagnostic()
         from merlin.development.backend.feedback.compiler_pass_delegation import active_original_parent_pass_delegation
@@ -347,7 +347,7 @@ class ModelChildTransport:
         return (self.fd,)
 
     def _verify_original(self):
-        from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+        from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
 
         original = self.document
         if active_shared_pass_requirement() != original.get("shared_pass_requirement"):
@@ -371,7 +371,7 @@ class ModelChildTransport:
         ) != original.get("compiler_passes"):
             raise StageGateError("original model child compiler pass owner changed")
         if "checked_source_diagnostic" in original:
-            from merlin.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
+            from merlin.development.targetgen.checked_source_model_diagnostic import active_checked_source_diagnostic
 
             if (
                 active_checked_source_diagnostic() is not self.checked_source_diagnostic
@@ -465,7 +465,7 @@ class _RestoredChild:
         This checkpoint does not issue a reusable snapshot verification capability
         or retain a verification operation across commands.
         """
-        from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+        from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
         from merlin.verification import lean_emission_context as emission
 
         document, owner = self.document, self.executor.owner
@@ -587,11 +587,11 @@ def prepare_model_child(*, spec_path, environment, package_dir):
         ) as transport:
             yield transport
         return
-    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
 
     if active_shared_pass_requirement() is not None and _original_executor() is None:
         raise StageGateError("shared-pass model child requires its original execution owner")
-    from merlin.llvmlower import reviewed_metadata
+    from merlin.compiler.lower.model import reviewed_metadata
 
     if reviewed_metadata._ACTIVE.get() is not None:
         raise StageGateError("finish the original registry metadata operation before preparing a model child")
@@ -615,11 +615,11 @@ def _prepare_model_child(*, spec_path, environment, package_dir):
     """
     library = active_compiler_library()
     passes = active_compiler_passes()
-    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
 
     shared_requirement = active_shared_pass_requirement()
     from merlin.development.backend.feedback.compiler_pass_delegation import active_original_parent_pass_delegation
-    from merlin.targetgen import checked_source_model_diagnostic as diagnostic
+    from merlin.development.targetgen import checked_source_model_diagnostic as diagnostic
 
     spec = json.loads(_plain(spec_path).read_bytes())
     checked = (spec.get("candidate_context") or {}).get(diagnostic.CONTEXT_FIELD)
@@ -806,7 +806,10 @@ def prepare_model_children(*, spec_paths, environment, package_dir):
 @contextlib.contextmanager
 def restore_model_child(fd, *, spec_path, spec_bytes):
     """Reopen sealed parent provenance and enter original execution before work."""
-    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_context import (
+        active_shared_pass_requirement,
+        scoped_shared_pass_requirement,
+    )
 
     if (
         active_shared_pass_requirement() is not None
@@ -896,7 +899,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
             execution.enter_context(scoped_compiler_library(library))
         passes = None
         if document["schema"] in (PASSES_SCHEMA, CHECKED_SOURCE_SCHEMA, DELEGATED_PASSES_SCHEMA):
-            from merlin.targetgen.compiler_pass_selection import restore_original_selection
+            from merlin.development.targetgen.compiler_pass_selection import restore_original_selection
 
             _plain(document["work_root"]).mkdir(parents=True, exist_ok=True)
             passes = restore_original_selection(
@@ -955,7 +958,7 @@ def restore_model_child(fd, *, spec_path, spec_bytes):
         token = _RESTORED_CHILD.set(state)
         try:
             if "checked_source_diagnostic" in document:
-                from merlin.targetgen import checked_source_model_diagnostic as diagnostic
+                from merlin.development.targetgen import checked_source_model_diagnostic as diagnostic
 
                 checked = diagnostic.restore_checked_source_diagnostic(
                     document[diagnostic.CONTEXT_FIELD],

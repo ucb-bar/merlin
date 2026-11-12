@@ -176,7 +176,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
         return []
     frozen = list(pkg.compiler_features)
     try:
-        from merlin.mining.apply import blocking_risks, shape_adapted_features
+        from merlin.analysis.mining.apply import blocking_risks, shape_adapted_features
 
         # A package whose block lives in its SCHEDULE TEXT (no feature) cannot be re-resolved. Say so
         # rather than letting the resulting ~34x fp32 degradation read as "this model is slow".
@@ -1037,7 +1037,7 @@ def compile_model(
             out["placement"] = _pre["placement"]
             out["routing_plan"] = {**_summarize_route_plan(plan), "authority": _authority}
             try:
-                from merlin.targetgen import coverage_certificate as _cert
+                from merlin.development.targetgen import coverage_certificate as _cert
 
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
                 # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
@@ -1061,8 +1061,8 @@ def compile_model(
                 # demands, so they are not "placed on the host", they are absent -- and they are
                 # where a whole model spends its time. The census walks every region of the module
                 # and gives each a unit, or a refusal with its owner, or names it a silent fallback.
+                from merlin.analysis.perf import placement_census as _census
                 from merlin.common import mlir_query as _mq
-                from merlin.perf import placement_census as _census
 
                 # The requested datapath is retained for diagnostics, but the census
                 # judges captured operations at their observed operand formats,
@@ -1114,8 +1114,8 @@ def compile_oot(
     (e.g. A2_single_tile_matmul) and ``--package`` the OOT backend. Accelerators run capsules/kernels,
     not whole VLA models."""
     from merlin.common.paths import runs_root
-    from merlin.targetgen import package_runtime as oot_runner
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen import package_runtime as oot_runner
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     out: dict = {"tool": "merlin-compile", "target": target, "workload": workload, "package": package, "run": run}
     if corpus_descriptor is None:
@@ -1240,7 +1240,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _dispatch(a, run: str, selection) -> dict:
     """The selected workflow, run with the optional lowering passes ``selection`` names."""
-    from merlin.llvmlower import optional_passes
+    from merlin.compiler.lower.model import optional_passes
 
     with optional_passes.applied(selection) as passes:
         res = _workflow(a, run)

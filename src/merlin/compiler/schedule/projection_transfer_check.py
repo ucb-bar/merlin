@@ -8,8 +8,8 @@ and normal native qualification remain independent requirements.
 
 from dataclasses import dataclass
 
+from merlin.analysis.perf.finite_pointer_trace import ArgumentAddress
 from merlin.compiler.schedule.projection_views import SharedProjectionViews
-from merlin.perf.finite_pointer_trace import ArgumentAddress
 
 
 @dataclass(frozen=True)

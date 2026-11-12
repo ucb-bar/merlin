@@ -21,6 +21,7 @@ from pathlib import Path
 from xdsl.dialects.builtin import StringAttr
 
 from merlin.capture.safetensors import read_header
+from merlin.compiler.dialects._common import text as module_text
 from merlin.compiler.frontend.archives import (
     _archive_info,
     _ArchiveInfo,
@@ -30,6 +31,7 @@ from merlin.compiler.frontend.archives import (
     _sha,
 )
 from merlin.compiler.frontend.constants import CONSTANT_FILE, materialize_arguments, needs_materialization
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.frontend.signature import (
     _WEIGHT_DTYPES,
     _argument_bindings,
@@ -38,8 +40,6 @@ from merlin.compiler.frontend.signature import (
     _payload_bytes,
     _tensor_abi,
 )
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.xdsl_dialects._common import text as module_text
 
 _COPIED = ("weights.safetensors", "weights.safetensors.manifest.json", "frontend-trace.json")
 _SOURCE = "model.mlir"

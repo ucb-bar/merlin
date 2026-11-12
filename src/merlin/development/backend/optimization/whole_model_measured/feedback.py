@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.perf import whole_model_verdict as V
+from merlin.analysis.perf import whole_model_verdict as V
 
 SCHEMA = "merlin_whole_model_feedback_v1"
 
@@ -336,7 +336,7 @@ def roofline_gaps(
 def roofline_lines(document: Mapping[str, Any], *, top: int = 15) -> list[str]:
     """The "distance to the machine" block: ours against each group's derived roofline, with what each
     program issued. Numbers only -- the reference is shown beside them for orientation, not as a goal."""
-    from merlin.perf import group_efficiency as E
+    from merlin.analysis.perf import group_efficiency as E
 
     total = document.get("distance_to_roofline")
     if not total:

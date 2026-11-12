@@ -159,8 +159,8 @@ def legalize(module, *, trace=None):
     """
     from xdsl.dialects.builtin import UnregisteredOp
 
+    from merlin.compiler.dialects._common import text
     from merlin.compiler.quantization.linalg import lower_quant_ext
-    from merlin.xdsl_dialects._common import text
 
     markers = tuple(op for op in module.walk() if isinstance(op, UnregisteredOp))
     if not markers:

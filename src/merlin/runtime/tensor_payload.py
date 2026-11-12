@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from math import prod
 
 from merlin.common.quant_formats import get
-from merlin.llvmlower.weight_payload import WeightPayload
+from merlin.compiler.lower.model.weight_payload import WeightPayload
 
 
 @dataclass(frozen=True)
@@ -45,4 +45,4 @@ class TensorPayload:
             raise ValueError("streamed input omits or adds scalar storage bytes")
         # Freeze the span roster for this emission. Extending the caller's
         # mutable builder later cannot change the declared pointer extent.
-        return self.payload[:len(self.payload)]
+        return self.payload[: len(self.payload)]

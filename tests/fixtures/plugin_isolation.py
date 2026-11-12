@@ -27,13 +27,13 @@ _STATE = (
     ("merlin.runtime.backends.base", "_LOAD_FAILURES"),
     ("merlin.runtime.backends.base", "_LOADED_PLUGIN_OWNERS"),
     ("merlin.runtime.backends.base", "_oot_env_seen"),
-    ("merlin.xdsl_dialects.lowering.target_lowering", "_PLUGIN_SPECS"),
-    ("merlin.xdsl_dialects.lowering.target_lowering", "_PLUGIN_OPCODES"),
-    ("merlin.xdsl_dialects.lowering.target_lowering", "_dialect_env_seen"),
-    ("merlin.targetgen.oracle_policy", "_SIM_ORACLES"),
-    ("merlin.targetgen.oracle_policy", "_SIM_ADAPTER_FACTORIES"),
-    ("merlin.targetgen.oracle_policy", "_sim_oracle_env_seen"),
-    ("merlin.targetgen.oracle_policy", "_sim_metadata_env_seen"),
+    ("merlin.compiler.dialects.lowering.target_lowering", "_PLUGIN_SPECS"),
+    ("merlin.compiler.dialects.lowering.target_lowering", "_PLUGIN_OPCODES"),
+    ("merlin.compiler.dialects.lowering.target_lowering", "_dialect_env_seen"),
+    ("merlin.development.targetgen.oracle_policy", "_SIM_ORACLES"),
+    ("merlin.development.targetgen.oracle_policy", "_SIM_ADAPTER_FACTORIES"),
+    ("merlin.development.targetgen.oracle_policy", "_sim_oracle_env_seen"),
+    ("merlin.development.targetgen.oracle_policy", "_sim_metadata_env_seen"),
 )
 
 

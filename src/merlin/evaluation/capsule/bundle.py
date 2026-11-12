@@ -112,7 +112,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
 
     import numpy as np
 
-    from merlin.targetgen.owned_host_slice_execution import runtime_bundle, selected_source_slice
+    from merlin.development.targetgen.owned_host_slice_execution import runtime_bundle, selected_source_slice
 
     if selected_source_slice(capsule):
         return runtime_bundle(capsule, target=target, artifact_root=artifact_root)
@@ -177,7 +177,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
             source_files["loader_profile"] = loader_profile
         if manifest_asset is not None:
             source_files["capture_manifest"] = manifest_asset
-        from merlin.targetgen import golden_store as _GS
+        from merlin.development.targetgen import golden_store as _GS
 
         if (root / _GS.ARRAYS).exists() or (root / _GS.ARRAYS).is_symlink():
             source_files["independent_golden_arrays"] = _model_asset(root, _GS.ARRAYS, "independent golden arrays")
@@ -209,7 +209,7 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int, artifact_root: Path | 
             raise ValueError("capsule golden input/output names do not exactly match its declaration")
 
         from merlin.common.mlir_query import forward_signature
-        from merlin.llvmlower.weights_pack import load_safetensors_header
+        from merlin.compiler.lower.model.weights_pack import load_safetensors_header
 
         signature, output_signature = forward_signature(interface)
         header, _payload = load_safetensors_header(weights)

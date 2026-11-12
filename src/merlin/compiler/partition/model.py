@@ -22,12 +22,12 @@ def export_rewrite(
     actual call must have a matching statement; a partial interface export is
     reported as incomplete, never as a completed model compilation.
     """
-    from merlin.llvmlower.whole_program import group_interface
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.compiler.lower.model.whole_program import group_interface
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     connected = None
     if connect_spatial:
-        from merlin.llvmlower.connected_spatial import group_connected_spatial
+        from merlin.compiler.lower.model.connected_spatial import group_connected_spatial
 
         selection = group_connected_spatial(module, rewrite)
         module, rewrite, connected = selection.module, selection.rewrite, selection.receipt
@@ -84,7 +84,7 @@ def export_capture(
     discovered here. Source captures are read only.
     """
     from merlin.common import mlir_query as mq
-    from merlin.llvmlower.device_offload import rewrite_groups_to_device
+    from merlin.compiler.lower.model.device_offload import rewrite_groups_to_device
 
     source = Path(capture)
     source = source / "model.mlir" if source.is_dir() else source

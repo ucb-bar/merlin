@@ -8,9 +8,9 @@ import pytest
 
 def _install_logical_backend(monkeypatch, directory):
     """Select this CPU fixture's entry convention, without qualifying any hardware."""
-    from merlin.llvmlower.toolchain import clang
+    from merlin.compiler.lower.model.toolchain import clang
+    from merlin.development.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
     from merlin.runtime.backends import base
-    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
 
     directory.mkdir(parents=True, exist_ok=True)
     script = directory / "logical-abi.ld"
@@ -42,9 +42,9 @@ def _fused_route(capture: str, work: str, package: str, model: str = "two") -> d
 
     from corefixtures.logical_device_target import install
     from merlin.common import mlir_query as mq
-    from merlin.llvmlower.device_build import build_device_objects
-    from merlin.llvmlower.device_offload import rewrite_groups_to_device
-    from merlin.xdsl_dialects._common import text as to_text
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.lower.model.device_build import build_device_objects
+    from merlin.compiler.lower.model.device_offload import rewrite_groups_to_device
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         install(monkeypatch)

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "merlin/contract/schemas/verification_spec.schema.json",
   "title": "Agent-facing verification spec (verification_spec_v1)",
-  "description": "The answer-free acceptance contract handed to a bring-up agent, DERIVED by merlin.targetgen.verification_spec from the graded capsules' own declarations (capsule.yaml only -- never golden.yaml). Written into the agent workspace as verification_spec.md plus this JSON sibling. Because it is derived from the graded corpus, whatever the corpus does not demand it does not require; `not_checked` is the explicit admission of the obligations nothing enforces, which is the half an agent could not otherwise see.",
+  "description": "The answer-free acceptance contract handed to a bring-up agent, DERIVED by merlin.development.targetgen.verification_spec from the graded capsules' own declarations (capsule.yaml only -- never golden.yaml). Written into the agent workspace as verification_spec.md plus this JSON sibling. Because it is derived from the graded corpus, whatever the corpus does not demand it does not require; `not_checked` is the explicit admission of the obligations nothing enforces, which is the half an agent could not otherwise see.",
   "type": "object",
   "required": ["schema", "target", "n_capsules", "ops", "not_checked"],
   "properties": {

@@ -19,7 +19,7 @@ runtime:
 capabilities:
   ops: [matmul, elementwise]
   layouts: [row_major]
-# Datatype -> compute-unit -> op capability model (parsed by merlin.targetgen.compute_units). The concrete
+# Datatype -> compute-unit -> op capability model (parsed by merlin.development.targetgen.compute_units). The concrete
 # warp/mesh geometry + accumulator dtypes are RTL-derived facts, so they are NOT re-declared here.
 compute_units:
   - name: simt_cluster

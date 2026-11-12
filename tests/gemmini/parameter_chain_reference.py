@@ -12,8 +12,8 @@ from xdsl.dialects.builtin import ArrayAttr, StringAttr
 
 from merlin.capture.safetensors import load_header
 from merlin.common.digest import sha256_file
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.transforms.certificates import ir_digest
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.transforms.certificates import ir_digest
 
 PUBLIC_FILES = (
     "case.json",

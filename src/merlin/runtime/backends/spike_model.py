@@ -24,15 +24,14 @@ from merlin.common import proc as _proc
 from merlin.common.digest import sha256_file
 from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
-from merlin.llvmlower.host_transform_dispatch import HostLLVMTransformError as SpikeModelError
-from merlin.llvmlower.host_transform_dispatch import _transform_host_ir
+from merlin.compiler.lower.model import c_runtime, target_data_layout, toolchain
+from merlin.compiler.lower.model.host_transform_dispatch import HostLLVMTransformError as SpikeModelError
+from merlin.compiler.lower.model.host_transform_dispatch import _transform_host_ir
+from merlin.compiler.lower.model.lower import lower_model_file
+from merlin.compiler.lower.model.masked_contraction import MaskEffectContract
+from merlin.compiler.lower.model.source_expression_interval import IntervalEffectContract
+from merlin.compiler.lower.model.source_scalar_carrier_binding import host_admitted
 
-from ...llvmlower import c_runtime, toolchain
-from ...llvmlower import target_data_layout as target_data_layout
-from ...llvmlower.lower import lower_model_file
-from ...llvmlower.masked_contraction import MaskEffectContract
-from ...llvmlower.source_expression_interval import IntervalEffectContract
-from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from ..execution_memory import ExecutionMemoryError, MemoryMapBinding, MemoryReservation, admit_execution_memory
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
@@ -76,13 +75,13 @@ from .host_compiler_policy import _select_host_vectorize as _select_host_vectori
 from .host_compiler_policy import selected_model_compiler_plan as selected_model_compiler_plan
 
 if TYPE_CHECKING:
-    from ...llvmlower.entry_weight_projection import GeneratedDispatchABI
-    from ...llvmlower.graph_optimizations import GraphOptimizationContract
-    from ...llvmlower.host_graph_policy import HostGraphPolicy
-    from ...llvmlower.host_transform_chain import HostLLVMTransformChain
-    from ...llvmlower.source_dense import SourceDenseLowering
-    from ...llvmlower.source_pointwise import SourcePointwiseLowering
-    from ...llvmlower.source_rows import SourceRowLowering
+    from merlin.compiler.lower.model.entry_weight_projection import GeneratedDispatchABI
+    from merlin.compiler.lower.model.graph_optimizations import GraphOptimizationContract
+    from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
+    from merlin.compiler.lower.model.host_transform_chain import HostLLVMTransformChain
+    from merlin.compiler.lower.model.source_dense import SourceDenseLowering
+    from merlin.compiler.lower.model.source_pointwise import SourcePointwiseLowering
+    from merlin.compiler.lower.model.source_rows import SourceRowLowering
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2", "-ffreestanding", "-fno-builtin"]
 
 #: Cross-compilation triple for the clang-built objects. Named because more than one object is built with
@@ -353,16 +352,16 @@ def build(
             raise ValueError("ordinary recomputation requires its uninstrumented scalar preparation route")
         source_recomputation.capture(Path(model_dir).absolute())
         recomputation_check()
-    from ...llvmlower import device_preparation
-    from ...llvmlower.compilation_recipe import FILENAME as COMPILATION_RECIPE
-    from ...llvmlower.compilation_recipe import CompilationRecipe
-    from ...llvmlower.device_build import (
+    from merlin.compiler.lower.model import device_preparation
+    from merlin.compiler.lower.model.compilation_recipe import FILENAME as COMPILATION_RECIPE
+    from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
+    from merlin.compiler.lower.model.device_build import (
         admit_linked_device_elf,
         freeze_device_elf_admission,
         freeze_device_ir_budget,
         freeze_device_target_configuration,
     )
-    from ...llvmlower.device_preparation import (
+    from merlin.compiler.lower.model.device_preparation import (
         build_prepared_device_objects,
         device_route_requested,
         finish_device_offload_selection,
@@ -370,11 +369,12 @@ def build(
         require_supported_device_preparation,
         retain_device_offload_source,
     )
-    from ...llvmlower.link_supplier_trace import trace_symbol_flags
+    from merlin.compiler.lower.model.link_supplier_trace import trace_symbol_flags
 
     # Refusal during validation must not leave a previous build's success receipt.
     (Path(work) / COMPILATION_RECIPE).unlink(missing_ok=True)
-    from ...llvmlower.device_input_views import validate_selection as validate_input_views
+    from merlin.compiler.lower.model.device_input_views import validate_selection as validate_input_views
+
     from ..device_descriptor_results import DeviceDescriptorResults
 
     validate_input_views(
@@ -393,7 +393,7 @@ def build(
     )
     descriptor_results = DeviceDescriptorResults(device)
     descriptor_check = descriptor_results.revalidate
-    from ...llvmlower.bounded_rne_custody import select_custody
+    from merlin.compiler.lower.model.bounded_rne_custody import select_custody
 
     bounded_rne_custody = select_custody(
         host_llvm_transform,
@@ -423,7 +423,7 @@ def build(
     supplier_flags = trace_symbol_flags(requested_suppliers) if requested_suppliers else ()
     (Path(work) / "execution_memory_admission.json").unlink(missing_ok=True)
     if host_llvm_transform_chain is not None:
-        from ...llvmlower.host_transform_chain import HostLLVMTransformChain
+        from merlin.compiler.lower.model.host_transform_chain import HostLLVMTransformChain
 
         if type(host_llvm_transform_chain) is not HostLLVMTransformChain:
             raise TypeError("typed host transform chain required")
@@ -440,7 +440,7 @@ def build(
         raise ExecutionMemoryError("external runtime reservations must be an immutable typed tuple")
     if execution_memory_reservations and execution_memory_map is None:
         raise ExecutionMemoryError("external runtime reservations require a selected memory map")
-    from ...llvmlower.quant_passes import compute_passes
+    from merlin.compiler.lower.model.quant_passes import compute_passes
 
     if not int8_compute and quant_passes is not None:
         raise ValueError("quant_passes requires int8_compute=True")
@@ -492,7 +492,7 @@ def build(
 
     host_math_recipe(host_math_policy)  # Refuse unsupported policy before build mutation.
     source_choices = SourceOptimizationBuild(source_optimizations, backend=backend)
-    from ...llvmlower.source_model import bind_source_lowerings, source_borrowed_calls
+    from merlin.compiler.lower.model.source_model import bind_source_lowerings, source_borrowed_calls
 
     prepared_model_transform, host_provider_builder = bind_source_lowerings(
         shared_source_lowerings,
@@ -521,11 +521,11 @@ def build(
         recomputation_check(callbacks=False)
         source_recomputation.bind_sources(compilation)
         recomputation_check()
-    from ...llvmlower.weight_prepack import prepare_build_bundle
+    from merlin.compiler.lower.model.weight_prepack import prepare_build_bundle
 
     original_model_dir = model_dir
     model_dir = prepare_build_bundle(model_dir, work, features, compilation=compilation)
-    from ...llvmlower.prepacked_device_capture import rebind as rebind_prepacked_device
+    from merlin.compiler.lower.model.prepacked_device_capture import rebind as rebind_prepacked_device
 
     device = rebind_prepacked_device(
         device, source=original_model_dir, prepared=model_dir, work=work, compilation=compilation
@@ -573,7 +573,7 @@ def build(
         # and `c_runtime.generate` (step 2) appends the matching table rows unconditionally. Lowering
         # the raw module while the table describes two extra arguments is an ABI skew nothing would
         # report, so a bundle that needs the lift may not take the unprepared branch.
-        from ...llvmlower import qinner as _qinner
+        from merlin.compiler.lower.model import qinner as _qinner
 
         if not (
             int8_compute
@@ -613,11 +613,13 @@ def build(
             vectorize = selected_vectorize
         if int8_compute:
             compilation.bind_preparation("quantization_policy", work / "quantization-policy.json")
-        from ...llvmlower.repeated_pointwise import selected as repeated_pointwise_selected
+        from merlin.compiler.lower.model.repeated_pointwise import selected as repeated_pointwise_selected
 
         if repeated_pointwise_selected():
             compilation.bind_preparation("repeated_pointwise", work / "repeated_pointwise" / "report.json")
-        from ...llvmlower.contraction_row_slice import selected as contraction_row_slice_selected
+        from merlin.compiler.lower.model.contraction_row_slice import (
+            selected as contraction_row_slice_selected,
+        )
 
         if contraction_row_slice_selected():
             compilation.bind_preparation("contraction_row_slice", work / "contraction-row-slice.json")
@@ -629,13 +631,16 @@ def build(
             )
             compilation.bind_preparation("post_offload_selected", prepared_path)
         if prepared_model_transform is not None:
-            from ...llvmlower.prepared_model_transform import RECEIPT
+            from merlin.compiler.lower.model.prepared_model_transform import RECEIPT
 
             compilation.bind_preparation("prepared_model_transform", work / "prepared_model_transform" / RECEIPT)
         entry_projection_source = None
         entry_projection_plan = None
         if entry_weight_projection is not None:
-            from ...llvmlower.entry_weight_projection import RECEIPT, prepare_entry_weight_projection
+            from merlin.compiler.lower.model.entry_weight_projection import (
+                RECEIPT,
+                prepare_entry_weight_projection,
+            )
 
             entry_projection_source = Path(prepared_path)
             prepared_path, entry_projection_plan = prepare_entry_weight_projection(
@@ -670,7 +675,7 @@ def build(
             descriptor_check()
             return result
 
-        from ...llvmlower.host_graph_policy import bind_group_layout_artifacts
+        from merlin.compiler.lower.model.host_graph_policy import bind_group_layout_artifacts
 
         bind_group_layout_artifacts(device, work, compilation)
         retain_device_offload_source(offload_selection, prepared_path, compilation=compilation)
@@ -702,13 +707,15 @@ def build(
 
         sibling_writers = getattr(device, "sibling_source", None) is not None
         if descriptor_results.selected or dense_input_views or sibling_writers:
-            from ...llvmlower.device_offload import SIDECAR_NAME
+            from merlin.compiler.lower.model.device_offload import SIDECAR_NAME
 
             if descriptor_results.selected:
                 descriptor_results.bind_input(prepared_path, work / SIDECAR_NAME, compilation)
             early_device_objects = build_routed_objects()
             if dense_input_views:
-                from ...llvmlower.device_input_views import prepare as prepare_dense_input_views
+                from merlin.compiler.lower.model.device_input_views import (
+                    prepare as prepare_dense_input_views,
+                )
 
                 if descriptor_results.selected:
                     prepared_path = descriptor_results.prepare_dense_input_views(
@@ -788,7 +795,7 @@ def build(
                 if hashlib.sha256(payload).hexdigest() != product["sha256"]:
                     raise SpikeModelError("operation profile product changed before model build publication")
                 (work / name).write_bytes(payload)
-            from ...llvmlower.op_profile_capacity import runtime_capacity
+            from merlin.compiler.lower.model.op_profile_capacity import runtime_capacity
 
             profile_capacity = runtime_capacity(json.loads((work / "op_profile_table.json").read_bytes()))
     # BACKEND-level feature flags, on the MODEL OBJECT ONLY (the GCC-built harness units keep
@@ -824,7 +831,7 @@ def build(
         compilation.bind_preparation("host_elementwise_fusion", fusion_record)
         compilation.bind_preparation("host_elementwise_fusion_implementation", Path(impr_features.__file__))
     if source_observation_effects is not None:
-        from ...llvmlower.source_observation_stage import REPORT
+        from merlin.compiler.lower.model.source_observation_stage import REPORT
 
         compilation.bind_preparation("source_observation", work / "lower" / REPORT)
     from merlin.common.digest import sha256_file
@@ -848,7 +855,7 @@ def build(
             res.workdir / LOWERING_RECIPE, host_chain_receipt, source=res.ll_path, selected=model_ir
         )
         compilation.bind_preparation("host_transform_chain", host_chain_receipt)
-    from ...llvmlower.host_bounded_rne import bind_preparation as bind_bounded_rne_preparation
+    from merlin.compiler.lower.model.host_bounded_rne import bind_preparation as bind_bounded_rne_preparation
 
     bind_bounded_rne_preparation(compilation, work / "host_llvm", host_ir_receipt)
     if bounded_rne_custody is not None:
@@ -888,7 +895,7 @@ def build(
         raise SpikeModelError("full-output SHA256 evidence requires f32 output")
     storage_policy = getattr(device, "intermediate_storage", None)
     if storage_policy is not None:
-        from ...llvmlower.host_storage_policy import prepare as prepare_intermediate_storage
+        from merlin.compiler.lower.model.host_storage_policy import prepare as prepare_intermediate_storage
 
         blocked = (
             "source_recomputation_selected"
@@ -908,7 +915,7 @@ def build(
     compiler_input = model_ir
     bitcode_receipt = None
     if host_llvm_bitcode:
-        from ...llvmlower.host_bitcode_transport import assemble_host_bitcode
+        from merlin.compiler.lower.model.host_bitcode_transport import assemble_host_bitcode
 
         compiler_input, bitcode_receipt = assemble_host_bitcode(
             model_ir, work / "host_bitcode", compiler=clang, compilation=compilation, runner=_run
@@ -1009,8 +1016,9 @@ def build(
     supplemental_objects.extend(math_objects)
     libm_archive, libm_sha256, libm_driver_sha256 = _selected_libm_archive(gcc, gcc_cflags, math_link_flags)
 
-    from ...llvmlower.device_build import _nm
-    from ...llvmlower.source_model import source_device_work, source_provider_builder
+    from merlin.compiler.lower.model.device_build import _nm
+    from merlin.compiler.lower.model.source_model import source_device_work, source_provider_builder
+
     from ..host_provider import close_host_provider, prepare_model_host_provider
 
     host_provider_builder = source_provider_builder(host_provider_builder)
@@ -1188,7 +1196,7 @@ def build(
         units["op_prof.o"] = (rt / "merlin_op_prof.c", prof_defs)
     profile_link_flags: list[str] = []
     if group_profile:
-        from ...llvmlower.group_profile_bindings import prepare_profile
+        from merlin.compiler.lower.model.group_profile_bindings import prepare_profile
 
         listing = _run([str(toolchain.nm()), "-u", str(work / "model.o")]).stdout
         undefined = {line.split()[-1] for line in listing.splitlines() if line.split()}
@@ -1279,7 +1287,7 @@ def build(
         )
         (work / "execution_memory_admission.json").write_text(json.dumps(memory_admission, indent=2) + "\n")
     if host_llvm_transform_chain is not None:
-        from ...llvmlower.host_transform_chain import recheck_host_transform_chain
+        from merlin.compiler.lower.model.host_transform_chain import recheck_host_transform_chain
 
         host_llvm_transform_chain.validate()
         recheck_host_transform_chain(host_chain_receipt, expected_chain=host_llvm_transform_chain)
@@ -1314,7 +1322,7 @@ def build(
         recomputation_check(callbacks=False)
         source_recomputation.finish(compilation, elf)
         recomputation_check()
-    from ...llvmlower.borrowed_arena import retain_borrowed_lifetime
+    from merlin.compiler.lower.model.borrowed_arena import retain_borrowed_lifetime
 
     return retain_borrowed_lifetime(
         {

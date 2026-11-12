@@ -40,7 +40,7 @@ def _demand_lower_bound(
         }
     if not peak_macs_per_cycle:
         return {"status": "unavailable", "reason": "no derived structural peak for this target"}
-    from merlin.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
+    from merlin.analysis.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
 
     work = work_from_command_buffer(buffer)
     macs = int(getattr(work, "known_macs", 0) or 0)
@@ -102,9 +102,9 @@ def analyze_command_buffers(
     The action derives demand bounds but constructs neither a composed timing envelope
     nor a qualified ordering estimator. Missing observations remain unknown.
     """
-    from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
-    from merlin.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
-    from merlin.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
+    from merlin.analysis.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+    from merlin.analysis.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
+    from merlin.analysis.perf.work_volume import work_from_command_buffer  # noqa: PLC0415
 
     def _load(path: Path) -> Mapping[str, Any]:
         # A RELATIVE PATH HERE HAD NO BASE, and this action runs in the HOST process rather than
@@ -187,7 +187,7 @@ def analyze_command_buffers(
     # accuracy claim can transfer from another target or workload by default.
     # Synchronization: how many completion points the candidate removed.
     try:
-        from merlin.perf import barrier_arms as BARRIER  # noqa: PLC0415
+        from merlin.analysis.perf import barrier_arms as BARRIER  # noqa: PLC0415
 
         out["barriers"] = BARRIER.paired_removal(buffers["baseline"], buffers["candidate"])
     except Exception as exc:  # noqa: BLE001 - an uncountable stream is UNKNOWN, never zero
@@ -201,7 +201,7 @@ def analyze_command_buffers(
     # Structural findings identify potential inefficiencies by level. They are not
     # cycle counts and may not be cited as measured savings.
     try:
-        from merlin.perf import structural_levels as LEVELS  # noqa: PLC0415
+        from merlin.analysis.perf import structural_levels as LEVELS  # noqa: PLC0415
 
         out["structural_levels"] = {arm: LEVELS.findings(buffer) for arm, buffer in buffers.items()}
     except Exception as exc:  # noqa: BLE001 - an unreadable buffer is UNKNOWN, never "clean"
@@ -315,12 +315,12 @@ def isa_capability_utilization(artifact_text: str, *, target: str) -> dict[str, 
     with its magnitude and its licence, since it was written; nothing in production ever wrote the
     key, so it never fired once and the agent's only view of the machine was a count of the
     instructions it had already emitted. The producer is
-    :func:`merlin.perf.isa_utilization.capability_utilization_for_target`, which is also what the
+    :func:`merlin.analysis.perf.isa_utilization.capability_utilization_for_target`, which is also what the
     capsule-bench ISA broker calls -- one producer, so the two phases cannot disagree about what a
     target declares.
     """
     try:
-        from merlin.perf.isa_utilization import capability_utilization_for_target  # noqa: PLC0415
+        from merlin.analysis.perf.isa_utilization import capability_utilization_for_target  # noqa: PLC0415
 
         return capability_utilization_for_target(artifact_text, target=target)
     except Exception as exc:  # noqa: BLE001 - an unmeasured ISA is stated, never a clean 100%
@@ -343,7 +343,7 @@ def capability_refusals(prepared_source: Any, *, target: str, datapath: str | No
     THE KEY `agent_guidance.declared_capability_refused` READS, and the second half of the ISA
     story: :func:`isa_capability_utilization` can say a declared instruction is never emitted, and
     only this can say what the selector refused it on. The selector is the target's OWN capability
-    map (``merlin.targetgen.eligibility`` through ``merlin.perf.placement_census``); the clause
+    map (``merlin.development.targetgen.eligibility`` through ``merlin.analysis.perf.placement_census``); the clause
     strings are its, not this module's, and nothing here names a target, a capability or a clause.
 
     Fail-closed: a census that could not be taken returns ONE entry that says so. Returning an empty
@@ -364,9 +364,9 @@ def capability_refusals(prepared_source: Any, *, target: str, datapath: str | No
             }
         ]
     try:
-        from merlin.perf import capability_refusal as CR  # noqa: PLC0415
-        from merlin.perf import lowering_coverage as LC  # noqa: PLC0415
-        from merlin.perf import placement_census as PC  # noqa: PLC0415
+        from merlin.analysis.perf import capability_refusal as CR  # noqa: PLC0415
+        from merlin.analysis.perf import lowering_coverage as LC  # noqa: PLC0415
+        from merlin.analysis.perf import placement_census as PC  # noqa: PLC0415
 
         report = PC.census_of_module(module, target, datapath=datapath)
         sites = [
@@ -427,7 +427,7 @@ def resolved_device(design_keys: Mapping[str, Any] | None, *, artifacts: Mapping
 
     A cycle count is about a device, and a configuration name is not one. Two registered bitstreams
     in this repo elaborate the SAME configuration string onto the same board and are different
-    machines, so :mod:`merlin.perf.design_identity` joins by the queue hw-config the run was
+    machines, so :mod:`merlin.analysis.perf.design_identity` joins by the queue hw-config the run was
     submitted under CONFIRMED against the artifact digest the record carries -- two independent
     facts that have to agree before a device is named.
 
@@ -437,7 +437,7 @@ def resolved_device(design_keys: Mapping[str, Any] | None, *, artifacts: Mapping
     those reasons, and says so rather than leaving the field out.
     """
     try:
-        from merlin.perf.design_identity import design_string  # noqa: PLC0415
+        from merlin.analysis.perf.design_identity import design_string  # noqa: PLC0415
 
         if not isinstance(artifacts, Mapping):
             raise ValueError("device identity requires an explicit artifact registry mapping")
@@ -469,7 +469,7 @@ def iteration_cost_plane(
     licence says "fewer dispatches do not prove fewer cycles", beside `cycle_selection: UNMEASURED`.
     So the agent optimizes against an accounting identity with no floor under it.
 
-    This computes the SAME verdict, through :func:`merlin.perf.cost_plane.assess`, at the explicitly
+    This computes the SAME verdict, through :func:`merlin.analysis.perf.cost_plane.assess`, at the explicitly
     supplied declared phase. The caller also supplies the hardware artifact registry. The
     floor is DERIVED from the array this target's own facts declare and the work this program's own
     command buffer counted, so it needs no slack constant; the array geometry is never a literal and
@@ -480,9 +480,9 @@ def iteration_cost_plane(
     here, and "not measured" and "measured fine" are indistinguishable in silence.
     """
     try:
-        from merlin.liveness.facts import silicon_facts  # noqa: PLC0415
-        from merlin.perf import cost_plane as CP  # noqa: PLC0415
-        from merlin.perf.decompose import is_unknown  # noqa: PLC0415
+        from merlin.analysis.perf import cost_plane as CP  # noqa: PLC0415
+        from merlin.analysis.perf.decompose import is_unknown  # noqa: PLC0415
+        from merlin.verification.liveness.facts import silicon_facts  # noqa: PLC0415
 
         if not isinstance(artifacts, Mapping):
             raise ValueError("cost plane requires an explicit artifact registry mapping")
@@ -538,7 +538,7 @@ def iteration_cost_plane(
         )
         return verdict
     except Exception as exc:  # noqa: BLE001 - an undecided plane is stated; it never reads as within
-        from merlin.perf.gate_phase import STATUS_INCOMPLETE  # noqa: PLC0415
+        from merlin.analysis.perf.gate_phase import STATUS_INCOMPLETE  # noqa: PLC0415
 
         return {
             "schema": "cost_plane_verdict_v1",

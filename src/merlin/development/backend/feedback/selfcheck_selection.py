@@ -26,7 +26,7 @@ def grade_l3_selection(target: str, engine: str) -> dict | None:
     on one run, every official L3 certificate used one instrument and every self-check or promotion
     certificate another. Same engine, same record; a different or unselectable engine keeps none.
     """
-    from merlin.targetgen import oracle_policy
+    from merlin.development.targetgen import oracle_policy
 
     try:
         selection = oracle_policy.chipyard_tier_plan(target).selection

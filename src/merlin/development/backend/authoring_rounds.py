@@ -17,7 +17,7 @@ from merlin.development.backend.feedback import grade_reuse as GR
 from merlin.development.backend.feedback import lifecycle as FL
 from merlin.development.backend.feedback import private_full_models as PFM
 from merlin.development.backend.providers import execution as EX
-from merlin.targetgen import experiment_tokens as ET
+from merlin.development.targetgen import experiment_tokens as ET
 
 
 def _progress_key(v: dict) -> tuple:

@@ -54,7 +54,7 @@ def _operand_store_bytes(target: str) -> int | None:
        on another. Here the descriptor supplies only the LABEL; the bytes are still read out of the RTL.
        Deliberately not a guess: picking the largest discovered memory would select the INSTRUCTION
        memory on a device whose IMEM (128 KiB) is larger than its operand register file (64 KiB).
-    3. The extracted RTL facts, through :func:`~merlin.targetgen.address_space.operand_store`: the
+    3. The extracted RTL facts, through :func:`~merlin.development.targetgen.address_space.operand_store`: the
        narrowest-row store, accepted only when it was CLASSIFIED against a second store of a different
        width (``BY_WIDTH``). A sole store is not accepted here, for the same reason as tier 2 refuses to
        guess: a device's facts can name one extracted memory out of many, and ``capacity_fit`` would then
@@ -62,7 +62,7 @@ def _operand_store_bytes(target: str) -> int | None:
        by the name ``"scratchpad"``; every target whose facts use that name has two stores of distinct
        widths, so the answers are the same there and no longer depend on a spelling.
     """
-    from merlin.targetgen.rtl import mlc_bridge as _mb
+    from merlin.development.targetgen.rtl import mlc_bridge as _mb
 
     try:
         caps = _mb.discovered_capacities(target)
@@ -71,7 +71,7 @@ def _operand_store_bytes(target: str) -> int | None:
     except Exception:  # noqa: BLE001 — mlc unavailable → try the declared group next
         pass
     try:
-        from merlin.targetgen.corpora import experiment_for
+        from merlin.development.targetgen.corpora import experiment_for
 
         prefix = getattr(experiment_for(target), "operand_store", None)
         if prefix:
@@ -84,7 +84,7 @@ def _operand_store_bytes(target: str) -> int | None:
     except Exception:  # noqa: BLE001 — no descriptor / no discovery → fall through to facts
         pass
     try:
-        from merlin.targetgen import address_space as _as
+        from merlin.development.targetgen import address_space as _as
 
         resolved = _as.operand_store(_as.derive_address_space(target))
     except Exception:  # noqa: BLE001 — no facts bundle → capacity unknown, caller falls back
@@ -118,7 +118,7 @@ def _accumulator_capacity_elems(target: str, accum_dtype: str | None) -> int | N
     run all passed, so this cost four unmeasurable layers rather than four wrong ones -- the capsule
     failed for want of a measurement, not for a wrong answer.
     """
-    from merlin.targetgen.rtl import mlc_bridge as _mb
+    from merlin.development.targetgen.rtl import mlc_bridge as _mb
 
     try:
         caps = _mb.discovered_capacities(target) or {}

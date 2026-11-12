@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from weakref import WeakKeyDictionary
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization.component_execution import ComponentIndependentExecution
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, exact_tree_record
+from merlin.evaluation.harness import hash_tree
 
 _ISSUED = WeakKeyDictionary()
 

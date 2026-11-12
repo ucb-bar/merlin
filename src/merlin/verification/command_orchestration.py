@@ -46,7 +46,7 @@ def prove_command_orchestration(function: Any, activity: dict, *, target: str | 
 
 
 def _orchestration_ops() -> frozenset[str]:
-    from merlin.perf.host_cfg_activity import _INTEGER
+    from merlin.analysis.perf.host_cfg_activity import _INTEGER
 
     return _INTEGER | {
         "llvm.func",
@@ -73,7 +73,7 @@ def _orchestration_ops() -> frozenset[str]:
 def _isa(target: str | None) -> dict:
     if target is None:
         raise _Refused("no target is selected, so its commands cannot be recognised")
-    from merlin.targetgen.rocc.decode import isa_constants
+    from merlin.development.targetgen.rocc.decode import isa_constants
 
     try:
         isa = isa_constants(target)
@@ -112,7 +112,7 @@ def _command(op: Any, isa: dict) -> str | None:
     from xdsl.dialects.builtin import IntegerType, UnitAttr
     from xdsl.dialects.llvm import LLVMPointerType, LLVMVoidType
 
-    from merlin.targetgen.rocc.decode import _asm_template
+    from merlin.development.targetgen.rocc.decode import _asm_template
 
     template = _asm_template(op)
     void_result = len(op.results) == 1 and isinstance(op.results[0].type, LLVMVoidType) and not op.results[0].uses
@@ -181,7 +181,7 @@ def _parameter_slice(load: Any, commands: dict, config_class: Any, entry: Any) -
     from xdsl.dialects.builtin import IntegerType, VectorType
     from xdsl.dialects.llvm import LLVMPointerType
 
-    from merlin.perf.host_cfg_activity import _payload_bytes, _real_name
+    from merlin.analysis.perf.host_cfg_activity import _payload_bytes, _real_name
 
     value = load.results[0]
     if (
@@ -221,7 +221,7 @@ def _parameter_slice(load: Any, commands: dict, config_class: Any, entry: Any) -
 def _prove(function: Any, activity: dict, *, target: str | None, parameter_loads: int) -> dict:
     from xdsl.dialects.llvm import LLVMPointerType
 
-    from merlin.perf.host_cfg_activity import _payload_bytes, _real_name
+    from merlin.analysis.perf.host_cfg_activity import _payload_bytes, _real_name
 
     isa = _isa(target)
     blocks = tuple(function.body.blocks)

@@ -18,7 +18,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import guidance_for_emission_analysis, inspect_compiler_package
+from merlin.analysis.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS, ITERATION_MAX_SECONDS
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization import contracts as CONTRACTS
 from merlin.development.backend.optimization import emission_diagnostics as ED
@@ -28,11 +29,10 @@ from merlin.development.backend.optimization.broker_evidence import _is_sha256
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
 from merlin.development.backend.optimization.contracts import write_json as _write_json
-from merlin.perf.agent_guidance import guidance_for_emission_analysis, inspect_compiler_package
-from merlin.perf.execution_policy import FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS, ITERATION_MAX_SECONDS
+from merlin.evaluation.harness import hash_tree
 
 if TYPE_CHECKING:
-    from merlin.targetgen import package_runtime as OR
+    from merlin.development.targetgen import package_runtime as OR
 
 
 def seed_baseline_emission_cache_from_run(
@@ -45,7 +45,7 @@ def seed_baseline_emission_cache_from_run(
     compiler_api_schema: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     """Import only exact successful baseline-emission bytes from a prior host-owned run."""
-    from merlin.targetgen import package_runtime as OR
+    from merlin.development.targetgen import package_runtime as OR
 
     seed_run = Path(seed_run).resolve()
     if seed_run.is_symlink() or not seed_run.is_dir():
@@ -428,15 +428,15 @@ def analyze_whole_model_emission(
     the frozen baseline.  This is a fast global structural screen; warm measured cycles remain the
     only timing verdict.
     """
-    from merlin.perf.artifact_activity import analyze_artifact_activity  # noqa: PLC0415
-    from merlin.perf.model_placement import (  # noqa: PLC0415
+    from merlin.analysis.perf.artifact_activity import analyze_artifact_activity  # noqa: PLC0415
+    from merlin.analysis.perf.model_placement import (  # noqa: PLC0415
         captured_global_graph,
         contraction_placement,
         prepare_captured_source,
     )
-    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
-    from merlin.targetgen import trace_check as TCK  # noqa: PLC0415
-    from merlin.targetgen.rocc import decode as RD  # noqa: PLC0415
+    from merlin.development.targetgen import package_runtime as OR  # noqa: PLC0415
+    from merlin.development.targetgen import trace_check as TCK  # noqa: PLC0415
+    from merlin.development.targetgen.rocc import decode as RD  # noqa: PLC0415
 
     analysis_started = time.monotonic()
     run_pair = emit_pair_runner or emit_pair
@@ -842,7 +842,7 @@ def analyze_whole_model_emission(
                         )
                     )
                 else:
-                    from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+                    from merlin.analysis.perf.compiler_plan_evidence import verify_compiler_global_plan
 
                     baseline_plan = verify_compiler_global_plan(
                         source_text=source_text,
@@ -885,7 +885,7 @@ def analyze_whole_model_emission(
                         )
                     )
                 else:
-                    from merlin.perf.compiler_plan_evidence import verify_compiler_global_plan
+                    from merlin.analysis.perf.compiler_plan_evidence import verify_compiler_global_plan
 
                     diagnostics["verified_global_plan_emission"] = verify_compiler_global_plan(
                         source_text=source_text,
@@ -904,7 +904,7 @@ def analyze_whole_model_emission(
         # The first command-buffer pass intentionally treats representation declarations as UNKNOWN.
         # Only now, after the host has inspected and identity-bound the lowered artifact, may its
         # exact materialized transition count and typed load/store bytes replace that unknown.
-        from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+        from merlin.analysis.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
 
         for arm, buffer, proof in (
             ("baseline", baseline_buffer, baseline_plan),
@@ -923,7 +923,7 @@ def analyze_whole_model_emission(
         # available. Reduced-source actions must not reparse the complete model.
         def task_instructions(text, raw_buffer, buffer, module, trace, proof, *, baseline_arm=False):
             try:
-                from merlin.perf.task_instruction_evidence import (
+                from merlin.analysis.perf.task_instruction_evidence import (
                     digest,
                     summarize_task_instructions,
                     target_instruction_facts,
@@ -988,7 +988,7 @@ def analyze_whole_model_emission(
             "candidate": candidate_task_instructions,
         }
         try:
-            from merlin.perf.context_probe import extract_queued_movement_context
+            from merlin.analysis.perf.context_probe import extract_queued_movement_context
 
             verified = diagnostics["verified_global_plan_emission"].get("status") == "verified"
             diagnostics["queued_movement_context"] = extract_queued_movement_context(
@@ -1064,8 +1064,8 @@ def analyze_whole_model_emission(
         )
         # A CYCLE FLOOR UNDER THE STRUCTURAL DELTA. See `iteration_cost_plane`: the comparable
         # signal in the capsule grade never crossed into this loop.
+        from merlin.analysis.perf.gate_phase import STATUS_INCOMPLETE, configured_phase
         from merlin.common.provenance import load_artifacts
-        from merlin.perf.gate_phase import STATUS_INCOMPLETE, configured_phase
 
         try:
             cost_phase = configured_phase("cost_plane", declaration=contract_root / "gate_phases.yaml")
@@ -1116,7 +1116,7 @@ def analyze_whole_model_emission(
             "candidate_command_buffer_sha256": _sha256(cand_buffer.encode("utf-8")),
             "command_buffer_identical": base_buffer == cand_buffer,
         }
-        from merlin.perf.candidate_comparison import decide_emitted_pair  # noqa: PLC0415
+        from merlin.analysis.perf.candidate_comparison import decide_emitted_pair  # noqa: PLC0415
 
         diagnostics["candidate_decision"] = decide_emitted_pair(diagnostics, emission_digests)
         optimization_brief = guidance_for_emission_analysis(diagnostics, inspect_compiler_package(candidate))
@@ -1228,7 +1228,7 @@ def global_iteration_readiness(document: Mapping[str, Any]) -> dict[str, Any]:
 
 def emit_pair(package: OR.Package, interface: Path, scratch: Path, tag: str, timeout_s: int) -> tuple[int, str, str]:
     """One capsule's emitted artifacts under one compiler: (rc, lowered LLVM, command buffer)."""
-    from merlin.targetgen import package_runtime as OR  # noqa: PLC0415
+    from merlin.development.targetgen import package_runtime as OR  # noqa: PLC0415
 
     buffer_path = scratch / f"cb_{tag}.json"
     rows = []

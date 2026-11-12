@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, replace
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from merlin.transforms.pipeline_state import AnalysisStamp
+    from merlin.compiler.transforms.pipeline_state import AnalysisStamp
 
 from merlin.compiler.kernel_ir.ir import (
     DTYPE_BYTES,
@@ -28,7 +28,13 @@ from merlin.compiler.kernel_ir.ir import (
     select,
 )
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
-from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
+from merlin.compiler.transforms.dense_planning import (
+    DenseBlock,
+    DenseChoice,
+    DenseProblem,
+    DenseResources,
+    choose_dense_block,
+)
 
 DenseOperation = Load | Preload | Compute | Store | InitializeAccumulator
 
@@ -571,7 +577,7 @@ def schedule_compact_dense(
     from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable, verify_compact_dense
     from merlin.compiler.schedule.dense_contracts import DenseIntegerReadout, DenseTiledIntegerReadout
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts, _parse
-    from merlin.transforms.pipeline_state import (
+    from merlin.compiler.transforms.pipeline_state import (
         AnalysisStamp,
         PassSpec,
         PipelineContext,

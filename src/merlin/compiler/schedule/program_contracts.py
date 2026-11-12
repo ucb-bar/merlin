@@ -24,8 +24,8 @@ from merlin.compiler.schedule.program_limits import (
     ProgramLimits,
 )
 from merlin.compiler.schedule.storage_contracts import _space, binding_value
-from merlin.targetgen.isa_dialect_gen import decode_instruction
-from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.development.targetgen.isa_dialect_gen import decode_instruction
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 
 def _fields(value, keys, label):

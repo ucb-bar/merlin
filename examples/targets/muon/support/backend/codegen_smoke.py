@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import tempfile
 
-from merlin.targetgen.isa_model import isa_model_for_target
-from merlin.targetgen.oracle_policy import selected_sim_via
+from merlin.development.targetgen.isa_model import isa_model_for_target
+from merlin.development.targetgen.oracle_policy import selected_sim_via
 
 from . import muon
 

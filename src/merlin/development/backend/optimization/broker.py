@@ -28,7 +28,7 @@ from merlin.development.backend.optimization import normal_resource_launch as NR
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
 from merlin.development.backend.optimization.contracts import write_json as _write_json
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 if TYPE_CHECKING:
     from merlin.development.backend.optimization.broker_policy import WorkflowPolicy

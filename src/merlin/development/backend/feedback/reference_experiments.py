@@ -566,7 +566,7 @@ def _analysis_pins(report, workspace):
     return list(pins.values())
 
 
-#: The experiment owner (``merlin.mining``) is not importable in this environment.
+#: The experiment owner (``merlin.analysis.mining``) is not importable in this environment.
 DEPENDENCY_UNAVAILABLE = "analysis_experiment_dependency_unavailable"
 
 
@@ -583,7 +583,7 @@ def record_analysis(report, *, workspace, compiler_sha256):
     from merlin.compiler.selection.knobs import DECLARATION
 
     try:
-        from merlin.mining.reconstruction_experiments import build_experiment_packet, workspace_tuning
+        from merlin.analysis.mining.reconstruction_experiments import build_experiment_packet, workspace_tuning
     except ImportError:
         # One optional dependency missing from the broker environment degrades
         # the experiment binding; the analysis itself still answers.
@@ -1364,12 +1364,12 @@ _CLOSING_TEXT = (
     "for manual per-kernel decisions. Maintain the experiment's `OPTIMIZATION_RULES.json` as a mechanism-by-operation "
     "family/shape index: legality/resource guards, pass order/settings, positive and negative results, emitted "
     "witnesses, trusted reference targets, timing domain, exact receipt paths and remaining gaps. Reuse "
-    "`merlin.perf.optimization_ledger` and pinned `merlin.mining.reconstruction_history` records for outcomes; "
+    "`merlin.analysis.perf.optimization_ledger` and pinned `merlin.analysis.mining.reconstruction_history` records for outcomes; "
     "link those receipts from the rules and `ITERATION_NOTES.md`. Authored rules remain "
     "hypotheses until checked. "
     "Test baseline, alternatives and ablations on neighboring shapes, tails, capacity boundaries and related "
     "operations; freeze candidates before independent held-out evaluation. Promote rules through existing "
-    "`merlin.transforms.shape_policy` proposal/assessment, preserving fallback outside validated guards. "
+    "`merlin.compiler.transforms.shape_policy` proposal/assessment, preserving fallback outside validated guards. "
     "This guidance grants no additional source access, numerical, mechanism or performance credit.\n"
 )
 _MAP_TEXT = (

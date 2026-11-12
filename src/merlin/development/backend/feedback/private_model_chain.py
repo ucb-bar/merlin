@@ -100,7 +100,7 @@ class NativePartition:
 
     def build(self, stage, *, target, label, submission, submission_sha256, settings, directory, admission=None):
         """The full-chain build-provider API; no compiler or alternate ELF is invoked."""
-        from merlin.model_check.full_build_native import adopt
+        from merlin.evaluation.model.full_build_native import adopt
 
         self.verify()
         model, separator, program = label.partition(":")
@@ -205,7 +205,7 @@ def _compile(
     """Fixed producer invoked only while the original native profile is active."""
     from merlin.development.backend.feedback.private_facts import selected_input_facts
     from merlin.development.backend.feedback.private_result_format_selection import from_run
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     target = load_target_experiment(descriptor).target
     roster, programs = models.requirements_for(descriptor), models.program_requirements_for(descriptor)
@@ -334,7 +334,7 @@ def _build_options(gate, *, spec, name, programs, host_elementwise_fusion=False)
 def run_static(*, run_dir, descriptor, submission, name, out, host_elementwise_fusion=False):
     """Use one already prepared, live native run; never prepare an alternate owner."""
     from merlin.development.backend.feedback.formal import _private_source_freeze_for_formal
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     if type(host_elementwise_fusion) is not bool:
         raise ValueError("host elementwise fusion must be an explicit Boolean")

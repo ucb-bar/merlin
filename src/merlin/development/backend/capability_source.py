@@ -30,7 +30,7 @@ def analyze(capsule):
     try:
         text = payload.decode()
         if "merlin_iface." in text:
-            from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+            from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
             program = parse_interface_mlir(text)
             counts = Counter(row["opcode"] for row in program["commands"])
@@ -46,7 +46,7 @@ def analyze(capsule):
                 ],
                 "graph": _interface_graph(program["commands"]),
             }
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         module = parse_mlir_text(text)
         operations = list(module.walk())

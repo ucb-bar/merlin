@@ -85,7 +85,7 @@ def _verify_relocations(evidence, selected):
 
 def _model_root(evidence, software_path: str) -> Path | None:
     """Resolve the declared model owner only while observing the live selection."""
-    from merlin.targetgen.software_spec import software_spec_references
+    from merlin.development.targetgen.software_spec import software_spec_references
 
     sources = [source for source in evidence.source_snapshots if source.role == "software-reference:numerical_model"]
     if not sources:

@@ -14,7 +14,6 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import broker_evidence as BE
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization import emission_analysis as EA
@@ -23,6 +22,7 @@ from merlin.development.backend.optimization import static_cache as SC
 from merlin.development.backend.optimization import static_identity as SI
 from merlin.development.backend.optimization.portfolio_analysis import PortfolioAnalysis
 from merlin.development.backend.optimization.stage_inputs import sentinel_identity
+from merlin.evaluation.harness import hash_tree
 
 
 def _verify_source_snapshot(root: Path, expected_files_sha256: str | None = None) -> dict[str, Any]:
@@ -120,7 +120,7 @@ class StaticAnalysisImport:
         grants for the fresh immutable submission, then binds the exact resulting policies.  A
         lightweight development analyzer remains analysis-only and has no probe authority.
         """
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+        from merlin.analysis.perf.analysis_worker import IsolatedAnalysisWorker
 
         if not isinstance(self.analysis.analyzer, IsolatedAnalysisWorker):
             return None, {

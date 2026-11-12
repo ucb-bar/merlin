@@ -13,8 +13,8 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import is_sha256
-from merlin.model_check import bundle as B
-from merlin.model_check import models as M
+from merlin.evaluation.model import bundle as B
+from merlin.evaluation.model import models as M
 from merlin.runtime.host_math import host_math_recipe
 
 
@@ -97,7 +97,7 @@ def select(document, spec, row, *, target, programs):
         path = root / receipt_name
         receipt = json.loads(read(path, expected[receipt_name]))
         contract = receipt.get("numeric_contract") or {}
-        if receipt.get("schema") != "merlin.model_check.reference_numeric_contract.v1":
+        if receipt.get("schema") != "merlin.evaluation.model.reference_numeric_contract.v1":
             raise ValueError("selected numerical contract has a different schema")
         # The original strict-float numerical contract encodes native arithmetic
         # by omitting host_math; portable policies always declare it explicitly.
@@ -118,7 +118,7 @@ def select(document, spec, row, *, target, programs):
         if policy != "native":
             if contract["host_math"].get("scalar_source_sha256") != selected_recipe["source_sha256"]:
                 raise ValueError("sealed reference differs from selected scalar recipe snapshot")
-            from merlin.model_check.full_quantized import _numeric_receipt
+            from merlin.evaluation.model.full_quantized import _numeric_receipt
 
             _numeric_receipt(path, expected[receipt_name], expected[name], policy)
         verified += 1

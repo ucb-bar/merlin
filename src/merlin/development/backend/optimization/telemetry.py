@@ -16,7 +16,6 @@ from typing import Any
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.common import access as shared_access_policy
 from merlin.common import digest, source_membership
 from merlin.common.digest import sha256_bytes as _sha256
@@ -42,11 +41,12 @@ from merlin.development.backend.optimization.contracts import (
 from merlin.development.backend.optimization.contracts import (
     write_json as _write_json,
 )
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox.answer_surfaces import answer_surfaces
+from merlin.development.targetgen.target_experiment import load_target_experiment
+from merlin.evaluation.harness import hash_tree
 from merlin.experiments import access_policy as historical_target_access_policy
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
-from merlin.targetgen.target_experiment import load_target_experiment
 
 LEGACY_TREATMENT_SOURCES = frozenset(
     {
@@ -339,7 +339,7 @@ def _accounting(path: Path, *, model: str, snapshot) -> dict[str, Any]:
     from aet.trajectory.codex import CodexNormalizer
     from aet.trajectory.price_snapshot import cost_record_for
 
-    from merlin.targetgen import experiment_tokens as ET
+    from merlin.development.targetgen import experiment_tokens as ET
 
     record = ET.parse_agent_transcript(
         path, driver="codex", model=model, billing_mode=ET.SUBSCRIPTION_NOTIONAL, include_cost=False
@@ -498,7 +498,7 @@ def prepare(
         from aet.trajectory.importers.codex import build_trajectory_from_run  # noqa: PLC0415
         from aet.trajectory.reconcile import reconcile_codex  # noqa: PLC0415
 
-        from merlin.targetgen import experiment_tokens as ET  # noqa: PLC0415
+        from merlin.development.targetgen import experiment_tokens as ET  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         raise StageGateError(f"required AET/Codex telemetry stack is unavailable: {exc}") from exc
     CA = _import_codex_driver()
@@ -786,7 +786,7 @@ def finalize(
     preflight_record: Mapping[str, Any],
 ) -> dict[str, Any]:
     """Produce fail-closed AET, cost, activity, token-ledger and tool-ledger artifacts."""
-    from merlin.targetgen import experiment_tokens as ET  # noqa: PLC0415
+    from merlin.development.targetgen import experiment_tokens as ET  # noqa: PLC0415
 
     snapshot = _verified_snapshot(preflight_record, model)
     from datetime import datetime  # noqa: PLC0415

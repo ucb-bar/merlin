@@ -218,8 +218,8 @@ def issue_independent_software_intake(
             __name__,
             "merlin.development.testgen.minimal_software",
             "merlin.development.testgen.component_semantic_basis",
-            "merlin.targetgen.frontend_trace",
-            "merlin.targetgen.software_spec",
+            "merlin.development.targetgen.frontend_trace",
+            "merlin.development.targetgen.software_spec",
         )
     ]
     receipt_json = _json(

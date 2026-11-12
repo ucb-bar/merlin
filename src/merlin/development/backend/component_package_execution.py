@@ -24,9 +24,9 @@ from merlin.development.backend.feedback.compiler_profile_runtime import (
 from merlin.development.backend.optimization import contracts as C
 from merlin.development.backend.optimization.component_experiment import ComponentView, RuntimeGrant, strict_tool_policy
 from merlin.development.backend.optimization.external_resources import active_resource_boundary, bounded_tool_scratch
+from merlin.development.targetgen import package_runtime as P
 from merlin.experiments.execution.container_policy import prepare_strict_policy
 from merlin.experiments.execution.container_transport import PreparedContainerTransport, mounts_from_strict_policy
-from merlin.targetgen import package_runtime as P
 
 
 def selected_compiler_transport(runtime_authority, *, view, runtime):
@@ -92,7 +92,7 @@ class ComponentPackageExecutor:
         selected = self.original_profile_execution()
         from merlin.development.backend.optimization import compiler_libraries as libraries
         from merlin.development.backend.optimization.campaign import PackageSandboxPolicy, _verify_frozen_policy
-        from merlin.targetgen.compiler_library import active_compiler_library
+        from merlin.development.targetgen.compiler_library import active_compiler_library
 
         library = active_compiler_library()
         if selected is None and library is None:

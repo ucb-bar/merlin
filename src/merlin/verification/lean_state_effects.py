@@ -143,8 +143,8 @@ def effect_contract_from_isa(models, *, admitted_instructions, atomic_instructio
     """
     from xdsl.dialects import builtin
 
-    from merlin.targetgen.isa_dialect_gen import build_dialect
-    from merlin.targetgen.isa_spec import resolved_isa_from_record
+    from merlin.development.targetgen.isa_dialect_gen import build_dialect
+    from merlin.development.targetgen.isa_spec import resolved_isa_from_record
 
     if (
         type(models) is not tuple
@@ -304,13 +304,13 @@ def effect_semantic_identity():
         "StateEffects": Path(__file__).parent / "lean" / "Merlin" / "StateEffects.lean",
     }
     for name in (
-        "merlin.transforms.certificates",
-        "merlin.transforms.normalization",
-        "merlin.transforms.planning",
-        "merlin.transforms.pure_scalar",
-        "merlin.transforms.scalar_witness",
-        "merlin.targetgen.isa_spec",
-        "merlin.targetgen.isa_dialect_gen",
+        "merlin.compiler.transforms.certificates",
+        "merlin.compiler.transforms.normalization",
+        "merlin.compiler.transforms.planning",
+        "merlin.compiler.transforms.pure_scalar",
+        "merlin.compiler.transforms.scalar_witness",
+        "merlin.development.targetgen.isa_spec",
+        "merlin.development.targetgen.isa_dialect_gen",
     ):
         files[name] = Path(importlib.import_module(name).__file__)
     sources = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in files.items()}

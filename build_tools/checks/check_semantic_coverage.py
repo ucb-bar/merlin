@@ -38,10 +38,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
 from merlin.common.paths import repo_root  # noqa: E402
-from merlin.targetgen import capability_probes as cp  # noqa: E402
-from merlin.targetgen import eligibility as el  # noqa: E402
-from merlin.targetgen import semantic_families as sf  # noqa: E402
-from merlin.targetgen import target_registry as tr  # noqa: E402
+from merlin.development.targetgen import capability_probes as cp  # noqa: E402
+from merlin.development.targetgen import eligibility as el  # noqa: E402
+from merlin.development.targetgen import semantic_families as sf  # noqa: E402
+from merlin.development.targetgen import target_registry as tr  # noqa: E402
 
 DEBT = repo_root() / "build_tools" / "generalization_debt.txt"
 
@@ -197,8 +197,8 @@ def audit(target: str) -> list[dict]:
     # Uses the runner's OWN withholding rule, imported rather than reimplemented, so the gate and the
     # grader can never drift on what "cannot execute" means.
     try:
+        from merlin.development.targetgen.target_experiment import load_target_experiment
         from merlin.evaluation.capsule.eligibility import _split_ineligible
-        from merlin.targetgen.target_experiment import load_target_experiment
 
         desc = declaration.descriptor
         if desc.is_file():

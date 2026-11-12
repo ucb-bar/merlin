@@ -7,7 +7,7 @@
     group-timing  Tier B: only the groups the candidate CHANGED against a baseline (``best``, ``seed``
                   or a digest), each built as a one-group program for the certifier's machine and
                   timed on the elaborated-RTL emulator, candidate and baseline side by side
-                  (:mod:`merlin.perf.whole_model_group_timing`).
+                  (:mod:`merlin.analysis.perf.whole_model_group_timing`).
     group-check   One group's program on the functional model, on the inputs the model hands it,
                   saying per output axis where it is wrong.
 
@@ -69,7 +69,7 @@ def _board_build(package: str | Path, *, spec: Mapping[str, Any], out: Path) -> 
 
 def _prune(build_dir: Path) -> None:
     """Drop what a whole-model build keeps only to link; keep its records and its ELF."""
-    from merlin.perf import whole_model_builder as B
+    from merlin.analysis.perf import whole_model_builder as B
 
     for name in ("lower", "objects", "harness"):
         shutil.rmtree(build_dir / name, ignore_errors=True)
@@ -83,7 +83,7 @@ def structure(package: str | Path, *, spec: Mapping[str, Any], out: str | Path) 
     """Tier A.  The calibration is refit at call time from every (simulator, board) pair under the
     store base; the screen is filed there by the program's digest, so the day this ELF is measured on
     the board it becomes a calibration pair too."""
-    from merlin.perf import whole_model_screen as S
+    from merlin.analysis.perf import whole_model_screen as S
 
     out = Path(out)
     built = _board_build(package, spec=spec, out=out / "build")
@@ -135,7 +135,7 @@ def group_timing(
 ) -> dict[str, Any]:
     """Tier B.  The groups are diffed on the two packages' board builds; their one-group programs are
     built for the certifier's machine and timed on its emulator."""
-    from merlin.perf import whole_model_group_timing as T
+    from merlin.analysis.perf import whole_model_group_timing as T
 
     out = Path(out)
     records = {}
@@ -173,8 +173,8 @@ def group_check(package: str | Path, group: int, *, spec: Mapping[str, Any], out
     """ONE group's program on the screen machine's functional model, built under the run's own build
     options and verified ``local_map``: the core recomputes the group from the exact inputs it read
     and says, per output axis, where its output differs.  No board, no emulator, never an objective."""
+    from merlin.analysis.perf import whole_model_group_timing as T
     from merlin.development.backend.optimization.whole_model_measured.machines import machine_from_spec
-    from merlin.perf import whole_model_group_timing as T
 
     out = Path(out)
     options = _options(spec, "screen")
@@ -225,7 +225,7 @@ def group_check(package: str | Path, group: int, *, spec: Mapping[str, Any], out
 def parse_group_check(text: str, group: int, *, target: str) -> dict[str, Any]:
     """The group's local verdict and mismatch map from its console, read by the target driver's own
     line templates."""
-    from merlin.perf.whole_model_verdict import match_line
+    from merlin.analysis.perf.whole_model_verdict import match_line
     from merlin.runtime.backends import base as backends
 
     uart = backends.whole_model_driver(target).program.UART

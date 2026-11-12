@@ -7,9 +7,9 @@ and their arithmetic remain unchanged.
 
 from __future__ import annotations
 
+from merlin.development.targetgen.capsule_inputs import materialize_capsule_leaves
+from merlin.development.targetgen.component_program import analyze
 from merlin.runtime.tensor import Tensor
-from merlin.targetgen.capsule_inputs import materialize_capsule_leaves
-from merlin.targetgen.component_program import analyze
 
 
 def evaluate(capsule):

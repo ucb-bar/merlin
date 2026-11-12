@@ -95,7 +95,7 @@ def execute(prepared, *, timing_file):
     from merlin.development.backend import joint_control
     from merlin.development.backend.feedback import lifecycle as FL
     from merlin.development.backend.providers import execution as EX
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     options, context = prepared.request.options, prepared.request.context
     validate(options)

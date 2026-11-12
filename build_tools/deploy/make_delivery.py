@@ -967,8 +967,8 @@ def build_matrix(
     """
     if not support_target:
         raise ValueError("matrix routing requires an explicit support_target")
-    from merlin.kernels.decode import matrix_units as unit_audit
-    from merlin.targetgen.plugins import load_declared
+    from merlin.analysis.kernels.decode import matrix_units as unit_audit
+    from merlin.development.targetgen.plugins import load_declared
 
     provider = load_declared(support_target, "matrix_lowering")
     encodings = provider.derive_encodings(provider.load_contract(unit)).encodings

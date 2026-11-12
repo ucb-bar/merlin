@@ -51,14 +51,14 @@ def _owner(package):
 
 def prepare(source, *, package, mechanism):
     """Existing author-library-pass ABI; both routes use one original emitter."""
-    from merlin.transforms.pipeline_policy import (
+    from merlin.compiler.transforms.pipeline_policy import (
         PipelinePolicy,
         PipelineVariant,
         PolicyFacts,
         PropertyPredicate,
         RegisteredPass,
     )
-    from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+    from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 
     if mechanism not in (None, MECHANISM):
         raise ValueError("unsupported shared-RHS mechanism selection")
@@ -146,7 +146,7 @@ def describe():
         prepare="shared_rhs_epoch_recipe:prepare",
         owner=OWNER,
         scheduler="merlin.compiler.schedule.dense_shared_rhs:schedule_dense_shared_rhs",
-        pass_interface="merlin.transforms.pipeline_policy:execute_policy",
+        pass_interface="merlin.compiler.transforms.pipeline_policy:execute_policy",
         obligations=[
             "complete source group and live-outs",
             "selected original resource/retention/epoch laws",
@@ -175,7 +175,7 @@ def main(argv=None):
         return 0
     if args.package is None or args.source is None or args.output is None:
         parser.error("--package, --source and --output are required for an application")
-    from merlin.transforms.pipeline_policy import execute_policy
+    from merlin.compiler.transforms.pipeline_policy import execute_policy
 
     binding = prepare(args.source, package=args.package, mechanism=args.mechanism)
     result = execute_policy(**binding)

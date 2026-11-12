@@ -5,7 +5,7 @@ description: "Open before adding, moving, reordering or replacing a compiler pas
 
 # Compose passes in a legal, generic order
 
-Each IR level uses `merlin.transforms.pipeline_state.PassSpec` pipelines.
+Each IR level uses `merlin.compiler.transforms.pipeline_state.PassSpec` pipelines.
 `validate_pass_order` checks prerequisites and order; `PipelineSession` rejects stale analyses.
 See `reference/phase-order.md` for stages, source citations and error fixes;
 `scheduling-api` for individual passes, and `fusion` for fusion.
@@ -36,7 +36,7 @@ dependency is checked, then validate the order before running it.
 
 ```python
 from dataclasses import replace
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
+from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession, validate_pass_order
 
 def insert_before(specs, new, consumer):
     at = next(i for i, spec in enumerate(specs) if spec.name == consumer)
@@ -62,8 +62,8 @@ and mutates the IR by assigning `session.module`. A non-xDSL IR also needs `ir_l
 - Runtime: the library entry points take an order, e.g. `compile_schedule(pass_order)`,
   `compile_source_pointwise(pass_order, schedule_pass_order)` and
   `apply_common_pipeline(PipelineOptions(pass_order))`. To run alternatives on private clones,
-  use `merlin.transforms.pipeline_policy.evaluate_variants`. To enumerate the legal orders, use
-  `merlin.transforms.pass_exploration.generate_candidates`.
+  use `merlin.compiler.transforms.pipeline_policy.evaluate_variants`. To enumerate the legal orders, use
+  `merlin.compiler.transforms.pass_exploration.generate_candidates`.
 - Time the alternatives as variants or knobs with the `ab-library-pass` and `explore-schedules`
   skills. Keep the original order as the unconditional fallback.
 - Per-shape choice among library pipelines from panel cycles: the `heavy-pass-recipes` skill.

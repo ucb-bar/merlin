@@ -17,8 +17,8 @@ required_top_level_fields:
 producer: hand-authored entries in src/merlin/resources/schemas/quant_formats.registry.yaml (or a MERLIN_QUANT_FORMATS overlay)
 consumers:
   - merlin.common.quant_formats
-  - merlin.targetgen.routing
-  - merlin.frontends
+  - merlin.development.targetgen.routing
+  - merlin.compiler.frontend
 validation_notes: >-
   `kind` is one of: float_ieee, int_affine, fp_ocp, packed_sub_byte, mx_block, nvfp4. Float-valued
   kinds carry `exp_bits` + `mant_bits`, and for a self-describing float element the identity

@@ -59,7 +59,7 @@ class TierResult:
     # this block -- never omitted: a tier with no record is not
     # evidence, and an absent key is what made two model capsules read
     # as though they had never been graded.
-    # See merlin.targetgen.tier_policy.oracle_ceiling.
+    # See merlin.development.targetgen.tier_policy.oracle_ceiling.
     not_applicable: bool = False  # tier honestly N/A for this capsule's datatype (e.g. the integer
     # L0/L1 floor on a float datapath) — a legitimate skip, not a
     # not_run_is_not_pass violation (unlike an unavailable RTL oracle)
@@ -81,7 +81,7 @@ class TierResult:
     # 6.3x spread). So every ``timing`` block is only interpretable
     # next to the concurrency it was taken at, and a block without
     # one is not comparable with any other. Absent -> the run
-    # predates the stamp; see merlin.perf.observations.
+    # predates the stamp; see merlin.analysis.perf.observations.
     # concurrency_of, which marks that rather than assuming it.
     submission: dict | None = None  # WHICH SUBMISSION these numbers are about, stated rather than
     # inferred from where the file sits. Cycles are a property of
@@ -125,7 +125,7 @@ class TierResult:
 
     carried: dict | None = None  # THIS TIER WAS NOT EXECUTED IN THIS RUN. Present only on a record
     # whose verdict was CARRIED from an earlier execution of the same
-    # program on the same instrument (merlin.targetgen.tier_cache):
+    # program on the same instrument (merlin.development.targetgen.tier_cache):
     # it names the execution identity and instrument digest the
     # verdict was earned under, when, and by which run. A reused
     # certificate reported as a fresh measurement is not a saving, it

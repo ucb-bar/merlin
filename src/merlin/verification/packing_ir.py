@@ -13,10 +13,10 @@ from xdsl.dialects import builtin, llvm
 from xdsl.ir import Operation
 from xdsl.parser import Parser
 
-from merlin.llvmlower.borrowed_buffer_calls import validate_calls
-from merlin.perf.host_cfg_index import prepare_host_cfg
-from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.analysis.perf.host_cfg_index import prepare_host_cfg
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
+from merlin.compiler.lower.model.borrowed_buffer_calls import validate_calls
+from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
 from .packing_types import PackingAllocationEffects, PackingStorageUse
 
@@ -199,7 +199,7 @@ def verify_packing_storage(
     correctness and all unrelated memory-access bounds remain separate source,
     compiler and execution obligations.
     """
-    from merlin.llvmlower.arena_bind import _cyclic_blocks
+    from merlin.compiler.lower.model.arena_bind import _cyclic_blocks
 
     _require(type(allocation_effects) is PackingAllocationEffects, "original allocator effects are unavailable")
     allocation_effects.__post_init__()

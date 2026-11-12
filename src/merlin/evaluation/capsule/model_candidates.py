@@ -7,17 +7,17 @@ import sys
 import time
 from pathlib import Path
 
+from merlin.development.targetgen.capsule_common import make_run_paths, run_entrypoints
+from merlin.development.targetgen.package_runtime import Package, build_package, integrity_scan, load_package
 from merlin.evaluation.capsule.bundle import _model_runtime_bundle as _model_runtime_bundle
 from merlin.evaluation.capsule.diagnostics import _candidate_exception_diagnostic as _candidate_exception_diagnostic
 from merlin.evaluation.capsule.identity import CONTRACT_VERSION
-from merlin.targetgen.capsule_common import make_run_paths, run_entrypoints
-from merlin.targetgen.package_runtime import Package, build_package, integrity_scan, load_package
 
 
 def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_dir, context, pkg=None):
     """Keep explicit public-program treatment separate from owned-host model grading."""
-    from merlin.targetgen.owned_host_model_selection import owned_model_required
-    from merlin.targetgen.owned_host_slice_execution import selected_source_slice
+    from merlin.development.targetgen.owned_host_model_selection import owned_model_required
+    from merlin.development.targetgen.owned_host_slice_execution import selected_source_slice
 
     if selected_source_slice(capsule):
         if context.get("public_program_execution") is not None or "checked_source_diagnostic" in context:
@@ -26,7 +26,7 @@ def _grade_candidate_model_capsule_inline(capsule, *, target, timeout, package_d
             capsule, target=target, timeout=timeout, package_dir=package_dir, context=context, pkg=pkg
         )
     if "checked_source_diagnostic" in context:
-        from merlin.targetgen.checked_source_model_diagnostic_execution import grade_from_context
+        from merlin.development.targetgen.checked_source_model_diagnostic_execution import grade_from_context
 
         return grade_from_context(
             sys.modules[__name__],
@@ -63,8 +63,8 @@ def _grade_owned_model_capsule_inline(
     The parent or suite retains a frozen capsule copy until this function has
     enforced the candidate-only source, native and mandatory-tier checks.
     """
-    from merlin.targetgen.capsule_grade import enforce_model_execution_check
-    from merlin.targetgen.native_model_execution import _digest, independent_frozen_source_eligibility
+    from merlin.development.targetgen.capsule_grade import enforce_model_execution_check
+    from merlin.development.targetgen.native_model_execution import _digest, independent_frozen_source_eligibility
 
     attrs = (capsule.get("operation") or {}).get("attributes") or {}
     result: dict = {
@@ -86,7 +86,10 @@ def _grade_owned_model_capsule_inline(
         },
     }
     try:
-        from merlin.targetgen.owned_host_slice_execution import require_slice_placement, selected_source_slice
+        from merlin.development.targetgen.owned_host_slice_execution import (
+            require_slice_placement,
+            selected_source_slice,
+        )
 
         if selected_source_slice(capsule):
             require_slice_placement(capsule)
@@ -102,7 +105,7 @@ def _grade_owned_model_capsule_inline(
         # only the exact operator-selected policy record; absent means legacy.
         readback_record = context.get("readback_policy")
         if readback_record is not None:
-            from merlin.targetgen.contract.readback_policy import ReadbackPolicy
+            from merlin.development.targetgen.contract.readback_policy import ReadbackPolicy
 
             readback_policy = ReadbackPolicy.from_record(readback_record)
         else:
@@ -123,7 +126,7 @@ def _grade_owned_model_capsule_inline(
         )
         # Host lowering is a trusted Merlin service. The candidate is invoked
         # only for independently source-bound device groups by that service.
-        from merlin.targetgen.owned_host_model_execution import execute_owned_host_model
+        from merlin.development.targetgen.owned_host_model_execution import execute_owned_host_model
 
         result["owned_host_source"] = {
             "capsule_declaration": _digest(Path(capsule["__dir__"]) / "capsule.yaml"),
@@ -183,11 +186,11 @@ def _grade_public_program_capsule_inline(
     The parent or suite retains a frozen capsule copy until this function has
     enforced the candidate-only source, native and mandatory-tier checks.
     """
-    from merlin.targetgen.capsule_grade import enforce_model_execution_check
-    from merlin.targetgen.checked_source_model_diagnostic_execution import (
+    from merlin.development.targetgen.capsule_grade import enforce_model_execution_check
+    from merlin.development.targetgen.checked_source_model_diagnostic_execution import (
         execute_native_model as execute_candidate_model,
     )
-    from merlin.targetgen.native_model_execution import _digest, independent_frozen_source_eligibility
+    from merlin.development.targetgen.native_model_execution import _digest, independent_frozen_source_eligibility
 
     diagnostic_deadline = time.monotonic() + timeout
     diagnostic_native_result = diagnostic_work_root = None
@@ -215,7 +218,7 @@ def _grade_public_program_capsule_inline(
     except Exception as exc:  # noqa: BLE001 -- no source denominator means no submitted-program run
         result["candidate_source_eligibility_failure"] = {"type": type(exc).__name__, "detail": str(exc)[:2000]}
         if diagnostic_selection is not None:
-            from merlin.targetgen.checked_source_model_diagnostic_execution import finish_unavailable
+            from merlin.development.targetgen.checked_source_model_diagnostic_execution import finish_unavailable
 
             return finish_unavailable(
                 diagnostic_selection, result, capsule, target=target, deadline=diagnostic_deadline
@@ -228,13 +231,15 @@ def _grade_public_program_capsule_inline(
         execution_kwargs = {}
         selection = context.get("public_program_execution")
         if diagnostic_selection is not None:
-            from merlin.targetgen.checked_source_model_diagnostic_execution import execution_kwargs as checked_execution
+            from merlin.development.targetgen.checked_source_model_diagnostic_execution import (
+                execution_kwargs as checked_execution,
+            )
 
             if selection is not None:
                 raise ValueError("checked source diagnostics cannot select public-program grading")
             execution_kwargs = checked_execution(diagnostic_selection, capsule, target=target)
         if selection is not None:
-            from merlin.targetgen.public_program_timing import verify_selection
+            from merlin.development.targetgen.public_program_timing import verify_selection
 
             execution_kwargs = verify_selection(capsule, selection)
             result["public_program_execution"] = selection
@@ -242,7 +247,7 @@ def _grade_public_program_capsule_inline(
         # only the exact operator-selected policy record; absent means legacy.
         readback_record = context.get("readback_policy")
         if readback_record is not None:
-            from merlin.targetgen.contract.readback_policy import ReadbackPolicy
+            from merlin.development.targetgen.contract.readback_policy import ReadbackPolicy
 
             readback_policy = ReadbackPolicy.from_record(readback_record)
         else:
@@ -285,7 +290,7 @@ def _grade_public_program_capsule_inline(
         }
         if "__model_source_transport" in capsule:
             result["candidate_source_transport"] = capsule["__model_source_transport"]
-        from merlin.perf.work_volume import command_buffer_evidence
+        from merlin.analysis.perf.work_volume import command_buffer_evidence
 
         result["work_volume"], result["command_buffer_artifact"] = command_buffer_evidence(
             candidate_cb,
@@ -329,7 +334,7 @@ def _grade_public_program_capsule_inline(
         # for diagnosis, but never feed that receipt to the pass gate.
         result.pop("candidate_native_execution", None)
     if diagnostic_selection is not None:
-        from merlin.targetgen.checked_source_model_diagnostic_execution import finish
+        from merlin.development.targetgen.checked_source_model_diagnostic_execution import finish
 
         return finish(
             diagnostic_selection,

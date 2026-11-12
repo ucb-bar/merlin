@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.common.jsonio import canonical_json
+from merlin.development.targetgen.frontend_original_call import default_value
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen import original_reference_plan as P
 from merlin.development.testgen import original_reference_roster as R
@@ -20,7 +21,6 @@ from merlin.development.testgen.command_intake import _tracked_source
 from merlin.development.testgen.operator_schema_intake import _selection
 from merlin.development.testgen.original_call_sources import required_source_cohorts
 from merlin.development.testgen.rtl_intake import _outside
-from merlin.targetgen.frontend_original_call import default_value
 
 SCHEMA = "merlin.original_source_semantic_review.v1"
 POINTWISE_SCHEMA = "merlin.original_source_semantic_review.v2"
@@ -168,11 +168,11 @@ def validate(document):
         stress = row["stress"]
         if not isinstance(stress, dict) or set(stress) != {"per_member", "across_complete_cohorts"}:
             raise ValueError("original semantic stress needs complete explicit finite obligations")
-        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+        from merlin.development.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
 
         original_pointwise = type(policy) is OriginalPointwiseReferencePolicy
         if original_pointwise:
-            from merlin.targetgen import original_pointwise_stress as PS
+            from merlin.development.targetgen import original_pointwise_stress as PS
 
             wanted = {
                 "per_member": ["pointwise_values"],
@@ -266,7 +266,7 @@ def realized(trace):
 
 def measure_stress(contract, selection):
     """Conservative complete logical materializations, not host memory/time."""
-    from merlin.targetgen.original_reference_values import format_record
+    from merlin.development.targetgen.original_reference_values import format_record
 
     cost = P.measure(contract, selection)
     metadata = contract.verify()
@@ -290,7 +290,7 @@ def measure_stress(contract, selection):
 
 def measure_pointwise_stress(contract, selection):
     """Charge every original comparison/conversion and observed partition."""
-    from merlin.targetgen.original_pointwise_reference import reference_steps
+    from merlin.development.targetgen.original_pointwise_reference import reference_steps
 
     cost = measure_stress(contract, selection)
     count = reference_steps(contract.verify())

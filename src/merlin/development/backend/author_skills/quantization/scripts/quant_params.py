@@ -236,8 +236,8 @@ def case_summary(path: Path) -> dict:
 
 def prove(summary: dict, attrs_scales: dict) -> dict:
     """Full-domain readout proofs from the library for the case's declared readout."""
-    from merlin.llvmlower import integer_readout as IR
-    from merlin.llvmlower.integer_producer_range import IntegerSumProductsRange
+    from merlin.compiler.lower.model import integer_readout as IR
+    from merlin.compiler.lower.model.integer_producer_range import IntegerSumProductsRange
 
     out: dict = {}
     relu = "relu" in summary["epilogue"]
@@ -380,15 +380,15 @@ def _float_contractions(module, mq, quant_scope) -> dict:
 
 def ir_summary(path: Path, *, contract: Path | None, limit: int) -> dict:
     from merlin.common import mlir_query as mq
+    from merlin.compiler.dialects.lowering import output_fusion as OF
+    from merlin.compiler.lower.model.integer_gemm import match_integer_gemm
     from merlin.compiler.quantization import scope as quant_scope
-    from merlin.llvmlower.integer_gemm import match_integer_gemm
-    from merlin.xdsl_dialects.lowering import output_fusion as OF
 
     module = mq.parse(path.read_text(encoding="utf-8"))
     values = OF.Values(path)
     declared = None
     if contract is not None:
-        from merlin.targetgen import output_path as OP
+        from merlin.development.targetgen import output_path as OP
 
         found = find_output_path(_yaml(contract) or {})
         declared = OP.validate(found) if found else None

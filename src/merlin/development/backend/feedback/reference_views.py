@@ -30,15 +30,15 @@ def source_view(source_mlir, *, reduction_lanes=None):
     command parser omits COMMIT result tensors, so those types must be read
     independently from the original declaration before joining a candidate CB.
     """
+    from merlin.analysis.perf.candidate_source import source_observation
     from merlin.compiler.ir.logical_abi import (
         HarnessRenderError,
         commit_output_shape,
         kernel_abi_from_commands,
         kernel_arg_order,
     )
-    from merlin.perf.candidate_source import source_observation
+    from merlin.development.targetgen.contract import interface_emit as grammar
     from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET
-    from merlin.targetgen.contract import interface_emit as grammar
 
     pin = _pin(source_mlir)
     text = source_mlir.decode("utf-8")
@@ -158,11 +158,11 @@ def artifact_views(
     from xdsl.parser import Parser
     from xdsl.utils.exceptions import ParseError, VerifyException
 
+    from merlin.analysis.perf.command_buffer_diagnostics import representation_activity
+    from merlin.analysis.perf.emitted_work import assembly_site_kind, summarize_emitted_work
     from merlin.common.ir_lock import IR_LOCK
     from merlin.development.backend.feedback.reference_schedule_receipts import inspect_schedule_receipts
-    from merlin.perf.command_buffer_diagnostics import representation_activity
-    from merlin.perf.emitted_work import assembly_site_kind, summarize_emitted_work
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
     pins = dict(source=_pin(source_mlir), command_buffer=_pin(command_buffer), emitted=_pin(emitted_mlir))
     if b"merlin_iface." in source_mlir:
@@ -216,7 +216,7 @@ def artifact_views(
     if len(entries) != 1 or sum(1 for _ in module.walk()) > MAX_OPERATIONS:
         raise ValueError("emitted view requires one bounded defined entry")
     (entry,) = entries
-    from merlin.kernels.consumer_structure import consumer_structure
+    from merlin.analysis.kernels.consumer_structure import consumer_structure
 
     entry_block = next(iter(entry.body.blocks))
     arity = len(entry_block.args)
@@ -235,7 +235,7 @@ def artifact_views(
         decoded_operands="unknown",
     )
     if semantics is not None:
-        from merlin.targetgen.rocc.decode import decode_module
+        from merlin.development.targetgen.rocc.decode import decode_module
 
         trace = decode_module(module, target=target, semantics=semantics, source=pins["emitted"]["sha256"])
         entry_sites = {op for op in entry.walk() if op.name == "llvm.inline_asm"}
@@ -243,7 +243,7 @@ def artifact_views(
             i for i, op in enumerate(op for op in module.walk() if op.name == "llvm.inline_asm") if op in entry_sites
         }
         rows = [row for row in trace["instructions"] if row["index"] in positions]
-        from merlin.kernels.instruction_comparison import OperandSummary
+        from merlin.analysis.kernels.instruction_comparison import OperandSummary
 
         operands = OperandSummary()
         for row in rows:
@@ -350,7 +350,7 @@ def artifact_views(
 
 
 def _native(capture, pins, arity, *, isa, decoder):
-    from merlin.kernels.kernel_evidence import KernelEvidence, analyze_native_commands
+    from merlin.analysis.kernels.kernel_evidence import KernelEvidence, analyze_native_commands
 
     raw, evidence = capture.get("raw"), capture.get("evidence")
 
@@ -431,9 +431,9 @@ def _native(capture, pins, arity, *, isa, decoder):
 
 def compare_views(reference, candidate, *, observation_fields=()):
     """Report supported tradeoffs; never reward retention or fewer commands alone."""
+    from merlin.analysis.kernels.instruction_observations import compare_observations, from_projection
     from merlin.development.backend.feedback.reference_mechanisms import align_questions
     from merlin.development.backend.feedback.reference_schedule_receipts import compare_schedule_receipts
-    from merlin.kernels.instruction_observations import compare_observations, from_projection
 
     observations = [
         from_projection(
@@ -517,7 +517,7 @@ def compare_views(reference, candidate, *, observation_fields=()):
 def experiment(report, *, packet, compiler_sha256):
     """Use existing finite experiment routing; stale or unbound contexts stay blocked."""
     try:
-        from merlin.mining.reconstruction_experiments import build_experiment_packet
+        from merlin.analysis.mining.reconstruction_experiments import build_experiment_packet
     except ImportError:
         return dict(status="unknown", reason="existing_experiment_package_unavailable")
     context = packet.get("context", {})

@@ -38,7 +38,7 @@ def _plain(path: Path) -> None:
 def _analysis_sources() -> tuple[tuple[Path, str], ...]:
     """Pin the complete parser membership and the concrete analysis owners."""
     paths = {Path(__file__)}
-    for name in ("merlin.xdsl_dialects._common", "merlin.xdsl_dialects.fp8", "xdsl"):
+    for name in ("merlin.compiler.dialects._common", "merlin.compiler.dialects.fp8", "xdsl"):
         try:
             module = importlib.import_module(name)
         except ImportError:
@@ -93,7 +93,7 @@ def _inspect_source(text: str) -> dict:
     from xdsl.parser import Parser
     from xdsl.traits import get_effects
 
-    from merlin.xdsl_dialects._common import make_context
+    from merlin.compiler.dialects._common import make_context
 
     module = Parser(make_context(Arith, Tensor, Linalg, Math), text).parse_module()
     module.verify()

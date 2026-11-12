@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common import mlir_query as mq
+from merlin.compiler.frontend.capture_normalization import CaptureNormalizationError, normalize_capture_mlir
 from merlin.development.backend.feedback import private_linked_source_preparation as preparation
-from merlin.frontends.capture_normalization import CaptureNormalizationError, normalize_capture_mlir
-from merlin.targetgen.application_inventory import verify_capture_receipt
+from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
 PENDING = "source_literal_i64_arange_pending_build"
 SCOPE = (

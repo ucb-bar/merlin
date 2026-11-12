@@ -6,9 +6,12 @@ from dataclasses import dataclass
 from itertools import product
 from math import prod
 
-from merlin.semantic_compiler.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
-
-from .pointwise import PointwiseTiling, assemble_pointwise_output, materialize_pointwise_input
+from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
+from merlin.compiler.transforms.pointwise import (
+    PointwiseTiling,
+    assemble_pointwise_output,
+    materialize_pointwise_input,
+)
 
 
 @dataclass(frozen=True)

@@ -7,7 +7,7 @@ the host to handle others. It does not assert that any target compiles the model
 Capture with a trace-capable model2MLIR installation and Merlin's existing worker:
 
 ```sh
-/path/to/capture-python src/merlin/targetgen/_m2m_capture_worker.py \
+/path/to/capture-python src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir /path/to/model2MLIR \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype fp32 --out /configured/out/artifacts/captures/coverage-mlp/fp32

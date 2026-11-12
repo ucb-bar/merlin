@@ -15,8 +15,8 @@ from merlin.development.backend.optimization import gsim_gate as GATE
 from merlin.development.backend.optimization import gsim_workload as WORKLOAD
 from merlin.development.backend.optimization.broker_evidence import _is_sha256 as _is_sha
 from merlin.development.backend.optimization.contracts import PerformanceExperimentError as ExperimentError
+from merlin.development.targetgen.capsule_common import discover_capsules
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.targetgen.capsule_common import discover_capsules
 
 
 @dataclass(frozen=True)

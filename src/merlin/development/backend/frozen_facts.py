@@ -13,7 +13,7 @@ def select(ws: Path, path: Path | None) -> None:
     os.environ.pop("MERLIN_RTL_FACTS", None)
     if path is None:
         return
-    from merlin.targetgen.sandbox.bwrap import bundle_snapshot_root
+    from merlin.development.targetgen.sandbox.bwrap import bundle_snapshot_root
 
     root = bundle_snapshot_root(ws).absolute()
     selected = path.absolute()

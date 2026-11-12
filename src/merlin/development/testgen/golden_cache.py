@@ -69,7 +69,7 @@ def source_digest() -> str:
         record = {
             path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in source_files()
         }
-        for name in ("merlin.integrations.specir", "merlin.targetgen.software_spec"):
+        for name in ("merlin.integrations.specir", "merlin.development.targetgen.software_spec"):
             helper = module_source_path(name)
             if helper.is_symlink() or not helper.is_file():
                 return "unresolvable"
@@ -107,7 +107,7 @@ def _golden_cache_key(fn, entry, binding, facts_sha: str = "", *, oracle_source:
     establish which device this is, and is carried as its own distinct key rather than treated as
     "no change".
     """
-    from merlin.targetgen import corpus_operands as CO
+    from merlin.development.targetgen import corpus_operands as CO
 
     h = hashlib.sha256()
     h.update(_document_digest(entry).encode("utf-8"))

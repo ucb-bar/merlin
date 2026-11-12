@@ -58,7 +58,7 @@ def audit() -> dict:
     import yaml
 
     from merlin.common.paths import contract_dir
-    from merlin.targetgen.contract import interface_emit as IE
+    from merlin.development.targetgen.contract import interface_emit as IE
 
     abi_path = contract_dir() / "command_buffer_abi.yaml"
     if not abi_path.is_file():

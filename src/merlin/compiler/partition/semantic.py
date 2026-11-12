@@ -13,16 +13,16 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from hashlib import sha256
 
-from merlin.semantic_compiler.model import KernelRequest, SemanticNode
-from merlin.xdsl_dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
-from merlin.xdsl_dialects.lowering.global_plan import GlobalPlan, verify_global_plan
-from merlin.xdsl_dialects.lowering.global_plan_emission import (
+from merlin.compiler.dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
+from merlin.compiler.dialects.lowering.global_plan import GlobalPlan, verify_global_plan
+from merlin.compiler.dialects.lowering.global_plan_emission import (
     BoundaryMapping,
     EmittedComponent,
     GlobalPlanEmission,
     dispatch_digest,
     verify_global_plan_emission,
 )
+from merlin.compiler.semantic.model import KernelRequest, SemanticNode
 
 
 def semantic_dispatch(request: KernelRequest, *, entry: str) -> DispatchProgram:
@@ -168,7 +168,7 @@ def partition_semantic_dag(
     legal regions keep their larger boundaries; a rejected cut does not force
     a smaller global region size. Predicates must return a definite Boolean.
     """
-    from merlin.semantic_compiler.allocate import CandidateGraph, Value, topological_orders
+    from merlin.compiler.semantic.allocate import CandidateGraph, Value, topological_orders
 
     if type(max_nodes) is not int or max_nodes <= 0:
         raise ValueError("region size must be a positive integer")
@@ -222,7 +222,7 @@ def semantic_staging_buffers(
     invocation; results remain live after their producing region. The target
     must preserve these completion events when composing physical programs.
     """
-    from merlin.semantic_compiler.buffer_allocation import Buffer
+    from merlin.compiler.semantic.buffer_allocation import Buffer
 
     source = {node.id: node for node in request.nodes}
     available = {node.id for node in request.nodes if node.effect in {"input", "constant"}}

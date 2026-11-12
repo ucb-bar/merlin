@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextvars import copy_context
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf import compiled_static_features as S
 from merlin.common import invocation_record as I
 from merlin.common.digest import is_sha256
 from merlin.development.backend.feedback.candidate_census import observe_passed_census
@@ -36,13 +36,13 @@ from merlin.development.backend.optimization.contracts import (
 )
 from merlin.development.backend.optimization.ordinary_archive_screen import OrdinaryArchiveScreen
 from merlin.development.backend.optimization.retained_revisions import executing_revisions
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
+from merlin.development.targetgen.rtl import facts as RTL_FACTS
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import runner as CR
-from merlin.perf import compiled_static_features as S
+from merlin.evaluation.harness import hash_tree
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
-from merlin.targetgen.rtl import facts as RTL_FACTS
 
 KIND = "corpus-compile-spike-feedback"
 SELECTED_KIND = "corpus-selected-compile-spike-feedback"

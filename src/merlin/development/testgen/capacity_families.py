@@ -10,15 +10,15 @@ affordable; the RTL simulator sees only the short calibration-validation list
 This module derives the large shapes from the target's own RTL facts and from nothing else:
 
 * array geometry, element widths and the stores' banks and capacities
-  (:func:`merlin.perf.derived_bound.machine_from_facts`);
-* the movement engine's read/write ports and in-flight windows (:mod:`merlin.perf.movement_peak`);
+  (:func:`merlin.analysis.perf.derived_bound.machine_from_facts`);
+* the movement engine's read/write ports and in-flight windows (:mod:`merlin.analysis.perf.movement_peak`);
 * per command class, its reservation entries and command-queue depth, and the dataflow modes the
   array's cell select chooses (``timing_structure.command_classes`` / ``dataflow``).
 
 The template (``requires_capacity_scope`` in ``experiments/templates/test-generation/performance.yaml``)
 declares only POLICY: which family kinds, at which multiples of which capacity. Every extent comes
 from a capacity read here. Each point records the regime it exercises, why (with the numbers that
-put it there), and its staged roofline (:mod:`merlin.perf.staged_roofline`). Claims are per-regime
+put it there), and its staged roofline (:mod:`merlin.analysis.perf.staged_roofline`). Claims are per-regime
 scaling fits (:mod:`merlin.development.backend.optimization.claims.capacity`), never single points and never a
 monotone "fewer is better": a change that removes commands can lose overlap and be slower, and the
 fits are per regime so that is visible instead of averaged away.
@@ -128,9 +128,9 @@ def _command_windows(body: Mapping[str, Any]) -> tuple[dict[str, int], dict[str,
 
 def derive_basis(target: str, facts: Mapping[str, Any]) -> Basis:
     """Every capacity the families scale by, or :class:`CapacityUnavailable` naming what is missing."""
-    from merlin.perf.decompose import is_unknown
-    from merlin.perf.derived_bound import machine_from_facts
-    from merlin.perf.movement_peak import movement_peak
+    from merlin.analysis.perf.decompose import is_unknown
+    from merlin.analysis.perf.derived_bound import machine_from_facts
+    from merlin.analysis.perf.movement_peak import movement_peak
 
     machine = machine_from_facts(target, facts=dict(facts), measure_fill=False)
     needed = (
@@ -154,7 +154,7 @@ def derive_basis(target: str, facts: Mapping[str, Any]) -> Basis:
     ways = int(machine.ping_pong_ways)
     provenance = dict(machine.provenance)
     provenance.update(
-        movement="facts.timing_structure.memory_clients (merlin.perf.movement_peak)",
+        movement="facts.timing_structure.memory_clients (merlin.analysis.perf.movement_peak)",
         command_windows=(
             "timing_structure.command_classes: dispatch entries + command-queue entries per class"
             if windows
@@ -259,7 +259,7 @@ def _matmul(m: int, k: int, n: int, epilogue: Sequence[str] = ()) -> dict[str, A
 
 
 def _gemm_point(basis: Basis, *, variant: str, regime: str | None, x_name: str, m: int, k: int, n: int, why: str):
-    from merlin.perf.staged_roofline import Contraction
+    from merlin.analysis.perf.staged_roofline import Contraction
 
     operand, accumulator = _gemm_working_set(basis, m, k, n)
     band = residency(basis, operand, accumulator)
@@ -414,7 +414,7 @@ def _tails(spec, basis: Basis, owner: str) -> list[dict]:
 
 def _conv(spec, basis: Basis, owner: str) -> list[dict]:
     """Strided, padded, pointwise and stem convolutions with large channels and image sizes."""
-    from merlin.perf.staged_roofline import Contraction
+    from merlin.analysis.perf.staged_roofline import Contraction
 
     points = []
     fractions = _fractions(spec, "image_store_multiples", owner=owner)
@@ -465,7 +465,7 @@ def _conv(spec, basis: Basis, owner: str) -> list[dict]:
 
 def _epilogue(spec, basis: Basis, owner: str) -> list[dict]:
     """One reduction panel and a large output, so the readout path and its width decide the cost."""
-    from merlin.perf.staged_roofline import Contraction
+    from merlin.analysis.perf.staged_roofline import Contraction
 
     k = _extent(spec.get("K"), basis)
     points = []
@@ -500,7 +500,7 @@ def _epilogue(spec, basis: Basis, owner: str) -> list[dict]:
 
 def _residency_chain(spec, basis: Basis, owner: str) -> list[dict]:
     """One weight reused by a chain of contractions: residency that persists across ops, or cannot."""
-    from merlin.perf.staged_roofline import Contraction
+    from merlin.analysis.perf.staged_roofline import Contraction
 
     m = _extent(spec.get("M"), basis)
     n = _extent(spec.get("N"), basis)
@@ -688,7 +688,7 @@ def derive_points(
 
 
 def _roofline(point: Mapping[str, Any], basis: Basis) -> dict[str, Any]:
-    from merlin.perf.staged_roofline import staged_roofline
+    from merlin.analysis.perf.staged_roofline import staged_roofline
 
     doc = staged_roofline(point["work"], basis.machine, basis.ports, result_bytes=int(point["result_bytes"]))
     return {
@@ -727,7 +727,7 @@ def capacity_family_entries(
     owner = f"performance sweep {family}"
     declaration = validate_capacity_scope_declaration(sweep, owner=owner)
     if facts is None:
-        from merlin.targetgen.rtl import facts as rtl_facts
+        from merlin.development.targetgen.rtl import facts as rtl_facts
 
         facts = rtl_facts.load_facts(target)
     try:
@@ -792,9 +792,9 @@ def scope_members(sweep, *, binding, evidence, requirement, entries, skipped, bl
     spec = getattr(evidence, "software_spec", None)
     if not spec:
         return members
+    from merlin.development.targetgen import corpus_spec as CS
     from merlin.development.testgen.program_admission import entry_refusal_is_final
     from merlin.development.testgen.software_screen import screen_entry
-    from merlin.targetgen import corpus_spec as CS
 
     selected = []
     for entry in members:

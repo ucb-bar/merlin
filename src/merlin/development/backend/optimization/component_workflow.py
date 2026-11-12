@@ -18,7 +18,8 @@ from functools import partial
 from pathlib import Path
 from typing import Protocol
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.phase2_calibration_bundle import prepare_phase2_calibration
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 from merlin.development.backend.optimization import component_cca as CC
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization import corpus_feedback as CF
@@ -41,8 +42,7 @@ from merlin.development.backend.optimization.contracts import (
     mapping_file,
     sha256_file,
 )
-from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
+from merlin.evaluation.harness import hash_tree
 
 ANALYTICAL_ACTION = "component-analytical-feedback"
 RTL_ACTION = "component-rtl-feedback"
@@ -325,7 +325,7 @@ def validate_component_feedback(document):
             ):
                 raise StageGateError("component analytical member schema is invalid")
             if "complete_cost" in row:
-                from merlin.perf.component_cost import validate_complete_cost_report
+                from merlin.analysis.perf.component_cost import validate_complete_cost_report
 
                 detailed = row["complete_cost"]
                 if not isinstance(detailed, Mapping) or set(detailed) != {"baseline", "candidate", "objective"}:
@@ -795,7 +795,7 @@ class ComponentOnlyPolicy(WorkflowPolicy):
             )
 
     def _inventory_document(self, request, rendered, call_index, timeout_s):
-        from merlin.perf.agent_guidance import inspect_compiler_package
+        from merlin.analysis.perf.agent_guidance import inspect_compiler_package
 
         return inspect_compiler_package(self.candidate).to_dict()
 

@@ -56,8 +56,8 @@ def install(selection, policy, *, root, output_root):
     document = selection.document.get("build_runtime")
     if document is None:
         return
+    from merlin.development.targetgen.contract.build_products import prepare_build_product_index
     from merlin.runtime.build_runtime import prepare_build_runtime_view
-    from merlin.targetgen.contract.build_products import prepare_build_product_index
 
     root.mkdir(mode=0o700)
     grant = selection.document["job_resources"]

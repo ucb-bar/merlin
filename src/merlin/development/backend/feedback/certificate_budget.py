@@ -28,13 +28,13 @@ def affordable_cert_items(want, *, cert_tier, log, context: InvocationContext, c
     NOT `schedule(cost_s=..., budget_s=...)`: that budget is a TOTAL across the queue and its cost is
     per-TIER, so it answers "how many may we buy" and cannot answer "may THIS capsule be bought".
     """
-    from merlin.targetgen.tier_policy import ceiling_budget_seconds, oracle_ceiling
+    from merlin.development.targetgen.tier_policy import ceiling_budget_seconds, oracle_ceiling
 
     if ceiling_budget_seconds() is None:
         return want, {}
     try:
-        from merlin.targetgen.capsule_common import load_capsule
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.capsule_common import load_capsule
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         by_name = {

@@ -24,7 +24,7 @@ def _support():
 
 
 def _source(m, k, widths):
-    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     arguments = [f"%a:tensor<{m}x{k}xi8>"] + [f"%w{i}:tensor<{k}x{n}xi8>" for i, n in enumerate(widths)]
     operations = []
@@ -63,7 +63,7 @@ def recipe(facts=None, shape=None):
     from merlin.compiler.schedule.projection_dense import bind_dense_projection
     from merlin.compiler.schedule.projection_views import plan_shared_projection_views
     from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
-    from merlin.transforms.certificates import ir_digest
+    from merlin.compiler.transforms.certificates import ir_digest
 
     S = _support()
     caps = S.capacities(facts)

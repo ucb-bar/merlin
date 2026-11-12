@@ -418,11 +418,11 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
 
     from xdsl.dialects import func
 
-    from merlin.llvmlower.device_shim import logical_buffers
-    from merlin.llvmlower.sibling_source_route import _command_buffer
-    from merlin.llvmlower.source_region_host import outline_source_siblings
-    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.lower.model.device_shim import logical_buffers
+    from merlin.compiler.lower.model.sibling_source_route import _command_buffer
+    from merlin.compiler.lower.model.source_region_host import outline_source_siblings
+    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir
 
     original = text(module, generic=True)
     source_sha = hashlib.sha256(original.encode()).hexdigest()
@@ -431,8 +431,8 @@ def join_sibling_source_composition(emitted, source, *, module, target, preparat
     if preparation_receipt is not None:
         from pathlib import Path
 
-        from merlin.frontends.linalg_mlir import parse_mlir_file
-        from merlin.llvmlower.weight_prepack import revalidate_build_preparation
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+        from merlin.compiler.lower.model.weight_prepack import revalidate_build_preparation
         from merlin.runtime.modelinputs import file_sha256
 
         receipt_path = Path(preparation_receipt)

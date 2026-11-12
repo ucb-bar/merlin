@@ -30,7 +30,7 @@ def _row(name, result, path, *, sim_tier):
     from merlin.development.backend.feedback.public_scalability import _observed_result
     from merlin.development.backend.feedback.qa import _execution_digest_from_result
     from merlin.development.backend.timing import barrier_measurements
-    from merlin.targetgen.capsule_common import tier_status
+    from merlin.development.targetgen.capsule_common import tier_status
 
     observed = _observed_result(result)
     tiers = result.get("tiers") or {}
@@ -65,10 +65,10 @@ def measure(submission, *, root, record, context, output, timeout, contract=None
     from merlin.development.backend.feedback.joint_performance import observation_budget
     from merlin.development.backend.feedback.public_scalability import _readback, _sim_via
     from merlin.development.backend.feedback.selfcheck import _adapters
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen.capsule_common import load_capsule
     from merlin.experiments.corpus import public_scalability as S
     from merlin.experiments.corpus.preparation import copy_input
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen.capsule_common import load_capsule
 
     names = sorted(set(names))
     if not names or not set(names) <= set(record["cases"]):

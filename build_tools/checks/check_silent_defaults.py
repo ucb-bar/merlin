@@ -81,7 +81,7 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # Phase 2: what chains a candidate to a certified whole-model number -- the measured mode's gates
     # and the champion export that records it.
     "src/merlin/development/backend/optimization/whole_model_measured/gates.py",
-    "src/merlin/targetgen/champions.py",
+    "src/merlin/development/targetgen/champions.py",
 )
 
 #: Not scanned even under an evidence root: the test suite (a test's job is to construct the awkward

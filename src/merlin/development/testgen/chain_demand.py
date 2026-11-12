@@ -322,7 +322,7 @@ def entry(
 
 def component_program(family: str, inst: Mapping[str, Any]) -> dict:
     """The typed tensor program of a sibling or shared key/value chain (raw accumulator outputs)."""
-    from merlin.targetgen.component_program import LOGICAL_IO_V1, SCHEMA_V2
+    from merlin.development.targetgen.component_program import LOGICAL_IO_V1, SCHEMA_V2
 
     def tensor(name, role, shape):
         return {"name": name, "role": role, "shape": list(shape), "dtype": "operand"}

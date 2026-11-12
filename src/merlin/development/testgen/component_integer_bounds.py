@@ -10,10 +10,10 @@ from __future__ import annotations
 
 import copy
 
+from merlin.development.targetgen.input_palette import pattern
 from merlin.development.testgen.component_execution_budget import source_for_capsule, source_for_entry
 from merlin.development.testgen.component_generation import digest
 from merlin.runtime.commandbuffer import STIMULUS_RANGE_KEY, stimulus_range
-from merlin.targetgen.input_palette import pattern
 
 SCHEMA = "merlin.component_integer_bounds.v1"
 _PARTIAL = "bounded_exact_requires_each_partial_sum"

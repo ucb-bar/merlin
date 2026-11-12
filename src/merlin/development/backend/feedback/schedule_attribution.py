@@ -1,6 +1,6 @@
 """The author's top-down schedule stream in a reference comparison: summary first, detail on disk.
 
-The author serializes a schedule stream in their own process (``python -m merlin.kernels.schedule_effects``);
+The author serializes a schedule stream in their own process (``python -m merlin.analysis.kernels.schedule_effects``);
 this service only reads that document, refuses it unless it is an owned ``artifacts/`` or ``variants/``
 file of bounded size with a matching stream digest, and decodes it with the comparison's own selected
 decoder. No candidate code runs here. With the emitted binary as well, each expert difference is
@@ -16,9 +16,9 @@ MAX_BYTES = 256 << 20
 _ROWS = 24
 GAPS = {
     "candidate_schedule_outside_owned_artifacts": "Write the stream document under artifacts/ or variants/NAME/ "
-    "with python -m merlin.kernels.schedule_effects MODULE:FUNCTION --arguments ... --out artifacts/FILE.json.",
+    "with python -m merlin.analysis.kernels.schedule_effects MODULE:FUNCTION --arguments ... --out artifacts/FILE.json.",
     "candidate_schedule_exceeds_bound": "Record a smaller occurrence or pass --limit to the author tool.",
-    "schedule_stream_schema_mismatch": "Pass the document python -m merlin.kernels.schedule_effects wrote, unedited.",
+    "schedule_stream_schema_mismatch": "Pass the document python -m merlin.analysis.kernels.schedule_effects wrote, unedited.",
     "schedule_stream_unbounded_or_malformed": "Re-record the stream with the author tool; do not edit it.",
     "schedule_stream_entry_malformed": "Re-record the stream with the author tool; do not edit it.",
     "schedule_stream_digest_mismatch": "The stream changed after it was recorded; re-record it with the author tool.",
@@ -39,8 +39,8 @@ def validate_path(value):
 
 def read(workspace, value):
     """The validated stream document and its file pin."""
+    from merlin.analysis.kernels.schedule_effects import validate_stream_document
     from merlin.development.backend.feedback.reference_analysis import _path
-    from merlin.kernels.schedule_effects import validate_stream_document
 
     path, label = _path(workspace, validate_path(value), candidate=True)
     if not path.is_file() or path.stat().st_size > MAX_BYTES:
@@ -63,7 +63,7 @@ def _brief(value, width=160):
 
 def summary(full):
     """Summary-first projection: order facts, then each difference's attribution; the rest is detail."""
-    from merlin.kernels.schedule_effects import ORDER_FACTS
+    from merlin.analysis.kernels.schedule_effects import ORDER_FACTS
 
     attribution = full.get("attribution")
     if attribution is not None:
@@ -120,10 +120,10 @@ def summary(full):
 
 def attribute_schedule(workspace, value, *, reference, emitted, decoding_context):
     """``(summary, full)`` for one request's ``candidate_schedule``; ``emitted`` may be ``None``."""
+    from merlin.analysis.kernels.decoded_effects import selected_structure
+    from merlin.analysis.kernels.schedule_effects import attribute, effects_record, schedule_effects, stream_differences
     from merlin.development.backend.feedback import reference_analysis as A
     from merlin.development.backend.feedback.reference_applicability import _contract_document
-    from merlin.kernels.decoded_effects import selected_structure
-    from merlin.kernels.schedule_effects import attribute, effects_record, schedule_effects, stream_differences
 
     document, pin = read(workspace, value)
     context = dict(decoding_context)

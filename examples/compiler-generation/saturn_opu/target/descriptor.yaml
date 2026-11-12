@@ -114,4 +114,4 @@ host_lane:
   # grant above — deny wins in the sandbox binder, so a path listed on both sides grants nothing at all,
   # and "read-only" would silently become "invisible".
   deny_modification:
-    - merlin/python/merlin/llvmlower/
+    - merlin/python/merlin/compiler/lower/model/

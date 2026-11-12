@@ -5,7 +5,7 @@ Three failure modes, none of which a pass-rate or a phase label can express:
 
 1. **An undischarged pass.** A generated backend that adds passes until the score goes up ends up
    with transforms nobody can name a purpose for. So a pass may exist only to discharge one of the
-   four obligations in :data:`merlin.xdsl_dialects.lowering.passes.OBLIGATIONS`
+   four obligations in :data:`merlin.compiler.dialects.lowering.passes.OBLIGATIONS`
    (``partition/eligibility``, ``target transformation``, ``target lowering``,
    ``boundary materialization``), and a concrete capsule must declare the pass's requirement class.
    Either missing declaration is rejected.
@@ -74,7 +74,7 @@ for _p in (_HERE.parents[2] / "merlin" / "python",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin.xdsl_dialects.lowering import passes as PS  # noqa: E402
+from merlin.compiler.dialects.lowering import passes as PS  # noqa: E402
 
 # Statuses that mean a pass was measured and never ran. `not_instrumented` is NOT here: it means the
 # measurement did not cover the pass, which is a different (and separately reported) fact.

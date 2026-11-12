@@ -21,8 +21,8 @@ def preflight_model(capture_bundle: str | Path, *, target: str, deployment_dtype
     """
     from merlin.capture import demands as source_demands
     from merlin.common import mlir_query as mq
-    from merlin.targetgen import group_capsule_entries, routing
-    from merlin.xdsl_dialects.lowering import compute_groups
+    from merlin.compiler.dialects.lowering import compute_groups
+    from merlin.development.targetgen import group_capsule_entries, routing
 
     bundle = Path(capture_bundle)
     if bundle.is_symlink() or not bundle.is_dir():

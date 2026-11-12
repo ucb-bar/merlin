@@ -153,7 +153,7 @@ def _add_init(enc: Encoder, acc: Tensor, init) -> Tensor:
 
 def _generic_matmul(op, acc_width: int) -> tuple:
     """Use the shared parsed-body recognizer before constructing the SMT reading."""
-    from merlin.frontends.linalg_patterns import InvalidLinalgPattern, recognize_signed_i8_i32_matmul
+    from merlin.compiler.frontend.linalg_patterns import InvalidLinalgPattern, recognize_signed_i8_i32_matmul
 
     if acc_width != 32:
         raise UnsupportedSemantics("linalg.generic signed i8 matmul is encoded only with i32 accumulation")

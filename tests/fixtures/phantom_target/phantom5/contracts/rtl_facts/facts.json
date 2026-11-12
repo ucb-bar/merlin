@@ -1,7 +1,7 @@
 {
   "schema_version": "2.0",
   "generator": {
-    "name": "merlin.targetgen.rtl.circt_introspect",
+    "name": "merlin.development.targetgen.rtl.circt_introspect",
     "version": "rtl-introspect-v3-slot-derived-opcode",
     "method": "HAND-AUTHORED FIXTURE facts for the phantom5 synthetic target (no mlc/RTL) — the shape mlc discovery would emit for an fp16 8x8 systolic engine"
   },

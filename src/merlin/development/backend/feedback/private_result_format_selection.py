@@ -37,7 +37,7 @@ class FrozenSelection:
         return raw
 
     def issue(self, *, original_contract_bytes, original_facts_bytes):
-        from merlin.targetgen.rtl.result_format_ceiling import verify_original_selection
+        from merlin.development.targetgen.rtl.result_format_ceiling import verify_original_selection
 
         return verify_original_selection(
             original_contract_bytes=original_contract_bytes,

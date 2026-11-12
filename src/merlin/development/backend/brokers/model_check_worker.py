@@ -16,8 +16,8 @@ from merlin.development.backend.compiler_library import selected_child
 def main(argv=None):
     from merlin.development.backend.context import add_context_arguments, resolve_context
     from merlin.development.backend.feedback.compiler_profile_runtime import selfcheck_execution
-    from merlin.model_check.cli import main as model_main
-    from merlin.targetgen.compiler_library import active_compiler_library
+    from merlin.development.targetgen.compiler_library import active_compiler_library
+    from merlin.evaluation.model.cli import main as model_main
 
     parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     add_context_arguments(parser)

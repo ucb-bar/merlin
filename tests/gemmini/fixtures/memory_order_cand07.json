@@ -6,7 +6,7 @@
   "ACC_ACCUM": 1073741824,
   "FULL_C_BIT": 536870912,
   "block_columns": 16,
-  "derived_by": "merlin.targetgen.rocc.decode.isa_constants('gemmini') (ACC_*/FULL_C_BIT/DIM) from the target's RTL facts, read back 2026-10-06"
+  "derived_by": "merlin.development.targetgen.rocc.decode.isa_constants('gemmini') (ACC_*/FULL_C_BIT/DIM) from the target's RTL facts, read back 2026-10-06"
  },
  "unfenced": {
   "elf_sha256": "14baebe967d7861cd080ad0f76fbec13d45c167020339c45d5a503c988c2aeea",

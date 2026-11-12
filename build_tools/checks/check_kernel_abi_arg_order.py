@@ -38,7 +38,7 @@ Usage::
     MERLIN_TARGET_PATH=<reviewed-support> python build_tools/checks/check_kernel_abi_arg_order.py
     python build_tools/checks/check_kernel_abi_arg_order.py --verbose  # print every order it resolved
     python build_tools/checks/check_kernel_abi_arg_order.py --target <t> \\
-        --logical merlin.targetgen.contract.harness_render:render_harness  # the logical (v2) ABI
+        --logical merlin.development.targetgen.contract.harness_render:render_harness  # the logical (v2) ABI
 """
 
 from __future__ import annotations
@@ -380,8 +380,8 @@ def _renderers() -> list[tuple[str, object, object]]:
     a backend package re-exports with ``from .x import *``, which drops the private roster attribute the
     shape check reads. Following ``__module__`` reaches the definition without naming any target.
     """
+    from merlin.development.targetgen.target_registry import explicit_targets
     from merlin.runtime.backends import base
-    from merlin.targetgen.target_registry import explicit_targets
 
     selected = set(explicit_targets())
     found = []

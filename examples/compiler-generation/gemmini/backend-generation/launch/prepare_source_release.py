@@ -48,7 +48,7 @@ def prepare(
     operand_protocol_revision=None,
     cca_bank=None,
 ):
-    from merlin.targetgen.tool_profile import require_current_substrate
+    from merlin.development.targetgen.tool_profile import require_current_substrate
 
     require_current_substrate(common_substrate)
     previous, output, sdk = Path(previous), Path(output), Path(sdk)

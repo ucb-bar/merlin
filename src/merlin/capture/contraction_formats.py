@@ -375,7 +375,7 @@ def _typed_geometry(op):
 
 def _float_reduction(op):
     from merlin.common import mlir_query as query
-    from merlin.targetgen.application_inventory import _INT_MM_ITERATORS, _INT_MM_MAPS
+    from merlin.development.targetgen.application_inventory import _INT_MM_ITERATORS, _INT_MM_MAPS
 
     if query.op_name(op) != "linalg.generic" or _typed_geometry(op) is None:
         return False
@@ -415,7 +415,7 @@ def _program(row, limits):
 
     from merlin.common import mlir_query as query
     from merlin.common.ir_lock import IR_LOCK
-    from merlin.targetgen.application_inventory import exact_int_mm_generic_operation
+    from merlin.development.targetgen.application_inventory import exact_int_mm_generic_operation
 
     original = _json(_read(row.original_graph, limits), limits)
     trace = _json(_read(row.frontend_trace, limits), limits)

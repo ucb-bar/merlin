@@ -85,7 +85,7 @@ def read(path: Path, *, target: str) -> dict:
 
 
 def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
-    from merlin.targetgen.sandbox.bwrap import _validate_host_sources
+    from merlin.development.targetgen.sandbox.bwrap import _validate_host_sources
 
     from .preparation import _members, copy_input, read_yaml
     from .publication import require_accelerator_placement, require_public_capsules

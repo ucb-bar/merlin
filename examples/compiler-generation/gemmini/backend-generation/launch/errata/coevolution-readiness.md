@@ -17,8 +17,8 @@ working on calibration prerequisites or large connected workloads.
 
 Fresh experiments start with an empty target backend; declared checkpoint
 continuations preserve and improve their existing compiler. The generic ISA generator is available as
-`merlin.targetgen.isa_spec.resolve_isa` and
-`merlin.targetgen.isa_dialect_gen.generate_package`; it is not an already
+`merlin.development.targetgen.isa_spec.resolve_isa` and
+`merlin.development.targetgen.isa_dialect_gen.generate_package`; it is not an already
 generated target dialect. Inspect the selected software specification for an
 `isa` declaration. If absent, construct the declaration from admitted public
 ISA/RTL sources before calling the generator. Preserve source provenance and
@@ -54,7 +54,7 @@ scope. Use tuned estimates when admitted; label provisional estimates honestly.
 Use the editable generic compiler library, scheduling representations, graph
 transformations, fusion, allocation and host codegen where useful. Discover pass
 ordering and shape/resource heuristics from typed IR and selected hardware facts.
-`merlin.transforms.pipeline_policy.evaluate_variants` supports bounded independent
+`merlin.compiler.transforms.pipeline_policy.evaluate_variants` supports bounded independent
 alternatives and a shared preparation prefix. It produces compiler artifacts,
 not numerical or timing qualifications. Preserve numerical order, all live-outs,
 legal overlap and storage lifetimes; minimize redundant preparation and boundary

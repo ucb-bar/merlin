@@ -147,7 +147,7 @@ def analyze_build(files, *, decoder=None, structure=None, evidence_id="build", s
 
 def _build_stream(files, lowered, decoder, symbol, build):
     """``(decoded commands, reason, source)`` of the build's first available binary form."""
-    from merlin.kernels.mechanism_applicability import NO_STREAM
+    from merlin.analysis.kernels.mechanism_applicability import NO_STREAM
 
     if not symbol:
         return (
@@ -418,7 +418,7 @@ def _selected(contract, facts, target, descriptor):
     decoder = A._operand_decoder(contract, facts, target, descriptor=descriptor, include_structure=True)
     if not decoder or decoder.get("semantics") is None:
         return decoder, None
-    from merlin.kernels.decoded_effects import selected_structure
+    from merlin.analysis.kernels.decoded_effects import selected_structure
 
     return decoder, selected_structure(decoder, _contract_document(contract, descriptor))
 

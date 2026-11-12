@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, sha256_file
+from merlin.evaluation.harness import hash_tree
 
 _ISSUER = object()
 

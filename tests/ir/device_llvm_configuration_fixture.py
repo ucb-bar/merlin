@@ -15,23 +15,23 @@ from xdsl.dialects import llvm
 from xdsl.parser import Parser
 
 from merlin.common.dense_float_ir import DenseFloatPrinter
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
 from merlin.compiler.kernel_ir.ir import Call, Const, Kernel
-from merlin.compiler.schedule.configuration import (
-    ConfigurationAdapter,
-    ConfigurationEffects,
-    eliminate_redundant_configuration,
-    verify_configuration_rewrite,
-)
-from merlin.llvmlower import toolchain
-from merlin.llvmlower.host_transform_chain import (
+from merlin.compiler.lower.model import toolchain
+from merlin.compiler.lower.model.host_transform_chain import (
     HostLLVMArtifact,
     HostLLVMEmission,
     HostLLVMStageContract,
     HostLLVMTransformChain,
     HostLLVMTransformStage,
 )
-from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.compiler.schedule.configuration import (
+    ConfigurationAdapter,
+    ConfigurationEffects,
+    eliminate_redundant_configuration,
+    verify_configuration_rewrite,
+)
+from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
 CLANG = toolchain.clang
 TRANSLATOR = toolchain.mlir_translate

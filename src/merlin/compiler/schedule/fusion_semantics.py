@@ -90,8 +90,8 @@ def scalar_graph(source: bytes, max_operations: int, max_ir_bytes: int) -> Scala
         raise ScalarBudgetExceeded("scalar function exceeds its selected source-byte budget")
     from xdsl.dialects import arith, builtin, func
 
-    from merlin.transforms.certificates import parse_ir
-    from merlin.transforms.pure_scalar import eligible_scalar_operation
+    from merlin.compiler.transforms.certificates import parse_ir
+    from merlin.compiler.transforms.pure_scalar import eligible_scalar_operation
 
     module = parse_ir(source.decode("utf-8"))
     functions = tuple(module.body.block.ops)

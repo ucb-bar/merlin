@@ -42,7 +42,7 @@ def neutral_binding(shape, caps):
     from merlin.compiler.schedule.dense_panel_pipeline import DenseReadyReadoutAdmission
     from merlin.compiler.schedule.dense_ready_readout import schedule_dense_ready_readout
     from merlin.compiler.schedule.dense_segmented_pipeline import batch_dense_segmented_readouts
-    from merlin.transforms.pipeline_state import PipelineContext
+    from merlin.compiler.transforms.pipeline_state import PipelineContext
 
     counted = load(Path(__file__).with_name("counted_emission_recipe.py"), "parallel_counted_emission")
     S = counted._support()
@@ -106,9 +106,14 @@ def neutral_binding(shape, caps):
 
 def candidates(binding):
     """Register actual shared actions; no emitter rewrite per alternative."""
-    from merlin.transforms.pass_exploration import EmittedProgram, PassFamily, explore_candidates, generate_candidates
-    from merlin.transforms.pipeline_policy import PolicyFacts, RegisteredPass
-    from merlin.transforms.pipeline_state import PassSpec
+    from merlin.compiler.transforms.pass_exploration import (
+        EmittedProgram,
+        PassFamily,
+        explore_candidates,
+        generate_candidates,
+    )
+    from merlin.compiler.transforms.pipeline_policy import PolicyFacts, RegisteredPass
+    from merlin.compiler.transforms.pipeline_state import PassSpec
 
     def bind(knobs):
         def action(session):
@@ -174,14 +179,14 @@ def run(shapes, caps, *, executor, max_in_flight, directory, owner=None, transla
     evaluate owns target numerics, selected cycles, custody and normal leases.
     Optional owner.hold_inputs(request) pins external blobs through publication.
     """
-    from merlin.transforms.evaluated_exploration import (
+    from merlin.compiler.transforms.evaluated_exploration import (
         CompletedObservation,
         EvaluationRequest,
         ExplorationIdentity,
         evaluate_emitted,
         exploration_context_identity,
     )
-    from merlin.transforms.pass_exploration import ObservedMetrics, rank_performance_variants
+    from merlin.compiler.transforms.pass_exploration import ObservedMetrics, rank_performance_variants
 
     if owner is not None and any(
         not callable(getattr(owner, name, None)) for name in ("binding", "identity", "evaluate")
@@ -343,7 +348,7 @@ def main(argv=None):
         ap.error("use 1..16 distinct positive M,K,N shapes and 1..16 in-flight requests")
     tools = {}
     if args.compile:
-        from merlin.llvmlower.toolchain import clang, mlir_translate
+        from merlin.compiler.lower.model.toolchain import clang, mlir_translate
 
         tools = dict(translate=mlir_translate().resolve(strict=True), compiler=clang().resolve(strict=True))
     owner = None if args.adapter is None else load(Path(args.adapter), "authored_schedule_owner")

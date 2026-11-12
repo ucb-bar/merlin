@@ -135,7 +135,7 @@ class ExactOffloadReleaseBinding:
 
 def verify_exact_offload_binding(binding, selection) -> str:
     """Installed host verifier for core's data-only exact release binding."""
-    from merlin.llvmlower.exact_offload import ReleaseBinding
+    from merlin.compiler.lower.model.exact_offload import ReleaseBinding
 
     if type(binding) is not ReleaseBinding:
         raise SpecError("exact offload release binding must be core's data-only record")
@@ -154,7 +154,7 @@ def bind_exact_offload(selection, *, seal_path: Path, descriptor: Path, applicat
     """
     if not isinstance(application, str) or not application:
         raise SpecError("exact offload requires an explicit application label")
-    from merlin.llvmlower.exact_offload import ReleaseBinding
+    from merlin.compiler.lower.model.exact_offload import ReleaseBinding
 
     review = verify(seal_path, descriptor)
     binding = ReleaseBinding(
@@ -259,7 +259,7 @@ def _content(root: Path, prepared: dict) -> dict:
 
 def _verify_public_programs(root: Path, prepared: dict) -> None:
     """Reopen private program custody and its answer-free payload before review."""
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     from . import public_program_suite as programs
 
@@ -398,7 +398,7 @@ def _payload_drift(root: Path, sealed: dict) -> str | None:
     payload = root / "payload"
     observed = _member_digests(payload)
     try:
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         private = [
             Path(p) for p in load_target_experiment(payload / "experiment/target_experiment.yaml").hidden_roots()
@@ -503,7 +503,7 @@ def prepare(
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
     from merlin.common.storage_lifecycle import lease
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
     from .accelerator_scope import validate_scope
@@ -847,6 +847,7 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
 
 def _verify_workload_coverage(root: Path, prepared: dict) -> dict:
     """Require the deterministic handoff, without pre-certifying Phase 1."""
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.development.testgen.coverage_commitment import (
         build_phase0_readiness,
         phase0_readiness_identity,
@@ -854,7 +855,6 @@ def _verify_workload_coverage(root: Path, prepared: dict) -> dict:
         require_phase0_ready,
         requires_workload_coverage,
     )
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     from ..runner import _read_json
 
@@ -890,8 +890,8 @@ def _verify_snapshot(
     seal_path: Path, descriptor: Path, ws: Path, bundle: dict, *, repo: Path | None = None
 ) -> VerifiedCorpusSnapshot:
     """Bind actual private snapshot bytes to the operator-reviewed source bytes."""
-    from merlin.targetgen.sandbox.bwrap import snapshot_input_paths
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox.bwrap import snapshot_input_paths
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     from ..runner import fingerprint
 

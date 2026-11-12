@@ -2,8 +2,8 @@
 
 Every lowering route already names its stages where it records them. :class:`merlin.common.ir_audit.IrAudit`
 keeps exact named-stage IR (``input``, ``contract``, ..., ``llvm-final``);
-:func:`merlin.xdsl_dialects.ir_inspection.record_stage` serializes an xDSL module at a stage; and the
-native pass manager prints every pass once :func:`merlin.llvmlower.ir_inspection.bind_inspection` binds
+:func:`merlin.compiler.dialects.ir_inspection.record_stage` serializes an xDSL module at a stage; and the
+native pass manager prints every pass once :func:`merlin.compiler.lower.model.ir_inspection.bind_inspection` binds
 its printer (``passes/segment-NNNN``, one directory per pass-manager invocation, with its
 ``pipeline.txt``). None of it was reachable from a command line, and nothing could stop a compile part
 way. This module is the switch: a :class:`Request` names the stages to dump (after, or before), the one
@@ -50,7 +50,7 @@ ALL = "all"
 #: A native pass stage is ``mlir:<pass argument>``: the name the pass is registered under.
 MLIR_PREFIX = "mlir:"
 #: The xDSL pass-invocation log a session turns on when the caller has not
-#: (:data:`merlin.xdsl_dialects.lowering.passes.PASS_LOG_ENV`, restated so reading a request imports no xDSL).
+#: (:data:`merlin.compiler.dialects.lowering.passes.PASS_LOG_ENV`, restated so reading a request imports no xDSL).
 PASS_LOG_ENV = "MERLIN_PASS_LOG"
 
 INDEX = "trace.json"
@@ -111,7 +111,7 @@ def declare(pipeline: str, stages: Sequence[str], *, entry: str, summary: str) -
 
 
 def _label(pipeline: str) -> str:
-    """A declared pipeline's short name for its entry point (``merlin.llvmlower.lower_model`` -> ``llvm``),
+    """A declared pipeline's short name for its entry point (``merlin.compiler.lower.model.lower_model`` -> ``llvm``),
     so a stage an audit reports under its producer is indexed under the pipeline that declared it."""
     for row in _DECLARED.values():
         if row["entry"] == pipeline:

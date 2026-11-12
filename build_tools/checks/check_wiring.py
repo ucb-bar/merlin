@@ -75,7 +75,7 @@ SYMBOL_LEDGER = ROOT / "build_tools" / "checks" / "unwired_symbols_ratchet.txt"
 INSTRUMENTED = tuple(
     f"{prefix}/{package}"
     for prefix in ("src/merlin", "merlin/python/merlin")
-    for package in ("perf", "targetgen", "verify")
+    for package in ("analysis/perf", "development/targetgen", "verify")
 ) + ("src/merlin/experiments/evaluation", *_source_layout.moved_from("src/merlin/verify/"))
 #: Where a production importer may live.
 PRODUCTION = (
@@ -288,8 +288,8 @@ def _generated_prompt_module_commands(imported_by: dict[str, set[Path]], candida
     dormant strings must not make a module appear wired. This does not infer commands from all
     string literals in production code.
     """
-    path = ROOT / "src/merlin/targetgen/generate_prompt.py"
-    if not path.is_file() or not imported_by.get("merlin.targetgen.generate_prompt"):
+    path = ROOT / "src/merlin/development/targetgen/generate_prompt.py"
+    if not path.is_file() or not imported_by.get("merlin.development.targetgen.generate_prompt"):
         return set()
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))

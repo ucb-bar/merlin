@@ -95,7 +95,7 @@ Run the existing worker using an isolated model2MLIR interpreter with frontend
 tracing enabled by its public API. No target code is needed in these loaders:
 
 ```bash
-"$CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/causal_decoder/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \

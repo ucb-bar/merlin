@@ -95,9 +95,9 @@ def _selected_provider_inputs(target: object) -> dict[str, str]:
     and rediscovered Python membership binds additions as well as changed bytes.
     This is live-source admission, not a copied-provider replay mechanism.
     """
+    from merlin.development.targetgen.plugins import resolve_support
+    from merlin.development.targetgen.target_registry import explicit_targets
     from merlin.runtime.backends.base import _assert_oot_plugin_ownership
-    from merlin.targetgen.plugins import resolve_support
-    from merlin.targetgen.target_registry import explicit_targets
 
     if not isinstance(target, str) or not target:
         return {}
@@ -126,12 +126,12 @@ def paths(
     *, repo: Path, entrypoint: Path, descriptor: Path | None = None, require_native: bool = False
 ) -> dict[str, str]:
     """Rediscover supported source ownership, including native executable aliases."""
-    from merlin.targetgen.tool_registry import public_client_modules
+    from merlin.development.targetgen.tool_registry import public_client_modules
 
     access_policy.require_current_policy()
     inputs = {
         f"phase1:client:{module}": str(_source(module).resolve())
-        for module in (*public_client_modules(), "merlin.targetgen.tool_registry")
+        for module in (*public_client_modules(), "merlin.development.targetgen.tool_registry")
     }
     package = _source("merlin.development.backend").parent
     members = _python_members(package, "phase1:source:")
@@ -163,48 +163,48 @@ def paths(
             raise SpecError("capsule evaluation has a missing or foreign source owner")
     inputs.update(evaluation_members)
     for key, module in (
-        ("environment_parser", "merlin.targetgen.corpora"),
+        ("environment_parser", "merlin.development.targetgen.corpora"),
         ("source_digest", "merlin.common.digest"),
         ("snapshot_copy", "merlin.common.content_store"),
         ("frozen_host_transport", "merlin.experiments.frozen_python"),
         ("frozen_import_resolver", "merlin.common.frozen_imports"),
         ("arrival_stamp", "merlin.common.arrival_stamp"),
-        ("sandbox_bwrap", "merlin.targetgen.sandbox.bwrap"),
-        ("sandbox_mount_visibility", "merlin.targetgen.sandbox.mount_visibility"),
+        ("sandbox_bwrap", "merlin.development.targetgen.sandbox.bwrap"),
+        ("sandbox_mount_visibility", "merlin.development.targetgen.sandbox.mount_visibility"),
         ("capsule_diagnostics", "merlin.evaluation.capsule.diagnostics"),
         ("capsule_bundle", "merlin.evaluation.capsule.bundle"),
-        ("sandbox_host_surfaces", "merlin.targetgen.sandbox.host_surfaces"),
-        ("sandbox_toolchain", "merlin.targetgen.sandbox.toolchain"),
-        ("sandbox_claude_home", "merlin.targetgen.sandbox.claude_home"),
+        ("sandbox_host_surfaces", "merlin.development.targetgen.sandbox.host_surfaces"),
+        ("sandbox_toolchain", "merlin.development.targetgen.sandbox.toolchain"),
+        ("sandbox_claude_home", "merlin.development.targetgen.sandbox.claude_home"),
         ("source_discovery_helper", "merlin.common.source_membership"),
-        ("provider_selection", "merlin.targetgen.target_registry"),
+        ("provider_selection", "merlin.development.targetgen.target_registry"),
         ("provider_identity", "merlin.compiler.backend.load"),
-        ("provider_plugins", "merlin.targetgen.plugins"),
+        ("provider_plugins", "merlin.development.targetgen.plugins"),
         ("provider_loaded_ownership", "merlin.runtime.backends.base"),
         ("python_regex_scanner", "merlin.common.regex_scan"),
         ("shared_access_policy", "merlin.common.access"),
         ("historical_target_access_policy", "merlin.experiments.access_policy"),
-        ("answer_surface_policy", "merlin.targetgen.sandbox.answer_surfaces"),
-        ("read_audit", "merlin.targetgen.sandbox.read_audit"),
+        ("answer_surface_policy", "merlin.development.targetgen.sandbox.answer_surfaces"),
+        ("read_audit", "merlin.development.targetgen.sandbox.read_audit"),
         ("source_discovery", "merlin.experiments.adapters"),
         ("corpus_workflow", "merlin.experiments.corpus.admission"),
-        ("corpus_materialization", "merlin.targetgen.contract.materialize"),
-        ("corpus_description", "merlin.targetgen.contract.description"),
+        ("corpus_materialization", "merlin.development.targetgen.contract.materialize"),
+        ("corpus_description", "merlin.development.targetgen.contract.description"),
         ("corpus_copy", "merlin.experiments.corpus.preparation"),
-        ("benchharness", "merlin.benchharness"),
+        ("benchharness", "merlin.evaluation.harness"),
         ("tree_hash", "merlin.common.tree_hash"),
         ("formal_grader", "merlin.development.backend.feedback.formal"),
-        ("compiler_library_contract", "merlin.targetgen.compiler_library"),
-        ("compiler_library_profile", "merlin.targetgen.compiler_profile_admission"),
+        ("compiler_library_contract", "merlin.development.targetgen.compiler_library"),
+        ("compiler_library_profile", "merlin.development.targetgen.compiler_profile_admission"),
         ("compiler_library_snapshot", "merlin.development.backend.optimization.compiler_library_state"),
         ("compiler_library_overlay", "merlin.development.backend.optimization.compiler_libraries"),
         ("compiler_library_inventory", "merlin.development.backend.optimization.compiler_library_guidance"),
         ("compiler_library_records", "merlin.development.backend.optimization.contracts"),
-        ("rtl_check_runner", "merlin.targetgen.rtl_check_runner"),
-        ("rtl_check_compiler", "merlin.targetgen.rtl_check_compiler"),
-        ("rtl_checks", "merlin.targetgen.rtl_checks"),
-        ("circt_gate", "merlin.targetgen.circt_gate"),
-        ("software_spec", "merlin.targetgen.software_spec"),
+        ("rtl_check_runner", "merlin.development.targetgen.rtl_check_runner"),
+        ("rtl_check_compiler", "merlin.development.targetgen.rtl_check_compiler"),
+        ("rtl_checks", "merlin.development.targetgen.rtl_checks"),
+        ("circt_gate", "merlin.development.targetgen.circt_gate"),
+        ("software_spec", "merlin.development.targetgen.software_spec"),
         ("saved_model_model_execution_inputs", "merlin.runtime.modelinputs"),
         ("saved_model_materialized_model_inputs", "merlin.compiler.frontend.materialized"),
         ("saved_model_route_before_build", "merlin.compiler.planning.model"),
@@ -231,27 +231,27 @@ def paths(
         ("quantization_admission", "merlin.compiler.quantization.admission"),
         ("quantization_capture_projection", "merlin.compiler.quantization.torchao.recipes"),
         ("quantization_methodology", "merlin.compiler.quantization.methodology"),
-        ("numerical_recipe_policy", "merlin.targetgen.quant_recipe_policy"),
-        ("quantization_output_path", "merlin.targetgen.output_path"),
+        ("numerical_recipe_policy", "merlin.development.targetgen.quant_recipe_policy"),
+        ("quantization_output_path", "merlin.development.targetgen.output_path"),
         ("quantization_formats", "merlin.common.quant_formats"),
-        ("task_prompt", "merlin.targetgen.generate_prompt"),
-        ("shared_pass_requirement", "merlin.targetgen.shared_pass_contract"),
-        ("shared_pass_context", "merlin.targetgen.shared_pass_context"),
-        ("target_schedule", "merlin.llvmlower.target_schedule"),
-        ("device_target_passes", "merlin.llvmlower.device_target_passes"),
-        ("general_compiler_contract", "merlin.targetgen.generalization_prompt"),
-        ("semantic_search", "merlin.targetgen.semantic_search.search"),
-        ("linalg_inventory", "merlin.targetgen.contract.linalg_iface"),
+        ("task_prompt", "merlin.development.targetgen.generate_prompt"),
+        ("shared_pass_requirement", "merlin.development.targetgen.shared_pass_contract"),
+        ("shared_pass_context", "merlin.development.targetgen.shared_pass_context"),
+        ("target_schedule", "merlin.compiler.lower.model.target_schedule"),
+        ("device_target_passes", "merlin.compiler.lower.model.device_target_passes"),
+        ("general_compiler_contract", "merlin.development.targetgen.generalization_prompt"),
+        ("semantic_search", "merlin.development.targetgen.semantic_search.search"),
+        ("linalg_inventory", "merlin.development.targetgen.contract.linalg_iface"),
         ("public_compile_sources", "merlin.development.testgen.public_compile_sources"),
         ("public_scale_sources", "merlin.development.testgen.public_scale_sources"),
-        ("public_interface_emitter", "merlin.targetgen.contract.interface_emit"),
+        ("public_interface_emitter", "merlin.development.targetgen.contract.interface_emit"),
         ("instruction_model", "merlin.target.spec.instructions"),
         ("scalar_computation", "merlin.target.spec.computation"),
         ("instruction_signature", "merlin.target.spec.signature"),
-        ("readback_policy", "merlin.targetgen.contract.readback_policy"),
+        ("readback_policy", "merlin.development.targetgen.contract.readback_policy"),
         ("readback_codec", "merlin.runtime.out_b64"),
         ("binary_readback_codec", "merlin.runtime.out_bin"),
-        ("simulation_certificate", "merlin.targetgen.simulation_certificate"),
+        ("simulation_certificate", "merlin.development.targetgen.simulation_certificate"),
         ("capsule_source_identity", "merlin.evaluation.capsule.source"),
     ):
         inputs[f"phase1:startup:{key}"] = str(_source(module).resolve())
@@ -271,13 +271,13 @@ def paths(
     if descriptor is not None and Path(descriptor).is_file():
         import yaml
 
-        from merlin.experiments.corpus.numeric_policy import numeric_profile_path
-        from merlin.targetgen.software_spec import software_spec_path_for_recipe
-        from merlin.targetgen.target_experiment import (
+        from merlin.development.targetgen.software_spec import software_spec_path_for_recipe
+        from merlin.development.targetgen.target_experiment import (
             declared_vs_resolved_contract,
             load_target_experiment,
             selected_experiment_contract,
         )
+        from merlin.experiments.corpus.numeric_policy import numeric_profile_path
 
         document = yaml.safe_load(Path(descriptor).read_bytes())
         if not isinstance(document, dict):

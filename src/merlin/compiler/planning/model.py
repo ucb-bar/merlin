@@ -54,8 +54,8 @@ def plan_before_build(
         }
 
     from merlin.capture import demands as source_demands
-    from merlin.llvmlower import group_offload as GO
-    from merlin.targetgen import routing as _routing
+    from merlin.compiler.lower.model import group_offload as GO
+    from merlin.development.targetgen import routing as _routing
 
     record: dict = {"target": target}
     # Route on the EXACT registry format name, not the compile-mode token -- see the note at the
@@ -76,7 +76,7 @@ def plan_before_build(
     try:
         from merlin.compiler.planning.cost import measured_cost_for as _cost_for
         from merlin.compiler.planning.placement import place as _place
-        from merlin.system.derive import system_for_experiment as _sysfor
+        from merlin.target.system.derive import system_for_experiment as _sysfor
 
         system, host_why = _sysfor(target)
         placement = _place(demands, system, cost=_cost_for(system))
@@ -107,8 +107,8 @@ def plan_before_build(
     # schedule emits, reported under the same name.
     try:
         from merlin.common import mlir_query as _mq
+        from merlin.compiler.dialects.lowering import stream_plan as _stream_plan
         from merlin.compiler.planning.groups import plan_groups
-        from merlin.xdsl_dialects.lowering import stream_plan as _stream_plan
 
         # WHICH ARGUMENT IS STORED, from the capture's own weights manifest. Without it a first
         # layer whose two operands are both model arguments cannot be told apart -- and the honest
@@ -142,7 +142,7 @@ def plan_before_build(
             "no backend package was named, so the device side cannot be built; pass mesh_package="
         )
     else:
-        from merlin.llvmlower.device_build import routing_for_placement
+        from merlin.compiler.lower.model.device_build import routing_for_placement
 
         devices = sorted({p.device for p in placement.placed if p.on_device})
         if len(devices) != 1:

@@ -14,9 +14,9 @@ from merlin.compiler.schedule.convolution_choices import _law_digest as _law_dig
 from merlin.compiler.schedule.convolution_choices import _phase_input as _phase_input
 from merlin.compiler.schedule.convolution_choices import plan_convolution_rhs_phases as plan_convolution_rhs_phases
 from merlin.compiler.schedule.window_transfer import ConvolutionResidentInputRows
-from merlin.transforms.pass_exploration import EmittedProgram, PassFamily, generate_candidates
-from merlin.transforms.pipeline_policy import RegisteredPass
-from merlin.transforms.pipeline_state import PassSpec
+from merlin.compiler.transforms.pass_exploration import EmittedProgram, PassFamily, generate_candidates
+from merlin.compiler.transforms.pipeline_policy import RegisteredPass
+from merlin.compiler.transforms.pipeline_state import PassSpec
 
 
 @dataclass(frozen=True)

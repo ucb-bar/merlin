@@ -18,6 +18,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.analysis.perf.component_cost import COMPLETE_STAGES
+from merlin.analysis.perf.component_screen import ComponentScreenPolicy
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.common import invocation_record as I
 from merlin.common.digest import is_sha256
 from merlin.common.strict_json import loads
@@ -36,9 +39,6 @@ from merlin.development.backend.optimization.evaluation_fidelity import (
     CpuTimingConfiguration,
     ProgramAccessRegistry,
 )
-from merlin.perf.component_cost import COMPLETE_STAGES
-from merlin.perf.component_screen import ComponentScreenPolicy
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
 
 SCHEMA = "merlin.aws_cpu_timing_study.v1"
 _STAGES = (

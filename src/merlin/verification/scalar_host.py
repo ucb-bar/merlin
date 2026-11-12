@@ -248,7 +248,7 @@ def qualify(
             from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
 
             if simulator == "gsim" and not isinstance(backend, BoundRoCCBackend):
-                from merlin.targetgen.rtl_engine_policy import gsim_runtime_slot
+                from merlin.development.targetgen.rtl_engine_policy import gsim_runtime_slot
 
                 slot = gsim_runtime_slot(wait_timeout_s=timeout_s)
             else:

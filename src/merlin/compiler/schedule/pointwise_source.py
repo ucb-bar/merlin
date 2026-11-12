@@ -38,9 +38,9 @@ from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, Schedule
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.compiler.schedule.spill_conformance import _Memory, _Piece
 from merlin.compiler.schedule.temporary_storage import TemporaryObject, _completion, _overlap, _problem, _project
-from merlin.transforms.certificates import ir_digest, ir_text
-from merlin.transforms.dense_ir import checked_static_linalg_shell
-from merlin.transforms.pipeline_state import (
+from merlin.compiler.transforms.certificates import ir_digest, ir_text
+from merlin.compiler.transforms.dense_ir import checked_static_linalg_shell
+from merlin.compiler.transforms.pipeline_state import (
     AnalysisStamp,
     PassSpec,
     PipelineContext,

@@ -156,7 +156,11 @@ def verify_sources(profile_name, selection):
 
 def project_author_library(author_library_dir, profile_name, *, repo):
     """Replace the selected readonly SDK, retaining the original preparation host-only."""
-    from merlin.targetgen.compiler_library import CompilerLibraryContract, CompilerLibrarySelection, LibraryMember
+    from merlin.development.targetgen.compiler_library import (
+        CompilerLibraryContract,
+        CompilerLibrarySelection,
+        LibraryMember,
+    )
 
     arm = _arm(profile_name)
     directory = Path(author_library_dir).absolute()
@@ -206,7 +210,7 @@ def project_author_library(author_library_dir, profile_name, *, repo):
 
 
 def verify_library(profile_name, selection):
-    from merlin.targetgen.compiler_library import CompilerLibrarySelection
+    from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
 
     if type(selection) is not CompilerLibrarySelection:
         raise ValueError("fresh10 profile requires an explicitly selected retained SDK")

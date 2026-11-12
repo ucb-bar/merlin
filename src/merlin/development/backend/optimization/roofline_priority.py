@@ -2,8 +2,8 @@
 
 ``attainment = floor / measured`` (1.0 is the floor itself). The floor is each member's derived
 roofline: the staged floor a capacity member froze at generation
-(:mod:`merlin.perf.staged_roofline`), or the declared-work roofline of a feedback cell
-(:mod:`merlin.perf.capsule_roofline`). Both are lower bounds on cycles, so attainment is at most 1.
+(:mod:`merlin.analysis.perf.staged_roofline`), or the declared-work roofline of a feedback cell
+(:mod:`merlin.analysis.perf.capsule_roofline`). Both are lower bounds on cycles, so attainment is at most 1.
 
 * **Priority** is ascending attainment over every repeat's worst case: the member furthest below its
   roofline is worked first. A member with no derived floor cannot be placed and is listed apart,

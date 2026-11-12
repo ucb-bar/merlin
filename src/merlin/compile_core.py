@@ -94,8 +94,8 @@ def payload_classes(module) -> tuple[str, ...]:
     (``unaccounted_ops``), so the routing decision and the guard that fires later cannot disagree —
     they did when each kept its own list, and a zeroed accumulator was enough to split them.
     """
-    from merlin.xdsl_dialects.lowering.input_workload import ELEMENTWISE_COMBINES
-    from merlin.xdsl_dialects.lowering.interface_lowering import unaccounted_ops
+    from merlin.compiler.dialects.lowering.input_workload import ELEMENTWISE_COMBINES
+    from merlin.compiler.dialects.lowering.interface_lowering import unaccounted_ops
 
     block = _entry_block(module)
     if block is None:
@@ -158,7 +158,7 @@ def _resolve_plan(
         raise RoutingError("compile_core_mlir needs a target= or target_package=")
     if dialect_plan is not None:
         return target, dialect_plan
-    from merlin.targetgen.target_registry import resolve
+    from merlin.development.targetgen.target_registry import resolve
 
     try:
         info = resolve(target)
@@ -245,7 +245,7 @@ def compile_core_mlir(
     assert name is not None  # _resolve_plan already rejected the both-None case
 
     if route.kind == "staged":
-        from merlin.xdsl_dialects.lowering import lower_module
+        from merlin.compiler.dialects.lowering import lower_module
 
         res = lower_module(
             module,
@@ -262,8 +262,8 @@ def compile_core_mlir(
 
     if workdir is None:
         raise RoutingError(f"{route.reason}. The LLVM path writes artifacts, so compile_core_mlir needs workdir=")
-    from merlin.llvmlower.lower import lower_model
-    from merlin.xdsl_dialects._common import text
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.lower.model.lower import lower_model
 
     res = lower_model(text(module), workdir, ir_audit=ir_audit, audit_sidecars=audit_sidecars, **llvm_kwargs)
     return CoreCompileResult(route=route, target=name, llvm=res)

@@ -83,9 +83,9 @@ def _select(request):
     from xdsl.dialects.builtin import Builtin, StringAttr, TensorType, UnregisteredOp
     from xdsl.parser import Parser
 
-    from merlin.targetgen.contract import schemas
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir, to_generic_form
-    from merlin.targetgen.package_runtime import load_package
+    from merlin.development.targetgen.contract import schemas
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir, to_generic_form
+    from merlin.development.targetgen.package_runtime import load_package
 
     if request.source.kind != "merlin-interface":
         raise ValueError("package transport requires explicit merlin-interface input, not model MLIR")
@@ -172,7 +172,7 @@ def validate(request):
 
 
 def compile(request):
-    from merlin.targetgen import capsule_common, package_runtime
+    from merlin.development.targetgen import capsule_common, package_runtime
 
     selected = _select(request)
     request.output.mkdir(parents=True, exist_ok=False)

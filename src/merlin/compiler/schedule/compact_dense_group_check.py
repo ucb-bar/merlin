@@ -243,7 +243,7 @@ def verify_compact_dense_group(
     establish original source selection or physical readout qualification. The
     scheduling entry requires original selected contracts for every typed exit.
     """
-    from merlin.transforms.dense_planning import DenseProblem, DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
 
     if (
         type(kernel) is not Kernel

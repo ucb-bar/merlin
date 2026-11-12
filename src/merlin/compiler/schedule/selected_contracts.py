@@ -22,8 +22,8 @@ from merlin.compiler.schedule.program_contracts import SelectedProgramContract, 
 from merlin.compiler.schedule.row_contracts import SelectedRowContract, resolve_row_contract
 from merlin.compiler.schedule.spill_contracts import SelectedSpillContract, resolve_spill_contract
 from merlin.compiler.schedule.storage_contracts import TemporaryStorageContract, resolve_storage_contract
-from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
-from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
+from merlin.development.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
+from merlin.development.targetgen.isa_spec import ResolvedISA, resolve_isa
 
 SCHEMA = "merlin.schedule_effects.v1"
 SCHEDULING_FIELDS = frozenset({"schema", "numerical_policy", "instruction_byteorder", "configuration"})

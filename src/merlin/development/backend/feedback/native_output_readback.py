@@ -130,8 +130,8 @@ def admit_coherent_output_layout(
     This is an answer-free source/ELF admission primitive, not a transport
     selection, simulator execution, numerical grade, or certificate.
     """
-    from merlin.llvmlower.c_runtime import DT_BYTES
-    from merlin.perf.structural_transitions import StaticStridedLayout
+    from merlin.analysis.perf.structural_transitions import StaticStridedLayout
+    from merlin.compiler.lower.model.c_runtime import DT_BYTES
     from merlin.runtime.fp8_formats import float_format_of
 
     receipt = inspect_caller_layout(
@@ -331,8 +331,8 @@ def decode_coherent_output_dump(
     Padding is present in the physical region but is not a logical output.
     The caller retains ownership of execution identity and golden comparison.
     """
+    from merlin.analysis.perf.whole_model_gsim import read_dump
     from merlin.common.digest import sha256_file
-    from merlin.perf.whole_model_gsim import read_dump
 
     current = _verified_layout(
         admission,

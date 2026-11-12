@@ -2,7 +2,7 @@
 
 ISA, CCA and synchronous/asynchronous feedback channel loops are owned here. These
 are trusted host implementations, never candidate grants. Public standalone
-clients remain under `merlin.benchharness` and are staged by the tool registry.
+clients remain under `merlin.evaluation.harness` and are staged by the tool registry.
 
 ISA invocation requires an explicit descriptor/work root or InvocationContext.
 Imports and help must not select a target or mutate environment/search paths.

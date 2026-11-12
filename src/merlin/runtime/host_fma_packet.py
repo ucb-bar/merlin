@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from merlin.llvmlower.constant_float_clamp import _finite_f32
-from merlin.llvmlower.constant_fma_packet import ConstantFmaPacket
+from merlin.compiler.lower.model.constant_float_clamp import _finite_f32
+from merlin.compiler.lower.model.constant_fma_packet import ConstantFmaPacket
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ from verification_witnesses.host_compute_audit import _ELEMENTS, _REQUANT, _grad
 
 
 def test_a_pass_that_does_the_units_work_on_the_host_fails_the_grade(tmp_path, monkeypatch) -> None:
-    from merlin.targetgen import offload_census as OC
+    from merlin.development.targetgen import offload_census as OC
 
     buffer = {
         "tensors": {"acc": {"shape": [32, 32], "dtype": "i32"}, "y": {"shape": [32, 32], "dtype": "i8"}},

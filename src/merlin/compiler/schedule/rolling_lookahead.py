@@ -11,15 +11,7 @@ from dataclasses import asdict, dataclass
 from xdsl.dialects import arith, builtin, func, scf
 from xdsl.ir import Block, Region
 
-from merlin.compiler.schedule.rolling_window import (
-    RollingWindowPlan,
-    _constant,
-    _group_horizon,
-    materialize_grouped_rolling_window,
-    rolling_window_text,
-    verify_grouped_rolling_window,
-)
-from merlin.xdsl_dialects.rolling_window import (
+from merlin.compiler.dialects.rolling_window import (
     AdvanceConsumerOp,
     AwaitOp,
     BeginOp,
@@ -33,6 +25,14 @@ from merlin.xdsl_dialects.rolling_window import (
     StageRowOp,
     StartConsumerOp,
     TransferType,
+)
+from merlin.compiler.schedule.rolling_window import (
+    RollingWindowPlan,
+    _constant,
+    _group_horizon,
+    materialize_grouped_rolling_window,
+    rolling_window_text,
+    verify_grouped_rolling_window,
 )
 
 

@@ -17,8 +17,8 @@ from types import MappingProxyType
 from merlin.compiler.kernel_ir.ir import DTYPE_BYTES, Ptr, as_expr
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.targetgen.isa_spec import resolve_fact_integer
-from merlin.transforms.dense_planning import DenseProblem, DenseResources
+from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 ROLES = ("lhs", "rhs", "accumulator")
 OPERATIONS = ("lhs_load", "rhs_load", "preload", "compute", "store")

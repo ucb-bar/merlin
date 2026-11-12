@@ -15,7 +15,7 @@
 #                               public capability inventory's construction_boundaries); every
 #                               boundary belongs to exactly one stage or lane;
 #   pass_requirement_tokens  -- capsule `pass_requirements` classes
-#                               (merlin.xdsl_dialects.lowering.passes); a capsule declaring the token
+#                               (merlin.compiler.dialects.lowering.passes); a capsule declaring the token
 #                               is gated by that stage;
 #   record_kinds             -- record schemas (or record field names) whose presence evidences work;
 #   pipeline_commands        -- generic package-manifest command names realizing the stage;

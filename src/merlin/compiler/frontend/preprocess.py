@@ -9,6 +9,10 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from merlin.compiler.frontend.linalg_mlir import (  # noqa: F401 -- exact historical preprocessing namespace
+    make_context,
+    parse_mlir_text,
+)
 from merlin.compiler.frontend.repairs import (  # noqa: F401 -- exact historical preprocessing namespace
     _AXIS_HEAD,
     _AXIS_TAIL,
@@ -54,10 +58,6 @@ from merlin.compiler.transforms.dead import (  # noqa: F401 -- exact historical 
 from merlin.compiler.transforms.matmul import (  # noqa: F401 -- exact historical preprocessing namespace
     collapse_overrank_matmul,
     lower_bf16_matmul_f32acc,
-)
-from merlin.frontends.linalg_mlir import (  # noqa: F401 -- exact historical preprocessing namespace
-    make_context,
-    parse_mlir_text,
 )
 
 
@@ -129,7 +129,7 @@ def _layer_norm_chunked_sums_selected() -> bool:
     """Whether the numerics-changing ``layer-norm-chunked-sums`` pass runs (default off)."""
     import os
 
-    from merlin.llvmlower.optional_passes import switched
+    from merlin.compiler.lower.model.optional_passes import switched
 
     return switched("layer-norm-chunked-sums", os.environ.get("MERLIN_LAYER_NORM_CHUNKED_SUMS") == "1")
 
@@ -137,8 +137,8 @@ def _layer_norm_chunked_sums_selected() -> bool:
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from functools import partial
 
+    from merlin.compiler.dialects.ir_inspection import record_stage
     from merlin.compiler.passes.xdsl import Rewrite, run_rewrites
-    from merlin.xdsl_dialects.ir_inspection import record_stage
 
     def selected():
         for statistic, stage, name in _PREPROCESS:
@@ -149,7 +149,7 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
             if statistic == "quant_ext_lowered" and _layer_norm_chunked_sums_selected():
                 # Optional and default off. Its numerical permissions and transform-map
                 # ownership remain here; the result lands in the next recorded stage.
-                from merlin.llvmlower.normalization_reassociation import chunk_layer_norm_sums
+                from merlin.compiler.lower.model.normalization_reassociation import chunk_layer_norm_sums
 
                 yield Rewrite(
                     "layer_norm_sums_chunked",
@@ -172,7 +172,7 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
 
 def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     """Run Merlin xDSL passes, optionally observing each completed rewrite without changing it."""
-    from merlin.xdsl_dialects._common import text as module_to_text
+    from merlin.compiler.dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
     transform_map = None
@@ -218,7 +218,7 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     A rewrite must explicitly register every generated helper and its result
     replacement; an unowned emitted operation causes refusal.
     """
-    from merlin.xdsl_dialects._common import text as module_to_text
+    from merlin.compiler.dialects._common import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
     transform_map = _SourceTransformMap(mlir_text, module)

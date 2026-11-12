@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 
 from merlin.compiler.build.modeloptions import BaremetalModelError, _sha
+from merlin.development.targetgen.application_inventory import verify_capture_receipt
 from merlin.runtime import modelinputs as MI
-from merlin.targetgen.application_inventory import verify_capture_receipt
 
 
 def _saved_reference(
@@ -68,7 +68,7 @@ def _full_references(
     further result is recorded as having no capture reference (a caller may hold it to an independent
     host execution of the same program). Every file must be bound by the capture receipt or lie in the
     capture tree whose digest this compilation records."""
-    from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.compiler.lower.model.c_runtime import _out_specs
 
     recorded = (
         materialized_inputs.verify(capture)
@@ -93,7 +93,7 @@ def _full_references(
             raise BaremetalModelError("output_order.json and goldens.npz disagree with the forward's results")
         return [(name, np.asarray(archive[name])) for name in names]
     if reference_file == "integer-reference.json":
-        from merlin.targetgen.materialized_reference import complete_outputs
+        from merlin.development.targetgen.materialized_reference import complete_outputs
 
         metadata = json.loads(present("meta.json", receipt_bound=True).read_text())
         actual_abi = [{"shape": shape, "dtype": dtype} for shape, dtype in result_specs]
@@ -133,7 +133,7 @@ def _agreement(value: np.ndarray, reference: np.ndarray, tolerance: dict[str, fl
         else:
             return {"passed": False, "note": f"{flat.dtype} cannot be exact against {ref.dtype}"}
         return {"passed": differ == 0, "mismatched_elements": differ, "of": int(ref.size)}
-    from merlin.perf.float_accuracy import compare
+    from merlin.analysis.perf.float_accuracy import compare
 
     agreement = compare(flat.astype(np.float64), ref.astype(np.float64), tolerance["atol"], tolerance["rtol"])
     return {**agreement, "passed": agreement["within"] == agreement["of"]}
@@ -187,7 +187,7 @@ def read_full_outputs(
 
 
 def _read_full_values(console, capture, built_hash, observation):
-    from merlin.llvmlower.c_runtime import _out_specs
+    from merlin.compiler.lower.model.c_runtime import _out_specs
     from merlin.runtime.out_bin import binary_console_diagnostics, parse_binary_console_details
     from merlin.runtime.whole_model_readback import decode_outputs
 

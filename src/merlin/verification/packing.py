@@ -12,7 +12,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from merlin.llvmlower.borrowed_buffer_calls import validate_calls
+from merlin.compiler.lower.model.borrowed_buffer_calls import validate_calls
 
 from .packing_ir import _require
 from .packing_ir import verify_packing_storage as verify_packing_storage
@@ -21,11 +21,11 @@ from .packing_types import PackingStorageUse as PackingStorageUse
 
 
 def implementation_paths():
+    from merlin.analysis.perf import host_cfg_index
     from merlin.common import digest
-    from merlin.llvmlower import arena_bind
-    from merlin.perf import host_cfg_index
-    from merlin.targetgen.oot_starterkit import llvm_context
-    from merlin.xdsl_dialects.lowering import integer_constant_eval
+    from merlin.compiler.dialects.lowering import integer_constant_eval
+    from merlin.compiler.lower.model import arena_bind
+    from merlin.development.targetgen.oot_starterkit import llvm_context
 
     from . import host_call_alignment, packing_ir, packing_types
 

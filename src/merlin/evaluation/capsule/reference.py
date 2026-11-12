@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen import capsule_golden as CG
+from merlin.development.targetgen.capsule_common import _cat
+from merlin.development.targetgen.package_runtime import CertFailure
 from merlin.evaluation.capsule.cpu import _grade_cpu_step
 from merlin.evaluation.capsule.diagnostics import _absent_outputs as _absent_outputs
 from merlin.evaluation.capsule.diagnostics import _unwritten_output_detail as _unwritten_output_detail
@@ -9,9 +12,6 @@ from merlin.evaluation.capsule.numerics import _absent_output_detail
 from merlin.evaluation.capsule.tier import TierResult as TierResult
 from merlin.runtime.reference import reference_outputs
 from merlin.runtime.simulator import simulate
-from merlin.targetgen import capsule_golden as CG
-from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.package_runtime import CertFailure
 
 
 def check_reference(capsule, paths, policy, required, evidence, inputs):

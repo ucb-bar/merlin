@@ -134,7 +134,7 @@ class Pin:
     #: Targets whose results depend on this revision. MACHINE-READABLE, unlike ``used_by``, which is
     #: prose about which code paths read the checkout. A verdict claiming a hardware tier must record
     #: the revision it came from, and this is what lets a target be ASKED which revisions those are --
-    #: see :func:`merlin.targetgen.provenance.declared_pins`.
+    #: see :func:`merlin.development.targetgen.provenance.declared_pins`.
     targets: tuple[str, ...] = ()
     repo_observed_note: str = ""
     #: Files this checkout is KNOWN to carry uncommitted, as ``(repo-relative path, sha256)`` pairs.
@@ -806,7 +806,7 @@ def observation_scope():
 def scoped_observation(key: str, compute):
     """``compute()``, memoized for the open :func:`observation_scope` (or called straight through).
 
-    Shared with :mod:`merlin.targetgen.provenance`, which reads the same checkouts through its own git
+    Shared with :mod:`merlin.development.targetgen.provenance`, which reads the same checkouts through its own git
     helper: one scope, so the two cannot answer differently within one measurement.
     """
     scope = _OBSERVATION_SCOPE

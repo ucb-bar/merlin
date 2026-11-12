@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from merlin.targetgen import trace_check as TCK
-from merlin.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
-from merlin.targetgen.elf_lanes import EXECUTED_LANE_EVIDENCE, WHOLE_PROGRAM_COMPLETION_EVIDENCE
+from merlin.development.targetgen import trace_check as TCK
+from merlin.development.targetgen.elf_lanes import ACCELERATOR_LANE as _ACCELERATOR_LANE
+from merlin.development.targetgen.elf_lanes import EXECUTED_LANE_EVIDENCE, WHOLE_PROGRAM_COMPLETION_EVIDENCE
 
 
 def whole_program_completion_lane_report(
@@ -258,8 +258,8 @@ def lane_report(
 
 def dispatch_boundary_report(mesh_execution: dict | None) -> dict:
     """Classify the *executed* host/accelerator sequence from the runtime ledger."""
-    from merlin.targetgen import boundary as _bd
-    from merlin.targetgen.elf_lanes import native_host_execution
+    from merlin.development.targetgen import boundary as _bd
+    from merlin.development.targetgen.elf_lanes import native_host_execution
 
     ledger = (mesh_execution or {}).get("dispatch_ledger")
     if not isinstance(ledger, list):
@@ -299,7 +299,7 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     from contextlib import nullcontext
     from pathlib import Path
 
-    from merlin.targetgen.contract.source_ownership import source_mutable_scope
+    from merlin.development.targetgen.contract.source_ownership import source_mutable_scope
 
     if (command_buffer.get("kernel_abi") or {}).get("kind") != "whole_program" or not any(
         spec.get("role") == "intermediate" for spec in command_buffer["tensors"].values()
@@ -311,15 +311,15 @@ def oracle_source_scope(capsule, command_buffer, lowered_mlir, *, target=None):
     source_path = Path(capsule["__dir__"]) / source_name
     lowered_abi = None
     if target is not None:
-        from merlin.targetgen.contract.harness_abi import lowered_plan_abi
-        from merlin.targetgen.target_experiment import load_capability_manifest
+        from merlin.development.targetgen.contract.harness_abi import lowered_plan_abi
+        from merlin.development.targetgen.target_experiment import load_capability_manifest
 
         contract = load_capability_manifest(target).contract
         lowered_abi = lowered_plan_abi(contract, target=target)
     # The plan names the bytes the compiler was given. For an enriched public
     # source those are re-derived from the selected original here, so the plan
     # is compared like with like and still bound to the selected source.
-    from merlin.targetgen.public_source_abi import compiler_source
+    from merlin.development.targetgen.public_source_abi import compiler_source
 
     source_bytes = compiler_source(capsule, source_path).compiler_bytes
     # The live original-snapshot owner selects the compiler transport. Recreate

@@ -137,7 +137,7 @@ class FrozenISASemantics:
 
 
 def _select(*, software_spec_path, facts_path, target, resolver):
-    from merlin.targetgen.isa_spec import resolve_isa
+    from merlin.development.targetgen.isa_spec import resolve_isa
 
     software, software_bytes = _file(software_spec_path, resolver)
     facts, facts_bytes = _file(facts_path, resolver)

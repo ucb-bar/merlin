@@ -1,7 +1,7 @@
 # Model case files and fields
 
 All of these are public files staged in the workspace. Field names were read from the staged cases
-and from the code that writes the reports (`merlin.targetgen.offload_census`,
+and from the code that writes the reports (`merlin.development.targetgen.offload_census`,
 `merlin.development.backend.feedback.visible_model_gate`, `merlin.development.backend.brokers.model_check`).
 
 ## `capsule.yaml` of a model case (`kind: model`)
@@ -91,10 +91,10 @@ and from the code that writes the reports (`merlin.targetgen.offload_census`,
   `replay-kernel --model M --program P --group REGION_ID --engine spike` and `wait --job-id ID`.
 - **Flags.** Common flags are `--out FILE` (a path relative to the workspace, holding the full
   JSON), `--full-json` and `--wait-budget 0..540`. The only submission is `submission/`.
-- **Compact output** (`merlin.model_check.compact_feedback.v1`). It holds `status`, `gates`,
+- **Compact output** (`merlin.evaluation.model.compact_feedback.v1`). It holds `status`, `gates`,
   `programs[]` with `build`, `census` and replay counts, `failure_count`, `first_distinct_failure`
   and `full_artifact` (path and sha256).
-- **Full report** (`merlin.model_check.report.v1`).
+- **Full report** (`merlin.evaluation.model.report.v1`).
   - `gates` holds `build`, `kernel_exact` and `model_numerics`.
   - Each `programs[]` entry has `kernels[]`, with `symbol`, `source_region_id(s)`, `form`, `cases`,
     `exact`, `mismatches`, `cycles` and `status`.

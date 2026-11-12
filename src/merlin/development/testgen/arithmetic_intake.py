@@ -10,6 +10,8 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.rtl.hw_arithmetic import local_arithmetic
+from merlin.development.targetgen.rtl.hw_graph import parse_generic_hw
 from merlin.development.testgen.rtl_intake import (
     IndependentHardwareIntake,
     RtlIntakePin,
@@ -20,18 +22,16 @@ from merlin.development.testgen.rtl_intake import (
     _pin,
     _plain,
 )
-from merlin.targetgen.rtl.hw_arithmetic import local_arithmetic
-from merlin.targetgen.rtl.hw_graph import parse_generic_hw
 
 SCHEMA = "merlin.independent_local_arithmetic_intake.v1"
 _ISSUED: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
 _ENVIRONMENT = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 _READERS = (
     __name__,
-    "merlin.targetgen.rtl.hw_arithmetic",
-    "merlin.targetgen.rtl.hw_graph",
-    "merlin.targetgen.rtl.hw_observations",
-    "merlin.targetgen.rtl.ports",
+    "merlin.development.targetgen.rtl.hw_arithmetic",
+    "merlin.development.targetgen.rtl.hw_graph",
+    "merlin.development.targetgen.rtl.hw_observations",
+    "merlin.development.targetgen.rtl.ports",
     "xdsl.parser",
 )
 _UNKNOWN = (

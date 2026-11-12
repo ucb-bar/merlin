@@ -59,7 +59,7 @@ def prepare_toolchain(
     files = tuple((path, file_digest(path)) for path in sorted(paths))
     public_runtime = [{"path": str(path), "sha256": file_digest(path)} for path in system_runtime_files]
     if public_runtime:
-        from merlin.targetgen.tool_profile import _public_runtime_members
+        from merlin.development.targetgen.tool_profile import _public_runtime_members
 
         def ordinary_member(raw):
             path = Path(raw)
@@ -233,7 +233,7 @@ def main(argv=None) -> int:
 
     registry = None
     if args.isa_model:
-        from merlin.targetgen.isa_spec import resolved_isa_from_record
+        from merlin.development.targetgen.isa_spec import resolved_isa_from_record
 
         model = resolved_isa_from_record(json.loads(args.isa_model.read_text()))
         registry = {

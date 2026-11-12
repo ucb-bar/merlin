@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Validate a generated Merlin target repository.
 
-Checks that a ``merlin-target-<name>/`` repo produced by ``merlin.targetgen`` has:
+Checks that a ``merlin-target-<name>/`` repo produced by ``merlin.development.targetgen`` has:
   - the five contract plans (target_contract, dialect_plan, runtime_adapter_plan,
     zephyr_plan, llvm_extension_plan), each schema-valid,
   - docs/evidence_report.md,
   - the per-layer directories xdsl/ runtime/ zephyr/ llvm/ tests/,
   - AGENT.md coverage in every directory.
 
-Delegates to ``merlin.validation.generated_target.check_generated_target``.
+Delegates to ``merlin.verification.validation.generated_target.check_generated_target``.
 
 Usage:
     python build_tools/checks/check_generated_target.py <path-to-generated-repo>
@@ -23,7 +23,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "merlin", "python"))
 
-from merlin.validation.generated_target import check_generated_target  # noqa: E402
+from merlin.verification.validation.generated_target import check_generated_target  # noqa: E402
 
 
 def main(argv: list[str]) -> int:

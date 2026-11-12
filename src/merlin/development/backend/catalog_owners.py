@@ -50,10 +50,31 @@ _MOVED = {
 }
 
 
+#: Packages moved as a whole (old prefix, current prefix), longest first.
+_PACKAGE_MOVES = (
+    ("merlin.semantic_compiler", "merlin.compiler.semantic"),
+    ("merlin.xdsl_dialects", "merlin.compiler.dialects"),
+    ("merlin.benchharness", "merlin.evaluation.harness"),
+    ("merlin.model_check", "merlin.evaluation.model"),
+    ("merlin.transforms", "merlin.compiler.transforms"),
+    ("merlin.validation", "merlin.verification.validation"),
+    ("merlin.llvmlower", "merlin.compiler.lower.model"),
+    ("merlin.frontends", "merlin.compiler.frontend"),
+    ("merlin.targetgen", "merlin.development.targetgen"),
+    ("merlin.liveness", "merlin.verification.liveness"),
+    ("merlin.kernels", "merlin.analysis.kernels"),
+    ("merlin.system", "merlin.target.system"),
+    ("merlin.mining", "merlin.analysis.mining"),
+    ("merlin.perf", "merlin.analysis.perf"),
+)
+
+
 def current_owner(name: str) -> str:
     """The current owner of a recorded module name; current names map to themselves."""
-    if name in _MOVED:
-        return _MOVED[name]
+    name = _MOVED.get(name, name)
+    for old, new in _PACKAGE_MOVES:
+        if name == old or name.startswith(old + "."):
+            return new + name[len(old) :]
     if name.startswith("merlin.verify."):
         return name.replace("merlin.verify", "merlin.verification", 1)
     if name.startswith("merlin.compile.analysis."):

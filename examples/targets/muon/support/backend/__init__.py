@@ -13,7 +13,7 @@ re-resolves THIS package rather than the ``.muon`` submodule.
 
 The relocated modules keep their sibling ``from .muon import ...`` relative imports (they load as
 submodules of this package); their PARENT imports were rewritten absolute (``merlin.runtime.*`` /
-``merlin.targetgen.*`` / ``merlin.llvmlower.*``) so they resolve out-of-tree.
+``merlin.development.targetgen.*`` / ``merlin.compiler.lower.model.*``) so they resolve out-of-tree.
 """
 
 from __future__ import annotations

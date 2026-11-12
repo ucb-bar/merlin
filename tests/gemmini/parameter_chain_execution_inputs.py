@@ -19,8 +19,8 @@ import yaml
 
 from merlin.common.paths import repo_root
 from merlin.common.strict_json import loads
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 from merlin.evaluation.capsule import bundle as capsule_bundle
-from merlin.targetgen import capsule_common as capsule_capsule_common
 
 SCHEMA = "merlin.test.public_parameter_chain_baseline.v1"
 REQUIRED_TIERS = ("L0", "L1", "L2", "L3")
@@ -101,15 +101,15 @@ def prepare(selected, destination, monkeypatch):
     from merlin.capture import pytorch as source_pytorch
     from merlin.common import quant_formats as QF
     from merlin.compiler.frontend.materialized import MaterializedModelInputs
+    from merlin.development.targetgen import target_registry as TR
+    from merlin.development.targetgen.contract import schemas as CS
+    from merlin.development.targetgen.corpus_spec import CorpusBinding
     from merlin.development.testgen import capture_execution_attestation as A
     from merlin.development.testgen import capture_selection as selection_owner
     from merlin.development.testgen import sealed_native_program as N
     from merlin.evaluation.capsule import bundle_worker
     from merlin.experiments.capture_execution.m2m_origin import git_origin
     from merlin.experiments.corpus import model_sources as source_model_sources
-    from merlin.targetgen import target_registry as TR
-    from merlin.targetgen.contract import schemas as CS
-    from merlin.targetgen.corpus_spec import CorpusBinding
 
     recheck(selected)
     destination = Path(destination)

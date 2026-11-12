@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import json
 
+from merlin.development.targetgen.frontend_typed_add import add_forms
 from merlin.development.testgen import original_schema_defaults as D
-from merlin.targetgen.frontend_typed_add import add_forms
 
 ENVIRONMENT = D.ENVIRONMENT
 SCHEMA = "merlin.original_typed_add_sources.v1"

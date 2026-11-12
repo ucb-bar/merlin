@@ -42,7 +42,7 @@ def reopen(identity):
 def selected_contract(record):
     """Reopen the original model capability for backend-dependent custody checks."""
     from merlin.development.backend.feedback import private_full_models as models
-    from merlin.targetgen import target_registry
+    from merlin.development.targetgen import target_registry
 
     pins = {
         (item["path"], item["sha256"]): item
@@ -134,7 +134,7 @@ class RetainedProducts:
         math_policy,
         directory,
     ):
-        from merlin.llvmlower.device_build import admit_linked_device_elf, freeze_device_elf_admission
+        from merlin.compiler.lower.model.device_build import admit_linked_device_elf, freeze_device_elf_admission
 
         state = self.verify()
         if (
@@ -202,9 +202,9 @@ def require_selection(value, *, selected_model, diagnostic, source_only):
 
 def _device_custody(output, *, target, candidate, profile):
     from merlin.common import invocation_record as IR
+    from merlin.compiler.lower.model.device_build import executable_kernel_entry
     from merlin.development.backend.feedback.private_group_provenance import routed_kernel_symbols
-    from merlin.llvmlower.device_build import executable_kernel_entry
-    from merlin.targetgen.owned_host_model_execution import _pinned, _verify_device_custody
+    from merlin.development.targetgen.owned_host_model_execution import _pinned, _verify_device_custody
 
     artifacts = output.get("device_artifacts", {})
     kernels = artifacts.get("kernels")
@@ -236,7 +236,7 @@ def _device_custody(output, *, target, candidate, profile):
 def _emission_custody(artifact, candidate, *, profile):
     """Reopen the actual completed F emission, not the unfinished model wrapper."""
     from merlin.common import invocation_record as IR
-    from merlin.targetgen.package_runtime import load_package
+    from merlin.development.targetgen.package_runtime import load_package
     from merlin.verification.lean_emission_context import _package_sources
 
     stem = artifact.name.removesuffix(".device.mlir")
@@ -251,7 +251,7 @@ def _emission_custody(artifact, candidate, *, profile):
     if (
         call.get("kind") != "python_call"
         or call.get("stage") != "ordinary_source_emission"
-        or call.get("callable") != "merlin.targetgen.capsule_common.lower_interface"
+        or call.get("callable") != "merlin.development.targetgen.capsule_common.lower_interface"
         or any(source not in call["dependencies"] for source in sources)
         or call.get("inputs") != [pin(artifact.parent / (stem + ".iface.mlir"))]
         or pin(root / "input.interface.mlir")["sha256"] != call["inputs"][0]["sha256"]
@@ -282,7 +282,7 @@ def _emission_custody(artifact, candidate, *, profile):
 
 def _package_commands(package, root, emission, artifact):
     from merlin.common import invocation_record as IR
-    from merlin.targetgen import package_runtime as runtime
+    from merlin.development.targetgen import package_runtime as runtime
 
     roles = {"parse", "lower_interface_to_target"}
     roles.update(

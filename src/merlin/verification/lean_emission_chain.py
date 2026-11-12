@@ -45,7 +45,7 @@ def _pin(path):
 
 
 def _service_selection(service):
-    from merlin.targetgen.common_transforms import CommonTransformService
+    from merlin.development.targetgen.common_transforms import CommonTransformService
 
     if type(service) is not CommonTransformService:
         raise TypeError("emission proof selection requires the exact original common service")
@@ -186,7 +186,7 @@ def check_emission_chain(
     `emission_invocation` is the original observed lower-interface CALL owned by
     the compile route, not a candidate path or a deserialized receipt.
     """
-    from merlin.targetgen import package_runtime
+    from merlin.development.targetgen import package_runtime
 
     evidence_root = Path(evidence_root)
     if type(selection) is not EmissionChainSelection:
@@ -199,7 +199,7 @@ def check_emission_chain(
     _require_roles(original, inputs=(source_pin,), outputs=(compiler_input_pin, artifact_pin))
     if compiler_input_pin["sha256"] != source_pin["sha256"]:
         raise ValueError("compiler input staging changed the original source bytes")
-    if original.get("callable") != "merlin.targetgen.capsule_common.lower_interface":
+    if original.get("callable") != "merlin.development.targetgen.capsule_common.lower_interface":
         raise ValueError("emission custody requires the ordinary original package lowering call")
     report = {
         "schema": RESULT_SCHEMA,
@@ -347,7 +347,7 @@ def consume_emission_chain(result, *, selection, object_invocation, object_path,
             raise ValueError("original emission invocation changed before actual object consumption")
         invocation_record.verify(Path(pin["path"]))
     document = invocation_record.verify(object_invocation.path)
-    if document.get("callable") != "merlin.targetgen.contract.compile.llvm_mlir_to_object":
+    if document.get("callable") != "merlin.development.targetgen.contract.compile.llvm_mlir_to_object":
         raise ValueError("emission chain was not consumed by the ordinary LLVM/object producer")
     consumed_pin, object_pin = _pin(consumer_source), _pin(object_path)
     if consumed_pin["sha256"] != artifact_pin["sha256"]:
@@ -415,7 +415,7 @@ def reopen_emission_custody(report, *, selection, package_root, evidence_root):
         if _pin(pin["path"]) != pin:
             raise ValueError("emission transport original member changed")
     emitted = invocation_record.verify(Path(report["compiler_source_invocation"]["path"]))
-    if emitted.get("callable") != "merlin.targetgen.capsule_common.lower_interface":
+    if emitted.get("callable") != "merlin.development.targetgen.capsule_common.lower_interface":
         raise ValueError("emission transport has no ordinary original source lowering")
     _require_roles(emitted, inputs=(report["source"],), outputs=(report["compiler_input"], report["emitted_artifact"]))
     if report["source"]["sha256"] != report["compiler_input"]["sha256"]:
@@ -429,7 +429,7 @@ def reopen_emission_custody(report, *, selection, package_root, evidence_root):
         if _pin(pin["path"]) != pin:
             raise ValueError("emission transport trace/consumer member changed")
     trace = invocation_record.verify(Path(report["trace_invocation"]["path"]))
-    if trace.get("callable") != "merlin.targetgen.package_runtime.run_entrypoint":
+    if trace.get("callable") != "merlin.development.targetgen.package_runtime.run_entrypoint":
         raise ValueError("emission trace has no original command invocation")
     _require_roles(trace, inputs=(report["compiler_input"],), outputs=(report["trace"],))
     with Path(report["trace"]["path"]).open("rb") as stream:
@@ -456,7 +456,7 @@ def reopen_emission_custody(report, *, selection, package_root, evidence_root):
         ):
             raise ValueError("emission trace actual checkpoint correspondence changed")
     consumer = invocation_record.verify(Path(report["object_consumer_invocation"]["path"]))
-    if consumer.get("callable") != "merlin.targetgen.contract.compile.llvm_mlir_to_object":
+    if consumer.get("callable") != "merlin.development.targetgen.contract.compile.llvm_mlir_to_object":
         raise ValueError("emission transport has no ordinary object consumer")
     _require_roles(
         consumer,

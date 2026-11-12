@@ -35,7 +35,7 @@ def parser(
     # target registry (in-tree references + MERLIN_TARGET_PATH). Registering a dialect package makes
     # `--target=<name>` work with no code change here.
     try:
-        from merlin.targetgen.target_registry import all_targets
+        from merlin.development.targetgen.target_registry import all_targets
 
         _oot_targets = sorted(all_targets())
     except Exception as exc:  # noqa: BLE001 — an unreadable registry offers no OOT target, and says so
@@ -152,7 +152,7 @@ def parser(
 
 def pass_selection(ap: argparse.ArgumentParser, a: argparse.Namespace):
     """The optional-pass selection ``--pass``/``--no-pass`` name (``ap.error`` on an invalid one)."""
-    from merlin.llvmlower import optional_passes
+    from merlin.compiler.lower.model import optional_passes
 
     try:
         return optional_passes.Selection.of(a.passes, a.no_passes)
@@ -162,7 +162,7 @@ def pass_selection(ap: argparse.ArgumentParser, a: argparse.Namespace):
 
 def list_passes(a: argparse.Namespace) -> int:
     """``--list-passes``: the registry as a table, or as JSON with ``--json``."""
-    from merlin.llvmlower import optional_passes
+    from merlin.compiler.lower.model import optional_passes
 
     print(json.dumps(optional_passes.describe(), indent=2) if a.json else optional_passes.table())
     return 0

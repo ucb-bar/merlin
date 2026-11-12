@@ -12,10 +12,10 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import golden_store
 from merlin.development.testgen.component_generation import digest
 from merlin.development.testgen.component_graph_variants import PARAMETERS, VARIANTS, parameters, program, validate
 from merlin.development.testgen.component_graph_variants import SCHEMA as FAMILY_SCHEMA
-from merlin.targetgen import golden_store
 
 SCHEMA = "merlin.component_graph_relations.v1"
 

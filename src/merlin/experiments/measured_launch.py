@@ -169,7 +169,7 @@ def source_inputs(command: dict) -> dict[str, str]:
         "merlin.experiments.execution.chia_native",
         "merlin.experiments.execution.chia_group",
         "merlin.evaluation.capsule.runner",
-        "merlin.benchharness.chia_bridge",
+        "merlin.evaluation.harness.chia_bridge",
     ):
         if owners.get(name) != _source(name):
             raise SpecError(f"measured launch declared root differs from installed source owner: {name}")

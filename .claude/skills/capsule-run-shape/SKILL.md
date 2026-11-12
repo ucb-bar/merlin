@@ -73,7 +73,7 @@ the total. A converged submission re-paid all of it on every post-turn grade, fo
 program had not changed a byte since a certificate was earned for it, sometimes minutes earlier in the
 same turn by the promotion path above.
 
-`merlin.targetgen.tier_cache` is the reader. The ladder asks it before paying for a tier and tells it
+`merlin.development.targetgen.tier_cache` is the reader. The ladder asks it before paying for a tier and tells it
 after executing one:
 
 - **Key** = the *execution identity* (`tier_promote.execution_digest`'s own — ELF bytes x target x every

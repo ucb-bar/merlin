@@ -17,9 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
-from merlin.perf.agent_guidance import inspect_compiler_package
+from merlin.evaluation.harness import hash_tree
 
 
 def _readonly_seed_identity(root: Path) -> tuple[str, tuple[tuple[str, int], ...]]:
@@ -96,7 +96,7 @@ class FrozenEditAuthority:
         host_surface_declarations: Sequence[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Host startup only: retain initial source and its externally approved edit authority."""
-        from merlin.perf.compiler_edit_scope import validate_edit_contract
+        from merlin.analysis.perf.compiler_edit_scope import validate_edit_contract
 
         if has_iterations or self.configured or self.contract is not None:
             raise ValueError("compiler edit authority must be frozen once before candidate execution")
@@ -117,7 +117,7 @@ class FrozenEditAuthority:
         # does not, so the automatic path is untouched; `load` re-seals with the identical digest
         # `validate_edit_contract` recomputes, so a contract that was already valid is unchanged.
         if contract.get("target") and contract.get("package_id"):
-            from merlin.perf import phase2_edit_contract as P2C
+            from merlin.analysis.perf import phase2_edit_contract as P2C
 
             contract = P2C.load(str(contract["target"]), str(contract["package_id"]), body=contract)
         validated = validate_edit_contract(contract, candidate)
@@ -237,7 +237,7 @@ class FrozenEditAuthority:
 
     def validate_candidate(self, candidate: Path) -> dict[str, Any]:
         """Inspect cumulative edits after the caller admits experiment-wide inputs."""
-        from merlin.perf.compiler_edit_scope import inspect_compiler_edits
+        from merlin.analysis.perf.compiler_edit_scope import inspect_compiler_edits
 
         self.check_integrity()
         if self.contract is None:

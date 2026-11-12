@@ -12,9 +12,9 @@ def model_accelerator_demand(linalg_mlir: str, binding) -> tuple[str | None, lis
     instead of inventing a hardware obligation. Public host programs retain
     complete source/numerical checks and optional legal accelerator lowering.
     """
-    from merlin.targetgen import eligibility as _el
-    from merlin.targetgen import semantic_families as _sf
-    from merlin.targetgen.corpus_instruction_roles import classes_for_checked_source
+    from merlin.development.targetgen import eligibility as _el
+    from merlin.development.targetgen import semantic_families as _sf
+    from merlin.development.targetgen.corpus_instruction_roles import classes_for_checked_source
 
     target = getattr(binding, "target", None)
     if not target or not linalg_mlir:
@@ -181,7 +181,7 @@ def _checked_lanes(entry: dict, binding) -> list[str]:
     if not target:
         return want  # no target to judge against: leave the declaration
     try:
-        from merlin.targetgen.routing import reachable_lanes
+        from merlin.development.targetgen.routing import reachable_lanes
 
         have = reachable_lanes(target)
     except Exception:  # noqa: BLE001 - never block generation on this

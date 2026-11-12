@@ -80,7 +80,7 @@ list. Record the same selected input and quantized-reference manifest identities
 for every compared implementation.
 
 ```sh
-python -m merlin.model_check.baseline_numerics \
+python -m merlin.evaluation.model.baseline_numerics \
   --manifest "$RUN/baseline-outputs.yaml" \
   --out "$RUN/numerics.json"
 ```
@@ -120,7 +120,7 @@ checker with the actual selected models configuration and quantized-reference
 mode:
 
 ```sh
-python -m merlin.model_check check \
+python -m merlin.evaluation.model check \
   --submission "$DEVICE_PACKAGE" --models "$SELECTED_MODELS_CONFIG" \
   --bundle "$REFERENCE_BUNDLE" --model tiny_llama \
   --split visible --input visible/v00 --mode full \

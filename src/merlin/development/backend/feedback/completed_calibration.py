@@ -9,15 +9,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.feedback.rolling_scalability import RESULT_MAX_BYTES
+from merlin.evaluation.harness import hash_tree
 from merlin.runtime import _native_files as F
 
 
 def register(result, *, result_path, compiler, capsules_root, contract):
     from merlin.development.backend import joint_control
     from merlin.development.backend.feedback import joint_performance as performance
-    from merlin.targetgen.capsule_common import load_capsule
+    from merlin.development.targetgen.capsule_common import load_capsule
 
     state = joint_control.selected()
     if state is None or not state["policy"].get("native_calibration"):

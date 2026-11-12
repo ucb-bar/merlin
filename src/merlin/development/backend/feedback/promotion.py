@@ -2,7 +2,7 @@
 
 Every producer of feedback considers promotion. Wiring only the asynchronous broker
 silently missed synchronous verdicts; the shared implementation prevents that drift.
-Scheduling policy stays in ``merlin.targetgen.oracle_schedule``. This module owns
+Scheduling policy stays in ``merlin.development.targetgen.oracle_schedule``. This module owns
 verdict recording, content identities and the pending/certified ledger.
 
 Identity is narrowest-first:
@@ -85,15 +85,15 @@ from merlin.development.backend.feedback.promotion_verdicts import (
 from merlin.development.backend.feedback.promotion_verdicts import (
     row_status as row_status,
 )
-from merlin.evaluation.capsule import adapters as capsule_adapters
-from merlin.evaluation.capsule import availability as capsule_availability
 
 # The two verdict words this module records. Imported from the scheduler rather than restated here, so
 # the recorder and the policy cannot come to disagree about how a passing tier is spelled -- that
 # disagreement is the class of defect `row_status` below exists to close.
-from merlin.targetgen.oracle_schedule import CERT_LEDGER as _LEDGER
-from merlin.targetgen.oracle_schedule import FAIL as _FAIL
-from merlin.targetgen.oracle_schedule import PASS as _PASS
+from merlin.development.targetgen.oracle_schedule import CERT_LEDGER as _LEDGER
+from merlin.development.targetgen.oracle_schedule import FAIL as _FAIL
+from merlin.development.targetgen.oracle_schedule import PASS as _PASS
+from merlin.evaluation.capsule import adapters as capsule_adapters
+from merlin.evaluation.capsule import availability as capsule_availability
 
 _NEUTRAL_SIM = "contract"  # "grade on whatever tier this target's contract resolves to"
 
@@ -109,8 +109,8 @@ def resolve_tiers(ws, *, context: InvocationContext, capsules_root: Path | None 
     if roster():
         return "L2", "L3", roster()
     try:
-        from merlin.targetgen.contract.materialize import declared_oracle_tiers
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.contract.materialize import declared_oracle_tiers
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         decl = declared_oracle_tiers(*((capsules_root,) if capsules_root is not None else te.graded_roots()))
@@ -153,8 +153,8 @@ def execution_digest(capsule_result: str | Path) -> str | None:
 
     import yaml
 
+    from merlin.development.targetgen.tier_cache import execution_identity
     from merlin.evaluation.capsule.certificates import run_executables
-    from merlin.targetgen.tier_cache import execution_identity
 
     cr = Path(capsule_result)
     try:
@@ -222,7 +222,7 @@ def component_vocabulary(ws) -> set | None:
         return None
     names = {str(k) for k in m["commands"]}
     try:
-        from merlin.targetgen.package_runtime import _ENTRYPOINT_ALIASES as _AL
+        from merlin.development.targetgen.package_runtime import _ENTRYPOINT_ALIASES as _AL
     except Exception:  # noqa: BLE001 -- merlin not importable from the harness: names as declared
         _AL = {}
     return names | {_AL[n] for n in names if n in _AL}
@@ -444,7 +444,7 @@ def decomposition(ws) -> dict:
     names are carried out for the caller to report; a typo that quietly costs the saving is the failure
     mode this exists to make visible.
     """
-    from merlin.targetgen.oracle_schedule import UNATTRIBUTED
+    from merlin.development.targetgen.oracle_schedule import UNATTRIBUTED
 
     sub = Path(ws, "submission")
     rels = (
@@ -606,8 +606,8 @@ def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = 
     -> certify anything eligible, because a cover that silently comes back empty is indistinguishable
     from everything already being done."""
     try:
-        from merlin.targetgen.contract.materialize import cert_capsule_cover
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.contract.materialize import cert_capsule_cover
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         # Pass the tile edge so the cover certifies PARTIAL tiles as their own cell. A cover built on
@@ -617,8 +617,8 @@ def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = 
         # functional check passed).
         _td = None
         try:
-            from merlin.targetgen.corpus_spec import _tile_dim
-            from merlin.targetgen.target_experiment import load_capability_manifest
+            from merlin.development.targetgen.corpus_spec import _tile_dim
+            from merlin.development.targetgen.target_experiment import load_capability_manifest
 
             _td = int(_tile_dim(te.target, load_capability_manifest(te.target).contract)) or None
         except Exception:  # noqa: BLE001 -- no derivable tile edge: cover without the alignment axis
@@ -626,7 +626,7 @@ def _cert_cover(ws, *, context: InvocationContext, capsules_root: Path | None = 
         # Exclusions travel WITH the roots. A capsule the descriptor withholds from the paid loop cannot
         # stand for its cell, because promotion only enqueues capsules in the cover — picking one that
         # never runs retires the cell for a certificate nobody will produce.
-        from merlin.targetgen.capsule_common import discover_capsules
+        from merlin.development.targetgen.capsule_common import discover_capsules
 
         _source = discover_capsules(
             ((capsules_root,) if capsules_root is not None else te.graded_roots()),
@@ -652,8 +652,8 @@ def _mandatory_cert_members(*, context: InvocationContext, capsules_root: Path |
     Inspect only the selected graded public/dev cohort, never performance or hidden roots.
     Descriptor exclusions still apply. Optional certification keeps its ordinary cover.
     """
-    from merlin.targetgen.capsule_common import discover_capsules
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     caps = discover_capsules(
@@ -715,7 +715,7 @@ def _save_tier_state(ws, st) -> None:
 # stale certificate into a valid one.
 # ------------------------------------------------------------------------------------------------
 # `_LEDGER` -- the reserved key inside a capsule's tier map (delimiters no tier label can produce) -- is
-# IMPORTED at the top of this file, not restated here. `merlin.targetgen.tier_cache` reads this same file
+# IMPORTED at the top of this file, not restated here. `merlin.development.targetgen.tier_cache` reads this same file
 # to decide whether a tier may be carried instead of re-executed, and two spellings of the key would not
 # fail loudly: the reader would find nothing and re-buy every certificate, which looks exactly like a run
 # with nothing to reuse.
@@ -734,7 +734,7 @@ def _valid_execution(value) -> bool:
     Imported, never restated: two copies of this predicate is how the recorder and the scheduler come to
     disagree about what counts as an identity, and the disagreement always resolves as a silent fallback.
     """
-    from merlin.targetgen.oracle_schedule import valid_execution_digest
+    from merlin.development.targetgen.oracle_schedule import valid_execution_digest
 
     return valid_execution_digest(value)
 
@@ -815,7 +815,7 @@ def _log_invalidations(states, executions, components, loop_tier, cert_tier, log
     comparing them to this source cannot establish that their code changed.
     Scheduling, evidence retention and ordinary non-joint diagnostics are untouched.
     """
-    from merlin.targetgen.oracle_schedule import UNATTRIBUTED_RESULT, WHOLE_SUBMISSION
+    from merlin.development.targetgen.oracle_schedule import UNATTRIBUTED_RESULT, WHOLE_SUBMISSION
 
     unobserved = 0
     for state in states:
@@ -1094,9 +1094,9 @@ def cert_instrument(cert_tier: str, *, context: InvocationContext) -> str | None
     instrument can never be carried (``tier_cache._from_ledger``), which is the fail-closed direction.
     """
     try:
+        from merlin.development.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.tier_cache import instrument_digest
         from merlin.evaluation.capsule.model_tiers import rtl_tiers_of
-        from merlin.targetgen.target_experiment import load_target_experiment
-        from merlin.targetgen.tier_cache import instrument_digest
 
         te = load_target_experiment(context.descriptor)
         return instrument_digest(te.target, cert_tier, rtl_tier=cert_tier in rtl_tiers_of(te.target))
@@ -1141,7 +1141,7 @@ def promote(
         cover = joint_required
     import json as _j
 
-    from merlin.targetgen.oracle_schedule import (
+    from merlin.development.targetgen.oracle_schedule import (
         CapsuleState,
         Verdict,
         schedule,

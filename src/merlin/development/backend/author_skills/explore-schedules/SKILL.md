@@ -1,6 +1,6 @@
 ---
 name: explore-schedules
-description: "Search the schedule or pass options of one operator family with merlin.transforms.pass_exploration instead of hand-picking them: wrap your lowering as PassFamily options, generate candidates, rank them on training shapes and check the winner on held-out shapes with scripts/holdout_rank.py, then time the winner as a variant. Use when a choice your compiler fixes (order, blocking, whether to apply a pass) could differ per shape, or a case has low array utilization."
+description: "Search the schedule or pass options of one operator family with merlin.compiler.transforms.pass_exploration instead of hand-picking them: wrap your lowering as PassFamily options, generate candidates, rank them on training shapes and check the winner on held-out shapes with scripts/holdout_rank.py, then time the winner as a variant. Use when a choice your compiler fixes (order, blocking, whether to apply a pass) could differ per shape, or a case has low array utilization."
 ---
 
 `SKILL_DIR` = the directory holding this file. Run from the workspace root.
@@ -18,10 +18,10 @@ description: "Search the schedule or pass options of one operator family with me
    ```python
    import copy, hashlib, json, sys
    sys.path[:0] = ["submission/compiler_library", "submission", "SKILL_DIR/scripts"]
-   from merlin.transforms.pass_exploration import (EmittedProgram, ExplorationGeometry, PassFamily,
+   from merlin.compiler.transforms.pass_exploration import (EmittedProgram, ExplorationGeometry, PassFamily,
        ValidationPartition, generate_candidates)
-   from merlin.transforms.pipeline_policy import PolicyFacts, RegisteredPass, ShapePredicate
-   from merlin.transforms.pipeline_state import PassSpec
+   from merlin.compiler.transforms.pipeline_policy import PolicyFacts, RegisteredPass, ShapePredicate
+   from merlin.compiler.transforms.pipeline_state import PassSpec
    from holdout_rank import dumps, rank_on_holdout
 
    sha = lambda ir: hashlib.sha256(json.dumps(ir, sort_keys=True).encode()).hexdigest()
@@ -58,5 +58,5 @@ description: "Search the schedule or pass options of one operator family with me
 
 API: `submission/compiler_library/merlin/transforms/pass_exploration.py` (`generate_candidates`,
 `explore_candidates`, `rank_observed_metrics`). No static score replaces missing cycles.
-Per-class incumbents switched on cycles covering cutoffs (`merlin.transforms.shape_policy`): the
+Per-class incumbents switched on cycles covering cutoffs (`merlin.compiler.transforms.shape_policy`): the
 `shape-schedule-selection` skill; library PipelineVariants: `heavy-pass-recipes`.

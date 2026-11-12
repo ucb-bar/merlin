@@ -5,8 +5,8 @@ reviewed signed integer contraction semantics. No local expression grants a
 complete contraction or imposes a fabricated accumulation order/K bound.
 """
 
+from merlin.development.targetgen.rtl.hw_arithmetic import LAW, SCHEMA
 from merlin.development.testgen.component_generation import digest
-from merlin.targetgen.rtl.hw_arithmetic import LAW, SCHEMA
 
 
 def _bits(dtype):

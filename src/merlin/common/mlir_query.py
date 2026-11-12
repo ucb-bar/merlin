@@ -3,7 +3,7 @@
 Several subsystems used to scrape facts out of MLIR *text* — ``func.func @forward(...)`` signatures,
 ``tensor<...>`` shapes, op names, ``prov.*`` attributes — with regex. That is brittle and drifts from
 the IR's real structure. This module is the one grounded query surface: it parses through
-:func:`merlin.frontends.linalg_mlir.parse_mlir_text` (the same xDSL path proven on real smolvla/pi05
+:func:`merlin.compiler.frontend.linalg_mlir.parse_mlir_text` (the same xDSL path proven on real smolvla/pi05
 captures — Builtin/Func/Arith/Linalg/Tensor/Scf/Math/Cf, ``allow_unregistered``, plus the
 ``} -> (T1,T2)`` normalizer) and exposes small typed accessors over the parsed module.
 
@@ -24,9 +24,9 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from merlin.frontends.linalg_mlir import _dtype as _type_dtype
-from merlin.frontends.linalg_mlir import _shape as _type_shape
-from merlin.frontends.linalg_mlir import parse_mlir_file, parse_mlir_text
+from merlin.compiler.frontend.linalg_mlir import _dtype as _type_dtype
+from merlin.compiler.frontend.linalg_mlir import _shape as _type_shape
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_file, parse_mlir_text
 
 # Parsing a big capture (tens of thousands of ops) costs seconds; the DSE analysis path reads the
 # same model.mlir through several functions (numerical_contract, attribution, models, quant_rows,

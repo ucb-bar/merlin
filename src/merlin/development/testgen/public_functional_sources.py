@@ -11,10 +11,10 @@ import hashlib
 from pathlib import Path
 
 from merlin.common import strict_json
+from merlin.development.targetgen.frontend_trace import loads_frontend_trace
 from merlin.development.testgen import public_boundaries as B
 from merlin.development.testgen import public_boundary_semantics as S
 from merlin.development.testgen import public_typed_semantics as T
-from merlin.targetgen.frontend_trace import loads_frontend_trace
 
 
 def operand_names(value):

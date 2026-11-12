@@ -11,7 +11,7 @@ capsules stranded at L3 pending, and from about +90 min every promotion said "0 
 Retiring is narrow on purpose. It needs the completed job's own request id, so only a completion that
 provably belongs to THIS record retires it; a replay of an older job (``completions.recover``) cannot
 retire a newer record for the same bytes. The retired record keeps every field it had and is not a
-verdict: :data:`~merlin.targetgen.oracle_schedule.UNATTRIBUTED_RESULT` reads as "no verdict" to the
+verdict: :data:`~merlin.development.targetgen.oracle_schedule.UNATTRIBUTED_RESULT` reads as "no verdict" to the
 scheduler, so the next loop verdict for those bytes re-enqueues them under a new request id.
 """
 
@@ -24,7 +24,7 @@ def retire(st, name, tier, key, *, request, reason, completed=None, log=None) ->
     """Mark ``st[name][tier]`` record ``key`` unattributed when it is the pending record ``request`` was
     enqueued for. Returns whether it did. ``st`` is modified in place; the caller saves it."""
     from merlin.development.backend.feedback import promotion as P
-    from merlin.targetgen.oracle_schedule import UNATTRIBUTED_RESULT
+    from merlin.development.targetgen.oracle_schedule import UNATTRIBUTED_RESULT
 
     if not request or key is None:
         return False
@@ -106,7 +106,7 @@ def requeue_attempt(slots, key) -> int | None:
     """``None`` when ``key`` already holds a record that must not be re-bought (pending, pass, fail,
     joined), else the attempt number a new request for it carries: 0 for a first request, n+1 after a
     retired one, so its request id differs from every earlier request for the same bytes."""
-    from merlin.targetgen.oracle_schedule import UNATTRIBUTED_RESULT
+    from merlin.development.targetgen.oracle_schedule import UNATTRIBUTED_RESULT
 
     entry = slots.get(key)
     if entry is None:

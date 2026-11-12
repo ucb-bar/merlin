@@ -13,7 +13,7 @@ from evidence the self-check and the grade already hold:
   class takes the roles the target's own compute-endpoint declaration binds to that name in its
   RTL-derived decode table (:func:`merlin.analysis.compute_endpoints.endpoints_for`); a class
   the decoder identifies structurally as an architectural fence takes the shared
-  ``synchronization`` family (:func:`merlin.targetgen.semantic_families.from_isa_class`). Fences cut
+  ``synchronization`` family (:func:`merlin.development.targetgen.semantic_families.from_isa_class`). Fences cut
   the stream into epochs; per epoch it counts commands, output-tile readouts and loads, and a load
   counts as overlapped when a compute was issued earlier in the same epoch (still outstanding: no
   fence drained it). That share is the **static overlap ratio**: an ordering property of the emitted
@@ -78,7 +78,7 @@ def _endpoint_roles(target: str | None) -> dict | None:
 
 def _is_fence(instruction: dict) -> bool:
     """An architectural fence the decoder identified by structure (no endpoint selector)."""
-    from merlin.targetgen.semantic_families import from_isa_class
+    from merlin.development.targetgen.semantic_families import from_isa_class
 
     return instruction.get("funct") is None and from_isa_class(str(instruction.get("class") or "")) == (
         "synchronization"

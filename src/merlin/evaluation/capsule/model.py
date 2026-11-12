@@ -137,10 +137,10 @@ def _grade_model_capsule_inline(
         # The declaration-side composition is derived independently from the capsule interface.  Later
         # the model check compares it with the runtime ledger, so M2's A->H->A seam cannot be credited
         # from a static routing plan and M3's must-accelerate claim cannot pass on synthesized tiles alone.
-        from merlin.targetgen import boundary as _boundary
+        from merlin.development.targetgen import boundary as _boundary
 
         result["boundary_expectation"] = _boundary.profile_capsule(cdir, target).to_dict()
-    from merlin.xdsl_dialects.lowering.passes import MODEL_BOUNDARY_CAPSTONE
+    from merlin.compiler.dialects.lowering.passes import MODEL_BOUNDARY_CAPSTONE
 
     _requires_boundary_plane = MODEL_BOUNDARY_CAPSTONE in (capsule.get("pass_requirements") or ())
     if _requires_boundary_plane and linalg_path is None:
@@ -160,8 +160,8 @@ def _grade_model_capsule_inline(
         # the OOT package's four subprocess stages, which run below on each mesh tile. A pass-obligation
         # failure is structural and blocks the capsule before expensive oracle work.
         if _requires_boundary_plane:
-            from merlin.frontends.linalg_mlir import parse_mlir_file
-            from merlin.xdsl_dialects.lowering.passes import run_dialect_plane
+            from merlin.compiler.dialects.lowering.passes import run_dialect_plane
+            from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
 
             # WITH the target, so a dispatch is a whole compute group. Without it this plane took the
             # single-op baseline while `compile_cli` formed groups over the same model.

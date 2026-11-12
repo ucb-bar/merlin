@@ -38,7 +38,7 @@ PERSISTENT_STATE = "merlin.scf_commands.persistent_state.v1"
 
 def _event_type():
     # Synchronous candidates need no new dialect import from a frozen SDK.
-    from merlin.xdsl_dialects.runtime import EventType
+    from merlin.compiler.dialects.runtime import EventType
 
     return EventType()
 

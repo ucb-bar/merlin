@@ -44,7 +44,7 @@ def _neutral(value):
 def prepare(common, *, destination, repo):
     from merlin.development.backend.neutral_program_inputs import contract_text
     from merlin.development.backend.public_runtime_abi import is_projected_protocol
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
 
     destination = Path(destination)
     destination.mkdir(exist_ok=False)

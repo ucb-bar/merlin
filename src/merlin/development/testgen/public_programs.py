@@ -13,8 +13,8 @@ import json
 from math import prod
 from pathlib import Path
 
-from merlin.targetgen import materialized_integer_capture as N
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
+from merlin.development.targetgen import materialized_integer_capture as N
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 
 POLICY_SCHEMA = "merlin.phase0.public_program_selection.v1"
 INTEGER_POLICY_SCHEMA = "merlin.phase0.public_program_selection.v2"
@@ -349,7 +349,7 @@ def verify_written(capsule, directory):
     relocation = frontend["source_portability"]
     # Reconstruct the exact raw source using its receipt-bound recorded weights path.
     meta = None
-    from merlin.targetgen.materialized_reference import reference_members as float_reference_members
+    from merlin.development.targetgen.materialized_reference import reference_members as float_reference_members
 
     references = (
         N.reference_members(receipt["artifacts"]) if native_integer else float_reference_members(receipt["artifacts"])
@@ -415,7 +415,7 @@ def verify_written(capsule, directory):
         raise ValueError("public program rationale differs from its actual source")
     import numpy as np
 
-    from merlin.targetgen.golden_store import load_golden
+    from merlin.development.targetgen.golden_store import load_golden
 
     golden = load_golden(directory)
     attributes = capsule["operation"]["attributes"]
@@ -423,7 +423,7 @@ def verify_written(capsule, directory):
     if set(golden["outputs"]) != set(names) or len(set(names)) != len(names):
         raise ValueError("public program reference omits a published output")
     if native_integer:
-        from merlin.targetgen.capsule_privacy import capture_reference_closure
+        from merlin.development.targetgen.capsule_privacy import capture_reference_closure
 
         if capsule.get("reference_closure") != capture_reference_closure(receipt["artifacts"], source_mode=N.MODE):
             raise ValueError("integer public reference closure omits expected-output leaves")
@@ -443,8 +443,8 @@ def verify_written(capsule, directory):
         N.inputs(meta, (directory / "source-capture-inputs.npz").read_bytes())
     else:
         if len(names) > 1:
-            from merlin.targetgen.capsule_privacy import capture_reference_closure
-            from merlin.targetgen.materialized_reference import complete_float_outputs
+            from merlin.development.targetgen.capsule_privacy import capture_reference_closure
+            from merlin.development.targetgen.materialized_reference import complete_float_outputs
 
             if capsule.get("reference_closure") != capture_reference_closure(receipt["artifacts"]):
                 raise ValueError("public complete reference closure omits expected-output leaves")

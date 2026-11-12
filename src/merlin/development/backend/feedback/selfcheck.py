@@ -86,11 +86,11 @@ from merlin.development.backend.feedback.selfcheck_selectors import (
 )
 from merlin.development.backend.feedback.selfcheck_selectors import select_capsules
 from merlin.development.backend.timing import barrier_measurements
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen import capsule_grade as CG  # build+run+compare
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import availability as capsule_availability
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen import capsule_grade as CG  # build+run+compare
 
 
 def _strip_build_state(root: Path) -> None:
@@ -122,8 +122,8 @@ def _strip_build_state(root: Path) -> None:
 # leaking another target's capsules. An explicit historical harness may still own its original corpus.
 def _public_capsules(context: InvocationContext) -> Path:
     try:
+        from merlin.development.targetgen.target_experiment import load_target_experiment
         from merlin.experiments.corpus.admission import public_capsules_for
-        from merlin.targetgen.target_experiment import load_target_experiment
 
         return public_capsules_for(load_target_experiment(context.descriptor))
     except Exception as error:  # noqa: BLE001 — retain an explicitly selected historical source owner
@@ -187,7 +187,7 @@ _progress_snapshot, _progress_publisher = SP.progress_snapshot, SP.progress_publ
 def _suite_size(capsules_root: Path) -> int:
     """How many public capsules exist, so a partial check can say what it did NOT check.
 
-    Counted the way the grader DISCOVERS them (:func:`merlin.targetgen.capsule_common.discover_capsules`:
+    Counted the way the grader DISCOVERS them (:func:`merlin.development.targetgen.capsule_common.discover_capsules`:
     every ``capsule.yaml`` below the root, one per directory). A flat listing undercounts a root whose
     capsules sit in category subdirectories, and the shortfall would read as capsules the check skipped.
     """
@@ -204,7 +204,7 @@ def _target_sim_via(context: InvocationContext) -> tuple[str, str | None]:
     descriptor can't be parsed."""
 
     try:
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(context.descriptor)
         return te.target, te.sim_via
@@ -337,7 +337,7 @@ def _adapters(sim: str, target: str, sim_via: str | None, *, readback_policy=Non
             if required is None:
                 ad["L3"] = capsule_adapters.simulator_adapter("verilator", target)
             try:
-                from merlin.targetgen import vcs_adapter as VA  # optional, config-gated
+                from merlin.development.targetgen import vcs_adapter as VA  # optional, config-gated
 
                 ad["L4"] = VA.adapter()
             except Exception as exc:
@@ -378,8 +378,8 @@ def _model_layers(
     nothing is refused, because a typo that silently grades everything is the same defect again.
     """
 
-    from merlin.targetgen import tier_policy
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen import tier_policy
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     experiment = load_target_experiment(context.descriptor)
     roots = experiment.model_layer_roots()
@@ -1156,7 +1156,9 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
             (d.get("tier_reuse") or {}).get("carried_from") if isinstance(d.get("tier_reuse"), dict) else None
         )
         if isinstance(carried_from, str) and carried_from.startswith("carried from ") and len(carried_from) <= 160:
-            row["carried_from"] = carried_from  # a seeded grade's pass, carried in full (merlin.targetgen.seeded_grade)
+            row["carried_from"] = (
+                carried_from  # a seeded grade's pass, carried in full (merlin.development.targetgen.seeded_grade)
+            )
         from merlin.development.backend.feedback import joint_physical_correctness, tier_boundary_join
 
         if name in joint_physical_correctness.roster() and bar_used in {"L2", "L3"}:
@@ -1451,7 +1453,7 @@ def main(argv=None, *, context=None, capsules_root: Path | None = None, contract
         # offload accounting instead of running every compiler entrypoint again.
         # Missing artifacts remain named errors; model placement has its own
         # submitted-artifact audit and is never inferred from an operator buffer.
-        from merlin.targetgen import offload_census as OC
+        from merlin.development.targetgen import offload_census as OC
 
         try:
             out["offload_census"] = OC.census_from_graded_artifacts(

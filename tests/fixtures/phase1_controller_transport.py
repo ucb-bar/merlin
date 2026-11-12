@@ -30,8 +30,8 @@ if Path(sys.argv[0]).name == "bwrap":
     assert "--unshare-pid" in args and "--die-with-parent" in args
     workspace = Path(args[args.index("--chdir") + 1]).resolve(strict=True)
     assert workspace.is_relative_to(root), workspace
-    from merlin.targetgen.sandbox.toolchain import sandbox_env
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox.toolchain import sandbox_env
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     prefix = sandbox_env(load_target_experiment(root / "target_experiment.yaml"), workspace) + " "
     assert script.startswith(prefix)
@@ -40,7 +40,7 @@ if Path(sys.argv[0]).name == "bwrap":
     # The random control path must name the host-created workspace sentinel.
     repo = Path(os.environ["MERLIN_REPO_ROOT"])
     corpus = root / "corpus/isa"
-    from merlin.targetgen.sandbox.bwrap import bundle_snapshot_root
+    from merlin.development.targetgen.sandbox.bwrap import bundle_snapshot_root
 
     snapshot = bundle_snapshot_root(workspace)
     frozen = (

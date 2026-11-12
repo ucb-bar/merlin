@@ -188,8 +188,8 @@ def prepare(
     maximum_model_seconds: float,
 ):
     """Build and receipt the production host evaluator, or retain an exact-only loop."""
-    from merlin.perf.phase2_analytical_provider import build_fast_evaluator_installation
-    from merlin.perf.phase2_portfolio import unavailable_fast_evaluation
+    from merlin.analysis.perf.phase2_analytical_provider import build_fast_evaluator_installation
+    from merlin.analysis.perf.phase2_portfolio import unavailable_fast_evaluation
 
     members = tuple(sentinel.capsule_sha256 for sentinel in sentinels)
     if len(members) != 4 or len(set(members)) != 4 or any(not BE._is_sha256(member) for member in members):

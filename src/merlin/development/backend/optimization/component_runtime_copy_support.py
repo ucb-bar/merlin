@@ -13,8 +13,8 @@ from pathlib import Path
 from merlin.common.quant_formats import get
 from merlin.development.backend.optimization.component_runtime_copy_controls import _symbol
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, sha256_file
-from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
-from merlin.targetgen.contract.build_service import BuildOnlyService
+from merlin.development.targetgen.contract.build_recipe import HarnessBuildRecipe
+from merlin.development.targetgen.contract.build_service import BuildOnlyService
 
 MECHANISMS = ("ownership_lifetime", "host_device_synchronization")
 

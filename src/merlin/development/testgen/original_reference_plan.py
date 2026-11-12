@@ -9,10 +9,10 @@ from __future__ import annotations
 import math
 from dataclasses import fields
 
+from merlin.development.targetgen.original_operator_reference import OriginalReferenceBudget, OriginalReferencePolicy
+from merlin.development.targetgen.original_reference_values import format_record, integer_project, round_f32
 from merlin.development.testgen import component_execution_budget as E
 from merlin.development.testgen.original_call_sources import validate_budget
-from merlin.targetgen.original_operator_reference import OriginalReferenceBudget, OriginalReferencePolicy
-from merlin.targetgen.original_reference_values import format_record, integer_project, round_f32
 
 SCHEMA = "merlin.original_reference_selection.v1"
 BATCH_SCHEMA = "merlin.original_reference_selection.v2"
@@ -116,14 +116,14 @@ def transport(selection):
 
 
 def policy(record, *, pointwise=False, transpose=False):
-    from merlin.targetgen.original_operator_reference import POLICY_SCHEMA
+    from merlin.development.targetgen.original_operator_reference import POLICY_SCHEMA
 
     names = {field.name for field in fields(OriginalReferencePolicy)}
     if type(pointwise) is not bool or type(transpose) is not bool:
         raise ValueError("original reference policy version selection must be an explicit Boolean")
     if transpose:
-        from merlin.targetgen.original_transpose_reference import POLICY_SCHEMA as TRANSPOSE_POLICY_SCHEMA
-        from merlin.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
+        from merlin.development.targetgen.original_transpose_reference import POLICY_SCHEMA as TRANSPOSE_POLICY_SCHEMA
+        from merlin.development.targetgen.original_transpose_reference import OriginalTransposeReferencePolicy
 
         if isinstance(record, dict) and record.get("schema") == TRANSPOSE_POLICY_SCHEMA:
             names = {field.name for field in fields(OriginalTransposeReferencePolicy)}
@@ -142,8 +142,8 @@ def policy(record, *, pointwise=False, transpose=False):
     schemas = {POLICY_SCHEMA}
     policy_type = OriginalReferencePolicy
     if pointwise:
-        from merlin.targetgen.original_pointwise_reference import POLICY_SCHEMA as POINTWISE_POLICY_SCHEMA
-        from merlin.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
+        from merlin.development.targetgen.original_pointwise_reference import POLICY_SCHEMA as POINTWISE_POLICY_SCHEMA
+        from merlin.development.targetgen.original_pointwise_reference import OriginalPointwiseReferencePolicy
 
         schemas.add(POINTWISE_POLICY_SCHEMA)
         if isinstance(record, dict) and record.get("schema") == POINTWISE_POLICY_SCHEMA:
@@ -277,7 +277,7 @@ def measure(contract, selection):
         add(role, output_count, 2 * output_bytes)
     for role in ("comparison_reference_decode", "comparison_actual_decode", "mismatch_expected", "mismatch_actual"):
         add(role, output_count, 8 * output_count)
-    from merlin.targetgen.original_operator_reference import _costs
+    from merlin.development.targetgen.original_operator_reference import _costs
 
     arithmetic = _costs(metadata)[2]
     for role in ("reference_intermediates_first", "reference_intermediates_comparison"):

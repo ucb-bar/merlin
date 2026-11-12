@@ -191,7 +191,7 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
         references = row.get("eligible_operations")
         if references == "from_facts":
             # Filled at Phase 0 selection from the derived quantization recipes
-            # (merlin.targetgen.spec_fact_drift.resolve_spec).
+            # (merlin.development.targetgen.spec_fact_drift.resolve_spec).
             result.append(row)
             continue
         if (
@@ -234,7 +234,7 @@ def validate_quantization_declarations(spec: Mapping) -> list[dict]:
                 if any(mode not in {"static", "dynamic", "unknown"} for mode in modes.values()):
                     raise ValueError(f"{label}.site_modes[{site!r}] modes must be static, dynamic, or unknown")
         if "numerical_semantics" in row:
-            from merlin.targetgen.software_spec import validate_numerical_semantics
+            from merlin.development.targetgen.software_spec import validate_numerical_semantics
 
             semantics = validate_numerical_semantics(row["numerical_semantics"])
             if (

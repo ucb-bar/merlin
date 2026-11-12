@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from merlin.development.targetgen import oracle_policy as _oracle_policy
+from merlin.development.targetgen.oracle_policy import (
+    _SIM_ORACLES,
+    _bespoke_sim_via,
+    _endpoint_of,
+    _ensure_sim_oracles_discovered,
+)
 from merlin.evaluation.capsule.certificates import _PREPARED_EXECUTION_OBSERVER
-from merlin.targetgen import oracle_policy as _oracle_policy
-from merlin.targetgen.oracle_policy import _SIM_ORACLES, _bespoke_sim_via, _endpoint_of, _ensure_sim_oracles_discovered
 
 
 class OracleUnavailable(Exception):
@@ -16,12 +21,12 @@ class OracleUnavailable(Exception):
 def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, readback_policy=None) -> Callable:
     """Run one declared engine, retaining its selected identity and policy record."""
 
-    from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
+    from merlin.development.targetgen.contract.readback_policy import MEMORY_TRANSPORTS, selected
 
     readback_policy = selected(readback_policy)
     if readback_policy is not None and readback_policy.transport in MEMORY_TRANSPORTS:
+        from merlin.development.targetgen.oracle_readback import validate_engine_policy
         from merlin.runtime.backends import base as backends
-        from merlin.targetgen.oracle_readback import validate_engine_policy
 
         validate_engine_policy(readback_policy, sim=sim, backend=backends.get_backend(target))
 
@@ -32,14 +37,14 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
         if not backend.available(sim):
             raise OracleUnavailable(f"{sim} not available")
         if sim == "gsim":
-            from merlin.targetgen import gsim_emulator
+            from merlin.development.targetgen import gsim_emulator
 
             exact, reason = gsim_emulator.selected_firrtl_status(
                 target, env_var=getattr(backend, "GSIM_EMU_ENV", None), backend=backend
             )
             if not exact:
                 raise OracleUnavailable(reason)
-        from merlin.targetgen.oracle_readback import run_with_readback
+        from merlin.development.targetgen.oracle_readback import run_with_readback
 
         res = run_with_readback(
             cb,
@@ -73,7 +78,7 @@ def simulator_adapter(sim: str, target: str, selection: dict | None = None, *, r
 
 def _with_readback_policy(adapters: dict[str, Callable], readback_policy) -> dict[str, Callable]:
     """Retarget only declared native simulator adapters; never silently ignore policy."""
-    from merlin.targetgen.contract.readback_policy import selected
+    from merlin.development.targetgen.contract.readback_policy import selected
 
     policy = selected(readback_policy)
     if policy is None:
@@ -91,7 +96,7 @@ def _with_readback_policy(adapters: dict[str, Callable], readback_policy) -> dic
 
 def _adapter_readback_policy(adapters: dict[str, Callable]):
     """A model child may inherit only one unanimous, constructed adapter choice."""
-    from merlin.targetgen.contract.readback_policy import selected
+    from merlin.development.targetgen.contract.readback_policy import selected
 
     policies = [selected(getattr(adapter, "_merlin_readback_policy", None)) for adapter in adapters.values()]
     chosen = next((policy for policy in policies if policy is not None), None)
@@ -184,7 +189,7 @@ def mlc_arc_adapter(target: str) -> Callable:
     across targets. Raises OracleUnavailable if mlc / the arc model is absent for the target."""
 
     def run(cb, llvm_text, workdir, timeout):
-        from merlin.targetgen.rtl import mlc_bridge
+        from merlin.development.targetgen.rtl import mlc_bridge
 
         if not mlc_bridge.arc_available(target):
             raise OracleUnavailable(f"mlc arc model unavailable for target {target!r}")
@@ -232,7 +237,7 @@ def _sim_engine_adapters(sim_via: str, target: str) -> dict[str, Callable]:
         # The selection is RECORDED, not carried in this dict: every key here is a TIER name and every
         # value a callable (`min(full)` picks the fastest tier, and tier filters compare keys against a
         # capsule's declared tiers), so a metadata entry would be read as a tier.
-        from merlin.targetgen import rtl_engine_policy as _pol
+        from merlin.development.targetgen import rtl_engine_policy as _pol
 
         print(f"[oracle] {target} L3 engine: {_pol.describe(sel)}", flush=True)
         adapters["L3"] = simulator_adapter(sel["engine"], target, selection=sel)
@@ -276,7 +281,7 @@ def oracle_adapters(target: str, sim_via: str | None = None, *, readback_policy=
         # its own try/except (OracleUnavailable) so an absent runner reads back as ``unavailable``, never
         # fabricated; the REQUIRED/gold tier stays the cosim (L3) — the functional tier is ADDITIVE.
         plan = _oracle_policy.program_tier_plan(target, model_ext)
-        from merlin.targetgen.program_oracle import program_oracle_adapter, program_verilator_adapter
+        from merlin.development.targetgen.program_oracle import program_oracle_adapter, program_verilator_adapter
 
         # A tier index is a FIDELITY, not a simulator: L2 is the model tier, L3 is elaborated RTL. The
         # arc cosim is a model compiled FROM the RTL (`rtl_derived_model`, `derived_from_rtl: False`), so

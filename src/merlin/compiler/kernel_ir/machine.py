@@ -666,7 +666,7 @@ def _memories(space: Any) -> tuple[tuple[Memory, ...], tuple[Unknown, ...]]:
 def _accumulator_name(space: Any) -> str | None:
     """The store the accumulate datapath fills, when one is addressable; else ``None``."""
     try:
-        from merlin.targetgen.address_space import ADDRESSABLE, accumulator_kind
+        from merlin.development.targetgen.address_space import ADDRESSABLE, accumulator_kind
     except ImportError:  # pragma: no cover - the address space is always importable in-tree
         return None
     kind = accumulator_kind(space)
@@ -913,8 +913,8 @@ def derive(
     Every input is injectable so the derivation is testable without an RTL toolchain -- which matters,
     because an absent extractor must read as an absent MEASUREMENT, never as an absent unit.
     """
-    from merlin.targetgen.address_space import derive_address_space
-    from merlin.targetgen.rtl import facts as rtl_facts
+    from merlin.development.targetgen.address_space import derive_address_space
+    from merlin.development.targetgen.rtl import facts as rtl_facts
 
     if space is None:
         space = derive_address_space(target, facts=facts)
@@ -985,7 +985,7 @@ def _contract_for(target: str) -> Mapping[str, Any]:
     materialised package. A target with neither gets an empty mapping, and every quantity a contract
     would have supplied becomes an ``Unknown`` -- never a family default wearing a contract's clothes.
     """
-    from merlin.targetgen import capability_manifests, target_registry
+    from merlin.development.targetgen import capability_manifests, target_registry
 
     try:
         selected = target_registry.resolve(target)

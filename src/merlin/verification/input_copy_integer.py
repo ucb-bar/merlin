@@ -9,7 +9,7 @@ import numpy as np
 from xdsl.dialects.builtin import IntegerAttr, IntegerType, UnitAttr
 from xdsl.dialects.llvm import ICmpPredicateFlag
 
-from merlin.perf.constant_control_cfg import prove_cast_flags
+from merlin.analysis.perf.constant_control_cfg import prove_cast_flags
 
 
 def _width(value):

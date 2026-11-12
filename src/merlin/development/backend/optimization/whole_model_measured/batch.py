@@ -34,6 +34,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured import retention as RET
 from merlin.development.backend.optimization.whole_model_measured.identity import (
@@ -47,7 +48,6 @@ from merlin.development.backend.optimization.whole_model_measured.machines impor
     INFRA_BOARD_UNAVAILABLE,
     machine_from_spec,
 )
-from merlin.perf import whole_model_verdict as V
 
 BATCH_SCHEMA = "whole_model_batch_v1"
 BOARD_OUTAGE = "board_outage.json"

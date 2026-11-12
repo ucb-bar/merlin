@@ -83,9 +83,9 @@ def _relations(program):
 def _member(root, member, *, software, hardware):
     """Recompute all original values after the enclosing budget was verified."""
     from merlin.development.backend.source_inputs import fingerprint
+    from merlin.development.targetgen import golden_store
     from merlin.development.testgen.component_numerics import evaluate
     from merlin.development.testgen.component_source_binding import screen_written
-    from merlin.targetgen import golden_store
 
     relative = Path(member["member"])
     if relative.is_absolute() or len(relative.parts) != 2 or any(part in {".", ".."} for part in relative.parts):

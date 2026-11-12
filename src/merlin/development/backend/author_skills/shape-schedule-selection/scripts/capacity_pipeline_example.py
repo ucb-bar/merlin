@@ -4,7 +4,7 @@
 
 Shared upstream, specialized downstream:
 
-1. **Facts -> capacities.** ``merlin.targetgen.address_space`` reads the array edge and the operand and
+1. **Facts -> capacities.** ``merlin.development.targetgen.address_space`` reads the array edge and the operand and
    accumulator stores (rows, row bytes) out of the RTL facts. ``--facts`` defaults to
    ``rtl_facts/facts.json`` under the current directory; without one a small synthetic body is used and
    the output says so.
@@ -62,7 +62,7 @@ def _library(path: str | None) -> None:
 
 def capacities(facts_path: str | None) -> dict:
     """Array edge and store rows/row bytes from RTL facts (``address_space``), or the synthetic body."""
-    from merlin.targetgen import address_space as AS
+    from merlin.development.targetgen import address_space as AS
 
     path = Path(facts_path) if facts_path else Path("rtl_facts/facts.json")
     if path.is_file():
@@ -110,7 +110,7 @@ def shared_upstream(shape, caps):
     """Problem, storage and resources every pipeline shares, all from the capacity facts."""
     from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
     from merlin.compiler.selection.capacity import _capacity_fit_tile
-    from merlin.transforms.dense_planning import DenseProblem, DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
 
     rows_edge, cols_edge = caps["array"]
     p = DenseProblem(*shape, cols_edge, rows_edge, cols_edge, 1, 1, 4)
@@ -312,7 +312,7 @@ def retained(p, s, r, a):
         make_dense_schedule_plan,
         parse_dense_schedule_plan,
     )
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     b = _pick(
         dense_blocks(p, r, k_limit=lambda m, n: s.k_limit(p, r, m, n)), lambda b: b.k == p.tiles[1]
@@ -378,7 +378,7 @@ def segmented(p, s, r, a, *, readout_mode="disjoint"):
         make_dense_schedule_plan,
         parse_dense_schedule_plan,
     )
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     # Premises: at least two K segments to pipeline, two accumulator windows, and more than one output
     # group along N for the readout of one window to overlap compute into the other.

@@ -4,7 +4,7 @@
         --results results.json [--facts rtl_facts/facts.json] [--tile EDGE] [--knob NAME ...] [--json]
     python shape_choice_table.py --shape-policy policy_report.json     # read an assess_shape_policy report
 
-This is the planning step before ``merlin.transforms.shape_policy``: it finds which capacity guard
+This is the planning step before ``merlin.compiler.transforms.shape_policy``: it finds which capacity guard
 separates the winners and which boundary cases the frozen panel still lacks; ``assess_shape_policy``
 then makes the guarded, incumbent-retaining selection from complete paired feedback, and
 ``--shape-policy`` prints its report per class. Formats: the skill's ``reference/choice-table.md``.
@@ -210,7 +210,7 @@ def capacity(facts_path: str | None) -> dict | None:
         if facts_path:
             raise SystemExit(f"no facts file at {path}")
         return None
-    from merlin.targetgen import address_space as AS
+    from merlin.development.targetgen import address_space as AS
 
     doc = _read(path)
     name = ((doc.get("inputs") or {}).get("target") if isinstance(doc, dict) else None) or "workspace"
@@ -235,7 +235,7 @@ def resources(gemm, caps) -> dict:
     """
     if gemm is None or caps is None:
         return {}
-    from merlin.targetgen.address_space import working_set_rows
+    from merlin.development.targetgen.address_space import working_set_rows
 
     m, k, n = gemm
     op, acc, edge = caps["operand"], caps["accumulator"], caps["edge"]
@@ -396,7 +396,7 @@ def _domain(rows) -> tuple[str, str] | None:
 
 def _rank(scores: dict, basis: str, domain: str) -> dict:
     """Order candidates by their paired cycle ratio to the incumbent; unknown ratios stay unranked."""
-    from merlin.transforms.pass_exploration import ObservedMetrics, rank_observed_metrics
+    from merlin.compiler.transforms.pass_exploration import ObservedMetrics, rank_observed_metrics
 
     observations = tuple(
         (name, ObservedMetrics(basis, domain, (("cycle_ratio", value),))) for name, value in sorted(scores.items())
@@ -422,7 +422,7 @@ def _score(table: dict, geometries, names, incumbent: str) -> dict:
 
 
 def choice_table(space, cases, rows, caps, edge) -> dict:
-    from merlin.transforms.pass_exploration import ExplorationGeometry, ValidationPartition
+    from merlin.compiler.transforms.pass_exploration import ExplorationGeometry, ValidationPartition
 
     by_geometry, aliases = {}, {}
     for case in cases:
@@ -555,14 +555,14 @@ def _guards(working_set: str, incumbent: str) -> dict:
     """
     from dataclasses import asdict
 
-    from merlin.transforms.pipeline_policy import ResourcePredicate
+    from merlin.compiler.transforms.pipeline_policy import ResourcePredicate
 
     sides = {
         "when_true": ResourcePredicate(working_set + "_copies", 1),
         "when_false": ResourcePredicate(working_set + "_stores_needed", 2),
     }
     try:
-        from merlin.transforms.shape_policy import ShapeScheduleClass
+        from merlin.compiler.transforms.shape_policy import ShapeScheduleClass
     except ImportError:  # a library without shape_policy: the guards stay ordinary policy predicates
         ShapeScheduleClass = None
     for side, guard in sides.items():
@@ -693,7 +693,9 @@ def render(report: dict) -> str:
 def render_shape_policy(report: dict) -> str:
     """Per class of an ``assess_shape_policy(...).report``: what was selected and what keeps the incumbent."""
     if not isinstance(report, dict) or report.get("schema") != "merlin.shape_schedule_policy.v1":
-        raise SystemExit("--shape-policy expects the report of merlin.transforms.shape_policy.assess_shape_policy")
+        raise SystemExit(
+            "--shape-policy expects the report of merlin.compiler.transforms.shape_policy.assess_shape_policy"
+        )
     lines = [
         f"shape policy {str(report.get('policy_sha256'))[:12]} (max regression ratio "
         f"{report.get('max_regression_ratio')})",

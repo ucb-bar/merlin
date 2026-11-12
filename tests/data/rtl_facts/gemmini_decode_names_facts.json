@@ -2,7 +2,7 @@
  "schema_version": "2.0",
  "family": "circt_static",
  "generator": {
-  "name": "merlin.targetgen.rtl.circt_introspect",
+  "name": "merlin.development.targetgen.rtl.circt_introspect",
   "version": "rtl-introspect-v11-selected-source-receipts",
   "method": "mlc RTL discovery (target-agnostic: mesh, scratchpad, accumulator, datapaths(2 from cell geometry), lane_datapaths(0 named from lane replication), timing(31/116 modules), funct, register_layouts(12), elaborated_features(derived)) + chipyard FIRRTL grep/HW-port fallback"
  },

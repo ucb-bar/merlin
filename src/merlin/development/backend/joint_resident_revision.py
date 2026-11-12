@@ -10,9 +10,9 @@ from merlin.development.backend.optimization.contracts import document_sha256
 
 
 def verify(evidence, *, facts_pin, members):
+    from merlin.compiler.lower.model.device_shim import logical_buffers
     from merlin.development.backend.joint_source_revision import _capsule
-    from merlin.llvmlower.device_shim import logical_buffers
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     if (
         set(evidence) != {"schema", "name", "before", "after", "facts", "array"}

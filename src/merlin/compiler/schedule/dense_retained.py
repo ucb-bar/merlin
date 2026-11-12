@@ -47,7 +47,7 @@ def dense_m_panel_capacity(problem, resources, storage, *, n_tiles):
     limits; unused capacity in another role is never reassigned implicitly.
     These are construction conditions, not a profitability prediction.
     """
-    from merlin.transforms.dense_planning import DenseBlock
+    from merlin.compiler.transforms.dense_planning import DenseBlock
 
     mt, kt, nt = problem.tiles
     if type(n_tiles) is not int or not 1 <= n_tiles <= nt:
@@ -120,7 +120,7 @@ def dense_retained_choices(problem, resources, storage, *, roles=("lhs", "weight
     Explicit ``n_choices`` restricts enumeration to original supported widths;
     constructing one selected width does not search every unrelated N panel.
     """
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     if (
         type(roles) is not tuple

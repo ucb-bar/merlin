@@ -187,7 +187,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
     enc = block.get("encoding") or {}
     source = str(enc.get("source") or "")
     if source == "rtl_facts":
-        from merlin.targetgen.rtl import facts as _F
+        from merlin.development.targetgen.rtl import facts as _F
 
         body = _F.body_if_present(target)
         table = next((i for i in body.get("interfaces", ()) if i.get("name") == enc.get("table")), {})
@@ -199,7 +199,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
             return set(names.values()), source
         return set((table.get(enc.get("names_from") or "names") or {}).values()), "rtl_facts"
     if source == "isa_model":
-        from merlin.targetgen import isa_model as _IM
+        from merlin.development.targetgen import isa_model as _IM
 
         try:
             model = _IM.isa_model_for_target(target)
@@ -221,7 +221,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
         # convention. The same derivation the RTL introspector already uses for a target that ships
         # headers -- reused rather than restated, so the two cannot drift.
         from merlin.common import provenance as _prov
-        from merlin.targetgen.rtl.circt_introspect import _functs_from_headers
+        from merlin.development.targetgen.rtl.circt_introspect import _functs_from_headers
 
         try:
             root = Path(_prov.verify(str(enc.get("pin"))).observed.path)
@@ -240,7 +240,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
         # covers, so the gap stays visible.
         return set(), "mnemonic_grammar [declared, not verifiable against a decode table]"
     if source == "isa_encoding":
-        from merlin.targetgen.rtl import mlc_bridge as _mb
+        from merlin.development.targetgen.rtl import mlc_bridge as _mb
 
         got = _mb.isa_encoding_for(target) or {}
         names = set(got.get("opcodes") or {})
@@ -264,7 +264,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
 
 def _roles_from_isa_model(target: str) -> dict[str, tuple[str, ...]]:
     """Roles for a self-hosted-ISA target, bridged from its DERIVED IsaModel role table."""
-    from merlin.targetgen import isa_model as _IM
+    from merlin.development.targetgen import isa_model as _IM
 
     try:
         model = _IM.isa_model_for_target(target)
@@ -280,7 +280,7 @@ def _roles_from_isa_model(target: str) -> dict[str, tuple[str, ...]]:
 
 def _matrix_unit(block: dict) -> dict:
     """One selected provider's matrix declaration, never a checkout-global fallback."""
-    from merlin.targetgen.target_registry import load_matrix_contract
+    from merlin.development.targetgen.target_registry import load_matrix_contract
 
     enc = block.get("encoding") or {}
     units = load_matrix_contract(str(block.get("target") or ""))["units"]

@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import broker_evidence as BE
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
@@ -26,6 +25,7 @@ from merlin.development.backend.optimization.mechanism_program import MechanismP
 from merlin.development.backend.optimization.portfolio_checkpoint import load_historical_reference
 from merlin.development.backend.optimization.portfolio_evaluation import FastPortfolioEvaluation
 from merlin.development.backend.optimization.stage_inputs import sentinel_identity
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)

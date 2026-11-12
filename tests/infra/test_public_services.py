@@ -192,8 +192,8 @@ def _process_package(tmp_path, mode="valid"):
 
     import yaml
 
-    from merlin.targetgen.contract import schemas
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract import schemas
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     root, contract = (tmp_path / "package", tmp_path / "contract")
     root.mkdir()

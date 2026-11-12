@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from merlin.analysis.perf.candidate_cost_graph import compose_candidate_cost_graph, observe_candidate_cost_graph
+from merlin.analysis.perf.schedule_pressure import pressure_of
 from merlin.development.backend.feedback.joint_diagnostics import _artifact
-from merlin.perf.candidate_cost_graph import compose_candidate_cost_graph, observe_candidate_cost_graph
-from merlin.perf.schedule_pressure import pressure_of
 
 
 def produce(

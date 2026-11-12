@@ -36,8 +36,8 @@ def _file(path):
 def finalize(report, *, root, written, failures, generation_identity, semantic_basis=None):
     """Join obligations to actual independently screened program and golden bytes."""
     from merlin.development.backend.source_inputs import fingerprint
+    from merlin.development.targetgen import golden_store
     from merlin.development.testgen.coverage_commitment import _selected_program
-    from merlin.targetgen import golden_store
 
     root = Path(root)
     report = copy.deepcopy(report)
@@ -202,8 +202,8 @@ def verify_report(root, report=None, *, verify_sources=True):
     pass verify_sources=False; that option never relaxes capsule checks.
     """
     from merlin.development.backend.source_inputs import fingerprint
+    from merlin.development.targetgen import golden_store
     from merlin.development.testgen.coverage_commitment import _selected_program
-    from merlin.targetgen import golden_store
 
     root = Path(root)
     if report is None:

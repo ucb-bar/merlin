@@ -145,7 +145,7 @@ def _int8_chain_step(lhs, rhs, acc_scale: float, semantics: dict):
 
     import numpy as np
 
-    from ..targetgen.operation_numerics import integer_partial_sum_bound
+    from merlin.development.targetgen.operation_numerics import integer_partial_sum_bound
 
     left, right = np.asarray(lhs), np.asarray(rhs)
     if (

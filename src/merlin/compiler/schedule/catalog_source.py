@@ -21,7 +21,7 @@ def records(prefix):
                     "emit_scf_commands",
                 )
             ]
-            + [prefix + "llvm_program.FnBuilderIndexAdapter", "merlin.llvmlower.host_builder.FnBuilder"],
+            + [prefix + "llvm_program.FnBuilderIndexAdapter", "merlin.compiler.lower.model.host_builder.FnBuilder"],
             "usage": [
                 "Attach closed signed-i64 Const sets/assumes to actual command Calls.",
                 "Pass allow_persistent_state=True explicitly at every SCF bridge boundary.",
@@ -35,7 +35,7 @@ def records(prefix):
         },
         {
             "name": "current_source_quantized_residual_edges",
-            "symbols": ["merlin.llvmlower.quantized_sum_source.discover_quantized_sum_sources"],
+            "symbols": ["merlin.compiler.lower.model.quantized_sum_source.discover_quantized_sum_sources"],
             "usage": [
                 "Discover current sole-use contraction-to-residual edges from actual host SSA.",
                 "Inspect each unchanged producer/readout and residual/readout program and source shape.",
@@ -51,7 +51,7 @@ def records(prefix):
         {
             "name": "parallel_emitted_variant_shape_evaluation",
             "symbols": [
-                "merlin.transforms.evaluated_exploration." + name
+                "merlin.compiler.transforms.evaluated_exploration." + name
                 for name in (
                     "EvaluationRequest",
                     "EvaluationCompletion",
@@ -85,7 +85,7 @@ def records(prefix):
                     "kernel_arg_order",
                 )
             ]
-            + ["merlin.llvmlower.host_builder.FnBuilder.for_logical_kernel"],
+            + ["merlin.compiler.lower.model.host_builder.FnBuilder.for_logical_kernel"],
             "usage": [
                 "Parse the selected public ABI declaration, then call FnBuilder.for_logical_kernel(cb, abi=abi).",
                 "Use the returned source-name to SSA-pointer map; semantic lhs/rhs order is not ABI order.",
@@ -99,7 +99,7 @@ def records(prefix):
         {
             "name": "shape_resource_schedule_selection",
             "symbols": [
-                "merlin.transforms.shape_policy." + name
+                "merlin.compiler.transforms.shape_policy." + name
                 for name in (
                     "PerformanceDomain",
                     "ShapeScheduleClass",
@@ -111,7 +111,7 @@ def records(prefix):
                 )
             ]
             + [
-                "merlin.transforms.pipeline_policy." + name
+                "merlin.compiler.transforms.pipeline_policy." + name
                 for name in (
                     "DimensionRef",
                     "ResourceRef",
@@ -121,10 +121,10 @@ def records(prefix):
                 )
             ]
             + [
-                "merlin.transforms.evaluated_exploration.explore_evaluated",
-                "merlin.transforms.pass_exploration.ExplorationRefused",
-                "merlin.transforms.pass_exploration.MappingProposalKey",
-                "merlin.transforms.pass_exploration.MappingProposalCache",
+                "merlin.compiler.transforms.evaluated_exploration.explore_evaluated",
+                "merlin.compiler.transforms.pass_exploration.ExplorationRefused",
+                "merlin.compiler.transforms.pass_exploration.MappingProposalKey",
+                "merlin.compiler.transforms.pass_exploration.MappingProposalCache",
             ],
             "usage": [
                 "Register bounded real pass paths and an original fallback, with separate legality predicates.",
@@ -154,9 +154,9 @@ def records(prefix):
             "symbols": [
                 "merlin.compiler.selection.knobs.KnobSettings",
                 "merlin.compiler.selection.knobs.bounded_settings",
-                "merlin.transforms.tuning_selection.KnobTrial",
-                "merlin.transforms.tuning_selection.unique_emissions",
-                "merlin.transforms.tuning_selection.select_settings",
+                "merlin.compiler.transforms.tuning_selection.KnobTrial",
+                "merlin.compiler.transforms.tuning_selection.unique_emissions",
+                "merlin.compiler.transforms.tuning_selection.select_settings",
             ],
             "usage": [
                 "Enumerate a declared knob subset: exact baseline, single changes and optional bounded pairs.",
@@ -201,14 +201,14 @@ def records(prefix):
         {
             "name": "source_checked_integer_observers",
             "symbols": [
-                "merlin.llvmlower.late_quant_rne.rewrite",
-                "merlin.llvmlower.source_expression_interval.close_scalar_i8_observer",
-                "merlin.llvmlower.source_expression_interval.build_source_interval_table",
-                "merlin.llvmlower.source_expression_interval.emit_source_interval_i8_lookup",
-                "merlin.llvmlower.source_expression_interval_llvm.rewrite_source_interval_i8_lookup",
-                "merlin.llvmlower.bounded_rne_word_cells.prepare_bounded_rne_word_cells",
-                "merlin.llvmlower.scaled_integer_finite.prove_broadcast_scaled_integer_finite",
-                "merlin.llvmlower.scaled_integer_finite_llvm.bind_finite_scale_helpers",
+                "merlin.compiler.lower.model.late_quant_rne.rewrite",
+                "merlin.compiler.lower.model.source_expression_interval.close_scalar_i8_observer",
+                "merlin.compiler.lower.model.source_expression_interval.build_source_interval_table",
+                "merlin.compiler.lower.model.source_expression_interval.emit_source_interval_i8_lookup",
+                "merlin.compiler.lower.model.source_expression_interval_llvm.rewrite_source_interval_i8_lookup",
+                "merlin.compiler.lower.model.bounded_rne_word_cells.prepare_bounded_rne_word_cells",
+                "merlin.compiler.lower.model.scaled_integer_finite.prove_broadcast_scaled_integer_finite",
+                "merlin.compiler.lower.model.scaled_integer_finite_llvm.bind_finite_scale_helpers",
             ],
             "usage": [
                 "Bind exact typed scalar arithmetic and complete saturated signed-byte observations.",
@@ -274,8 +274,8 @@ def records(prefix):
         {
             "name": "sole_observer_contraction_rows",
             "symbols": [
-                "merlin.llvmlower.contraction_row_slice.pushback_contraction_row_slices",
-                "merlin.llvmlower.contraction_row_slice.prepare_contraction_row_slices",
+                "merlin.compiler.lower.model.contraction_row_slice.pushback_contraction_row_slices",
+                "merlin.compiler.lower.model.contraction_row_slice.prepare_contraction_row_slices",
             ],
             "usage": [
                 "Before source/device binding, push back a sole static contiguous row observer.",
@@ -291,12 +291,12 @@ def records(prefix):
         {
             "name": "source_proven_shared_rhs_row_views",
             "symbols": [
-                "merlin.llvmlower.weight_prepack_runtime.fixed_arguments",
-                "merlin.llvmlower.repeated_pointwise.hoist_repeated_pointwise",
-                "merlin.llvmlower.repeated_pointwise.prepare_repeated_pointwise",
-                "merlin.transforms.shared_rhs_views.plan_shared_rhs_row_views",
-                "merlin.transforms.dense_row_batching.DenseRowBatchingBudgets",
-                "merlin.transforms.dense_row_batching.plan_source_dense_row_batching",
+                "merlin.compiler.lower.model.weight_prepack_runtime.fixed_arguments",
+                "merlin.compiler.lower.model.repeated_pointwise.hoist_repeated_pointwise",
+                "merlin.compiler.lower.model.repeated_pointwise.prepare_repeated_pointwise",
+                "merlin.compiler.transforms.shared_rhs_views.plan_shared_rhs_row_views",
+                "merlin.compiler.transforms.dense_row_batching.DenseRowBatchingBudgets",
+                "merlin.compiler.transforms.dense_row_batching.plan_source_dense_row_batching",
             ],
             "usage": [
                 "Before device grouping, use exact broadcast/view/scalar source to prepare repeated pointwise work.",

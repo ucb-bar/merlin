@@ -13,11 +13,11 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
 from merlin.experiments.corpus.preparation_io import ordinary_tree as ordinary_tree
 from merlin.experiments.corpus.preparation_io import private_json as private_json
 from merlin.experiments.definition import SpecError, read_yaml
-from merlin.targetgen import capsule_common as capsule_capsule_common
 
 from .phase_selection import validate_phase_selections
 from .preparation_generation import (
@@ -431,7 +431,7 @@ def assemble(
     loader_profile_sources: tuple[Path, ...] | None = None,
 ) -> dict:
     """Assemble generated public members, with an explicit safe historical overlay."""
-    from merlin.targetgen.sandbox.bwrap import _validate_host_sources
+    from merlin.development.targetgen.sandbox.bwrap import _validate_host_sources
 
     from ..runner import fingerprint
     from .accelerator_scope import select_members, validate_scope
@@ -684,7 +684,7 @@ def derive_release_admission(staged) -> dict:
     exists. Require one explicit decision per model so corpus growth cannot
     silently expand the expensive formal denominator.
     """
-    from merlin.targetgen import eligibility
+    from merlin.development.targetgen import eligibility
 
     if not eligibility.capability_map_for_target(staged.target):
         raise SpecError("release admission requires a resolvable nonempty hardware capability contract")
@@ -735,7 +735,7 @@ def derive_release_admission(staged) -> dict:
 def _bundle_selection(optional_levels, selected_levels, selected_variants):
     """Select declarations only; corpus and qualification policy stay unchanged."""
     from merlin.development.backend.levels import LEVELS
-    from merlin.targetgen.generate_bundles import _ARMS
+    from merlin.development.targetgen.generate_bundles import _ARMS
 
     historical = tuple(_ARMS) + tuple({"EL5": "merlin_isa", "EL6": "merlin_lean"}[level] for level in optional_levels)
     arms = historical
@@ -878,7 +878,7 @@ def _stage_capability_contract(
 def compiler_source_selection(common_substrate=None, python_source_root=None):
     """Select current SDK sources or validate an explicitly selected reviewed current release."""
     from merlin.common.paths import python_source_dir
-    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, require_current_substrate
+    from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, require_current_substrate
 
     version = CURRENT_COMMON_SUBSTRATE if common_substrate is None else common_substrate
     require_current_substrate(version)  # Retired or unknown versions refuse before output creation.
@@ -887,7 +887,7 @@ def compiler_source_selection(common_substrate=None, python_source_root=None):
         raise SpecError("compiler source selection requires an existing canonical absolute directory")
     if python_source_root is None:
         return version, root
-    from merlin.targetgen.tool_profile_shared import reviewed_shared_manifest
+    from merlin.development.targetgen.tool_profile_shared import reviewed_shared_manifest
 
     reviewed_shared_manifest(root)
     return version, root
@@ -928,15 +928,15 @@ def scaffold(
 ) -> dict:
     """Stage only declared task/selfcheck/harness resources, never prior runs or bundles."""
     from merlin.common.digest import sha256_file
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
-    from merlin.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
 
     substrate, compiler_root = compiler_source_selection(common_substrate, python_source_root)
     arms, variants = _bundle_selection(optional_levels, selected_levels, selected_variants)
     generated_sdk = None
     if python_source_root is None:
-        from merlin.targetgen import tool_registry
-        from merlin.targetgen.tool_profile_shared import prepare_shared_source_release
+        from merlin.development.targetgen import tool_registry
+        from merlin.development.targetgen.tool_profile_shared import prepare_shared_source_release
 
         tools = tuple(dict.fromkeys(tool for arm in arms for tool in tool_registry.ARM_TOOLS[arm]))
         selected_root = private / "compiler-sdk"
@@ -1067,7 +1067,7 @@ def scaffold(
         inputs["operand_revision"] = {"path": str(review_source), "sha256": digest}
     checker_inputs = ()
     if operand_protocol_selection is not None:
-        from merlin.targetgen.rocc.selected_operand_protocol import selected_inputs
+        from merlin.development.targetgen.rocc.selected_operand_protocol import selected_inputs
 
         if (
             type(operand_protocol_selection) is not tuple
@@ -1183,8 +1183,8 @@ def scaffold(
             "resource_decisions": derived["resource_decisions"],
         }
     # Generate fresh declarations, not copies that might still point at the old corpus.
-    from merlin.targetgen.generate_bundles import materialize_bundles
-    from merlin.targetgen.sandbox.toolchain import ToolchainPaths
+    from merlin.development.targetgen.generate_bundles import materialize_bundles
+    from merlin.development.targetgen.sandbox.toolchain import ToolchainPaths
 
     promoted = load_target_experiment(descriptor)
     toolchain = ToolchainPaths.from_checkout()
@@ -1263,7 +1263,7 @@ def _select_host_capability(document, selection, *, descriptor, root=None):
 
     from merlin.common.digest import sha256_file
     from merlin.common.paths import repo_root
-    from merlin.targetgen.target_experiment import HostLaneMatrix
+    from merlin.development.targetgen.target_experiment import HostLaneMatrix
 
     if not isinstance(selection, tuple) or len(selection) != 2:
         raise SpecError("host capability selection requires an exact source file and digest")
@@ -1332,7 +1332,7 @@ def _stage_public_program_view(document, selection, experiment, *, target):
 
 def admission(descriptor: Path, *, coverage_output: Path | None = None) -> dict:
     """Reuse native discovery/admission without launching an oracle or changing policy."""
-    from merlin.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
+    from merlin.development.targetgen.target_experiment import load_target_experiment, observed_experiment_contract
 
     te = load_target_experiment(descriptor)
     with observed_experiment_contract(te):
@@ -1346,14 +1346,14 @@ def _admission(te, *, coverage_output: Path | None) -> dict:
     from .public_program_suite import selected as selected_programs
 
     programs = selected_programs(te)  # Complete programs add obligations, never core RTL credit.
-    from merlin.development.testgen.certification_floor import require_direct_tier, selected_floor
-    from merlin.targetgen.contract.materialize import (
+    from merlin.development.targetgen.contract.materialize import (
         _TIER_ORDER,
         materialize_public_cohort,
         pin_cohort_builds,
         resolve_published_cohort,
         validate_materialized_cohort,
     )
+    from merlin.development.testgen.certification_floor import require_direct_tier, selected_floor
 
     from .publication import require_accelerator_placement
 

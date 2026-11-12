@@ -4,10 +4,10 @@ include NOTICE
 # Independent tools are released separately from the Merlin compiler.
 prune tools
 global-exclude *.pyc *.pyo
-include src/merlin/semantic_compiler/egg_bridge/Cargo.toml
-include src/merlin/semantic_compiler/egg_bridge/Cargo.lock
-include src/merlin/semantic_compiler/egg_bridge/src/main.rs
-include src/merlin/semantic_compiler/constant_math.c
+include src/merlin/compiler/semantic/egg_bridge/Cargo.toml
+include src/merlin/compiler/semantic/egg_bridge/Cargo.lock
+include src/merlin/compiler/semantic/egg_bridge/src/main.rs
+include src/merlin/compiler/semantic/constant_math.c
 prune src/merlin/resources/contracts/examples
 # Public package assets are selected once by build_tools/package_resources.json.
 prune experiments

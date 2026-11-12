@@ -394,7 +394,7 @@ def windowed_contraction_extents(module, out: dict | None = None) -> dict:
     import math
 
     from merlin.common import mlir_query as mq
-    from merlin.xdsl_dialects.lowering import contraction_coverage as cc
+    from merlin.compiler.dialects.lowering import contraction_coverage as cc
 
     out = {} if out is None else out
     for op in mq.walk(module):

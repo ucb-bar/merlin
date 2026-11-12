@@ -123,7 +123,7 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
         caps["linux_boards"] = ("WS-A/D", "flow: linux boards of the selected board catalog", ["MERLIN_BOARD_CATALOG"])
         derived["linux_boards"] = (detail, _CATALOG_ERROR)
     try:
-        from merlin.targetgen import target_registry as tr
+        from merlin.development.targetgen import target_registry as tr
 
         names = tr.all_targets()
     except Exception:
@@ -166,7 +166,7 @@ def _backend_probe(target: str, backend: str) -> tuple[str, str]:
         if backend == "simulator":
             return ("available", "pure-Python model (merlin.runtime.simulator)")
         if backend == "vcs":
-            ho = importlib.import_module("merlin.targetgen.heavy_oracles")
+            ho = importlib.import_module("merlin.development.targetgen.heavy_oracles")
             return ("available" if ho.vcs_available(target) else "unavailable", "")
         if backend == "zephyr":
             zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
@@ -194,16 +194,16 @@ def _probe(key: str) -> tuple[str, str]:
     """Return (status, detail) for a capability. status in {available, unavailable, error}."""
     try:
         if key == "xdsl":
-            m = importlib.import_module("merlin.xdsl_dialects._common")
+            m = importlib.import_module("merlin.compiler.dialects._common")
             return ("available" if getattr(m, "HAS_XDSL", False) else "unavailable", "")
         if key == "llvm_m2m_toolchain":
-            tc = importlib.import_module("merlin.llvmlower.toolchain")
+            tc = importlib.import_module("merlin.compiler.lower.model.toolchain")
             return ("available" if tc.available() else "unavailable", "")
         if key == "spike_rv64gcv":
             sp = importlib.import_module("merlin.runtime.backends.spike")
             return ("available" if sp.available() else "unavailable", "")
         if key == "firesim":
-            ho = importlib.import_module("merlin.targetgen.heavy_oracles")
+            ho = importlib.import_module("merlin.development.targetgen.heavy_oracles")
             return ("available" if ho.firesim_queue_alive() else "unavailable", "")
         if key == "zephyr_spike":
             zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
@@ -227,11 +227,11 @@ def _probe(key: str) -> tuple[str, str]:
         if key == "chia":
             # Import-only probe in the selected environment: a Python executable alone
             # does not establish Chia compatibility. Never initialize Ray here.
-            from merlin.benchharness.chia_bridge import chia_python
+            from merlin.evaluation.harness.chia_bridge import chia_python
 
             chia_py = chia_python()
             probe = subprocess.run(
-                [chia_py, "-I", "-c", "from merlin.benchharness.chia_bridge import require_chia; require_chia()"],
+                [chia_py, "-I", "-c", "from merlin.evaluation.harness.chia_bridge import require_chia; require_chia()"],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -265,7 +265,7 @@ def _interpreters() -> dict[str, str]:
     """Report the three isolated interpreters the reproduction flow keeps separate."""
     out: dict[str, str] = {}
     try:
-        from merlin.benchharness.chia_bridge import chia_python, driver_python
+        from merlin.evaluation.harness.chia_bridge import chia_python, driver_python
 
         for label, resolve in (
             ("driver (MERLIN_EXPERIMENT_PYTHON)", driver_python),

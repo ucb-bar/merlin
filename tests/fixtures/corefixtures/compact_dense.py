@@ -7,7 +7,7 @@ from merlin.compiler.schedule.compact_dense import (
     DenseLoopStorage,
     DenseMemoryView,
 )
-from merlin.transforms.dense_planning import DenseProblem, DenseResources
+from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
 
 
 def encode(op):

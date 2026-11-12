@@ -78,7 +78,7 @@ def find_zero_initializer_groups(module, *, max_source_operations=10_000, max_so
     disappear. Unknown scalar, layout, aliasing or arithmetic semantics retain
     the original route. No model identity or provenance label selects a group.
     """
-    from merlin.transforms.dense_ir import recognize_signed_integer_matmul
+    from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
 
     if type(module) is not builtin.ModuleOp:
         raise ValueError("zero initializer grouping requires the current original typed module")

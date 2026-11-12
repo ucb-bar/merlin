@@ -19,7 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from merlin.benchharness import hash_tree
 from merlin.common.artifacts import cache_dir
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization import gsim_digest_readback as DIGEST
@@ -27,10 +26,11 @@ from merlin.development.backend.optimization import gsim_gate as GATE
 from merlin.development.backend.optimization import gsim_workload as CERTPROD
 from merlin.development.backend.optimization import measurement_evidence as ME
 from merlin.development.backend.optimization import measurement_support as MS
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen.contract import compile as OOT  # noqa: F401 -- the oracle tests patch here
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import runner as CR
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen.contract import compile as OOT  # noqa: F401 -- the oracle tests patch here
+from merlin.evaluation.harness import hash_tree
 
 ARMS = ME.ARMS
 #: Two, because the engine is deterministic and the third replicate re-derives a number the second
@@ -621,7 +621,7 @@ def _gsim_l3_adapter(
     LLVM-key store, rebuilding the complete harness before every execution.
     """
     engine = _engine_identity(certificate)
-    from merlin.targetgen.contract.artifact_retesting import active_artifact_retests
+    from merlin.development.targetgen.contract.artifact_retesting import active_artifact_retests
 
     if type(reuse_measurement) is not bool:
         raise ValueError("measurement reuse requires an explicit boolean")
@@ -1286,8 +1286,8 @@ def execute_schedule(
     """
     from merlin.development.backend.feedback.compiler_pass_delegation import scoped_selected_parent_pass_delegation
     from merlin.development.backend.optimization.compiler_library_state import handoff_selection
-    from merlin.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
-    from merlin.targetgen.compiler_pass_selection import active_compiler_passes, scoped_compiler_passes
+    from merlin.development.targetgen.compiler_library import active_compiler_library, scoped_compiler_library
+    from merlin.development.targetgen.compiler_pass_selection import active_compiler_passes, scoped_compiler_passes
 
     library = handoff_selection(plan)
     from merlin.development.backend.optimization import compiler_pass_preparation as PREPARATION

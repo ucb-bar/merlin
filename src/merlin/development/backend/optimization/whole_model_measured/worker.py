@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import gates as G
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured import registry as R
@@ -40,7 +41,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
     write_json_atomic,
 )
 from merlin.development.backend.optimization.whole_model_measured.machines import MachineRefusal, machine_from_spec
-from merlin.perf import whole_model_verdict as V
 
 #: TWO MACHINES, ONE CANDIDATE: a TIMING build on the board and a LOCALLY graded build of the same
 #: program on a functional model on the host, run in parallel.
@@ -148,7 +148,7 @@ def _invalidate_on_failed_check(verdict: Mapping[str, Any], check: Mapping[str, 
 def _apply_exactness(job: Mapping[str, Any], verdict: Mapping[str, Any], build: Mapping[str, Any]) -> dict[str, Any]:
     """``verdict`` with every group held to the run's exactness contract (carried by value on the job;
     the default -- every form exact -- when the run declared none), the contract recorded on it."""
-    from merlin.perf import exactness as EX
+    from merlin.analysis.perf import exactness as EX
 
     spec = job.get("exactness") or {}
     contract = EX.Contract.from_value(spec.get("contract"), target=str(job.get("target") or ""))

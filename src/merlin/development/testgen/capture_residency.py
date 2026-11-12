@@ -47,7 +47,7 @@ def _bound_capture_inventory(
         )
     ):
         raise ValueError("capture-shape basis and requirement disagree on capture roster or bytes")
-    from merlin.targetgen import claim_models
+    from merlin.development.targetgen import claim_models
 
     if any(claim_models.is_claim_bundle(label) for label in basis_apps):
         raise ValueError("capture-shape basis contains a held-out validation workload")
@@ -56,7 +56,7 @@ def _bound_capture_inventory(
 
 def _measurable_residency_boundaries(record: dict, tile: int) -> list[dict]:
     """Prove emitted endpoint points straddle one RTL-sized band boundary."""
-    from merlin.targetgen import memory_regime as MR
+    from merlin.development.targetgen import memory_regime as MR
 
     pairs = []
     capacity = record.get("capacity_rows")
@@ -161,8 +161,8 @@ def _capture_residency_sweep(
     ):
         raise ValueError("captured residency selection differs from the frozen selected RTL facts")
     from merlin.common import quant_formats
-    from merlin.targetgen import address_space as AS
-    from merlin.targetgen import memory_regime as MR
+    from merlin.development.targetgen import address_space as AS
+    from merlin.development.targetgen import memory_regime as MR
 
     try:
         wanted_dtype = quant_formats.get(getattr(binding, "operand_dtype", None)).name
@@ -269,7 +269,7 @@ def _capture_residency_sweep(
     m, n, witnesses = selected_shape
     numeric_obligation = {"status": "not_applicable", "reason": "selected datapath is not integer"}
     if getattr(binding, "integer", False):
-        from merlin.targetgen.operation_numerics import integer_split_k_limit
+        from merlin.development.targetgen.operation_numerics import integer_split_k_limit
 
         software = getattr(evidence, "software_spec", None) or {}
         semantics = software.get("numerical_semantics") or {}

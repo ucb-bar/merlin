@@ -47,7 +47,7 @@ def _context(context, cert, contract=None):
 
 def issue(ws, source_ws, result, *, capsule, context, cert_tier, receipt_path, contract=None):
     """Persist scheduling authority only for closed, independently audited L2."""
-    from merlin.targetgen.capsule_grade import _qualified_model_check
+    from merlin.development.targetgen.capsule_grade import _qualified_model_check
 
     path = Path(receipt_path)
     receipt_bytes = path.read_bytes()
@@ -100,7 +100,7 @@ def issue(ws, source_ws, result, *, capsule, context, cert_tier, receipt_path, c
         **_context(context, cert_tier, contract),
     }
     # Target belongs to the immutable selected invocation, not result fields.
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     record["target"] = load_target_experiment(context.descriptor).target
     destination = _path(ws, digest, name)
@@ -128,8 +128,8 @@ def lookup(ws, *, digest, capsule, context, cert_tier, contract=None):
 
 
 def verify(path, *, source_digest, capsules, context, cert_tier, contract=None):
-    from merlin.targetgen.model_gate_continuation import ModelGateContinuation
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.model_gate_continuation import ModelGateContinuation
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     path = Path(path)
     if path.is_symlink() or path.resolve() != path or not path.is_file():

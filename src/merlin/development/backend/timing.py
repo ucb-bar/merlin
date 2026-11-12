@@ -48,7 +48,7 @@ def barrier_timing_identity(tier: dict) -> dict | None:
     No requested engine substitutes for absent provenance. Private paths and
     receipt/tool details remain in the existing host-owned result.
     """
-    from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+    from merlin.development.targetgen.rtl_engine_policy import ENGINE_PRIORITY
 
     if not isinstance(tier, dict) or tier.get("status") != "pass":
         return None
@@ -90,7 +90,7 @@ def _same(left, right) -> bool:
 
 
 def _selected_engine(target: str) -> str:
-    from merlin.targetgen.oracle_policy import select_chipyard_engine
+    from merlin.development.targetgen.oracle_policy import select_chipyard_engine
 
     try:
         engine = select_chipyard_engine(target).get("engine")
@@ -118,7 +118,7 @@ def requires_chipyard_timing(descriptor: Path | None) -> bool:
     """Require byte-bound timing for Chipyard or an unclassifiable descriptor (fail closed)."""
     if descriptor is None:
         return True
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     try:
         return load_target_experiment(descriptor).sim_via == "chipyard"
@@ -157,7 +157,7 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
     emitter-build, clock, counter, runtime or physical correspondence.
     """
     from merlin.common.digest import sha256_file
-    from merlin.targetgen.target_experiment import (
+    from merlin.development.targetgen.target_experiment import (
         declared_vs_resolved_contract,
         load_capability_manifest,
         load_target_experiment,
@@ -214,9 +214,9 @@ def selected_engine_binding(*, descriptor: Path, target: str) -> dict:
                 receipt=receipt,
             )
         elif engine == "gsim":
+            from merlin.development.targetgen import gsim_emulator
             from merlin.runtime.backends import base as backends
             from merlin.runtime.modelinputs import selected_firrtl
-            from merlin.targetgen import gsim_emulator
 
             facts_path = os.environ.get("MERLIN_RTL_FACTS", "").strip()
             if not facts_path:

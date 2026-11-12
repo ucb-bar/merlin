@@ -12,7 +12,7 @@ from pathlib import Path
 
 from merlin.common import invocation_record
 from merlin.development.backend.optimization.contracts import StageGateError, exact_tree_record
-from merlin.targetgen import package_runtime
+from merlin.development.targetgen import package_runtime
 
 
 def _plain(path):

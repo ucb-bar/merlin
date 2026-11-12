@@ -16,8 +16,8 @@ from pathlib import Path
 def typed_required_instances(scope: dict, inventory: dict) -> dict:
     """Bind every required chain occurrence to raw MLIR operation IDs and SSA types."""
     from merlin.common import mlir_query as mq
-    from merlin.targetgen.model_coverage import region_ops
-    from merlin.targetgen.scope_census import chains
+    from merlin.development.targetgen.model_coverage import region_ops
+    from merlin.development.targetgen.scope_census import chains
 
     required = scope.get("required") or []
     wanted = {row["signature"]: row["occurrences"] for row in required}

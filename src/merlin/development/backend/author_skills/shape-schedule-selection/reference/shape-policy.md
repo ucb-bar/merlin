@@ -1,4 +1,4 @@
-# Per-class selection with merlin.transforms.shape_policy
+# Per-class selection with merlin.compiler.transforms.shape_policy
 
 ## Specialize schedules without duplicating lowering
 
@@ -43,14 +43,14 @@ Alignment (`n % edge == 0`) is a legality predicate of the variant, not an empir
 
 ## The call
 
-Inventory 22 exposes `merlin.transforms.shape_policy`. It operates on real `PipelineVariant` paths
+Inventory 22 exposes `merlin.compiler.transforms.shape_policy`. It operates on real `PipelineVariant` paths
 and `CompletedObservation` feedback; it does not run simulations or infer the numerical status. Use
 the selected full-compiler implementation digest, including authored pass and target-adapter
 overrides, in addition to the generic library digest:
 
 ```python
-from merlin.transforms.pipeline_policy import ResourcePredicate
-from merlin.transforms.shape_policy import (
+from merlin.compiler.transforms.pipeline_policy import ResourcePredicate
+from merlin.compiler.transforms.shape_policy import (
     ShapeCaseFeedback, ShapeScheduleClass, PerformanceDomain, assess_shape_policy,
 )
 

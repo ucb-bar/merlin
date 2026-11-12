@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from ...llvmlower import toolchain
 
+from merlin.compiler.lower.model import toolchain
 
 DRAM_BASE_SYMBOL = "MERLIN_DRAM_BASE"
 

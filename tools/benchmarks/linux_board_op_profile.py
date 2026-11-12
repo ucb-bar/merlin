@@ -12,7 +12,7 @@ silicon, matmul is 1.3-6 % of a model once the kernel is fast (dispatch_breakdow
 attribution and ranks what is left on the table by MEASURED milliseconds.
 
 METHOD (default-OFF; the un-instrumented build is byte-identical).
-``merlin.llvmlower.op_profile`` interleaves a one-instruction-cost ``@merlin_prof_mark(id)`` call
+``merlin.compiler.lower.model.op_profile`` interleaves a one-instruction-cost ``@merlin_prof_mark(id)`` call
 between the top-level ops of ``func.func @forward`` (plus a sentinel before ``func.return``); the
 shim ``runtime/c/merlin_op_prof.c`` samples ``rdtime`` at each mark and credits the elapsed ticks
 to the previous op's id. ``remote_linux.build_binary(..., op_profile=True)`` splices this in AFTER
@@ -78,7 +78,7 @@ import numpy as np
 
 from merlin.common.paths import artifacts_dir
 from merlin.compiler.backend.host import load_host_package as load_rvv_package
-from merlin.llvmlower import op_profile as opf
+from merlin.compiler.lower.model import op_profile as opf
 from merlin.runtime import remote_linux
 from merlin.runtime.backends import zephyr_model as zm
 

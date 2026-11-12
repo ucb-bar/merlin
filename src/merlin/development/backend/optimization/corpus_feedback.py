@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf.agent_guidance import inspect_compiler_package
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization.broker import BrokerAction
 from merlin.development.backend.optimization.broker_evidence import _is_sha256, workflow_binding
@@ -31,7 +32,6 @@ from merlin.development.backend.optimization.broker_policy import (
 from merlin.development.backend.optimization.contracts import StageGateError
 from merlin.development.backend.optimization.contracts import canonical_json as _canonical_json
 from merlin.development.backend.optimization.contracts import sha256_file as _sha256_file
-from merlin.perf.agent_guidance import inspect_compiler_package
 
 _ROOFLINE_STATUSES = ("derived", "unknown", "refuted")
 _ROOFLINE_LIMITERS = (None, "compute", "movement")

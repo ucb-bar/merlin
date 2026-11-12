@@ -9,9 +9,9 @@ from compiler_profile import bundle, prepare, reseal
 
 from merlin.common import frozen_imports
 from merlin.compiler.schedule.export import namespace_replacements
-from merlin.targetgen import tool_registry as TR
-from merlin.targetgen.sandbox import bwrap
-from merlin.targetgen.tool_profile import tool_profile_prompt, verify_tool_profile
+from merlin.development.targetgen import tool_registry as TR
+from merlin.development.targetgen.sandbox import bwrap
+from merlin.development.targetgen.tool_profile import tool_profile_prompt, verify_tool_profile
 
 
 @pytest.fixture(scope="module")

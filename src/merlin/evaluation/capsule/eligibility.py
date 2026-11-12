@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from merlin.targetgen.runner_config import _config_for_target
+from merlin.development.targetgen.runner_config import _config_for_target
 
 
 def _dtype_has_no_datapath(region, cmap, _el) -> tuple[bool, str]:
@@ -59,8 +59,8 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
     suite shrink itself into a better score, which is the opposite of the point.
     """
     try:
-        from merlin.targetgen import coverage_report as _cr
-        from merlin.targetgen import eligibility as _el
+        from merlin.development.targetgen import coverage_report as _cr
+        from merlin.development.targetgen import eligibility as _el
 
         cmap = _el.capability_map_for_target(target)
     except Exception:  # noqa: BLE001 - never block a grade
@@ -111,7 +111,7 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         # Explicit frozen host-only work is also gradeable through the existing
         # Merlin host provider. That route rechecks source eligibility and credits
         # infrastructure only, never candidate accelerator capability.
-        from merlin.targetgen.owned_host_leaf_execution import declared_host_only
+        from merlin.development.targetgen.owned_host_leaf_execution import declared_host_only
 
         if _forbids_the_mesh(c) or declared_host_only(c):
             keep.append(c)
@@ -155,8 +155,8 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     if cap is None:
         return True
     try:
-        from merlin.targetgen import coverage_report as _cr
-        from merlin.targetgen import eligibility as _el
+        from merlin.development.targetgen import coverage_report as _cr
+        from merlin.development.targetgen import eligibility as _el
 
         cmap = _el.capability_map_for_target(target)
         if not cmap:
@@ -167,7 +167,7 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
         return True
     if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
         return True
-    from merlin.targetgen.owned_host_leaf_execution import declared_host_only
+    from merlin.development.targetgen.owned_host_leaf_execution import declared_host_only
 
     if _forbids_the_mesh(cap) or declared_host_only(cap):
         return True

@@ -91,21 +91,21 @@ def rewrite_tensor_module(
 
 def legalize_bounded_rounding(source, *, host_isa=None, combine_clamp=False):
     """Legalize closed LLVM integer observations under an explicit CPU policy."""
-    from merlin.llvmlower.late_quant_rne import rewrite
+    from merlin.compiler.lower.model.late_quant_rne import rewrite
 
     return rewrite(source, host_isa=host_isa, combine_clamp=combine_clamp)
 
 
 def legalize_constant_clamps(source):
     """Retain IEEE values while simplifying complete finite-bound clamp calls."""
-    from merlin.llvmlower.constant_float_clamp import rewrite
+    from merlin.compiler.lower.model.constant_float_clamp import rewrite
 
     return rewrite(source)
 
 
 def rewrite_fma_packets(source, *, capability, width, ordinary_nontrapping, exception_flags_unobserved):
     """Schedule source FMA calls using an explicit host CPU emitter and effects."""
-    from merlin.llvmlower.constant_fma_packet import rewrite
+    from merlin.compiler.lower.model.constant_fma_packet import rewrite
     from merlin.runtime.host_fma_packet import RV64GCScalarFmaCapability
 
     if type(capability) is not RV64GCScalarFmaCapability:

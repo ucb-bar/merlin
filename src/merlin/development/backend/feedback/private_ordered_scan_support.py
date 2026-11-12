@@ -16,8 +16,8 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
 from merlin.development.backend.feedback import private_control_support as control
-from merlin.frontends.capture_normalization import normalize_capture_mlir
 
 FIELD = "ordered_f32_scan_support"
 PENDING = "source_ordered_f32_scan_pending_build"
@@ -561,9 +561,9 @@ def admit(
     is never converted into host support by this accounting step.
     """
     from merlin.common import mlir_query as mq
-    from merlin.targetgen import operation_accounting as oa
-    from merlin.targetgen import semantic_families as sf
-    from merlin.targetgen.eligibility import (
+    from merlin.development.targetgen import operation_accounting as oa
+    from merlin.development.targetgen import semantic_families as sf
+    from merlin.development.targetgen.eligibility import (
         RegionDescriptor,
         is_eligible,
         providers_from_contract,

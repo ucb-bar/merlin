@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from merlin.analysis.perf.component_cost import COMPLETE_STAGES, ComponentFeatureObservation, complete_component_cost
 from merlin.common import invocation_record
 from merlin.development.backend.component_witness import REQUIRED_EXECUTION_EFFECTS, verify_component_stage_witness
 from merlin.development.backend.optimization.component_applicability import applicability_observation
@@ -11,7 +12,6 @@ from merlin.development.backend.optimization.component_execution import _member_
 from merlin.development.backend.optimization.component_measurement_protocol import MatchedComponentMeasurement
 from merlin.development.backend.optimization.component_runtime_qualification import _evidence_file, _invocations
 from merlin.development.backend.optimization.contracts import StageGateError, mapping_file, sha256_file
-from merlin.perf.component_cost import COMPLETE_STAGES, ComponentFeatureObservation, complete_component_cost
 
 
 def actual_measurement_product(invocations, *, measurement, measurement_sha256, executable_sha256):
@@ -156,7 +156,7 @@ class _InvocationOwner:
 
 def calibration_evidence(*, runtime, adapter, samples):
     """Require independent physical calibration provenance, not pinned history."""
-    from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
+    from merlin.analysis.perf.phase2_calibration_bundle import prepare_phase2_calibration
 
     pins = dict(runtime.source_pins)
     if adapter not in pins or sha256_file(adapter) != pins[adapter]:

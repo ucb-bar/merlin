@@ -30,19 +30,19 @@ def join_components(
 ):
     from xdsl.dialects import func
 
+    from merlin.compiler.dialects._common import text
+    from merlin.compiler.dialects.lowering import output_fusion as OF
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+    from merlin.compiler.lower.model.device_shim import logical_buffers
+    from merlin.compiler.lower.model.sibling_components import prepare_sibling_components
+    from merlin.compiler.lower.model.sibling_readout_commands import require_writer_interface
+    from merlin.compiler.lower.model.sibling_source_route import _command_buffer
     from merlin.development.backend.feedback.private_group_provenance import (
         eligible_source_identity,
         join_routed_source_groups,
     )
-    from merlin.frontends.linalg_mlir import parse_mlir_file
-    from merlin.llvmlower.device_shim import logical_buffers
-    from merlin.llvmlower.sibling_components import prepare_sibling_components
-    from merlin.llvmlower.sibling_readout_commands import require_writer_interface
-    from merlin.llvmlower.sibling_source_route import _command_buffer
+    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir
     from merlin.runtime.modelinputs import file_sha256
-    from merlin.targetgen.contract.interface_emit import emit_interface_mlir
-    from merlin.xdsl_dialects._common import text
-    from merlin.xdsl_dialects.lowering import output_fusion as OF
 
     def sha(value):
         return hashlib.sha256(value.encode()).hexdigest()
@@ -50,7 +50,7 @@ def join_components(
     before = text(module, generic=True)
     projection, preparation = module, None
     if preparation_receipt is not None:
-        from merlin.llvmlower.weight_prepack import revalidate_build_preparation
+        from merlin.compiler.lower.model.weight_prepack import revalidate_build_preparation
 
         path = Path(preparation_receipt)
         if not path.is_absolute() or any(p.is_symlink() for p in (path, *path.parents)):

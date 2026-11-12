@@ -21,8 +21,8 @@ from merlin.compiler.components import Component, scalar_cpu
 from merlin.compiler.invocation import request_identity
 from merlin.compiler.pipeline import PlannedCompiler
 from merlin.compiler.planning.execution import select_execution
-from merlin.system.topology import SelectedTopology
-from merlin.transforms.pipeline_state import PipelineContext
+from merlin.compiler.transforms.pipeline_state import PipelineContext
+from merlin.target.system.topology import SelectedTopology
 
 __all__ = ["Component", "SystemCompiler", "scalar_cpu"]
 
@@ -53,7 +53,7 @@ class SystemCompiler:
     the IR or approve a backend implementation by acknowledging annotations.
     """
 
-    name = "merlin.system"
+    name = "merlin.target.system"
 
     def __init__(
         self,
@@ -230,7 +230,7 @@ class SystemCompiler:
             raise ValueError("preparation admission changed the original request or selected stage")
 
     def validate(self, request):
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         self._revalidate()
         if request.source.kind != "mlir":
@@ -241,8 +241,8 @@ class SystemCompiler:
         control_entry(request.options, entry, self.image.deployment if self.image is not None else None)
 
     def compile(self, request):
-        from merlin.frontends.linalg_mlir import parse_mlir_text
-        from merlin.llvmlower.offload_plan import bind_source
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+        from merlin.compiler.lower.model.offload_plan import bind_source
 
         self.validate(request)
         if request.preparation is not None:

@@ -1,7 +1,7 @@
 # mlc arc models: what merlin needs to know about each bit-exact model mlc builds, keyed by the mlc arc
 # key (the `runs/circt-arc/<key>/` directory under MERLIN_MLC_DIR).
 #
-# DATA, read only by merlin.targetgen.rtl.mlc_bridge (load_arc_models / arc_model). The library holds no
+# DATA, read only by merlin.development.targetgen.rtl.mlc_bridge (load_arc_models / arc_model). The library holds no
 # arc key and no file name: registering a model is an entry here, never an edit to library code. A merlin
 # target reaches its model under its own name, or under the `arc_target` its contracts/residual.yaml
 # declares (a composite SoC whose model mlc registers under the embedded cluster's name).
@@ -9,7 +9,7 @@
 # Fields (closed set; an unknown field or value is refused at load):
 #   kind          The compute-unit kind of a model merlin reaches under the model's own name and has no
 #                 capability manifest for yet. It routes fact extraction by kind
-#                 (merlin.targetgen.families.FamilyProfile.fact_extractor). A target with a manifest
+#                 (merlin.development.targetgen.families.FamilyProfile.fact_extractor). A target with a manifest
 #                 always takes the manifest's kind; this is never consulted for it.
 #   isa_encoding  The file, under `runs/circt-arc/<key>/outputs/`, that mlc's isa_encoding pass writes the
 #                 recovered instruction encoding to ({inst_width, fields, opcodes, provenance}). The

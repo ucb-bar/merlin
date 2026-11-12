@@ -188,8 +188,8 @@ def _metrics_roster(context, *, public_roots=None, contract=None):
     """Read the same admitted public core, scale and program owners as grading."""
     from merlin.common.paths import resolve_grant
     from merlin.development.backend.feedback import public_programs, public_scalability
-    from merlin.targetgen.capsule_common import discover_capsules
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     experiment = load_target_experiment(context.descriptor)
     roots = experiment.graded_roots() if public_roots is None else public_roots

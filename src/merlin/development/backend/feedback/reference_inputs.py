@@ -81,7 +81,7 @@ def _reference_root(workspace, bundle_manifest, repo):
         return None
     import yaml
 
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     manifest = Path(bundle_manifest)
     if (

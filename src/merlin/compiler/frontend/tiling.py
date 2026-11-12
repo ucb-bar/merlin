@@ -11,7 +11,7 @@ import argparse
 import json
 from dataclasses import dataclass
 
-from merlin.semantic_compiler.model import KernelRequest
+from merlin.compiler.semantic.model import KernelRequest
 
 
 @dataclass(frozen=True)
@@ -39,8 +39,8 @@ def prepare_ordered_request(args, binding, source_request, precision_plan=None):
 
 def prepare_ordered_k(args: argparse.Namespace, binding, source_request):
     """Ask the selected target to qualify exact ordered-K partitioning."""
+    from merlin.compiler.semantic.target_binding import NativeCompilationError
     from merlin.compiler.transforms.contraction_k import OrderedKTiling
-    from merlin.semantic_compiler.target_binding import NativeCompilationError
 
     tile_k = getattr(args, "ordered_k_tile", None)
     if tile_k is None:
@@ -66,8 +66,8 @@ def prepare_ordered_k(args: argparse.Namespace, binding, source_request):
 
 def prepare_ordered_mn(args: argparse.Namespace, binding, source_request):
     """Select one checked outer output tile from the selected target's geometry."""
+    from merlin.compiler.semantic.target_binding import NativeCompilationError
     from merlin.compiler.transforms.contraction_mn import OrderedMNTiling
-    from merlin.semantic_compiler.target_binding import NativeCompilationError
 
     tile_m = getattr(args, "ordered_m_tile", None)
     tile_n = getattr(args, "ordered_n_tile", None)

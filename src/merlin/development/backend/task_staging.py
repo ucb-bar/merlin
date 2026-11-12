@@ -22,10 +22,10 @@ from merlin.development.backend import authoring as A
 from merlin.development.backend import run_inputs as RI
 from merlin.development.backend.context import InvocationContext
 from merlin.development.backend.feedback import loop_grading as LG
+from merlin.development.targetgen import tool_registry as _TR
+from merlin.development.targetgen.generalization_prompt import append_general_compiler_contract
+from merlin.development.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen import tool_registry as _TR
-from merlin.targetgen.generalization_prompt import append_general_compiler_contract
-from merlin.targetgen.target_experiment import load_capability_manifest, load_target_experiment
 
 
 @dataclass(frozen=True)
@@ -128,7 +128,7 @@ def resolved_tools(
     manifest_file = bdir / "input_bundle_manifest.yaml"
     if manifest_file.is_file():
         from merlin.common import stat_memo
-        from merlin.targetgen.tool_profile import verify_tool_profile
+        from merlin.development.targetgen.tool_profile import verify_tool_profile
 
         # The live conformance observer resolves tools on every refresh; parsing this multi-megabyte
         # manifest each time was ~10% of the runner's CPU. The parse is reused while the file's stat
@@ -161,7 +161,7 @@ def arm_from_bundle_id(bundle_id: str) -> str:
     attributed to the seam it was supposed to be testing. A gemmini verify bundle already exists on
     disk, so this was live rather than hypothetical.
     """
-    from merlin.targetgen.generate_bundles import _ALL_ARMS
+    from merlin.development.targetgen.generate_bundles import _ALL_ARMS
 
     best, best_len = "", -1
     for arm, stem in _ALL_ARMS.items():
@@ -201,7 +201,7 @@ def task_tool_inventory_block(config: TaskStagingConfig) -> str:
         lines.append("No additional treatment tools are selected; use the common substrate and admitted toolchain.")
     manifest = config.bundle_dir / "input_bundle_manifest.yaml"
     if manifest.is_file():
-        from merlin.targetgen.tool_profile import tool_profile_prompt
+        from merlin.development.targetgen.tool_profile import tool_profile_prompt
 
         lines.append(tool_profile_prompt(yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}))
     return "\n".join(lines) + "\n"
@@ -491,7 +491,7 @@ measured results.
     # only TASK.md this path writes; without it the author never learns which scheduling catalog exists.
     manifest = config.bundle_dir / "input_bundle_manifest.yaml"
     if manifest.is_file():
-        from merlin.targetgen.tool_profile import tool_profile_prompt
+        from merlin.development.targetgen.tool_profile import tool_profile_prompt
 
         body += tool_profile_prompt(yaml.safe_load(manifest.read_text(encoding="utf-8")) or {})
     return body
@@ -501,8 +501,8 @@ def _shared_pass_record(config, run_dir):
     if config.shared_pass_requirement is None:
         return None
     from merlin.development.backend.compiler_library import _check_contract
-    from merlin.targetgen.compiler_library import CompilerLibrarySelection
-    from merlin.targetgen.generate_prompt import shared_pass_prompt_record
+    from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
+    from merlin.development.targetgen.generate_prompt import shared_pass_prompt_record
 
     library = config.shared_pass_library
     if type(library) is not CompilerLibrarySelection:
@@ -523,7 +523,7 @@ def _shared_pass_record(config, run_dir):
 
 def verify_shared_pass_prompt(config, workspace, run_dir):
     """Reconstruct from live original inputs, never from saved successful JSON."""
-    from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+    from merlin.development.targetgen.generate_prompt import shared_pass_prompt_block
 
     if config.author_profile:
         if (workspace / "TASK.md").read_bytes() != (run_dir / "TASK.md").read_bytes():
@@ -584,7 +584,7 @@ def _build_selected_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scop
     """Keep every legacy task byte; opt in equally for every original task body."""
     if config.shared_pass_requirement is None:
         return _build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
-    from merlin.targetgen.generate_prompt import shared_pass_prompt_block
+    from merlin.development.targetgen.generate_prompt import shared_pass_prompt_block
 
     selected = _shared_pass_record(config, run_dir)
     _build_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
@@ -656,7 +656,7 @@ def _build_task(
         _task_md = _te().resource_path("task/TASK_realistic.md")
         _generated_task = not _task_md.is_file()
         if _generated_task:
-            from merlin.targetgen.generate_prompt import render_prompt
+            from merlin.development.targetgen.generate_prompt import render_prompt
 
             body = render_prompt(_te(), _manifest(), "realistic", arm, granted_tools=granted_merlin_tools(bundle_dir))
         else:
@@ -706,7 +706,7 @@ def _build_task(
     # diff). The runtime-only operational blocks below (language mandate + descriptor-derived scope and
     # grading tiers) are still appended: they carry run-specific facts the target-agnostic template
     # deliberately omits.
-    from merlin.targetgen.generate_prompt import render_prompt
+    from merlin.development.targetgen.generate_prompt import render_prompt
 
     pilot = render_prompt(_te(), _manifest(), experiment, arm, granted_tools=granted_merlin_tools(bundle_dir))
     # Language mandate (env PILOT_LANG=cpp|python). The C++ arms (baseline/cpp_merlininfra) are forced to

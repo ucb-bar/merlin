@@ -9,8 +9,8 @@ from pathlib import Path
 
 from merlin.common import invocation_record as IR
 from merlin.development.backend.optimization.contracts import document_sha256
-from merlin.model_check.full_build_identity import verified_recipe
-from merlin.model_check.full_output_audit import Files
+from merlin.evaluation.model.full_build_identity import verified_recipe
+from merlin.evaluation.model.full_output_audit import Files
 
 
 def _require(value, message):
@@ -68,7 +68,7 @@ def verify_relinks(build, *, program, run_root, steps, selection_record):
     ``run_root`` is the selected input directory containing ``program.0`` etc.
     The fixed native partition/producer is independently verified by the caller.
     """
-    from merlin.llvmlower.link_supplier_trace import verify_link_suppliers
+    from merlin.compiler.lower.model.link_supplier_trace import verify_link_suppliers
 
     files = Files()
     base = verified_recipe(build)

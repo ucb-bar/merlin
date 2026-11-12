@@ -117,7 +117,7 @@ trace. No second workload or held-out model is used to derive this obligation;
 missing or inconsistent trace geometry is reported, not guessed.
 
 ```sh
-"$CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -306,7 +306,7 @@ generated from the selected spec and hardware; do not author a replacement.
 Capture each iteration workload into a new scoped directory:
 
 ```sh
-"$CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype int8 --recipe "$GENERATED_RECIPE" \

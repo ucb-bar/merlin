@@ -38,7 +38,7 @@ overhead; batch or fuse it.
 
 ## 3. Read the program
 
-- `capsule.interface.mlir` is what your compiler receives. `merlin.targetgen.contract.linalg_iface.parse_linalg_mlir` (see `inspect-ir`) gives each op's `kind`, `extents`, `reduction_dims` and `prov`.
+- `capsule.interface.mlir` is what your compiler receives. `merlin.development.targetgen.contract.linalg_iface.parse_linalg_mlir` (see `inspect-ir`) gives each op's `kind`, `extents`, `reduction_dims` and `prov`.
 - `frontend-trace.json` `graphs.*.by_target` counts framework ops at each stage.
 - Layouts and `stride`/`padding`/`dilation` are in each operator case's `operation.attributes`.
 

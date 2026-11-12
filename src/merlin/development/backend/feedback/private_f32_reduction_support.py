@@ -20,15 +20,15 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.development.backend.feedback import private_control_support as control
-from merlin.development.backend.feedback.private_index_source import _same_json_value
-from merlin.frontends.linalg_f32_reductions import (
+from merlin.compiler.frontend.linalg_f32_reductions import (
     F32_POSITIVE_ZERO_BITS,
     recognize_static_f32_sum,
     serialized_f32_reduction_pattern,
 )
-from merlin.frontends.linalg_f32_reductions import F32_REDUCTION_TARGETS as _TARGETS
-from merlin.frontends.linalg_patterns import InvalidLinalgPattern, _screen_static_linalg_source
+from merlin.compiler.frontend.linalg_f32_reductions import F32_REDUCTION_TARGETS as _TARGETS
+from merlin.compiler.frontend.linalg_patterns import InvalidLinalgPattern, _screen_static_linalg_source
+from merlin.development.backend.feedback import private_control_support as control
+from merlin.development.backend.feedback.private_index_source import _same_json_value
 
 FIELD = "f32_reduction_host_support"
 PENDING = "source_f32_reduction_host_pending_build"

@@ -142,8 +142,8 @@ def check(write: bool = False) -> list[str]:
                 )
 
     # 4/5. the in-tree dialect verifiers
-    from merlin.xdsl_dialects import interface as IFACE
-    from merlin.xdsl_dialects.targets import factory as FACTORY
+    from merlin.compiler.dialects import interface as IFACE
+    from merlin.compiler.dialects.targets import factory as FACTORY
 
     for mod in (IFACE, FACTORY):
         got = set(getattr(mod, "KNOWN_EPILOGUE"))
@@ -151,7 +151,7 @@ def check(write: bool = False) -> list[str]:
             problems.append(f"{mod.__name__}.KNOWN_EPILOGUE {sorted(got)} != EPILOGUE_STAGES {canon}")
 
     # 6. the emitted target-dialect template
-    from merlin.targetgen.generate import xdsl as GEN
+    from merlin.development.targetgen.generate import xdsl as GEN
 
     arts = GEN.generate(
         {

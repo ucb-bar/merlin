@@ -28,7 +28,7 @@ def _brief_analysis(value, depth=3):
 
 
 def _analysis_summary(report):
-    from merlin.kernels.instruction_observations import compact_comparison
+    from merlin.analysis.kernels.instruction_observations import compact_comparison
 
     summary = {
         key: _brief_analysis(report[key])
@@ -217,7 +217,7 @@ def _bounded_response(response, *, workspace, pretty=False):
             kind=report.get("kind"), projection="read full detail; compact evidence exceeded transport bound"
         )
         if isinstance(report.get("observation_comparison"), dict):
-            from merlin.kernels.instruction_observations import compact_comparison
+            from merlin.analysis.kernels.instruction_observations import compact_comparison
 
             observed = compact_comparison(report["observation_comparison"])
             observed["field_differences"] = observed.get("field_differences", [])[:1]

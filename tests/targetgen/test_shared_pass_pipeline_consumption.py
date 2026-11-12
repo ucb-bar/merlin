@@ -12,13 +12,13 @@ import corefixtures.shared_pass_pipeline_provider as P
 import pytest
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower.compilation_recipe import CompilationRecipe, verify_completed_recipe
-from merlin.targetgen import capsule_common as C
-from merlin.targetgen import package_runtime as R
-from merlin.targetgen.generate_prompt import shared_pass_manifest_template
-from merlin.targetgen.shared_pass_contract import shared_pass_requirement
+from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe, verify_completed_recipe
+from merlin.development.targetgen import capsule_common as C
+from merlin.development.targetgen import package_runtime as R
+from merlin.development.targetgen.generate_prompt import shared_pass_manifest_template
+from merlin.development.targetgen.shared_pass_contract import shared_pass_requirement
 
-DRIVER = "\nimport json,sys\nfrom pathlib import Path\nimport neutral_emitter as P\nimport neutral_emitter as F\ncommand,source,*rest=sys.argv[1:]\ntext=Path(source).read_text()\nif command=='parse':\n assert text==Path('original.target.mlir').read_text()\nelif command=='lower_interface_to_target':\n sys.stdout.write(text)\nelif command=='emit_target_bundle':\n from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts\n from merlin.targetgen.isa_dialect_gen import encode_instruction\n from merlin.compiler.kernel_ir.ir import evaluate\n config=json.loads(Path('fixture.json').read_text())\n selected=read_scheduling_contracts(*config['paths'],target='neutral')\n # Actual selected SSA values are the sole emitter instruction operands.\n model=(selected,None,None,None,None)\n from merlin.compiler.kernel_ir.ir import Kernel\n model=(selected,Kernel('target_program',(),()),None,None,None)\n actual=P.read_target(Path('original.target.mlir').read_text() if config.get('ignore') else text,model)\n calls=list(actual.body)\n if config.get('drop_wait'):\n  calls.pop(next(i for i,c in enumerate(calls) if c.instr=='await'))\n image=b''.join(encode_instruction(selected.isa,c.instr,{k:evaluate(v,{}) for k,v in c.args}).to_bytes(\n  selected.isa.word_bits//8,selected.instruction_byteorder) for c in calls)\n Path(rest[0]).write_bytes(Path('buffer.json').read_bytes())\n sys.stdout.write(F.llvm_artifact(image))\nelse:\n raise RuntimeError('ordinary emitter requires selected target IR')\n"
+DRIVER = "\nimport json,sys\nfrom pathlib import Path\nimport neutral_emitter as P\nimport neutral_emitter as F\ncommand,source,*rest=sys.argv[1:]\ntext=Path(source).read_text()\nif command=='parse':\n assert text==Path('original.target.mlir').read_text()\nelif command=='lower_interface_to_target':\n sys.stdout.write(text)\nelif command=='emit_target_bundle':\n from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts\n from merlin.development.targetgen.isa_dialect_gen import encode_instruction\n from merlin.compiler.kernel_ir.ir import evaluate\n config=json.loads(Path('fixture.json').read_text())\n selected=read_scheduling_contracts(*config['paths'],target='neutral')\n # Actual selected SSA values are the sole emitter instruction operands.\n model=(selected,None,None,None,None)\n from merlin.compiler.kernel_ir.ir import Kernel\n model=(selected,Kernel('target_program',(),()),None,None,None)\n actual=P.read_target(Path('original.target.mlir').read_text() if config.get('ignore') else text,model)\n calls=list(actual.body)\n if config.get('drop_wait'):\n  calls.pop(next(i for i,c in enumerate(calls) if c.instr=='await'))\n image=b''.join(encode_instruction(selected.isa,c.instr,{k:evaluate(v,{}) for k,v in c.args}).to_bytes(\n  selected.isa.word_bits//8,selected.instruction_byteorder) for c in calls)\n Path(rest[0]).write_bytes(Path('buffer.json').read_bytes())\n sys.stdout.write(F.llvm_artifact(image))\nelse:\n raise RuntimeError('ordinary emitter requires selected target IR')\n"
 
 
 def package(directory, model, *, fault=None):
@@ -27,7 +27,7 @@ def package(directory, model, *, fault=None):
     (directory / "driver.py").write_text(DRIVER)
     calls = "from merlin.compiler.kernel_ir.ir import Call, Const\n\n" + inspect.getsource(P.leaf.op)
     (directory / "neutral_calls.py").write_text(calls)
-    emitter = "from dataclasses import replace\nimport neutral_calls as leaf\nfrom xdsl.context import Context\nfrom xdsl.dialects import arith, builtin\nfrom xdsl.parser import Parser\nfrom merlin.targetgen.isa_dialect_gen import build_dialect\n"
+    emitter = "from dataclasses import replace\nimport neutral_calls as leaf\nfrom xdsl.context import Context\nfrom xdsl.dialects import arith, builtin\nfrom xdsl.parser import Parser\nfrom merlin.development.targetgen.isa_dialect_gen import build_dialect\n"
     emitter += f"KEYS = {P.KEYS!r}\n\n"
     emitter += "\n\n".join((inspect.getsource(function) for function in (P.read_target, F.llvm_artifact)))
     (directory / "neutral_emitter.py").write_text(emitter)
@@ -151,10 +151,10 @@ def execute(library, model, *, fault=0):
 
 def build(tmp_path, *, enabled=True, admitted=True, fault=None, native_fault=0, bits=64, big=False, alias=True):
     from merlin.common.invocation_record import verify
+    from merlin.compiler.lower.model import toolchain
+    from merlin.compiler.lower.model.target_schedule import TargetScheduleSelection
     from merlin.compiler.schedule.copy_pipeline import CopyPipelinePolicy, copy_pipeline_motion
     from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
-    from merlin.llvmlower import toolchain
-    from merlin.llvmlower.target_schedule import TargetScheduleSelection
 
     tools = (Path(toolchain.mlir_translate()), Path(toolchain.clang()), Path("/usr/bin/time"))
     if not all((p.is_file() for p in tools)):

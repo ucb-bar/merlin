@@ -20,7 +20,7 @@ zero-fill-then-overwrite race). This recipe derives where the hardware already o
    boundary and after every store.
 4. Every route's effect stream runs on host integers against an independent source convolution, a
    local row written twice before a compute reads it fails, and the stream, encoded as accelerator
-   commands from the same facts, goes through ``merlin.targetgen.completion_order.check_commands``
+   commands from the same facts, goes through ``merlin.development.targetgen.completion_order.check_commands``
    (write-write / write-read pairs under the queue semantics) plus a read-then-write supplement.
 
 Prints JSON: the flag table, and per route commands, drains and drains per compute next to the
@@ -160,7 +160,7 @@ def roles(record):
     """Command roles from the facts' local accesses and the shared ISA class vocabulary: a transfer
     in (one local write), a readout (one local read), a descriptor (a contraction class that reads
     one local operand and writes another) and a compute (a contraction class with one local read)."""
-    from merlin.targetgen.semantic_families import from_isa_class, movement_classes
+    from merlin.development.targetgen.semantic_families import from_isa_class, movement_classes
 
     if not isinstance(record, dict) or record.get("status") not in ("derived", "partial"):
         raise Unavailable("command_ordering facts are not derived")
@@ -769,8 +769,8 @@ def routes(source, caps, record, r, flags, identity, pairs, image, weights, expe
         emit_convolution_schedule,
         explore_convolution_schedules,
     )
-    from merlin.transforms.pass_exploration import EmittedProgram
-    from merlin.transforms.pipeline_state import PipelineContext
+    from merlin.compiler.transforms.pass_exploration import EmittedProgram
+    from merlin.compiler.transforms.pipeline_state import PipelineContext
 
     S, W = _load("recipe_support"), _load("conv_window_recipe")
     retention, rhs_law, issue, epoch = _laws(source, flags, identity, pairs)
@@ -781,7 +781,7 @@ def routes(source, caps, record, r, flags, identity, pairs, image, weights, expe
     checker, model = None, None
     if r is not None and check_order:
         try:  # the checker the grader runs; absent from some staged libraries
-            from merlin.targetgen import completion_order as checker
+            from merlin.development.targetgen import completion_order as checker
         except ImportError as exc:
             checker = f"unavailable here ({exc}); the grader's completion-order check still runs on your executable"
         else:

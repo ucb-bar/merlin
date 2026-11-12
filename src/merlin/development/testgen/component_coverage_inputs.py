@@ -89,8 +89,8 @@ def _substitute(value, point):
 
 def expand(plan, *, binding, evidence):
     """Produce ordinary independent entries and a private immutable-input report."""
+    from merlin.development.targetgen import corpus_spec
     from merlin.development.testgen.sweeps import resolve_extent
-    from merlin.targetgen import corpus_spec
 
     document = plan.to_dict()
     effect_owners = {row["id"]: row for row in document["effects"]}
@@ -271,7 +271,7 @@ def generated_effects(entry, *, binding):
     """
     op = entry["op"]
     if op == "component_program":
-        from merlin.targetgen.component_program import analyze
+        from merlin.development.targetgen.component_program import analyze
 
         program = analyze(
             entry.get("program"),
@@ -281,7 +281,7 @@ def generated_effects(entry, *, binding):
         return set(program["effects"])
     effects = {"output_publication"}
     if entry.get("source") == "pytorch":
-        from merlin.targetgen.component_sources import source_effects
+        from merlin.development.targetgen.component_sources import source_effects
 
         effects |= source_effects(entry)
     elif op == "conv2d":

@@ -59,8 +59,8 @@ def bank_units(root, bank):
 
     ``symbol`` is the original's own name for the body (the card's symtab name, else the record's), or
     None when neither names it."""
+    from merlin.analysis.mining.reference_subset_cards import family_signature
     from merlin.development.backend.feedback import reference_bank as RB
-    from merlin.mining.reference_subset_cards import family_signature
 
     rows = []
     for unit in sorted(bank["units"], key=lambda unit: unit["kernel_id"]):
@@ -92,8 +92,8 @@ def selected_decoder(decoder_files, target):
     """The bank's operand decoder and effect structure, bound exactly as the bank build bound them."""
     import yaml
 
+    from merlin.analysis.kernels.decoded_effects import selected_structure
     from merlin.development.backend.feedback import reference_analysis as A
-    from merlin.kernels.decoded_effects import selected_structure
 
     decoder = A._operand_decoder(decoder_files["contract"], decoder_files["facts"], target, include_structure=True)
     if not decoder or decoder.get("semantics") is None:
@@ -105,15 +105,15 @@ def selected_decoder(decoder_files, target):
 def lift_kernel(path, *, decoder, facts, structure):
     """Accelerator regions of one linked kernel ELF, lifted like a bank original; nothing is written."""
     from merlin.analysis.artifact_reader import PinnedELF, open_ordinary
-    from merlin.analysis.riscv_machine import region_index
-    from merlin.development.backend.feedback import reference_analysis as A
-    from merlin.mining.reference_database_analysis import (
+    from merlin.analysis.mining.reference_database_analysis import (
         interprocedural_contexts,
         observations_only,
         region_effects,
         resolve_callees,
         transfer_edges,
     )
+    from merlin.analysis.riscv_machine import region_index
+    from merlin.development.backend.feedback import reference_analysis as A
 
     elf = PinnedELF(open_ordinary(Path(path)), Path(path).name, declared_isa=decoder.get("host_isa"))
     try:

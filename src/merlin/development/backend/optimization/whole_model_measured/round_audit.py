@@ -32,7 +32,7 @@ class RoundAuditError(RuntimeError):
 
 
 def _target_experiment(run_dir: Path, target: str) -> Any:
-    from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
+    from merlin.development.targetgen.target_experiment import descriptor_for, load_target_experiment
 
     config = read_json(run_dir / "whole_model_objective_config.json") or {}
     descriptor = config.get("descriptor") or descriptor_for(target)

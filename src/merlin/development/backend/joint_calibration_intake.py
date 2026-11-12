@@ -82,10 +82,10 @@ def project(
 
 def register(row, root, *, result, compiler, capsule, state, profile):
     """Index a selected public numerical result without running any observer."""
-    from merlin.benchharness import hash_tree
     from merlin.development.backend import joint_control
     from merlin.development.backend.feedback import joint_performance as PERF
     from merlin.development.backend.optimization.census_launch import _producer
+    from merlin.evaluation.harness import hash_tree
 
     if (
         capsule.get("kind") == "model"

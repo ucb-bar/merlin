@@ -3,10 +3,10 @@
 from xdsl.dialects import builtin
 
 from merlin.common import mlir_query as mq
+from merlin.compiler.dialects.lowering import compute_groups as CG
 from merlin.development.backend.feedback.private_source_payload_roles import payload_roles
-from merlin.targetgen import eligibility as E
-from merlin.targetgen import semantic_families as SF
-from merlin.xdsl_dialects.lowering import compute_groups as CG
+from merlin.development.targetgen import eligibility as E
+from merlin.development.targetgen import semantic_families as SF
 
 
 def _formats(values):

@@ -1,0 +1,957 @@
+"""Verify a decoded RoCC instruction trace against a capsule's expected coverage.
+
+Given a trace from :mod:`merlin.development.targetgen.rocc.decode` and a capsule's ``expected`` block, assert:
+
+* all required instruction classes appear; all forbidden classes are absent;
+* the legal ordering invariants hold (FLUSH/FENCE bracketing, config-before-use,
+  preload/compute pairing);
+* the declared *modes* are actually exercised (i8 readout, relu activation bits, non-identity
+  acc_scale, K-accumulation, resident reuse, load-configuration residency, stationary-operand
+  residency, movement-only);
+* (optionally) decoded tile counts are consistent with the command-buffer tensor shapes.
+
+Counts are of EXECUTED commands: a decoded site carries ``executions`` (how many times it runs per
+kernel call, from the decoder's counted-loop proof), so a loop body that appears once in the emitted
+code counts as often as it runs (:func:`executed_count`). A site whose count is not proved leaves the
+count unknown, never one. A mode whose deciding operand field the decoder could not resolve on any
+site is recorded as UNAVAILABLE evidence (``trace_requirement_status: unavailable_fields``), not as
+a violation; a field that IS resolved and contradicts the mode still fails.
+
+Returns ``{"status": "pass"|"fail", "violations": [...]}``. Never raises on a mere mismatch — a
+mismatch is data; it raises only on a malformed trace argument.
+
+Two diagnostics here are MODE-FREE: they ask a whole-program performance question of the emitted
+stream, with no capsule mode declaring them and no verdict riding on them.
+:func:`residency_findings` asks whether the program re-materializes a value it still holds;
+:func:`movement_findings` asks whether the transfers it issues under-fill the payload the target
+declares. Both are kept out of ``check``'s ``violations`` for the same reason — that list feeds the
+run's formal verdict, and a program that is slow is not a program that is wrong.
+"""
+
+from __future__ import annotations
+
+import copy
+import functools
+import math
+from typing import Any
+
+_COMPUTE = {"COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE"}
+_CONFIG = {"CONFIG_EX", "CONFIG_LD", "CONFIG_ST"}
+_MVIN = {"MVIN", "MVIN2", "MVIN3"}
+
+
+def requirements_complete(observation) -> bool:
+    """Applicable trace obligations need a pass and available selected evidence.
+
+    Historical observations without a selected requirement status retain their
+    existing meaning. An explicit unavailable/failed requirement cannot become
+    qualification just because the separately observed trace status is passing.
+    Applicability and original capsule/source ownership remain caller-owned.
+    """
+    return (
+        isinstance(observation, dict)
+        and observation.get("status") == "pass"
+        and observation.get("trace_requirement_status") in (None, "pass")
+    )
+
+
+def _bound_trace_view(trace, target):
+    """Reopen raw class identity and optional fields from the original selected decoder."""
+    if not target:
+        return None
+    from merlin.development.targetgen.rocc.semantics import BoundSemantics
+    from merlin.runtime.backends import base
+    from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
+
+    try:
+        backend = base.get_backend(target)
+    except (ValueError, ImportError):
+        return None  # Historical advisory callers may have no selected execution backend.
+    if type(backend) is not BoundRoCCBackend:
+        return None
+    semantics = backend.rocc_semantics
+    if type(semantics) is not BoundSemantics:
+        raise ValueError("structural trace requires its original selected operand decoder")
+    isa = semantics.isa_constants(target)
+    if trace.get("abi") != {"custom_opcode": hex(isa["CUSTOM_OPCODE"]), "funct3": hex(isa["FUNCT3"])}:
+        raise ValueError("structural trace transport differs from the original selected ISA")
+    contract = backend._data()["contract"]
+    roles = (contract.get("corpus_instruction_roles") or {}).get("by_role") or {}
+    if type(roles) is not dict:
+        raise ValueError("selected corpus instruction roles are malformed")
+    roster = set(isa["FUNCT_CLASS"].values())
+    for classes in roles.values():
+        if type(classes) is not list or any(type(name) is not str or name not in roster for name in classes):
+            raise ValueError("corpus instruction roles differ from the selected ISA roster")
+    observer = semantics.operand_observer
+    if observer is not None:
+        # An unqualified label must not mean different commands in the two
+        # selected vocabularies. Require explicit disambiguation in that case.
+        normalized = observer.isa_constants(target)
+        raw_codes = {}
+        semantic_codes = {}
+        for code, label in isa["FUNCT_CLASS"].items():
+            raw_codes.setdefault(label, set()).add(code)
+        for code, label in normalized["FUNCT_CLASS"].items():
+            semantic_codes.setdefault(label, set()).add(code)
+        for label in raw_codes.keys() & semantic_codes.keys():
+            if raw_codes[label] != semantic_codes[label]:
+                raise ValueError("raw and normalized instruction class identities are ambiguous")
+        if raw_codes.keys() & normalized.get("CONFIG_SUBTYPE", {}).values():
+            raise ValueError("raw instruction class collides with a normalized configuration subtype")
+    view = copy.deepcopy(trace)
+    raw_classes = []
+    for row in view["instructions"]:
+        if row.get("funct") is None:
+            if row.get("class") != "FENCE":
+                raise ValueError("structural trace contains an unresolved transport instruction")
+            raw_classes.append("FENCE")
+            continue
+        label, decoded = semantics.decode_instruction(row["funct"], row["rs1"], row["rs2"], isa)
+        if label == "UNKNOWN" or row.get("class") != label or row.get("decoded") != decoded:
+            raise ValueError("structural trace differs from its original raw instruction decode")
+        raw_classes.append(label)
+        if observer is not None:
+            row["class"], row["decoded"] = observer.decode_instruction(
+                row["funct"], row["rs1"], row["rs2"], observer.isa_constants(target)
+            )
+    return view, roles, raw_classes, observer is not None
+
+
+def instruction_class_coverage(trace, *, target):
+    """Observe structural classes through the same selected view as core checks.
+
+    The input must be the runner's decode of its actual emitted artifact. The
+    selected bound path reopens its raw instruction identities and only projects
+    fields through the original operand observer; no spelling aliases or role
+    subsumption are inferred. Callers retain artifact/object/ELF custody. This
+    proves neither runtime execution nor numerical or temporal correctness.
+    """
+    binding = _bound_trace_view(trace, target)
+    if binding is None:
+        raw = list(_classes(trace))
+        view, selected = trace, False
+    else:
+        view, _roles, raw, selected = binding
+    projected = _classes(view)
+    if "UNKNOWN" in raw or "UNKNOWN" in projected:
+        raise ValueError("instruction coverage contains an unresolved raw or normalized command")
+    return {
+        "raw_classes": sorted(set(raw)),
+        "normalized_classes": sorted(set(projected)) if selected else [],
+        "observed_classes": sorted(set(raw) | set(projected)),
+        "operand_protocol_selected": selected,
+        "scope": "static emitted instruction classes; no execution or numerical qualification",
+    }
+
+
+def _classes(trace: dict) -> list[str]:
+    return [i["class"] for i in trace.get("instructions", [])]
+
+
+def executed_count(instructions, classes) -> int | None:
+    """Commands of ``classes`` executed per kernel call, or ``None`` when a site's count is unproved.
+
+    A site without an ``executions`` field (a trace decoded before the field existed, or by another
+    producer) counts once, as static sites always did."""
+    wanted = {classes} if isinstance(classes, str) else set(classes)
+    total = 0
+    for row in instructions:
+        if row.get("class") not in wanted:
+            continue
+        if "executions" not in row:
+            total += 1
+            continue
+        count = row["executions"]
+        if type(count) is not int or count < 0:
+            return None
+        total += count
+    return total
+
+
+def _single_commit_covers_output(cb, ins) -> bool:
+    """Whether the declared operation has ONE output commit that one resolved readout covers whole.
+
+    Then a second output commit cannot exist, so resident reuse has nothing to show: the extents are
+    the command buffer's own output tensor and the decoder's resolved readout fields, no tile size."""
+    if not isinstance(cb, dict):
+        return False
+    commits = [c for c in cb.get("commands", []) if c.get("opcode") == "COMMIT"]
+    if len(commits) != 1:
+        return False
+    tensor = (cb.get("tensors") or {}).get((commits[0].get("operands") or {}).get("dst"))
+    shape = (tensor or {}).get("shape")
+    if not isinstance(shape, list) or len(shape) < 2 or not all(type(d) is int and d > 0 for d in shape):
+        return False
+    rows, cols = math.prod(shape[:-1]), shape[-1]
+    for row in ins:
+        decoded = row.get("decoded") or {}
+        if (
+            row.get("class") == "MVOUT"
+            and type(decoded.get("rows")) is int
+            and type(decoded.get("cols")) is int
+            and decoded["rows"] >= rows
+            and decoded["cols"] >= cols
+        ):
+            return True
+    return False
+
+
+def _first_index(classes: list[str], target: set[str] | str) -> int | None:
+    tgt = {target} if isinstance(target, str) else target
+    for i, c in enumerate(classes):
+        if c in tgt:
+            return i
+    return None
+
+
+def drives_accelerator(trace: dict) -> bool:
+    """The one oracle-INDEPENDENT anti-cheese floor: did the kernel actually drive the accelerator?
+
+    A custom-opcode instruction is one the target's RTL decoder claimed — recorded with a non-null
+    ``funct`` (a plain memory ``fence`` and any non-custom asm carry ``funct=None``). This counts even
+    instructions we could not sub-classify (``UNKNOWN`` with a ``funct``): the point is only that the
+    kernel emitted the accelerator's ISA rather than computing on the host and moving a result. It is
+    fully derived (no class-name literals) and stays true for any target — the *only* thing ``trace_check``
+    gates on; every other finding is advisory (correctness is the numeric + RTL oracle, and the hidden
+    golden precludes faking an answer)."""
+    return accelerator_instruction_count(trace) > 0
+
+
+def accelerator_instruction_count(trace: dict) -> int:
+    """HOW MANY instructions of the target's own accelerator classes the decoded stream carries.
+
+    The same derivation :func:`drives_accelerator` answers yes/no from, exposed as the count, because a
+    lane report has to say how much work it credits a lane with and a boolean cannot. Membership is the
+    RTL decoder's own claim -- an instruction carries a ``funct`` exactly when this target's
+    ``funct_decode_table`` recognised its opcode -- so the accelerator's instruction classes come from
+    the target's sources and never from a list written here. An instruction the decoder recognised but
+    could not sub-classify still counts: the question is whether the accelerator's ISA was driven, not
+    which of its operations ran.
+    """
+    return sum(1 for i in trace.get("instructions", []) if i.get("funct") is not None)
+
+
+def dram_address_findings(trace: dict, address_model: str) -> list[str]:
+    """Advisory DRAM-address provenance findings, parameterized by the HARNESS'S address model so it is
+    correct for any target (never a per-target literal):
+
+    * ``pointer_args`` — the harness passes each operand buffer as a POINTER argument (e.g. a RoCC
+      bare-metal harness), so a memory-movement instruction's DRAM address MUST derive from a kernel
+      argument (the decoder resolves it to ``argbase``); a baked literal (``const``) will not match the
+      runtime buffer the harness allocated. Flagged.
+    * ``fixed_preload`` — the harness PRELOADS each operand at a declared canonical base, so the correct
+      DRAM address IS that constant; a baked ``const`` is expected, not an error. (Not flagged here; a
+      value-vs-declared-base check belongs to that oracle's own path.)
+
+    ``dram`` is the decoder's DERIVED memory-address operand (present exactly on the instructions the
+    target's semantic roles mark as memory movement), and ``kind`` is the decoder's existing operand
+    provenance — so this reads only the agent's OWN emitted operands (no golden), and generalizes by the
+    address model, not by hardcoding an instruction class or a target."""
+    if address_model != "pointer_args":
+        return []
+    out: list[str] = []
+    for i in trace.get("instructions", []):
+        decoded = i.get("decoded") or {}
+        dram = decoded.get("dram")
+        # This semantic classification comes from the selected operand decoder.
+        # A generated zero-fill source is not a DRAM-buffer address. The target
+        # declaration owns its opcode/predicate; core supplies no literal exception.
+        if decoded.get("dram_source") == "zero_fill":
+            continue
+        if isinstance(dram, dict) and dram.get("kind") == "const":
+            out.append(
+                f"instruction #{i.get('index')} ({i.get('class')}) uses a BAKED DRAM address "
+                f"({dram.get('raw')}): the harness passes each operand as a POINTER argument, so derive "
+                f"the DRAM address from the matching kernel argument (ptrtoint of the arg) — a baked "
+                f"literal cannot match the buffer the runtime allocated."
+            )
+    return out
+
+
+def subsumption_for(target: str | None) -> dict:
+    """``{class: {classes it does the work of}}`` as ``target``'s own contract declares it.
+
+    A design with a hardware loop performs with one instruction what another design needs several
+    for. Which those are is a fact about that design, so it is read from its contract and never
+    assumed here; a target that declares none gets exactly the old behaviour.
+    """
+    if not target:
+        return {}
+    return _subsumption(str(target))
+
+
+@functools.cache
+def _subsumption(target: str) -> dict:
+    try:
+        from merlin.development.targetgen.target_registry import load_contract
+
+        declared = ((load_contract(target) or {}).get("encoding") or {}).get("class_subsumes") or {}
+    except Exception:  # noqa: BLE001 -- a target whose contract cannot be read declares nothing
+        return {}
+    out: dict[str, frozenset] = {}
+    for name, covered in declared.items():
+        if isinstance(covered, (list, tuple)) and covered:
+            out[str(name)] = frozenset(str(c) for c in covered)
+    return out
+
+
+def movement_bound_for(target: str | None) -> dict:
+    """The widest payload ONE memory-movement instruction may carry on ``target`` — or ``{}``.
+
+    Three facts, each read from the place that owns it, and ALL THREE REQUIRED — a missing one yields
+    ``{}`` (no bound known) rather than a default, because a guessed transfer width would either
+    invent an optimization the hardware cannot perform or hide one it can:
+
+    * the array tile edge, from the target's OWN RTL facts (the first declared array's ``cols``);
+    * the element width of the datapath those transfers feed, from the same facts' ``input`` datapath
+      dtype (the canonical name the fact extractors emit for it);
+    * the transfer payload bound in bytes, DECLARED by the target's capability manifest at
+      ``memory_model.dma.max_transfer_bytes``, the way ``encoding.class_subsumes`` declares what a
+      hardware loop does the work of. It is a manifest fact rather than an RTL one because it is an
+      ABI bound: it is the width the target's own ISA header commits to, and the fact schema has no
+      field for it.
+
+    Returned as data, with the inputs kept beside the result so a finding can cite what it was
+    computed from: ``{tile_cols, elem_bytes, max_transfer_bytes, tiles_per_transfer, transfer_cols}``.
+
+    ``tiles_per_transfer`` FLOORS the division on purpose. A payload that does not hold a whole extra
+    tile holds no extra tile; rounding up would tell a backend to issue a transfer the hardware would
+    truncate.
+    """
+    if not target:
+        return {}
+    return dict(_movement_bound(str(target)))
+
+
+@functools.cache
+def _movement_bound(target: str) -> dict:
+    # THE DECLARATION IS THE GATE, and it is read first on purpose: a target that does not declare a
+    # transfer payload has no bound whatever its facts say, and deriving facts for it would be work
+    # done to reach a foregone answer (fact extraction can invoke the RTL toolchain).
+    try:
+        from merlin.development.targetgen.target_registry import load_contract
+
+        declared = ((load_contract(target) or {}).get("memory_model") or {}).get("dma") or {}
+        max_bytes = int(declared.get("max_transfer_bytes") or 0)
+    except Exception:  # noqa: BLE001 -- a target whose contract cannot be read declares no bound
+        return {}
+    if max_bytes <= 0:
+        return {}
+    try:
+        from merlin.development.targetgen.rtl.facts import load_facts
+
+        body = (load_facts(target) or {}).get("facts") or {}
+        arrays = body.get("arrays") or ()
+        datapaths = body.get("datapaths") or ()
+        tile_cols = int((arrays[0] or {}).get("cols") or 0) if arrays else 0
+        dtype = next((str(d.get("dtype") or "") for d in datapaths if str(d.get("name") or "") == "input"), "")
+        from merlin.development.targetgen.capsule_dram import dtype_bytes
+
+        elem_bytes = dtype_bytes(dtype) if dtype else 0
+    except Exception:  # noqa: BLE001 -- a target whose facts cannot be read has no derivable edge
+        return {}
+    if tile_cols <= 0 or elem_bytes <= 0:
+        return {}
+    tiles = max_bytes // (tile_cols * elem_bytes)
+    if tiles < 1:
+        return {}
+    return {
+        "tile_cols": tile_cols,
+        "elem_bytes": elem_bytes,
+        "max_transfer_bytes": max_bytes,
+        "tiles_per_transfer": tiles,
+        "transfer_cols": tile_cols * tiles,
+    }
+
+
+def movement_findings(trace: dict, bound: dict | None) -> list[str]:
+    """Mode-free: does the emitted stream move one tile at a time where the target admits several?
+
+    The sibling of :func:`residency_findings`, and the same kind of question — a whole-program
+    performance property read off the emitted stream, with no capsule mode declaring it and no
+    verdict riding on it. Residency asks whether the program re-materializes a value it still holds;
+    this asks whether it under-fills the transfers it does issue.
+
+    THE BOUND IS DERIVED, NEVER ASSUMED, and an absent bound is silence rather than a default: with no
+    ``bound`` (:func:`movement_bound_for` could not read all three facts) there is no statement to
+    make, and a target whose payload holds exactly one tile has nothing to coalesce, so it is silent
+    too. Nothing here knows an edge, a payload size or a block length; every number in the message
+    comes from ``bound`` or from counting the instructions.
+
+    Stated as a SCALING relation the way ``_check_tiles`` states its invariants: the finding is that
+    N transfers each carry at most one tile of a payload that holds ``tiles_per_transfer``, so the
+    width the hardware declares goes unused. It is ADVISORY and deliberately does not claim that any
+    particular pair of these transfers is adjacent in DRAM — proving adjacency needs the schedule,
+    not the stream; what the stream proves is that the width was never even attempted.
+    """
+    if not isinstance(trace, dict):
+        raise TypeError("trace must be a mapping")
+    instructions = trace.get("instructions", [])
+    if not isinstance(instructions, list):
+        raise TypeError("trace instructions must be a list")
+    if not bound:
+        return []
+    tile_cols = int(bound.get("tile_cols") or 0)
+    per_transfer = int(bound.get("tiles_per_transfer") or 0)
+    if tile_cols <= 0 or per_transfer < 2:
+        return []
+    narrow: list[int] = []
+    moves = 0
+    for index, instruction in enumerate(instructions):
+        # Scoped to the LOAD classes, because the bound was computed from the INPUT datapath's element
+        # width: a store path that reads a wider accumulator element gets a different block length out
+        # of the same byte budget, and applying this one to it would flag a store that is already as
+        # wide as it can be.
+        if instruction.get("class") not in _MVIN:
+            continue
+        cols = (instruction.get("decoded") or {}).get("cols")
+        if not isinstance(cols, int) or cols <= 0:
+            continue  # this decoder cannot see the extent: say nothing
+        moves += 1
+        if cols <= tile_cols:
+            # The decoder's OWN instruction index when it recorded one, so a finding cites the same
+            # position the trace does; the walk position only stands in when it did not.
+            recorded = instruction.get("index")
+            narrow.append(recorded if isinstance(recorded, int) else index)
+    # One narrow transfer has nothing to coalesce WITH; the finding is about a stream, not an
+    # instruction, so it needs at least a pair before it says anything.
+    if len(narrow) < 2:
+        return []
+    coalesced = -(-len(narrow) // per_transfer)  # ceil: the transfers the same bytes would need
+    where = ", ".join(f"#{i}" for i in narrow[:4])
+    return [
+        f"movement width: {len(narrow)} of {moves} memory-load transfer(s) carry at most one "
+        f"{tile_cols}-column array tile, while this target declares a transfer payload of "
+        f"{bound.get('max_transfer_bytes')} bytes -- {per_transfer} tiles ({bound.get('transfer_cols')} "
+        f"columns) at {bound.get('elem_bytes')} byte(s) per element (at {where}). The declared width is "
+        f"never attempted, so the same bytes cost {len(narrow)} transfers where {coalesced} would carry "
+        f"them"
+    ]
+
+
+def check(
+    trace: dict,
+    expected: dict,
+    cb: dict | None = None,
+    address_model: str | None = None,
+    subsumes: dict | None = None,
+    target: str | None = None,
+    lowered_module=None,
+) -> dict:
+    """Validate ``trace`` against capsule ``expected`` (+ optional command buffer).
+
+    These findings do not change the numerical/native verdict. Applicable structural evidence is
+    required separately by formal qualification and public completion feedback. An unavailable
+    selected operand/schedule protocol records missing evidence, rather than a numerical defect.
+
+    ``target`` names whose derived facts the two residency modes read (the load-state selector, the
+    retain sentinel and the accumulator bound); without one, a declared residency mode reports a
+    refusal rather than passing in silence."""
+    violations: list[str] = []
+    original_trace = trace
+    try:
+        binding = _bound_trace_view(trace, target)
+    except (ValueError, KeyError, TypeError) as error:
+        return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
+    raw_classes = []
+    protocol_selected = False
+    if binding is not None:
+        trace, bound_roles, raw_classes, protocol_selected = binding
+    #: Not violations: what the program did INSTEAD, where the target says it amounts to the same.
+    notes: list[str] = []
+    ins = trace.get("instructions", [])
+    classes = _classes(trace)
+    present = set(classes)
+    observed_classes = present | set(raw_classes)
+
+    if "UNKNOWN" in present:
+        n = classes.count("UNKNOWN")
+        violations.append(f"trace contains {n} UNKNOWN instruction(s) (fail-closed decode)")
+
+    # 1. required classes present -- or performed by an instruction the target says does their work
+    covered: set[str] = set()
+    for used in present:
+        covered |= set((subsumes or {}).get(used) or ())
+    for req in expected.get("instruction_classes", []):
+        if req in observed_classes:
+            continue
+        if req in covered:
+            doers = sorted(u for u in present if req in set((subsumes or {}).get(u) or ()))
+            notes.append(f"{req} is performed here by {', '.join(doers)}")
+            continue
+        violations.append(f"required instruction class missing: {req}")
+
+    # 2. forbidden classes absent
+    for forb in expected.get("forbidden_classes", []):
+        if forb in observed_classes:
+            violations.append(f"forbidden instruction class present: {forb}")
+
+    # 3. ordering invariants
+    if ins:
+        if classes[0] != "FENCE":
+            violations.append("trace does not open with a FENCE")
+        if lowered_module is not None:
+            from merlin.development.targetgen.rocc.control_flow import closing_fence_on_normal_returns
+
+            closing_fence = closing_fence_on_normal_returns(lowered_module)
+            if closing_fence is not True:
+                violations.append("normal returning CFG paths lack a proved closing FENCE")
+        elif classes[-1] != "FENCE":
+            violations.append("trace does not close with a FENCE")
+    if "FLUSH" in present:
+        flush_i = classes.index("FLUSH")
+        first_work = _first_index(classes, _COMPUTE | _MVIN | {"MVOUT"})
+        if first_work is not None and flush_i > first_work:
+            violations.append("FLUSH appears after the first MVIN/MVOUT/COMPUTE")
+
+    def _before(cfg: str, use: set[str], label: str) -> None:
+        if cfg in present:
+            ci = classes.index(cfg)
+            ui = _first_index(classes, use)
+            if ui is not None and ci > ui:
+                violations.append(f"{cfg} appears after first {label}")
+
+    _before("CONFIG_EX", _COMPUTE | {"PRELOAD"}, "PRELOAD/COMPUTE")
+    _before("CONFIG_LD", _MVIN, "MVIN")
+    _before("CONFIG_ST", {"MVOUT"}, "MVOUT")
+
+    # Synchronization does not replace the staged operands. Other intervening
+    # commands still refuse; this does not establish queue or data hazards.
+    n_pre = classes.count("PRELOAD")
+    n_cmp = sum(classes.count(c) for c in _COMPUTE)
+    if n_cmp and n_pre != n_cmp:
+        violations.append(f"PRELOAD count ({n_pre}) != COMPUTE count ({n_cmp})")
+    previous_command = None
+    for i, c in enumerate(classes):
+        if c == "FENCE":
+            continue
+        if c in _COMPUTE and previous_command != "PRELOAD":
+            violations.append(f"COMPUTE at #{i} is not preceded by PRELOAD (ignoring only FENCE)")
+            break
+        previous_command = c
+
+    # 4. mode checks
+    modes = expected.get("modes", {}) or {}
+    unresolved_modes = []
+    unresolved_fields = []
+    accumulation_witness = None
+    if (
+        binding is not None
+        and protocol_selected
+        and lowered_module is not None
+        and modes.get("k_accumulate")
+        and any(row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is None for row in ins)
+        and not any(row["class"] == "PRELOAD" and row.get("decoded", {}).get("accumulate") is True for row in ins)
+    ):
+        from merlin.development.targetgen.rocc.control_flow import constant_control_operand_witness
+
+        try:
+            accumulation_witness = constant_control_operand_witness(
+                lowered_module,
+                target=target,
+                expected_trace=original_trace,
+                semantic_class="PRELOAD",
+                field="accumulate",
+                value=True,
+            )
+        except ValueError as error:
+            return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
+        if accumulation_witness is True:
+            notes.append("k_accumulate destination flag proved by complete bounded constant-control traversal")
+    readout_witness = None
+    if (
+        binding is not None
+        and protocol_selected
+        and lowered_module is not None
+        and modes.get("i8")
+        and any(row["class"] == "MVOUT" and row.get("decoded", {}).get("readout") is None for row in ins)
+        and not any(row["class"] == "MVOUT" and row.get("decoded", {}).get("readout") == "i8" for row in ins)
+    ):
+        from merlin.development.targetgen.rocc.control_flow import constant_control_operand_witness
+
+        try:
+            readout_witness = constant_control_operand_witness(
+                lowered_module,
+                target=target,
+                expected_trace=original_trace,
+                semantic_class="MVOUT",
+                field="readout",
+                value="i8",
+            )
+        except ValueError as error:
+            return {"status": "fail", "violations": [str(error)], "trace_requirement_status": "invalid_binding"}
+        if readout_witness is True:
+            notes.append("i8 readout proved by complete bounded constant-control traversal")
+    if binding is not None and not protocol_selected:
+        unresolved_modes = [mode for mode, required in modes.items() if required and mode != "movement"]
+        for mode in unresolved_modes:
+            violations.append(f"mode {mode} requires an unavailable selected operand protocol")
+    elif binding is not None:
+        for mode, classes_needed, field in (
+            ("i8", {"MVOUT"}, "readout"),
+            ("relu", {"CONFIG_ST"}, "relu"),
+            ("acc_scale", {"CONFIG_ST"}, "acc_scale"),
+            ("k_accumulate", {"PRELOAD"}, "accumulate"),
+        ):
+            if (
+                not modes.get(mode)
+                or (mode == "k_accumulate" and accumulation_witness is not None)
+                or (mode == "i8" and readout_witness is not None)
+            ):
+                continue
+            observations = [row for row in ins if row["class"] in classes_needed]
+            if mode == "k_accumulate" and not observations:
+                # No site that could carry the flag at all: the stream cannot be accumulating.
+                unresolved_fields.append(mode)
+                violations.append(f"mode {mode} has unresolved original operand fields")
+            elif observations and not any(row.get("decoded", {}).get(field) is not None for row in observations):
+                # Not observable from the emitted operands: missing evidence, not a defect.
+                unresolved_fields.append(mode)
+                notes.append(f"mode {mode}: its operand field is unresolved on every emitted site (unavailable)")
+        if modes.get("resident_reuse"):
+            loads = [row for row in ins if row["class"] in _MVIN]
+            if not loads or any(
+                any(row.get("decoded", {}).get(field) is None for field in ("spad_addr", "rows", "cols"))
+                or _operand_identity(row.get("decoded", {}).get("dram")) is None
+                for row in loads
+            ):
+                unresolved_fields.append("resident_reuse")
+                notes.append("mode resident_reuse: load identity/extent fields are unresolved (unavailable)")
+
+    def _any(pred) -> bool:
+        return any(pred(i) for i in ins)
+
+    if modes.get("i8") and "i8" not in unresolved_fields:
+        if readout_witness is not True and not _any(
+            lambda i: i["class"] == "MVOUT" and i.get("decoded", {}).get("readout") == "i8"
+        ):
+            violations.append("mode i8 declared but no MVOUT has i8 readout")
+    if modes.get("relu") and "relu" not in unresolved_fields:
+        if not _any(lambda i: i["class"] == "CONFIG_ST" and i.get("decoded", {}).get("relu") is True):
+            violations.append("mode relu declared but no CONFIG_ST sets relu activation")
+    if modes.get("acc_scale") and "acc_scale" not in unresolved_fields:
+
+        def _scale_update(instruction):
+            value = instruction.get("decoded", {}).get("acc_scale")
+            return (
+                instruction["class"] == "CONFIG_ST"
+                and type(value) in (int, float)
+                and (binding is None or type(value) is float)
+                and math.isfinite(value)
+                and value != 1.0
+            )
+
+        # All-ones can be a keep-state sentinel whose f32 view is NaN. It is
+        # not an observed scale update, nor is any nonfinite bit pattern.
+        ok = _any(_scale_update)
+        if not ok:
+            violations.append("mode acc_scale declared but no CONFIG_ST has a non-identity scale")
+    if modes.get("k_accumulate") and "k_accumulate" not in unresolved_fields:
+        # A selected COMPUTE_AND_STAY operation can retain a weight bank. Its
+        # class label alone does not prove accumulator write-add; use the actual
+        # selected destination accumulation flag for Bound protocols.
+        ok = (
+            accumulation_witness is True
+            or (binding is None and "COMPUTE_ACCUMULATE" in present)
+            or _any(lambda i: i["class"] == "PRELOAD" and i.get("decoded", {}).get("accumulate") is True)
+        )
+        if not ok:
+            violations.append("mode k_accumulate declared but no accumulate-onto PRELOAD / COMPUTE_ACCUMULATE found")
+    if modes.get("resident_reuse"):
+        # reuse = >=2 compute groups (MVOUTs) but the resident region written ONCE. Counted as
+        # executed: a looped readout is as many commits as the loop runs.
+        n_mvout = executed_count(ins, "MVOUT")
+        if n_mvout is None:
+            unresolved_fields.append("resident_reuse")
+            notes.append("mode resident_reuse: executed output commits are not proved (unavailable)")
+        elif n_mvout < 2 and _single_commit_covers_output(cb, ins):
+            notes.append("mode resident_reuse: the operation has one output commit, so no reuse can be shown")
+        elif n_mvout < 2:
+            violations.append("mode resident_reuse declared but <2 output commits (no reuse visible)")
+        violations += _residency_findings(ins)
+    if modes.get("load_state_resident"):
+        # A load configuration re-establishing state the load path already holds is provably inert
+        # work, decidable from the emitted stream alone -- the stale-mode argument above, on the load
+        # side. The selector's position and the addressable state count come from the target's own
+        # register-bundle layout through its selected support; absent, this refuses in words.
+        from merlin.analysis.perf import load_state_residency as _LSR
+
+        selector = _LSR.load_state_selector(str(target)) if target else None
+        violations += _LSR.residency_findings({"instructions": ins}, selector=selector)
+    if modes.get("stationary_resident"):
+        # The same argument on the ARRAY side: a staging command naming the block the array already
+        # holds shifts identical bytes through it for nothing. Floors and the accumulator bound are
+        # derived from the target's own ABI and RTL by the module below.
+        from merlin.analysis.perf import stationary_residency as _SR
+
+        violations += _SR.residency_findings({"instructions": ins}, target=target)
+    if modes.get("movement"):
+        loads, stores = _MVIN, {"MVOUT"}
+        computes, preloads = _COMPUTE, {"PRELOAD"}
+        if binding is not None and not protocol_selected:
+            loads, stores = set(bound_roles.get("memory", [])), set(bound_roles.get("acc_readout", []))
+            computes, preloads = set(bound_roles.get("matmul", [])), set(bound_roles.get("weight_load", []))
+            if not loads or not stores:
+                unresolved_modes.append("movement")
+                violations.append("mode movement requires unavailable selected load/readout roles")
+        bad = present & computes | (present & preloads)
+        if bad:
+            violations.append(f"mode movement declared but compute instructions present: {sorted(bad)}")
+        if not present & loads or not present & stores:
+            violations.append("mode movement declared but trace lacks MVIN/MVOUT")
+
+    # A sixteen-wide resident schedule is a preferred strategy, not generic
+    # instruction legality. No original selected schedule relation is consumed
+    # here, so these findings never become required structural obligations.
+    tile_advisory = None
+    if cb is not None and any(
+        command.get("opcode") in {"MATMUL", "MATMUL_RESIDENT"} for command in cb.get("commands", [])
+    ):
+        findings = []
+        available = binding is None or protocol_selected
+        if available:
+            try:
+                _check_tiles(lambda cls: executed_count(ins, cls), cb, findings)
+            except Exception as error:
+                findings.append(f"legacy tile-strategy observation unavailable: {error}")
+        tile_advisory = {
+            "required": False,
+            "strategy": "legacy_16wide_resident_matmul",
+            "status": "observed" if available else "unavailable_projection",
+            "findings": findings,
+        }
+
+    # advisory DRAM-address provenance (parameterized by the harness address model; no-op if unknown)
+    if address_model:
+        violations += dram_address_findings(trace, address_model)
+
+    out = {"status": "pass" if not violations else "fail", "violations": violations}
+    if modes.get("resident_reuse"):
+        out["execution_config_advisory"] = {
+            "required": False,
+            "findings": _stale_mode_config_findings(ins),
+            "scope": "identical execution configuration is redundant command work; actual resident "
+            "reloads, unresolved operands and numerical/tier failures remain qualification gates",
+        }
+    if tile_advisory is not None:
+        out["tile_schedule_advisory"] = tile_advisory
+    if binding is not None:
+        out["trace_requirement_status"] = (
+            "unavailable_protocol"
+            if unresolved_modes
+            else "unavailable_fields"
+            if unresolved_fields
+            else "failed"
+            if violations
+            else "pass"
+        )
+        out["unavailable_requirements"] = sorted(set(unresolved_modes + unresolved_fields))
+    if notes:
+        out["satisfied_otherwise"] = notes
+    return out
+
+
+def residency_findings(trace: dict) -> list[str]:
+    """Find exact redundant reloads without requiring a capsule to declare residency mode.
+
+    ``check`` keeps mode conformance conditional on the capsule contract.  Whole-program performance
+    diagnosis has a different question: does the emitted stream visibly re-materialize a value that
+    is still live on chip?  The underlying detector already answers that from decoded source,
+    destination and extent identities, so expose it directly instead of duplicating or weakening it in
+    the performance harness.  An empty result proves only that this exact defect was not observed; it
+    is not proof that every profitable value remained resident.
+    """
+    if not isinstance(trace, dict):
+        raise TypeError("trace must be a mapping")
+    instructions = trace.get("instructions", [])
+    if not isinstance(instructions, list):
+        raise TypeError("trace instructions must be a list")
+    return _residency_findings(instructions)
+
+
+def _operand_identity(value) -> tuple | None:
+    """A hashable identity for one decoded operand reference, compared structurally.
+
+    The decoder resolves a memory operand to either a constant or an argument-relative reference; both
+    forms compare exactly. No field layout is read here -- the decoder already did that from the target's
+    own RTL facts, which is the only place it may be done.
+
+    Unknown references do not identify one source: two unresolved SSA values may
+    denote different allocations even when their diagnostic dictionaries match.
+    """
+    if isinstance(value, dict):
+        if value.get("kind") == "const" and type(value.get("raw")) is int:
+            return ("lit", value["raw"])
+        if (
+            value.get("kind") == "argbase"
+            and type(value.get("arg_index")) is int
+            and value["arg_index"] >= 0
+            and type(value.get("offset")) is int
+        ):
+            return ("argbase", value["arg_index"], value["offset"])
+        if (
+            value.get("kind") == "global"
+            and type(value.get("symbol")) is str
+            and value["symbol"]
+            and type(value.get("offset")) is int
+        ):
+            return ("global", value["symbol"], value["offset"])
+        return None
+    return ("lit", value) if type(value) in (int, str) else None
+
+
+def _residency_findings(ins: list[dict]) -> list[str]:
+    """Under a declared residency mode: was the resident region written ONCE, or re-loaded per use?
+
+    THE CHECK THIS REPLACES TESTED A PROXY AND HAD DRIFTED FROM ITS OWN COMMENT. It read
+    ``n_cfg_ex != 1`` beneath the words "weights loaded into the resident region once" -- but a
+    CONFIG_EX count is not a statement about the resident region, and nothing counted the loads. On
+    A6_resident_reuse that reported one redundant config while the weight was ALSO being moved in twice,
+    and nothing said so; suppressing the config alone would have turned the capsule green with the
+    reload intact. A capsule that passes while the property it exists to prove is absent is worse than
+    one that fails.
+
+    Stated directly, and checked from the DECODER'S OWN derived fields rather than from raw operand
+    bits: an on-chip destination that is written again from the same source, with nothing having
+    overwritten it in between, was not resident -- the program re-materialized what it claimed to keep.
+    Tracking the live contents per destination is what makes the "in between" precise: a genuine
+    re-load after the slot was reused for something else is not flagged, because the slot no longer held
+    that source.
+
+    Both fields come from the decode, so this stays correct for any target whose ISA the decoder can
+    read: ``spad_addr`` (the on-chip destination) and ``dram`` (the source reference), plus the tile
+    extent, since the same source at a different extent is a different transfer.
+    """
+    live: dict[Any, tuple] = {}
+    reloads: list[tuple[int, Any]] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") not in _MVIN:
+            continue
+        decoded = instruction.get("decoded") or {}
+        destination = decoded.get("spad_addr")
+        if destination is None:
+            live.clear()  # an unlocated write may overwrite any tracked slot
+            continue
+        source = _operand_identity(decoded.get("dram"))
+        if source is None or any(decoded.get(field) is None for field in ("rows", "cols")):
+            live.pop(destination, None)
+            continue
+        content = (source, decoded.get("rows"), decoded.get("cols"))
+        if live.get(destination) == content:
+            reloads.append((index, destination))
+        live[destination] = content
+    if not reloads:
+        return []
+    where = ", ".join(f"#{i} -> on-chip {addr}" for i, addr in reloads[:4])
+    return [
+        f"mode resident_reuse: {len(reloads)} redundant load(s) rewrite an on-chip destination "
+        f"that already held that exact source ({where}), so the region was NOT resident -- it was "
+        f"re-materialized per use"
+    ]
+
+
+def _stale_mode_config_findings(ins: list[dict]) -> list[str]:
+    """Report identical execution-mode commands as performance findings, not failed residency.
+
+    Reissuing identical configuration does not itself reload the resident operand. The resident
+    mode checks actual transfers; refusing it solely for redundant setup confused an optimization
+    opportunity with failed accelerator functionality. Explicit instruction prohibitions and the
+    other selected mode/ordering requirements are checked independently.
+    """
+    active: tuple | None = None
+    repeats: list[int] = []
+    for index, instruction in enumerate(ins):
+        if instruction.get("class") != "CONFIG_EX":
+            continue
+        payload = (_operand_identity(instruction.get("rs1")), _operand_identity(instruction.get("rs2")))
+        if None in payload:
+            active = None
+            continue
+        if active == payload:
+            repeats.append(index)
+        active = payload
+    if not repeats:
+        return []
+    return [
+        f"{len(repeats)} execution-mode config(s) re-issue the configuration "
+        f"already active (at {', '.join('#' + str(i) for i in repeats[:4])}); redundant setup is "
+        f"a performance optimization opportunity"
+    ]
+
+
+def _ceil16(x: int) -> int:
+    return ((x + 15) // 16) * 16
+
+
+def _check_tiles(count, cb: dict, violations: list[str]) -> None:
+    """For a single resident matmul, MVOUT count should equal Mt*Nt over padded dims.
+
+    ``count(cls)`` is the executed command count of a class (:func:`executed_count`); an unproved
+    count makes that relation unobservable rather than a finding."""
+    tensors = cb.get("tensors", {})
+    cmds = cb.get("commands", [])
+    matmuls = [c for c in cmds if c.get("opcode") in ("MATMUL_RESIDENT", "MATMUL")]
+    if len(matmuls) != 1:
+        return  # multi-matmul / movement: skip the simple geometry check
+    mm = matmuls[0]
+    lhs = tensors.get(mm.get("operands", {}).get("lhs"))
+    # resident weight shape lives on the RES_PACK source
+    packs = [c for c in cmds if c.get("opcode") == "RES_PACK"]
+    if not lhs or not packs:
+        return
+    wsrc = tensors.get(packs[0].get("operands", {}).get("src"))
+    if not wsrc:
+        return
+    M = lhs["shape"][0]
+    N = wsrc["shape"][1]
+    Mt, Nt = _ceil16(M) // 16, _ceil16(N) // 16
+    # A fused pooling store retains all Mt row tiles as one spatial plane, then issues one MVOUT for
+    # each channel tile. Counting one store per compute tile would diagnose the required retained-plane
+    # schedule as missing stores (GP1 is Mt=2, Nt=2 but correctly has two, not four, MVOUTs).
+    commits = [c for c in cmds if c.get("opcode") == "COMMIT"]
+    pooled = len(commits) == 1 and "maxpool" in ((commits[0].get("attributes") or {}).get("epilogue") or [])
+    exp_mvout = Nt if pooled else Mt * Nt
+    got = count("MVOUT")
+    if got is None:
+        violations.append("MVOUT executions are not proved; the tile count is unobserved")
+    elif got != exp_mvout:
+        basis = "Nt for retained-plane maxpool" if pooled else "Mt*Nt"
+        violations.append(f"MVOUT count {got} != expected {basis}={exp_mvout} (M={M},N={N})")
+
+    # SYNCHRONISATION MUST NOT SCALE WITH TILES. A capacity-safe schedule that fences after every
+    # output tile is numerically correct and catastrophically slow: measured on a 1024x1024 QK slice,
+    # 4,096 fences for 4,096 tiles, and with twelve batch slices across repeated attention layers the
+    # FPGA appeared stalled. Batching the synchronisation -- one fence before the kernel, the
+    # reservation station ordering the intervening scratchpad and accumulator hazards, one
+    # load-bearing fence at the end so output DMA completes before the CPU reads -- took the same
+    # kernel to two, with identical arithmetic, tiling, addresses and commands.
+    #
+    # The invariant is SCALING, not a fixed budget: a schedule may legitimately carry a small constant
+    # number of fences, and hard-coding "at most two" would refuse shapes nobody has looked at. What
+    # can never be right is one fence per tile, so that is what this names.
+    tiles = Mt * Nt
+    flushes = count("FLUSH")
+    if tiles >= 2 and flushes is not None and flushes >= tiles:
+        violations.append(
+            f"FLUSH count {flushes} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "synchronisation is issued per tile rather than batched around the kernel"
+        )
+
+    # THE DATAFLOW IS CONFIGURED ONCE, NOT PER TILE. An expert-generated reference kernel for this
+    # accelerator issues its five `config_*` commands once, before any loop, and then runs a tight
+    # mvin/preload/compute body with the accumulator resident across every reduction step. A schedule
+    # that reconfigures the execution mode per output tile pays that command on every tile and buys
+    # nothing: CONFIG_EX selects the dataflow, which does not vary between tiles of one matmul.
+    #
+    # Scoped to CONFIG_EX deliberately. CONFIG_LD and CONFIG_ST carry strides that a schedule may
+    # legitimately vary per tile, and these findings become REFUSALS through the emission guard -- so
+    # a false positive costs a candidate. CONFIG_EX is the one whose "issue once" semantics are
+    # unambiguous, and `_check_resident_reuse` already treats a second CONFIG_EX as a defect for the
+    # resident case; this generalises only that part.
+    configs = count("CONFIG_EX")
+    if tiles >= 2 and configs is not None and configs >= tiles:
+        violations.append(
+            f"CONFIG_EX count {configs} scales with the {tiles} output tile(s) (Mt={Mt}, Nt={Nt}): "
+            "the dataflow is reconfigured per tile rather than once for the kernel"
+        )

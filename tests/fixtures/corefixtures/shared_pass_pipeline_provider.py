@@ -15,7 +15,7 @@ from merlin.compiler.kernel_ir.ir import Const, evaluate
 from merlin.compiler.schedule.program_limits import DecodedInstruction, EncodedAccess, ProgramDecoder, ProgramLimits
 from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
 from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
-from merlin.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
+from merlin.development.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
 
 KEYS = ("address", "width", "host", "token", "view")
 NAMES = ("setup", "fetch", "await", "affine", "store", "descriptor")
@@ -255,7 +255,7 @@ def fixture(directory, *, width=7, panels=7, slots=2, alias=True, bits=64, big=F
 
 
 def target_text(kernel, selected):
-    from merlin.llvmlower.target_schedule import instruction_module
+    from merlin.compiler.lower.model.target_schedule import instruction_module
 
     module = instruction_module(replace(kernel, name="target_program", args=(), attrs=()), selected)
     stream = io.StringIO()

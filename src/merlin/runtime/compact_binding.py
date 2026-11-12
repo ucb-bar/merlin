@@ -16,9 +16,9 @@ from itertools import product
 from math import prod
 from typing import Any
 
+from merlin.analysis.perf.storage_encoding import GroupedAxesStorage
+from merlin.analysis.perf.structural_transitions import _element_bytes
 from merlin.common import jsonio as _mjson
-from merlin.perf.storage_encoding import GroupedAxesStorage
-from merlin.perf.structural_transitions import _element_bytes
 from merlin.runtime.storage_binding import StorageBinding, resolve_storage_bindings
 from merlin.runtime.tensor import Tensor
 

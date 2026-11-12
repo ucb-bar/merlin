@@ -20,10 +20,10 @@ import numpy as np
 
 from merlin.common import owned_process
 from merlin.common.invocation_record import Invocation
-from merlin.llvmlower.compilation_recipe import verify_completed_recipe
-from merlin.model_check import full_build as FB
-from merlin.model_check import replay as RP
-from merlin.model_check.full_build_identity import verified_recipe
+from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+from merlin.evaluation.model import full_build as FB
+from merlin.evaluation.model import replay as RP
+from merlin.evaluation.model.full_build_identity import verified_recipe
 from merlin.runtime.modelinputs import strict_tree_sha256
 
 
@@ -229,7 +229,7 @@ def main():
             dependencies=[Path(__file__)],
         )
         try:
-            from merlin.model_check.compute_execution import compute_step
+            from merlin.evaluation.model.compute_execution import compute_step
 
             with compute_step(30) as remaining:
                 done = owned_process.run(

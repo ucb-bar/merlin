@@ -59,7 +59,7 @@ def expected_reads(workspace, bundle, *, repo):
         required.add(protocol_path)
     if len(entries) != len(required) or {entry["path"] for entry in entries} != required:
         raise ValueError("public contract preflight requires every exact public ABI/schema grant")
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     sources = [BW.resolve_grant(entry["path"], Path(repo)) for entry in entries]
     frozen_paths = BW.snapshot_input_paths(Path(workspace), bundle, sources, repo=Path(repo))
@@ -98,7 +98,7 @@ def expected_reads(workspace, bundle, *, repo):
 
 
 def _raw_reads(files, workspace, bundle, *, repo):
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     raw_pins = bundle.get("selected_raw_rtl_files", ())
     if raw_pins:
@@ -124,7 +124,7 @@ def _raw_reads(files, workspace, bundle, *, repo):
 
 def _neutral_reads(workspace, bundle, *, repo):
     from merlin.development.backend import neutral_public_contracts as N
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     pins = bundle.get("neutral_public_contract_files")
     required = N.FILES | {N.INPUT_DOCUMENT} | {"schemas/" + name for name in N.SCHEMAS}

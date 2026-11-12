@@ -21,7 +21,7 @@ from merlin.development.backend.context import InvocationContext
 from merlin.development.backend.feedback import lifecycle as FL
 from merlin.development.backend.providers import codex_context
 from merlin.development.backend.telemetry import startup as _START
-from merlin.targetgen import experiment_tokens as ET
+from merlin.development.targetgen import experiment_tokens as ET
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
@@ -148,8 +148,8 @@ def _assemble(stage, function, /, *args, **kwargs):
     all of it waiting for the interpreter lock. The first call of each step in this process (the
     preflight) computes the argv both in process and in a worker and keeps the in-process one; later
     calls use the worker only if the two were identical, and a worker failure falls back in process
-    (:func:`merlin.targetgen.grade_offload.call`). A mismatch keeps the step in process for the run."""
-    from merlin.targetgen import grade_offload
+    (:func:`merlin.development.targetgen.grade_offload.call`). A mismatch keeps the step in process for the run."""
+    from merlin.development.targetgen import grade_offload
 
     grade_offload.register(function)
     verified = _ASSEMBLY_VERIFIED.get(stage)
@@ -186,9 +186,9 @@ def sandbox_plan(
 
     No mode mounts the operator's Claude state (``~/.claude``, ``~/.claude.json``). An ``inner`` that runs
     the ``claude`` CLI gets a home staged fresh for that launch (``sandbox.claude_home``) instead."""
-    from merlin.targetgen.sandbox import bwrap as _BW
-    from merlin.targetgen.sandbox import claude_home as _CH
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox import bwrap as _BW
+    from merlin.development.targetgen.sandbox import claude_home as _CH
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
@@ -317,7 +317,7 @@ class SandboxPlan:
     workspace: Path
 
     def command(self, inner: str) -> str:
-        from merlin.targetgen.sandbox import bwrap
+        from merlin.development.targetgen.sandbox import bwrap
 
         payload = self.environment + inner
         return bwrap.compose_command(list(self.parts), " bash -c " + shlex.quote(payload), self.workspace)
@@ -353,7 +353,7 @@ class CodexSandboxCommand:
 
 def _verify_codex_runtime(runtime, context, ws, bundle):
     from merlin.development.backend import author_toolchain
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     _START.call("runtime_verify", runtime.verify)
     target = load_target_experiment(context.descriptor)
@@ -395,7 +395,7 @@ def launch(
     policy_root: Path | None = None,
     contract: Path | None = None,
 ) -> tuple[int, Path]:
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).

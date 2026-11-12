@@ -55,7 +55,7 @@ def origin(options, workspace: Path, *, prior: dict | None = None, compiler_libr
             raise ValueError("fresh full compiler requires exact generic baseline and zero target backend files")
         return {"schema": "merlin.empty_backend_origin.v1", "initial_files": 0}
     if children:
-        from merlin.targetgen.compiler_library_fork import DIRECTORY, enabled
+        from merlin.development.targetgen.compiler_library_fork import DIRECTORY, enabled
 
         # Trusted staging creates this empty directory for sparse overrides.
         # No files, links, nested directories or unselected fork are a fresh seed.

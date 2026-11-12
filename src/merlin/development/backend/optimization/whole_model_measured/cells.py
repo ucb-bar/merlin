@@ -58,10 +58,10 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import gates as G
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured.identity import load_builder, now
-from merlin.perf import whole_model_verdict as V
 
 SCHEMA = "merlin_cell_machine_v1"
 DEVICE_MACHINE = "merlin.phase2.whole_model_measured.cells:cell_sum"
@@ -549,7 +549,7 @@ def measure_cell(job: Mapping[str, Any], job_dir: Path, package: Path, *, target
         raise J.ServiceError(f"the cell carries no enforceable sealed instruction policy ({'; '.join(unsealed)})")
     # THE EXACTNESS CONTRACT the run carries (the cell machine's own when the job carries none): every
     # program's group is graded under it, and the result records which contract that was.
-    from merlin.perf import exactness as EX
+    from merlin.analysis.perf import exactness as EX
 
     carried = (job.get("exactness") or {}).get("contract") or spec.get("exactness")
     contract = EX.Contract.from_value(carried, target=target)

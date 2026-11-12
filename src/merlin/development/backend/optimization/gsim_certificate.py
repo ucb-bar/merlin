@@ -368,9 +368,9 @@ def _semantic_oracle(
     This boundary is deliberately target-, operation-, and capsule-neutral.  It is selected only by
     semantic evidence already present in the capsule/command-buffer contracts.
     """
+    from merlin.development.targetgen import capsule_golden as golden
     from merlin.runtime.commandbuffer import whole_program_entry_bindings
     from merlin.runtime.reference import outputs_match, reference_outputs
-    from merlin.targetgen import capsule_golden as golden
 
     capsule = dict(WORKLOAD._load_mapping(capsule_manifest, yaml_input=True))
     capsule["__dir__"] = str(capsule_manifest.parent)
@@ -545,7 +545,7 @@ def capture_case(
     case_work = Path(workdir)
     case_work.mkdir(parents=True, exist_ok=True)
     from merlin.development.backend.optimization import gsim_digest_readback as DIGEST
-    from merlin.targetgen.contract import readback_policy as RB
+    from merlin.development.targetgen.contract import readback_policy as RB
 
     if readback is None:
         import inspect
@@ -557,7 +557,7 @@ def capture_case(
         raise WORKLOAD.ProducerError(f"capture readback must be 'digest' or 'full', got {readback!r}")
     digest_policy = RB.ReadbackPolicy(RB.OUT_DIGEST_V1)
     if build_elf is None:
-        from merlin.targetgen.contract.compile import compile_lowered_to_elf
+        from merlin.development.targetgen.contract.compile import compile_lowered_to_elf
 
         def build_elf(buffer: Mapping[str, Any], llvm: str, destination: Path, readback_policy=None) -> Path:
             destination.mkdir(parents=True, exist_ok=True)
@@ -574,7 +574,7 @@ def capture_case(
         from merlin.runtime.backends import base as backends
 
         backend = backends.get_backend(target)
-    from merlin.perf import capture_store as STORE
+    from merlin.analysis.perf import capture_store as STORE
     from merlin.runtime.backends import base as backends
     from merlin.runtime.commandbuffer import declared_output_dtypes
 

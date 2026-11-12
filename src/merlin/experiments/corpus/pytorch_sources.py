@@ -10,10 +10,10 @@ from merlin.capture.demands import linalg_to_iface, verify_exact_application_int
 from merlin.capture.loaders import _FUSED_OP_INPUT_NAMES, _OP_INPUT_NAMES
 from merlin.capture.numerics import _flatten, _model_output_numeric_policy, _tol
 from merlin.capture.pytorch import PytorchRefSource
+from merlin.development.targetgen import component_sources
+from merlin.development.targetgen.capsule_capture_spec import _capture_spec
+from merlin.development.targetgen.golden_store import write_golden
 from merlin.experiments.corpus.source_evidence import _freeze_selected_m2m_tool, _write_frontend_evidence
-from merlin.targetgen import component_sources
-from merlin.targetgen.capsule_capture_spec import _capture_spec
-from merlin.targetgen.golden_store import write_golden
 
 
 def _host_eager_golden(art, names, out_name, binding, *, interface: str, arg_order, exact_integer: bool = False):
@@ -166,14 +166,14 @@ def write_pytorch_capsule(entry: dict, binding, out_root, *, source: PytorchRefS
         golden = _host_eager_golden(
             art, names, out_name, binding, interface="linalg_positional", arg_order=names + [out_name]
         )
-        from merlin.targetgen.native_storage_source import publish_native_storage
+        from merlin.development.targetgen.native_storage_source import publish_native_storage
 
         try:
             publish_native_storage(spec, art, cap, golden, binding)
         except ValueError as exc:
             raise M2MUnavailable(str(exc)) from exc
         if op == "producer_quantizer_observer" or len((art.meta or {}).get("output_abi") or []) > 1:
-            from merlin.targetgen.capsule_results import publication
+            from merlin.development.targetgen.capsule_results import publication
 
             try:
                 outputs = publication(art, entry)

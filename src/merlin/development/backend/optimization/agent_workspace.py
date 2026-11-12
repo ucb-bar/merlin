@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
 from merlin.common.digest import sha256_bytes as _sha256
 from merlin.development.backend.optimization import campaign as CAMPAIGN
 from merlin.development.backend.optimization import compiler_libraries as LIBRARIES
@@ -27,14 +27,14 @@ from merlin.development.backend.optimization.functional_inputs import (
     _private_functional_surfaces,
     frozen_grant_mounts,
 )
-from merlin.perf.external_objective import OBJECTIVE_DIRECTORY, ExternalObjective, objective_directory
-from merlin.targetgen.capsule_privacy import capsule_answer_members
-from merlin.targetgen.compiler_library import active_compiler_library
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection, active_compiler_passes
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.capsule_privacy import capsule_answer_members
+from merlin.development.targetgen.compiler_library import active_compiler_library
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection, active_compiler_passes
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox.answer_surfaces import answer_surfaces
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 
 FUNCTIONAL_BASE_MOUNT = Path("/perf-functional-base")
 FUNCTIONAL_INPUT_MANIFEST_MOUNT = Path("/perf-functional-inputs/snapshot.json")
@@ -232,7 +232,7 @@ def build_answer_free_agent_inputs(
         "schema_version": 1,
         "source_performance_manifest_sha256": corpus.manifest_sha256,
         "source_performance_corpus_sha256": corpus.capsules_sha256,
-        "answer_surface_registry": "merlin.targetgen.sandbox.answer_surfaces",
+        "answer_surface_registry": "merlin.development.targetgen.sandbox.answer_surfaces",
         "files": rows,
         "content_sha256": content_sha,
         "n_files": len(rows),

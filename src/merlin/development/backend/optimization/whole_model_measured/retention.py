@@ -20,6 +20,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured.identity import (
     key_of,
@@ -28,7 +29,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
     sha256_file,
     write_json_atomic,
 )
-from merlin.perf import whole_model_verdict as V
 
 RETENTION_SCHEMA = "merlin_whole_model_retention_v1"
 

@@ -7,7 +7,7 @@ resources) and a downstream plan chosen per shape. It runs against `submission/c
 ## 1. Facts to capacities (shared)
 
 ```python
-from merlin.targetgen import address_space as AS
+from merlin.development.targetgen import address_space as AS
 space = AS.derive_address_space(label, facts=json.load(open("rtl_facts/facts.json")))
 operand, accumulator = AS.operand_store(space), AS.accumulator_store(space)
 edge = space.array_rows, space.array_cols

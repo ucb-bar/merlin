@@ -19,7 +19,7 @@ COMPUTE = "accumulate"
 
 def mechanisms():
     """Accepted mechanism names: exactly the fact names ``derive_effects`` reports."""
-    from merlin.kernels.decoded_effects import derive_effects
+    from merlin.analysis.kernels.decoded_effects import derive_effects
 
     return tuple(derive_effects({}, {})["facts"])
 
@@ -89,7 +89,7 @@ def effects(rows, decoder, structure, evidence_id):
     """``derive_effects`` over the decoded IR sites in IR order (lexical, not issue order)."""
     if structure is None:
         return None
-    from merlin.kernels.decoded_effects import derive_effects
+    from merlin.analysis.kernels.decoded_effects import derive_effects
 
     commands = [
         dict(

@@ -10,8 +10,8 @@ from pathlib import Path
 def _load_native_request(args: argparse.Namespace, *, target_identity: str, mode: str):
     """Read compiler inputs only; bind parsed Linalg to the selected target."""
     from merlin.compiler.frontend.inputs import load_compile_inputs, load_lifted_argument_bytes
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError, translate_linalg_text
-    from merlin.semantic_compiler.model import KernelRequest
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError, translate_linalg_text
+    from merlin.compiler.semantic.model import KernelRequest
 
     if getattr(args, "compile_inputs", None):
         if args.linalg_entry:
@@ -57,7 +57,7 @@ def load_selected_request(args, *, target_identity, mode, binding=None, load_req
     """Load unchanged inputs or the explicit source-bound diagnostic graph route."""
     from merlin.compiler.frontend.inputs import load_compile_inputs
     from merlin.compiler.quantization.native import prepare_graph_request, prepare_tile_request
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
 
     graph_policy = getattr(args, "diagnostic_graph_policy", None)
     if graph_policy is None:

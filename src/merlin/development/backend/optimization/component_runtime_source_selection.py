@@ -11,7 +11,7 @@ from merlin.development.backend.optimization import component_runtime_controls a
 from merlin.development.backend.optimization import component_runtime_copy_controls as copy_controls
 from merlin.development.backend.optimization import component_runtime_copy_support as copy_support
 from merlin.development.backend.optimization.contracts import StageGateError, mapping_file, sha256_file
-from merlin.targetgen.contract import source_observation
+from merlin.development.targetgen.contract import source_observation
 
 
 def selection(context):

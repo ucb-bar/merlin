@@ -98,7 +98,7 @@ class MechanismProgram:
             ):
                 raise ValueError("host-frozen mechanism program is incomplete or changed")
         if self.catalog_binding is not None:
-            from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+            from merlin.analysis.perf.compiler_edit_scope import validate_mechanism_catalog
 
             binding = self.catalog_binding
             frozen = Path(binding["frozen_path"])
@@ -187,7 +187,7 @@ class MechanismProgram:
 
     def freeze_catalog(self, source: Path, source_sha256: str, *, has_iterations: bool) -> dict[str, Any]:
         """Freeze one explicit read-only host catalog; its selectors grant no edit authority."""
-        from merlin.perf.compiler_edit_scope import validate_mechanism_catalog
+        from merlin.analysis.perf.compiler_edit_scope import validate_mechanism_catalog
 
         source = Path(source)
         self.check_integrity()

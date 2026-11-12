@@ -88,7 +88,7 @@ def _ir_observation(text: str) -> dict:
     from xdsl.printer import Printer
 
     from merlin.common import mlir_query as mq
-    from merlin.frontends.capture_normalization import normalize_capture_mlir
+    from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
 
     try:
         normalized, normalization = normalize_capture_mlir(text)
@@ -215,7 +215,7 @@ def inspect_workflow(bundle: Path) -> dict:
         # contracts and the actual typed MLIR ABIs at every cross-program edge.
         # A name-only roster check silently misses a changed cache or action
         # tensor even when each program still lowers in isolation.
-        from merlin.llvmlower.session_bundle import load as load_session
+        from merlin.compiler.lower.model.session_bundle import load as load_session
 
         try:
             selected = load_session(bundle)
@@ -302,11 +302,11 @@ def inspect_workflow(bundle: Path) -> dict:
 
 def _compiler_check(package, model: Path, name: str, output: Path, *, timeout: float):
     """Use the existing bounded candidate executor and PID-isolated sandbox base."""
+    from merlin.analysis.perf.analysis_worker import run_sandboxed_entrypoint
     from merlin.common.paths import repo_root
-    from merlin.llvmlower.toolchain import clang_for
-    from merlin.perf.analysis_worker import run_sandboxed_entrypoint
-    from merlin.targetgen.sandbox.bwrap import base_argv
-    from merlin.targetgen.sandbox.preflight import require_working_sandbox
+    from merlin.compiler.lower.model.toolchain import clang_for
+    from merlin.development.targetgen.sandbox.bwrap import base_argv
+    from merlin.development.targetgen.sandbox.preflight import require_working_sandbox
 
     require_working_sandbox(
         context="model compiler requires network-isolated bwrap",
@@ -379,7 +379,7 @@ def _compiler_check(package, model: Path, name: str, output: Path, *, timeout: f
 def _worker(request: dict, root: Path) -> dict:
     if request.get("native_host_only"):
         return _native_host_worker(request, root)
-    from merlin.targetgen.package_runtime import load_package
+    from merlin.development.targetgen.package_runtime import load_package
 
     package = load_package(request["package"])
     if package.target != request["target"]:
@@ -389,9 +389,9 @@ def _worker(request: dict, root: Path) -> dict:
     accounting = {"status": "not_measured", "reason": "no immutable selected target evidence bundle supplied"}
     selection = None
     if request.get("evidence_bundle"):
+        from merlin.development.targetgen.application_inventory import application_operation_inventory
+        from merlin.development.targetgen.operation_accounting import build_operation_accounting
         from merlin.development.testgen.evidence import load_exported_evidence
-        from merlin.targetgen.application_inventory import application_operation_inventory
-        from merlin.targetgen.operation_accounting import build_operation_accounting
 
         selection = load_exported_evidence(request["evidence_bundle"])
         if selection.target != request["target"]:
@@ -436,11 +436,11 @@ def _worker(request: dict, root: Path) -> dict:
         output.mkdir()
         input_ir = _ir_observation((Path(program["bundle"]) / "model.mlir").read_text())
         if request.get("lower_native"):
-            from merlin.llvmlower.lower import lower_model_file
+            from merlin.compiler.lower.model.lower import lower_model_file
 
             bundle = Path(program["bundle"])
             try:
-                from merlin.targetgen.application_inventory import verify_capture_receipt
+                from merlin.development.targetgen.application_inventory import verify_capture_receipt
 
                 if verify_capture_receipt(bundle / "model.mlir")["status"] != "verified_materialized":
                     raise ValueError("full native lowering requires a verified materialized capture receipt")
@@ -553,8 +553,8 @@ def _worker(request: dict, root: Path) -> dict:
         else:
             # This is the existing execution route, not a second interpreter or
             # target compiler. Its fallback counters must remain visible.
+            from merlin.development.targetgen import package_runtime
             from merlin.runtime.dispatch_runtime import run_model
-            from merlin.targetgen import package_runtime
 
             original_entrypoint = package_runtime.run_entrypoint
             original_certify = package_runtime.certify
@@ -587,8 +587,8 @@ def _worker(request: dict, root: Path) -> dict:
                 package_runtime.run_entrypoint = isolated_entrypoint
                 with ExitStack() as context:
                     if selection is not None:
-                        from merlin.targetgen.rtl.facts import observed_facts
-                        from merlin.targetgen.target_registry import observed_contract
+                        from merlin.development.targetgen.rtl.facts import observed_facts
+                        from merlin.development.targetgen.target_registry import observed_contract
 
                         context.enter_context(observed_contract(request["target"], selection.contract))
                         facts_path = (
@@ -659,7 +659,7 @@ def _worker(request: dict, root: Path) -> dict:
 def _native_compiler_identity() -> dict:
     """Pin the real existing host pipeline and selected tools, not a fictitious RVV package."""
     import merlin
-    from merlin.llvmlower import codegen, toolchain
+    from merlin.compiler.lower.model import codegen, toolchain
 
     interpreter = toolchain.compiler_python()
     probe = subprocess.run(
@@ -689,7 +689,7 @@ def _native_compiler_identity() -> dict:
         tools[name] = {"path": str(path), "resolved_path": str(resolved), "sha256": sha256_file(resolved)}
     payload = _plain(Path(merlin.__file__).parent, directory=True)
     return {
-        "route": "merlin.llvmlower.lower_model_file:host",
+        "route": "merlin.compiler.lower.model.lower_model_file:host",
         "core_payload": {"path": str(payload), **hash_tree(payload)},
         "upstream_mlir": {"path": str(upstream), **hash_tree(upstream)},
         "producer": {"path": __file__, "sha256": sha256_file(__file__)},
@@ -705,10 +705,10 @@ def _native_host_worker(request: dict, root: Path) -> dict:
     import numpy as np
 
     from merlin.common.mlir_query import forward_signature
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.lower import lower_model_file
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.lower import lower_model_file
+    from merlin.development.targetgen.application_inventory import verify_capture_receipt
     from merlin.runtime.dispatch_runtime import resolve_forward_args
-    from merlin.targetgen.application_inventory import verify_capture_receipt
 
     workflow = request["workflow"]
     if len(workflow["programs"]) != 1 or workflow["session"]:
@@ -836,7 +836,7 @@ def qualify(
     support_root = None
     support_before = None
     if execute and target is not None:
-        from merlin.targetgen.target_registry import resolve
+        from merlin.development.targetgen.target_registry import resolve
 
         support_root = resolve(target).external_root
         if support_root is not None:

@@ -128,7 +128,7 @@ def _family_of(op: Any, recorded: Any) -> str | None:
         return str(recorded)
     if not op:
         return None
-    from merlin.targetgen import semantic_families
+    from merlin.development.targetgen import semantic_families
 
     return semantic_families.from_op(str(op))
 

@@ -13,7 +13,7 @@ from merlin.development.backend.optimization import authoring
 from merlin.development.backend.optimization import broker_policy as BP
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
+from merlin.development.targetgen.target_experiment import TargetExperiment, load_target_experiment
 
 
 def _component_main(

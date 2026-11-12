@@ -84,7 +84,7 @@ def semantic_family(workspace: Path, name: str) -> str | None:
     try:
         import yaml
 
-        from merlin.targetgen import semantic_families
+        from merlin.development.targetgen import semantic_families
 
         document = yaml.safe_load(declaration.read_text()) or {}
         operation = document.get("operation") if isinstance(document.get("operation"), dict) else {}

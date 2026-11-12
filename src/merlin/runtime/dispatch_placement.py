@@ -6,8 +6,8 @@ command acceptance/completion, storage ownership or synchronization semantics.
 
 from dataclasses import replace
 
-from merlin.xdsl_dialects.lowering.dispatch_program import _check_dispatch_definition
-from merlin.xdsl_dialects.lowering.outline import OutlineError, _external_declarations
+from merlin.compiler.dialects.lowering.dispatch_program import _check_dispatch_definition
+from merlin.compiler.dialects.lowering.outline import OutlineError, _external_declarations
 
 
 class DispatchRuntimeError(RuntimeError):

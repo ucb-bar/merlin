@@ -17,7 +17,7 @@ FireSim adjudicates, GSIM certifies, the functional model and cells only rank.  
 package names a target: machines, builders, capsules and policies are declared data.
 
 Owners: :mod:`.identity` (digests, builder closure, store key), the core's
-:mod:`merlin.perf.whole_model_verdict` (reading a program's log) and :mod:`merlin.perf.whole_model_builder`
+:mod:`merlin.analysis.perf.whole_model_verdict` (reading a program's log) and :mod:`merlin.analysis.perf.whole_model_builder`
 (the service builder), :mod:`.machines` / :mod:`.registry` (devices and how to run them), :mod:`.gates`
 (pre-machine refusals), :mod:`.worker` / :mod:`.batch` (one job, one board batch), :mod:`.service` (the
 store), :mod:`.feedback` / :mod:`.transfer` (what the agent reads), :mod:`.objective` / :mod:`.config`

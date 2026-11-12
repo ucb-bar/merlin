@@ -15,7 +15,7 @@ reads as ``2/9/7`` and not as ``100%``. :meth:`Triple.bounds` states the same th
 the evidence actually supports: thin evidence is a WIDE range, not a high number.
 
 UNDECIDABLES ARE CHARGED TO THE DENOMINATOR, AND THE COMPARATOR IS ASKED RATHER THAN ASSUMED.
-:func:`~merlin.kernels.cca.cca_agree` reports the fields it compared, and this module takes that list
+:func:`~merlin.analysis.kernels.cca.cca_agree` reports the fields it compared, and this module takes that list
 as the denominator's decided part. Everything else the axis names is undecidable, with the reason
 DERIVED from the two CCAs rather than from a list kept here:
 
@@ -142,7 +142,7 @@ def field_verdicts(expert, ours, axes: Sequence[str]) -> tuple[FieldVerdict, ...
     literal inside it, and a measurement that duplicated that literal would keep reporting the old
     answer after the literal changed.
     """
-    from merlin.kernels.cca import cca_agree
+    from merlin.analysis.kernels.cca import cca_agree
 
     report = cca_agree(expert, ours)
     compared = set(report.compared_fields)
@@ -190,8 +190,8 @@ def report_triple(expert, ours) -> tuple[Triple, tuple[FieldVerdict, ...]]:
     triple answers "is this capability exercised"; this one answers "how much of these two descriptions
     was comparable at all", which is the number that says whether the first one means anything.
     """
-    from merlin.kernels.cca import cca_agree
-    from merlin.kernels.cca_compare import uncomparable_axes
+    from merlin.analysis.kernels.cca import cca_agree
+    from merlin.analysis.kernels.cca_compare import uncomparable_axes
 
     compared = list(cca_agree(expert, ours).compared_fields)
     extra = [a for a, _ in uncomparable_axes(expert, ours) if "." in a]
@@ -258,7 +258,7 @@ def _eligibility(spec: dict, root: Path, unit: str, root_env: str) -> tuple[int,
     that outran its own denominator. Rows are therefore scoped to THIS checkout's root variable when
     the record names one, deduplicated by kernel name, and intersected with what is on disk.
     """
-    from merlin.targetgen.corpora import sched_corpus_record
+    from merlin.development.targetgen.corpora import sched_corpus_record
 
     admits = {str(a) for a in (spec.get("admits") or [])}
     if not admits:
@@ -308,7 +308,7 @@ def corpus_status(name: str) -> CorpusStatus:
     because a measurement that reports "0" for a corpus nobody could find is indistinguishable from
     one that measured it and found nothing.
     """
-    from merlin.targetgen.corpora import sched_corpora
+    from merlin.development.targetgen.corpora import sched_corpora
 
     spec = sched_corpora().get(name)
     if spec is None:

@@ -20,60 +20,27 @@ from xdsl.ir import Block, BlockArgument, Operation, Region, SSAValue
 from xdsl.ir.affine import AffineDimExpr, AffineMap
 from xdsl.rewriter import Rewriter
 
-from merlin.transforms.certificates import ir_digest
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
-
-from . import row_normalization_source
-from .row_normalization_source import (
-    RowNormalizationGroup as RowNormalizationGroup,
-)
-from .row_normalization_source import (
-    _body as _body,
-)
-from .row_normalization_source import (
-    _check_operation as _check_operation,
-)
-from .row_normalization_source import (
-    _fiber_map as _fiber_map,
-)
-from .row_normalization_source import (
-    _generic as _generic,
-)
-from .row_normalization_source import (
-    _identity_copy as _identity_copy,
-)
-from .row_normalization_source import (
-    _linear as _linear,
-)
-from .row_normalization_source import (
-    _metadata as _metadata,
-)
-from .row_normalization_source import (
-    _reduce as _reduce,
-)
-from .row_normalization_source import (
-    _shape as _shape,
-)
-from .row_normalization_source import (
-    _view as _view,
-)
-from .row_normalization_source import (
-    local_type as local_type,
-)
-from .row_normalization_source import (
-    match_row_normalization as match_row_normalization,
-)
-from .row_normalization_source import (
-    ordered_contraction as ordered_contraction,
-)
-from .row_normalization_source import (
-    row_input_projection as row_input_projection,
-)
-from .row_normalization_source import (
-    row_input_specs as row_input_specs,
-)
-from .row_normalization_source import (
-    row_input_values as row_input_values,
+from merlin.compiler.transforms import row_normalization_source
+from merlin.compiler.transforms.certificates import ir_digest
+from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.row_normalization_source import (
+    RowNormalizationGroup,
+    _body,
+    _check_operation,
+    _fiber_map,
+    _generic,
+    _identity_copy,
+    _linear,
+    _metadata,
+    _reduce,
+    _shape,
+    _view,
+    local_type,
+    match_row_normalization,
+    ordered_contraction,
+    row_input_projection,
+    row_input_specs,
+    row_input_values,
 )
 
 
@@ -86,7 +53,7 @@ class RowNormalizationRewrite:
 
 def implementation_sources():
     """Reviewed current implementation/checker paths, including the old alias."""
-    from merlin.transforms import pipeline, pipeline_state, row_normalization_check
+    from merlin.compiler.transforms import pipeline, pipeline_state, row_normalization_check
 
     return (
         (__name__, Path(__file__)),
@@ -263,7 +230,7 @@ def fuse_row_normalizations(
         raise ValueError("row scheduling needs an explicit conservative storage selection")
     if type(index_bits) is not int or index_bits != 64:
         raise ValueError("source row scheduling currently requires selected 64-bit index lowering")
-    from merlin.transforms import row_normalization_check as checker
+    from merlin.compiler.transforms import row_normalization_check as checker
 
     current = module.clone()
     sources = {name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in implementation_sources()}

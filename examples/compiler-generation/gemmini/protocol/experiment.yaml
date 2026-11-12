@@ -8,7 +8,7 @@ authority:
   phase1_launch: ../backend-generation/launch/phase1_el4_config.yaml
   source_workloads: ../target/phase0-workloads.yaml
   numerical_contract: ../numerics/models.yaml
-  models_configuration: {schema: merlin.model_check.protocol_geometry.v1, chain_source: protocol.models}
+  models_configuration: {schema: merlin.evaluation.model.protocol_geometry.v1, chain_source: protocol.models}
   capsule_calibration_requirements: capsule-calibration.yaml
   historical_input_sources: ../numerics/sources.yaml
   evaluation_input_manifest: {sha256: aa913c17afdc885a6c51648f2e298ede60f41bd599b883e6fd6630270da91b95}
@@ -16,7 +16,7 @@ authority:
   numerical_policy_enforcement: Comparators read the selected models file; conflicting explicit tolerance overrides are refused.
   launcher_enforcement: Launch selections remain independently bound; editing these definitions does not rewrite sealed runs.
 baseline_comparison:
-  checker: python -m merlin.model_check.baseline_numerics
+  checker: python -m merlin.evaluation.model.baseline_numerics
   manifest_template: baseline-outputs.template.yaml
   instructions: baselines.md
   resolved_export: python examples/compiler-generation/gemmini/protocol/check.py --export PATH

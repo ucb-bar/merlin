@@ -12,7 +12,7 @@ description: "Organize shared schedule alternatives for dense, convolution and a
    python SKILL_DIR/scripts/capacity_pipeline_example.py              # rtl_facts/facts.json if present
    python SKILL_DIR/scripts/capacity_pipeline_example.py --shape M,K,N --pipeline segmented
    ```
-   It derives stores with `merlin.targetgen.address_space`, lets `dense_blocks` offer only blocks that
+   It derives stores with `merlin.development.targetgen.address_space`, lets `dense_blocks` offer only blocks that
    fit, and checks compact, retained (loop transforms, panel pipeline, array retention) and segmented
    (readout overlap) plans against the source product.
 2. **Name each choice as a knob or registered path.** Each per-shape decision becomes a knob in
@@ -50,8 +50,8 @@ Keep the common source/effect/completion representation and one target encoder a
 Read [construction and feedback rules](reference/capacity-pipeline.md#construction-and-feedback-rules)
 when combining residency, overlap or loop transformations; preserve refusal diagnostics and the incumbent.
 
-Library: `merlin.transforms.pass_exploration` (`ExplorationGeometry`, `ValidationPartition`,
-`explore_candidates`, `rank_observed_metrics`), `merlin.transforms.shape_policy`,
-`merlin.transforms.pipeline_policy.evaluate_variants`, `merlin.compiler.schedule.schedule_ir`,
+Library: `merlin.compiler.transforms.pass_exploration` (`ExplorationGeometry`, `ValidationPartition`,
+`explore_candidates`, `rank_observed_metrics`), `merlin.compiler.transforms.shape_policy`,
+`merlin.compiler.transforms.pipeline_policy.evaluate_variants`, `merlin.compiler.schedule.schedule_ir`,
 `loop_schedule`, `dense_panel_pipeline`, `dense_array_retention`, `dense_readout_overlap`,
 `merlin.compiler.selection.capacity`. Contracts: the `scheduling-api` skill.

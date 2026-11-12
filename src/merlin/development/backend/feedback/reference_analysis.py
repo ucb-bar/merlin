@@ -91,8 +91,8 @@ def broker_response(
 
 def _compare(left, right, expert, ours, *, observation_fields=()):
     """Freshly analyzed operands, never author-supplied CCA summaries or requested settings."""
-    from merlin.kernels.cca_compare import compare_evidence
-    from merlin.kernels.kernel_evidence import compare_regions
+    from merlin.analysis.kernels.cca_compare import compare_evidence
+    from merlin.analysis.kernels.kernel_evidence import compare_regions
 
     if observation_fields and left["kind"] not in (
         "representation_bundle",
@@ -134,8 +134,8 @@ def _compare(left, right, expert, ours, *, observation_fields=()):
             next_action="Bind both declared contracts to the actual frontend/lowering products before ranking cycles.",
         )
     if left["kind"] == "emitted_ir_analysis":
-        from merlin.kernels.instruction_comparison import compare_operand_summaries
-        from merlin.kernels.instruction_observations import compare_observations, from_projection
+        from merlin.analysis.kernels.instruction_comparison import compare_operand_summaries
+        from merlin.analysis.kernels.instruction_observations import compare_observations, from_projection
 
         return dict(
             kind="emitted_instruction_comparison",
@@ -162,7 +162,7 @@ def _compare(left, right, expert, ours, *, observation_fields=()):
     if left["kind"] != "static_instruction_analysis":
         raise ValueError("analysis_compare_domains_differ")
     ref, cand = left["regions"][0], right["regions"][0]
-    from merlin.kernels.instruction_comparison import compare_instruction_summaries
+    from merlin.analysis.kernels.instruction_comparison import compare_instruction_summaries
 
     comparison = (
         compare_evidence(expert, ours).to_dict()
@@ -183,8 +183,8 @@ def _compare(left, right, expert, ours, *, observation_fields=()):
         for name in sorted(ref_counts.keys() | cand_counts.keys())
         if ref_counts.get(name) or cand_counts.get(name)
     }
+    from merlin.analysis.kernels.instruction_observations import compare_observations
     from merlin.development.backend.feedback.reference_schedule_receipts import compare_schedule_receipts
-    from merlin.kernels.instruction_observations import compare_observations
 
     return dict(
         kind="reference_candidate_comparison",

@@ -16,7 +16,7 @@ geometry only:
 * ``shared_kv_heads`` -- an attention over more query heads than key/value heads, so each key/value
   head is read by several query heads.
 
-Operations are classified by their semantic family (:func:`merlin.targetgen.semantic_families.from_op`)
+Operations are classified by their semantic family (:func:`merlin.development.targetgen.semantic_families.from_op`)
 and arity, never by a model, module or case name. The reader is value free: it keeps operation names,
 tensor shapes and dtypes, integer geometry arguments (stride, padding, kernel) and whether a value is a
 parameter. Weights, captured activations, float arguments (scales, epsilons) and module paths are not
@@ -53,7 +53,7 @@ def _structural(value: Any) -> Any:
 
 def read(trace: Mapping[str, Any], *, stage: str = "original") -> dict[str, Any]:
     """The value-free structural projection of one stage of a frontend trace."""
-    from merlin.targetgen.semantic_families import from_op
+    from merlin.development.targetgen.semantic_families import from_op
 
     graphs = trace.get("graphs")
     if not isinstance(graphs, Mapping) or stage not in graphs:
@@ -360,7 +360,7 @@ def _broadcast_factor(graph, node_id, path, limit=12) -> int | None:
     """How many times an attention operand's elements were replicated before it was read.
 
     Walk back from the operand through single-activation nodes; each data-movement node
-    (:func:`merlin.targetgen.semantic_families.from_op` ``movement``: expand, reshape, transpose,
+    (:func:`merlin.development.targetgen.semantic_families.from_op` ``movement``: expand, reshape, transpose,
     repeat) whose result holds more elements than its input replicated them by that integer
     ratio. A padded or otherwise computed node is passed through without counting. Stops at the
     first node with two activations (a rotary embedding, a cache concatenation) or at the

@@ -8,7 +8,7 @@ operand load clips before the add, and nothing in the corpus reached that clip.
 
 This stage derives those capsules instead. It reads each declared iteration capture, forms the
 target's compute groups through the ONE grouping (``compute_groups`` + ``group_command``, stated by
-:func:`merlin.targetgen.group_capsule_entries.entries`), and emits one entry per distinct OP-FORM in
+:func:`merlin.development.targetgen.group_capsule_entries.entries`), and emits one entry per distinct OP-FORM in
 the corpus vocabulary. The entries go into the digest-bound synthesis plan with every other derived
 member; the Phase 0 writer builds them under the one corpus binding.
 
@@ -107,7 +107,7 @@ def geometry(entry: Mapping[str, Any]) -> dict[str, Any]:
 
 def form_key(entry: Mapping[str, Any]) -> dict[str, Any]:
     """What makes two groups the same form (see the module docstring)."""
-    from merlin.xdsl_dialects.lowering.group_command import STATIONARY_KEY
+    from merlin.compiler.dialects.lowering.group_command import STATIONARY_KEY
 
     epilogue = [str(s) for s in (entry.get("epilogue") or ())]
     stationary = {"stationary": str(entry[STATIONARY_KEY])} if entry.get(STATIONARY_KEY) else {}
@@ -240,7 +240,7 @@ class CapacityModel:
     """The target's operand store and accumulator, derived once from its RTL facts."""
 
     def __init__(self, target: str, facts: Mapping[str, Any] | None):
-        from merlin.targetgen import address_space as AS
+        from merlin.development.targetgen import address_space as AS
 
         self._as = AS
         self.stores: dict[str, Any] = {"operand_capacity": None, "accumulator_capacity": None}
@@ -274,7 +274,7 @@ class CapacityModel:
 def element_range(dtype: str) -> tuple[int, int]:
     """The whole range of an integer element format, from the format registry or the dtype table."""
     from merlin.common import quant_formats as qf
-    from merlin.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import corpus_spec as CS
 
     token = str(dtype)
     try:
@@ -368,7 +368,7 @@ def stimulus_range(
 # ------------------------------------------------------------------------------------------------
 def written_elements(entry: Mapping[str, Any]) -> int:
     """How many output elements the device writes for ``entry`` -- what certification cost tracks."""
-    from merlin.xdsl_dialects.lowering import group_command as GC
+    from merlin.compiler.dialects.lowering import group_command as GC
 
     rows, cols = GC.device_output_shape(entry)
     return int(rows) * int(cols)
@@ -376,7 +376,7 @@ def written_elements(entry: Mapping[str, Any]) -> int:
 
 def loop_tier(tiers: Sequence[str]) -> str | None:
     """The deepest declared tier that is NOT cycle-accurate, or ``None`` when there is none."""
-    from merlin.targetgen.phase_policy import _CYCLE_ACCURATE_TIERS  # noqa: PLC2701
+    from merlin.development.targetgen.phase_policy import _CYCLE_ACCURATE_TIERS  # noqa: PLC2701
 
     declared = [str(t) for t in tiers]
     cheap = [t for t in declared if t not in _CYCLE_ACCURATE_TIERS]
@@ -524,7 +524,7 @@ def _geometry_tag(entry: Mapping[str, Any]) -> str:
 
 def capsule_name(model: str, entry: Mapping[str, Any], extreme: str) -> str:
     """``MF_<model>_<op>[_<geometry>]_<stages|raw>_<scale class>[_<extreme>]``."""
-    from merlin.xdsl_dialects.lowering.group_command import STATIONARY_KEY
+    from merlin.compiler.dialects.lowering.group_command import STATIONARY_KEY
 
     stages = "_".join(str(s) for s in (entry.get("epilogue") or ())) or "raw"
     # The stationary operand is part of the form (form_key), so it is part of the name: two forms that
@@ -550,8 +550,8 @@ def derive_application(
     partial_sum_limit: int | None = None,
 ) -> dict[str, Any]:
     """Model-form entries for one iteration application's stated groups (``group_capsule_entries.entries``)."""
-    from merlin.targetgen import corpus_spec as CS
-    from merlin.targetgen.group_capsule_entries import SOURCE_ROLE
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen.group_capsule_entries import SOURCE_ROLE
 
     tile = int(binding.tile_dim)
     cheap = loop_tier(binding.tiers)
@@ -563,7 +563,7 @@ def derive_application(
             return {}
         return capacity.regimes(e, operand_dtype=operand_token, accum_dtype=accum_token)
 
-    from merlin.xdsl_dialects.lowering.group_command import device_orientation
+    from merlin.compiler.dialects.lowering.group_command import device_orientation
 
     forms: dict[str, dict[str, Any]] = {}
     for row in stated.get("entries") or []:
@@ -679,8 +679,8 @@ def host_reduction_rows(target: str, module, binding, *, oracle=None) -> list[di
     its core is a sum a unit can take; these rows offer that device form at the workload's own window
     and row count, deduplicated like any other stated group.
     """
-    from merlin.targetgen import group_capsule_entries as G
-    from merlin.xdsl_dialects.lowering import compute_groups as CG
+    from merlin.compiler.dialects.lowering import compute_groups as CG
+    from merlin.development.targetgen import group_capsule_entries as G
 
     found: dict[str, dict[str, Any]] = {}
     for form in G.host_reduction_forms(CG.form_groups(module, target, oracle=oracle)):
@@ -719,9 +719,9 @@ def derive_model_forms(
     label may be a claim or evaluation-only model. Returns ``{"provenance": ..., "entries": [...]}``.
     """
     from merlin.common import mlir_query as mq
+    from merlin.compiler.dialects.lowering import stream_plan
+    from merlin.development.targetgen.group_capsule_entries import entries as stated_entries
     from merlin.development.testgen.claim_boundary import assert_no_claim_capsules, is_held_out
-    from merlin.targetgen.group_capsule_entries import entries as stated_entries
-    from merlin.xdsl_dialects.lowering import stream_plan
 
     if set(captures) != set(iteration_roster):
         raise ModelFormRefusal(
@@ -771,7 +771,7 @@ def derive_model_forms(
             "output_spread": OUTPUT_SPREAD,
             "certification_ceiling": ceiling,
             "partial_sum_limit": mac_limit(numerical_semantics),
-            "grouping": "merlin.targetgen.group_capsule_entries.entries",
+            "grouping": "merlin.development.targetgen.group_capsule_entries.entries",
             "held_out_refused": sorted(held_out),
             "models": models,
             "n_capsules": len(entries),

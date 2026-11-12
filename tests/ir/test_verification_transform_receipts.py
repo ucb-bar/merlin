@@ -72,8 +72,8 @@ def test_source_mutation_invalidates_an_old_receipt_and_yields_counterexample():
 @pytest.mark.usefixtures("explicit_test_target")
 @pytestmark
 def test_bare_tensor_empty_never_produces_a_qualified_receipt():
+    from merlin.compiler.dialects.lowering.pipeline import lower_repeated_rhs_matmul
     from merlin.verification.receipts import qualify_receipt, verify_transformation
-    from merlin.xdsl_dialects.lowering.pipeline import lower_repeated_rhs_matmul
 
     legacy = lower_repeated_rhs_matmul(reuse=2, m=2, k=2, n=2, target="toy_npu")
     (translator, digest) = _tool()

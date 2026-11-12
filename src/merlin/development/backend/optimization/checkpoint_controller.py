@@ -33,7 +33,6 @@ from typing import Any
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import candidate_record as RECORD
 from merlin.development.backend.optimization import candidate_verification as VERIFY
 from merlin.development.backend.optimization import checkpoint_admission as AD
@@ -52,7 +51,8 @@ from merlin.development.backend.optimization import published_payload as PUBLISH
 from merlin.development.backend.optimization import revealed_corpus as RC
 from merlin.development.backend.optimization import statistics as STATS
 from merlin.development.backend.optimization.contracts import PerformanceExperimentError as ExperimentError
-from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.target_experiment import load_target_experiment
+from merlin.evaluation.harness import hash_tree
 
 
 def _run_checked(

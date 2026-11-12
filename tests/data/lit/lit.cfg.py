@@ -60,7 +60,7 @@ else:
     # which is the failure this whole layer exists to avoid. Unset, behaviour is unchanged.
     config.environment["PYTHONPATH"] = os.environ.get("MERLIN_LIT_PYTHONPATH") or os.path.join(ROOT, "merlin", "python")
     config.environment["HOME"] = os.environ.get("HOME", "/tmp")
-    config.substitutions.append(("%merlin-opt", "%s -m merlin.xdsl_dialects.opt" % python))
+    config.substitutions.append(("%merlin-opt", "%s -m merlin.compiler.dialects.opt" % python))
     config.substitutions.append(("%filecheck", filecheck))
     config.substitutions.append(("%mlir-opt", mlir_opt))
     # %iface-irdl points at a SIGIL-NORMALIZED copy of the frozen grammar's IRDL. The tracked file

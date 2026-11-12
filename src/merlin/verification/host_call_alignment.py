@@ -19,9 +19,9 @@ from xdsl.ir import Operation
 from xdsl.parser import Parser
 
 from merlin.common.digest import sha256_file as file_sha256
-from merlin.llvmlower import toolchain
-from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
+from merlin.compiler.lower.model import toolchain
+from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
 
 def _power(value, width):

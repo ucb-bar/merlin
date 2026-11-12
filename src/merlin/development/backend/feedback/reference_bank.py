@@ -2,7 +2,7 @@
 
 The host author profile (inherited by the broker) selects this mode and pins the bank: the
 bundle's single read-only ``cca-evidence`` grant must hold one condition payload written by
-``merlin.mining.reference_subsets`` whose ``bank.json`` has exactly that SHA256 and verifies
+``merlin.analysis.mining.reference_subsets`` whose ``bank.json`` has exactly that SHA256 and verifies
 completely. Units, occurrences and locators are derived at run time from that verified bank
 (``bank.json``, unit cards and occurrence records); no separate map or curated list exists.
 
@@ -68,7 +68,7 @@ def verify(root, pin):
     if any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in root.rglob("*")):
         raise _Refused("cca_bank_unverified")
     try:
-        from merlin.mining.reference_subsets import verify_bank
+        from merlin.analysis.mining.reference_subsets import verify_bank
     except ImportError as error:
         raise _Refused("cca_bank_dependency_unavailable") from error
     if not (root / "bank.json").is_file():
@@ -90,7 +90,7 @@ def open_bank(workspace, bundle_manifest, repo, pin):
         raise _Refused("cca_bank_requires_original_bundle")
     import yaml
 
-    from merlin.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import bwrap as BW
 
     manifest = Path(bundle_manifest)
     if (
@@ -315,7 +315,7 @@ def _inventory(value, root, bank, pin):
 
 
 def _cca(root, bank, occurrence, analysis):
-    from merlin.kernels.cca_mlir import from_mlir
+    from merlin.analysis.kernels.cca_mlir import from_mlir
 
     files = occurrence["files"]
     record = json.loads(_pinned(root, bank, files["cca.json"])[0])

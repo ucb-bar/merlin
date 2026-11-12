@@ -18,7 +18,7 @@ receipt. Exceptions invalidate the partial output; do not reuse that builder.
 
 from xdsl.dialects import llvm
 
-from merlin.llvmlower.host_builder import PTR, FnBuilder
+from merlin.compiler.lower.model.host_builder import PTR, FnBuilder
 
 
 def emit_dense_function(result, lower_instruction, *, symbol):

@@ -27,7 +27,7 @@ def check(
     _te_pf = _te()
     if context.readback_policy is not None and not a.no_oracle:
         from merlin.development.backend.context import readback_kwargs
-        from merlin.targetgen.contract.readback_policy import MEMORY_TRANSPORTS
+        from merlin.development.targetgen.contract.readback_policy import MEMORY_TRANSPORTS
 
         if context.readback_policy in MEMORY_TRANSPORTS:
             # Construct the original full ladder before authoring; a global
@@ -67,7 +67,7 @@ def check(
     # Exercise the selected compile-based oracle toolchain before any agent spend;
     # non-compile oracles return an explicit n/a from the shared capability check.
     if not a.no_oracle:
-        from merlin.targetgen import runtime_build as _RBpf
+        from merlin.development.targetgen import runtime_build as _RBpf
 
         _compiler_ok, _compiler_why = _RBpf.compiler_smoke(_te_pf.sim_via)
         (run_dir / "compiler_smoke.yaml").write_text(

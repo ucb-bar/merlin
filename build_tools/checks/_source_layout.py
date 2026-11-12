@@ -87,6 +87,8 @@ def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
 
 
 _SOURCE_MOVES = json.loads((Path(__file__).with_name("source_moves.json")).read_text(encoding="utf-8"))
+#: Whole directories moved by a reorganization (keys ending in "/"), longest prefix first.
+_SOURCE_MOVE_DIRS = sorted(((k, v) for k, v in _SOURCE_MOVES.items() if k.endswith("/")), key=lambda kv: -len(kv[0]))
 
 
 def moved_from(prefix: str) -> list[str]:
@@ -105,6 +107,9 @@ def policy_path(path: str) -> str:
     """
     if path in _SOURCE_MOVES:
         return policy_path(_SOURCE_MOVES[path])
+    for current, former in _SOURCE_MOVE_DIRS:
+        if path.startswith(current):
+            return policy_path(former + path[len(current) :])
     preparation = {
         "src/merlin/evaluation/w8a8_execution.py": "build_tools/scripts/make_w8a8_golden.py",
         "src/merlin/evaluation/w8a8_eager.py": "build_tools/scripts/make_w8a8_independent_golden.py",

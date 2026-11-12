@@ -8,10 +8,10 @@ import tempfile
 import time
 from pathlib import Path
 
-from merlin.perf.candidate_diagnostics import observe_candidate_artifacts
-from merlin.perf.candidate_source import MAX_TEXT, digest, public_projection
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+from merlin.analysis.perf.candidate_diagnostics import observe_candidate_artifacts
+from merlin.analysis.perf.candidate_source import MAX_TEXT, digest, public_projection
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
 _ROLES = {
     "source": "input.interface.mlir",
@@ -266,7 +266,7 @@ def _read_unique(root, name):
 
 def _selected_layer_execution(grade):
     """Old emission-only/legacy grades keep their original descriptive reader."""
-    from merlin.targetgen.executed_program import SCHEMA_V2
+    from merlin.development.targetgen.executed_program import SCHEMA_V2
 
     if not isinstance(grade, dict) or grade.get("kind") not in {"layer", "model_slice"}:
         return False
@@ -395,8 +395,8 @@ def observe_generated_artifacts(
 def emit_public_diagnostics(submission, *, target, capsules_root, contract, capsules="all", timeout=300):
     """Use the same public ABI and integrity/sandbox entrypoints, without tensor/oracle evaluation."""
     from merlin.development.backend.brokers.selfcheck import _submission_digest
-    from merlin.targetgen.capsule_common import make_run_paths, run_entrypoints
-    from merlin.targetgen.package_runtime import build_package, integrity_scan, load_package
+    from merlin.development.targetgen.capsule_common import make_run_paths, run_entrypoints
+    from merlin.development.targetgen.package_runtime import build_package, integrity_scan, load_package
 
     started = time.monotonic()
     deadline = started + timeout
@@ -496,7 +496,7 @@ def _shape_coverage(sub: Path, out_path: str, *, context, contract: Path | None 
     value -- only what the agent's own compiler emitted.
     """
 
-    from merlin.targetgen import lowering_coverage as LC
+    from merlin.development.targetgen import lowering_coverage as LC
 
     try:
         cov = LC.sweep(

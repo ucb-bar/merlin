@@ -191,7 +191,7 @@ def build_saved(
 
         build_options["features"] = frozenset({captured_quantization_scope})
     if prepack_weights:
-        from merlin.llvmlower.weight_prepack import ensure_registered
+        from merlin.compiler.lower.model.weight_prepack import ensure_registered
 
         receipt["inputs"]["prepack_weights"] = True
         build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
@@ -199,7 +199,7 @@ def build_saved(
         receipt["inputs"]["dense_input_views"] = True
         build_options["dense_input_views"] = True
     if share_exact_tensor_preparations:
-        from merlin.llvmlower.tensor_provenance_cse import ensure_registered
+        from merlin.compiler.lower.model.tensor_provenance_cse import ensure_registered
 
         receipt["inputs"]["share_exact_tensor_preparations"] = True
         build_options["features"] = frozenset((*build_options.get("features", ()), ensure_registered()))
@@ -209,8 +209,8 @@ def build_saved(
         receipt["inputs"]["host_elementwise_fusion"] = True
         build_options["features"] = frozenset((*build_options.get("features", ()), FUSE_AFTER_GENERALIZE_NAME))
     if host_bounded_rne:
-        from merlin.llvmlower.late_quant_rne import merlin_host_llvm_transform
-        from merlin.llvmlower.toolchain import clang
+        from merlin.compiler.lower.model.late_quant_rne import merlin_host_llvm_transform
+        from merlin.compiler.lower.model.toolchain import clang
 
         receipt["inputs"]["host_bounded_rne"] = {"host_isa": "rv64gc", "combine_clamp": True}
         build_options["host_llvm_transform"] = merlin_host_llvm_transform(
@@ -219,7 +219,7 @@ def build_saved(
     if host_roundeven:
         receipt["inputs"]["host_roundeven"] = {"host_isa": "rv64gc", "abi": "lp64d", "symbol": "roundevenf"}
         build_options["host_roundeven"] = True
-    from merlin.llvmlower.blob_weights import requested as blob_weights_requested
+    from merlin.compiler.lower.model.blob_weights import requested as blob_weights_requested
 
     build_started = time.monotonic()
     with blob_weights_requested(blob_weights):
@@ -272,7 +272,7 @@ def build_saved(
     }:
         raise BaremetalModelError("bare-metal build returned no selected index-lowering record")
     if built["index_lowering"]["schema"] == "merlin.selected-index-lowering.v2":
-        from merlin.llvmlower.target_data_layout import selected_index_bits
+        from merlin.compiler.lower.model.target_data_layout import selected_index_bits
 
         observation = {key: value for key, value in built["index_lowering"].items() if key != "effective_pipeline"}
         if selected_index_bits(observation) != built["index_lowering"].get("index_bits"):
@@ -316,20 +316,20 @@ def build_saved(
             raise BaremetalModelError("selected descriptor bridge returned no actual selection receipt")
         receipt["output"]["descriptor_results"] = built["descriptor_results"]
     if graph_optimizations is not None:
-        from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+        from merlin.compiler.lower.model.graph_optimizations import recheck_host_graph_artifacts
 
         graph_artifacts = recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations)
         receipt["output"]["host_graph_optimization"] = graph_artifacts
     if early_layout_policy is not None:
-        from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+        from merlin.compiler.lower.model.graph_optimizations import recheck_host_graph_artifacts
 
         early_layout_artifacts = recheck_host_graph_artifacts(
             output_path / "build" / "pre_group_layout", early_layout_policy
         )
         receipt["output"]["pre_group_layout"] = early_layout_artifacts
     if storage_policy is not None:
-        from merlin.llvmlower.borrowed_arena import receipt_borrowed_lifetime
-        from merlin.llvmlower.host_storage_policy import recheck as recheck_storage
+        from merlin.compiler.lower.model.borrowed_arena import receipt_borrowed_lifetime
+        from merlin.compiler.lower.model.host_storage_policy import recheck as recheck_storage
 
         storage_artifacts = recheck_storage(
             output_path / "build" / "intermediate_storage",
@@ -338,7 +338,7 @@ def build_saved(
         )
         receipt["output"]["intermediate_storage"] = storage_artifacts
     if shared_source_lowerings:
-        from merlin.llvmlower.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
+        from merlin.compiler.lower.model.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
         from merlin.runtime.host_provider import revalidate_host_provider
 
         preparation = output_path / "build" / "prepared_model_transform" / PREPARATION_RECEIPT
@@ -384,14 +384,14 @@ def build_saved(
             value.selected_contracts.revalidate()
     # Bind the producer's record, rather than minting a new command history.
     # Its consumer independently verifies completed commands and input bytes.
-    from merlin.llvmlower.compilation_recipe import FILENAME as RECIPE_FILENAME
+    from merlin.compiler.lower.model.compilation_recipe import FILENAME as RECIPE_FILENAME
 
     recipe = elf.parent / RECIPE_FILENAME
     if recipe.exists():
         if recipe.is_symlink() or not recipe.is_file():
             raise BaremetalModelError("bare-metal compilation recipe is absent or indirect")
         receipt["output"]["compilation_recipe"] = {"path": str(recipe), "sha256": _sha(recipe)}
-    from merlin.llvmlower.device_offload import SIDECAR_NAME
+    from merlin.compiler.lower.model.device_offload import SIDECAR_NAME
 
     sidecar = output_path / "build" / SIDECAR_NAME
     if sidecar.is_file() and not sidecar.is_symlink():

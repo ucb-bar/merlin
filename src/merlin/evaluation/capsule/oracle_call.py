@@ -3,6 +3,16 @@
 from __future__ import annotations
 
 from merlin.development.backend.feedback import setup_timing as _host_timing
+from merlin.development.targetgen import partial_console as _partial_console
+from merlin.development.targetgen.capsule_common import _cat
+from merlin.development.targetgen.package_runtime import (
+    INFRASTRUCTURE_PLANE,
+    CertFailure,
+    InfraCategory,
+    InfraFailure,
+    NotMeasuredFailure,
+)
+from merlin.development.targetgen.tier_integrity import CERT_NOT_MEASURED
 from merlin.evaluation.capsule.adapters import OracleUnavailable
 from merlin.evaluation.capsule.certificates import _CarriedPreparedTier, _prepared_tier_reuse
 from merlin.evaluation.capsule.diagnostics import _clip as _clip
@@ -20,16 +30,6 @@ from merlin.evaluation.capsule.numerics import (
 )
 from merlin.evaluation.capsule.records import OracleAttempt
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.targetgen import partial_console as _partial_console
-from merlin.targetgen.capsule_common import _cat
-from merlin.targetgen.package_runtime import (
-    INFRASTRUCTURE_PLANE,
-    CertFailure,
-    InfraCategory,
-    InfraFailure,
-    NotMeasuredFailure,
-)
-from merlin.targetgen.tier_integrity import CERT_NOT_MEASURED
 
 
 def invoke_oracle(
@@ -53,8 +53,8 @@ def invoke_oracle(
     _simulation_context,
     _executed_here,
 ):
-    from merlin.targetgen.program_oracle import OracleUnavailable as _POUnavailable
-    from merlin.targetgen.program_oracle import ProgramDidNotHalt as _PODidNotHalt
+    from merlin.development.targetgen.program_oracle import OracleUnavailable as _POUnavailable
+    from merlin.development.targetgen.program_oracle import ProgramDidNotHalt as _PODidNotHalt
 
     _ORACLE_UNAVAILABLE = (OracleUnavailable, _POUnavailable)
     import time as _time

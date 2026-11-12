@@ -14,7 +14,7 @@ from pathlib import PurePosixPath
 from merlin.common.digest import is_sha256
 from merlin.compiler.quantization import methodology as M
 from merlin.compiler.quantization import static as Q
-from merlin.targetgen import quant_recipe_policy as P
+from merlin.development.targetgen import quant_recipe_policy as P
 
 
 def recompute(selected: bytes, *, model: str, target: str, index, artifacts, methodology, output_path) -> dict:

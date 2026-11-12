@@ -26,20 +26,20 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.fork import ForkPoint, candidate_states, check_invariants, fork_from
 from merlin.development.backend.optimization.prompt import PerfCell, PerfPromptContractError
-from merlin.perf.fork import ForkPoint, candidate_states, check_invariants, fork_from
-from merlin.targetgen import package_runtime as oot_runner
-from merlin.targetgen.oracle_schedule import CapsuleState, Verdict
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import (
+from merlin.development.targetgen import package_runtime as oot_runner
+from merlin.development.targetgen.oracle_schedule import CapsuleState, Verdict
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox.answer_surfaces import (
     AnswerSurface,
     CapsuleMetadata,
     answer_surfaces,
     audit_hit_is_violation,
 )
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 
 
 class CampaignGateError(RuntimeError):
@@ -64,7 +64,7 @@ def verify_private_input_snapshot(run_dir: Path, environment: Mapping) -> dict:
     bundle_digest = hashlib.sha256(bundle_path.read_bytes()).hexdigest()
     if environment.get("bundle_manifest_sha256") != bundle_digest:
         raise CampaignGateError("functional archived bundle bytes disagree with host provenance")
-    from merlin.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.tool_profile import verify_tool_profile
 
     try:
         profile = verify_tool_profile(bundle, tools=tuple(environment.get("resolved_tools") or ()))
@@ -415,7 +415,7 @@ def _audit_violations(hits: object) -> list[str]:
     ``recon_probe`` returned filenames, not content. Demanding an EMPTY hit list therefore disqualified,
     unwaivably, rounds the audit itself judged clean (measured: round 0 of merlincirct_g4p1_20260905 was
     ``answer_access_clean: true`` with two advisory hits). The advisory/violation vocabulary is DECLARED
-    once, in :mod:`merlin.targetgen.sandbox.answer_surfaces`, and consumed here -- so this gate cannot
+    once, in :mod:`merlin.development.targetgen.sandbox.answer_surfaces`, and consumed here -- so this gate cannot
     drift from the audit that produced the hits.
 
     FAIL CLOSED in every other direction: a missing or non-list ``audit_hits`` field, a hit that is not a
@@ -1077,8 +1077,8 @@ def package_sandbox_policy(
 
 def _verify_frozen_policy(policy: PackageSandboxPolicy) -> None:
     if policy.compiler_fork_sha256 is not None:
-        from merlin.targetgen.compiler_library import active_compiler_library
-        from merlin.targetgen.compiler_library_fork import candidate_sources
+        from merlin.development.targetgen.compiler_library import active_compiler_library
+        from merlin.development.targetgen.compiler_library_fork import candidate_sources
 
         selection = active_compiler_library()
         if selection is None or candidate_sources(selection, policy.package)[1] != policy.compiler_fork_sha256:

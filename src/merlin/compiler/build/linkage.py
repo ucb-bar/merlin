@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from merlin.targetgen.host_linkage_contract import validate_linkage_contract
+from merlin.development.targetgen.host_linkage_contract import validate_linkage_contract
 
 
 def merge_linkage_requirements(values):

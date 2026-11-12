@@ -27,6 +27,7 @@ from typing import Any
 
 import yaml
 
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.common.paths import module_source_path
 from merlin.development.backend.optimization import authoring as AUTHORING
 from merlin.development.backend.optimization import candidate_record as RECORD
@@ -43,12 +44,11 @@ from merlin.development.backend.optimization import published_payload as PUBLISH
 from merlin.development.backend.optimization import telemetry as TEL
 from merlin.development.backend.optimization.chia_launch import PYTHON_SOURCE_ENVIRONMENT_KEYS
 from merlin.development.backend.optimization.contracts import PerformanceExperimentError as ExperimentError
+from merlin.development.targetgen.capsule_common import discover_capsules
+from merlin.development.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
+from merlin.development.targetgen.sandbox.answer_surfaces import dropped_declarations
+from merlin.development.targetgen.target_experiment import load_target_experiment
 from merlin.experiments.measured_launch import without_unsealed_board_catalog
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.targetgen.capsule_common import discover_capsules
-from merlin.targetgen.sandbox import preflight as SANDBOX_PREFLIGHT
-from merlin.targetgen.sandbox.answer_surfaces import dropped_declarations
-from merlin.targetgen.target_experiment import load_target_experiment
 
 TRIALS = ("trial_00", "trial_01", "trial_02")
 REPLICATES = ("r000", "r001")
@@ -508,7 +508,7 @@ def child_environment(config: Config, certificate: GATE.CertificateRecord) -> di
         "MERLIN_REQUIRED_RTL_ENGINE": "gsim",
     }
     from merlin.development.backend.optimization import gsim_digest_readback as DIGEST
-    from merlin.targetgen.oracle_readback import GSIM_L3_READBACK_ENV
+    from merlin.development.targetgen.oracle_readback import GSIM_L3_READBACK_ENV
 
     # Every gSIM run of a child reads outputs back as Spike-verified digests (the functional regrade
     # included), unless the operator kept full readback; pinned here so ambient settings never decide.
@@ -938,7 +938,7 @@ def _verify_functional_certificate_provenance(
 
 
 def _resolve_chia_python(explicit: Path | None) -> Path | None:
-    from merlin.benchharness.chia_bridge import chia_python
+    from merlin.evaluation.harness.chia_bridge import chia_python
 
     try:
         return Path(chia_python(explicit)).absolute()
@@ -951,11 +951,11 @@ def _chia_canary(python: Path | None, *, context: ExecutionContext) -> dict[str,
     resolved = _resolve_chia_python(python)
     if resolved is None or not resolved.is_file():
         raise ExperimentError("a CHIA venv Python is required for the orchestration capability canary")
-    bridge = module_source_path("merlin.benchharness.chia_bridge").resolve()
+    bridge = module_source_path("merlin.evaluation.harness.chia_bridge").resolve()
     wrapper = context.chia_wrapper
     program = (
         "import json,chia.trace,ray;"
-        "from merlin.benchharness.chia_bridge import chia_available;"
+        "from merlin.evaluation.harness.chia_bridge import chia_available;"
         "assert chia_available();"
         "print(json.dumps({'chia_trace':chia.trace.__file__,'ray':ray.__version__}))"
     )

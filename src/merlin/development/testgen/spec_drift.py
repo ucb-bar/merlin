@@ -1,6 +1,6 @@
 """Phase 0 spec-vs-facts drift: the authored software spec against the selected fact-derived capability.
 
-The comparison itself is :mod:`merlin.targetgen.spec_fact_drift`. This module feeds it the views a
+The comparison itself is :mod:`merlin.development.targetgen.spec_fact_drift`. This module feeds it the views a
 Phase 0 selection already observed (never a live registry read), so the report is bound to the same
 bytes the corpus was derived from, and blocking findings become readiness blockers.
 """
@@ -13,7 +13,7 @@ from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import Any
 
-from merlin.targetgen import spec_fact_drift as D
+from merlin.development.targetgen import spec_fact_drift as D
 
 
 def from_views(
@@ -27,8 +27,8 @@ def from_views(
     taxonomy: Mapping[str, Any] | None,
     prohibited_roles: Iterable[str] = (),
 ) -> dict[str, Any]:
-    from merlin.targetgen.rtl.facts import observed_facts
-    from merlin.targetgen.target_registry import observed_contract
+    from merlin.development.targetgen.rtl.facts import observed_facts
+    from merlin.development.targetgen.target_registry import observed_contract
 
     # Capability derivation still contains name-based geometry readers. They
     # must consume these selected documents, including an explicitly absent
@@ -93,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     report = from_evidence_dir(args.evidence, prohibited_roles=args.prohibited_role)
     if args.software_spec is not None:
-        from merlin.targetgen.software_spec import load_software_spec
+        from merlin.development.targetgen.software_spec import load_software_spec
 
         root = args.evidence
         report = from_views(

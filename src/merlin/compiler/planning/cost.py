@@ -19,9 +19,9 @@ def measured_cost_for(system) -> Callable[[Any, Any], float | None] | None:
     in declaration order. A registry entry supplies no measured throughput by
     itself. This adapter does not independently qualify measurement provenance.
     """
-    from merlin.targetgen import compute_units as _cu
-    from merlin.targetgen import routing as _r
-    from merlin.targetgen import target_registry as _tr
+    from merlin.development.targetgen import compute_units as _cu
+    from merlin.development.targetgen import routing as _r
+    from merlin.development.targetgen import target_registry as _tr
 
     rates: dict[str, float] = {}
     edges: dict[str, int] = {}
@@ -61,7 +61,7 @@ def _declared_rate(unit) -> float | None:
 def _declared_tile_edge(device: str) -> int | None:
     """The device's tile edge from its own RTL facts, or None."""
     try:
-        from merlin.llvmlower.device_shim import tile_edge_for
+        from merlin.compiler.lower.model.device_shim import tile_edge_for
 
         return tile_edge_for(device)
     except Exception:  # noqa: BLE001

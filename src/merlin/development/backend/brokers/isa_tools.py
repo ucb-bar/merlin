@@ -29,14 +29,14 @@ from pathlib import Path
 from typing import Any
 
 from merlin.development.backend.context import InvocationContext
-from merlin.targetgen import oracle_policy as capsule_oracle_policy
+from merlin.development.targetgen import oracle_policy as capsule_oracle_policy
 
 
 def _model(context: InvocationContext):
     """The target's derived IsaModel (assembler/disassembler/linter substrate), from the run's descriptor.
     An empty model (no shipped ISA definition) makes every tool return an honest 'unavailable'."""
-    from merlin.targetgen.isa_model import isa_model_for, isa_model_for_target
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.isa_model import isa_model_for, isa_model_for_target
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     # Prefer the derived fixed-format encoding; otherwise use the shipped ISA definition.
@@ -66,8 +66,8 @@ def _schedule_contract(context: InvocationContext) -> dict:
     The checker is target-agnostic; a target opts in by providing ``schedule_contract.yaml`` beside its
     RTL/ISA/examples. Missing data means "no scheduling check", never guessed latency.
     """
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     root = resolve_grant(str(te.hwbringup_set), context.repo) if te.hwbringup_set else None
@@ -77,7 +77,7 @@ def _schedule_contract(context: InvocationContext) -> dict:
 def _assemble(kernel_s_text: str, model: Callable[[], Any]) -> list[int]:
     """Assemble the agent's kernel.S to IMEM words with the SAME stock llvm-mc the oracle uses — so the
     disassembler/linter inspect exactly what will run."""
-    from merlin.targetgen.program_oracle import _assemble_kernel_words
+    from merlin.development.targetgen.program_oracle import _assemble_kernel_words
 
     with tempfile.TemporaryDirectory() as td:
         ks = Path(td) / "kernel.S"
@@ -88,7 +88,7 @@ def _assemble(kernel_s_text: str, model: Callable[[], Any]) -> list[int]:
 
 
 def _endpoint_and_target(context: InvocationContext) -> tuple[str | None, str | None]:
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     return capsule_oracle_policy._endpoint_of(te.target)[0], te.target
@@ -153,12 +153,12 @@ def _capability_utilization(text: str, target: str) -> dict:
     """Declared-versus-emitted instruction use for ``text``, or an explicit UNKNOWN.
 
     DELEGATED, not reimplemented. The measurement lives in
-    :func:`merlin.perf.isa_utilization.capability_utilization_for_target` so that this phase and
+    :func:`merlin.analysis.perf.isa_utilization.capability_utilization_for_target` so that this phase and
     the whole-model optimization phase read the SAME declared table by the same rule. It was
     written here first and copied nowhere; when the optimization agent needed it too, the producer
     moved into the library rather than being written a second time.
     """
-    from merlin.perf.isa_utilization import capability_utilization_for_target
+    from merlin.analysis.perf.isa_utilization import capability_utilization_for_target
 
     return capability_utilization_for_target(text, target=target)
 
@@ -170,8 +170,8 @@ def _rocc_handle(req: dict, target: str, debug: Callable[[dict], dict] = _unconf
     # The RoCC tools are a package, not legacy top-level ``targetgen`` modules.  Importing the old
     # names made every live Arm4 request fail only after launch, while the fixed-format broker tests
     # continued to pass because they never exercised this endpoint.
-    from merlin.targetgen.rocc import asm as rocc_asm
-    from merlin.targetgen.rocc import decode as rocc_decode
+    from merlin.development.targetgen.rocc import asm as rocc_asm
+    from merlin.development.targetgen.rocc import decode as rocc_decode
 
     cmd = req.get("cmd")
     if cmd == "asm":
@@ -242,9 +242,9 @@ def _rocc_debug(req: dict, target: str, context: InvocationContext) -> dict:
     scratchpad/accumulator/DRAM-refill counts per command + the RTL fingerprint). The counterpart of the
     external_backend kernel.S debugger. Golden-free: it runs the agent's cb over the capsule's CANONICAL
     inputs; the OUTPUT values and the pass/fail verdict are withheld by ``program_oracle`` (answer key)."""
+    from merlin.development.targetgen import program_oracle as PO
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.experiments.corpus.admission import public_capsules_for
-    from merlin.targetgen import program_oracle as PO
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     cname = (req.get("capsule") or "").strip()
     caps_root = public_capsules_for(load_target_experiment(context.descriptor))
@@ -276,7 +276,7 @@ def _rocc_debug(req: dict, target: str, context: InvocationContext) -> dict:
 def _handle(req: dict, ctx: BrokerCtx) -> dict:
     if is_rocc_endpoint(ctx.endpoint):
         return _rocc_handle(req, ctx.target, ctx.debug)
-    from merlin.targetgen import isa_asm, isa_disasm, isa_lint
+    from merlin.development.targetgen import isa_asm, isa_disasm, isa_lint
 
     model = ctx.model()
     # A fixed-format model (a wide-word SIMT core's whole ISA, from its RTL decoder) carries its ops in
@@ -356,8 +356,8 @@ def _handle(req: dict, ctx: BrokerCtx) -> dict:
 def _debug_ctx(context: InvocationContext):
     """(target, model_ext, public-capsule dir) for the debugger, from the run's descriptor. Cached-free
     (called rarely); raises with an actionable message if the target is not a self-hosted-ISA backend."""
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.experiments.corpus.admission import public_capsules_for
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     endpoint_kind, model_ext = capsule_oracle_policy._endpoint_of(te.target)
@@ -376,7 +376,7 @@ def _handle_debug(req: dict, context: InvocationContext) -> dict:
     kernel itself wrote."""
     import tempfile
 
-    from merlin.targetgen import program_oracle as PO
+    from merlin.development.targetgen import program_oracle as PO
 
     try:
         target, model_ext, caps_root = _debug_ctx(context)

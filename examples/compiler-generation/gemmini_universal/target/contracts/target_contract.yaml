@@ -70,7 +70,7 @@ runner:
   # a gemmini verdict on a gemmini_universal submission, which is the whole failure this target exists to
   # avoid, so the extension's bytes are pinned here by digest. The operator supplies their location.
   #
-  # ✅ READ BY CODE, DIGEST-VERIFIED, FAIL-CLOSED (2026-09-09). `merlin.targetgen.spike_extension`
+  # ✅ READ BY CODE, DIGEST-VERIFIED, FAIL-CLOSED (2026-09-09). `merlin.development.targetgen.spike_extension`
   # resolves this block for ANY target: `spike_invocation(target, default_library_dir=...,
   # default_extension_name=...)` returns `("--extlib=<this .so>", "--extension=gemmini")` plus this .so's
   # OWN parent as the library directory, after hashing the file and comparing it to the `sha256` below.
@@ -197,7 +197,7 @@ readout:
     capability boundary, and it is the reason this target's graded cohort is much smaller than
     gemmini's -- see grading.capability_exclude_capsules in
     examples/compiler-generation/gemmini_universal/target/descriptor.yaml.
-  # ⚠️ NOT CONSUMED BY THE ELIGIBILITY ENGINE. `merlin.targetgen.eligibility` decides eligibility from
+  # ⚠️ NOT CONSUMED BY THE ELIGIBILITY ENGINE. `merlin.development.targetgen.eligibility` decides eligibility from
   # OPERAND dtypes only (coverage_report._capsule_region reads inputs[] by role); there is no output- or
   # readout-dtype axis in the capability model. So this block is READ BY HUMANS AND BY THIS TARGET'S
   # DESCRIPTOR, and `readiness_check`'s independent recomputation of the capability-exclusion set cannot
@@ -361,7 +361,7 @@ gaps:
     user's repository -- so both pins report revision UNDETERMINABLE while their CONTENT digests all
     match. A result citing this target must cite the digests, never the sha alone.
   - >-
-    CLOSED 2026-09-09: the declared L2 extension IS wired. `merlin.targetgen.spike_extension` reads
+    CLOSED 2026-09-09: the declared L2 extension IS wired. `merlin.development.targetgen.spike_extension` reads
     `runner.spike_extension` for any target, verifies the declared sha256 against the bytes on disk, and
     raises rather than substituting a sibling's `.so`; the only in-tree spike caller
     (`experiments/inputs/target-inputs/gemmini/backend/gemmini.py:run_elf`) resolves through it, with the previous

@@ -15,12 +15,12 @@ from pathlib import Path
 from weakref import WeakKeyDictionary
 
 from merlin.common import mlir_query as mq
-from merlin.frontends.capture_normalization import normalize_capture_mlir
-from merlin.frontends.connected_region import verify_window
-from merlin.frontends.linalg_f32_reductions import recognize_static_f32_sum
-from merlin.frontends.linalg_integer_reductions import recognize_static_integer_reduction
-from merlin.frontends.linalg_patterns import InvalidLinalgPattern
-from merlin.llvmlower.target_data_layout import selected_index_bits
+from merlin.compiler.frontend.capture_normalization import normalize_capture_mlir
+from merlin.compiler.frontend.connected_region import verify_window
+from merlin.compiler.frontend.linalg_f32_reductions import recognize_static_f32_sum
+from merlin.compiler.frontend.linalg_integer_reductions import recognize_static_integer_reduction
+from merlin.compiler.frontend.linalg_patterns import InvalidLinalgPattern
+from merlin.compiler.lower.model.target_data_layout import selected_index_bits
 
 _ISSUED = WeakKeyDictionary()
 _CAPTURES = WeakKeyDictionary()
@@ -99,9 +99,9 @@ class ConnectedSourceContext:
 
     def control_admission_context(self, program, *, target):
         """Reprove scalar support on the entire exact projection; no saved proof input."""
+        from merlin.compiler.dialects._common import text
+        from merlin.compiler.frontend.bounded_control_source_body import PROOF_SCHEMA, ROLES
         from merlin.development.backend.feedback.private_control_support import assertion_row_proven
-        from merlin.frontends.bounded_control_source_body import PROOF_SCHEMA, ROLES
-        from merlin.xdsl_dialects._common import text
 
         _, cut, selected = self._reopen(program)
         support = self.prove_support(target=target)
@@ -135,7 +135,7 @@ class ConnectedSourceContext:
     def prove_support(self, *, target: str):
         """Reprove exact cut reductions and guards, retaining every refusal."""
         from merlin.development.backend.feedback.private_control_support import prove_bounded_assertions
-        from merlin.targetgen.application_inventory import _application_operation_inventory
+        from merlin.development.targetgen.application_inventory import _application_operation_inventory
 
         issued = _ISSUED.get(self)
         if issued is None:

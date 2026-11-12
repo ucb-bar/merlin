@@ -20,8 +20,8 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import repo_root
+from merlin.development.targetgen.plugins import load_declared
 from merlin.runtime.backends.base import get_backend
-from merlin.targetgen.plugins import load_declared
 
 CONFIG = "GemminiRocketConfig"
 SMOKE_VALUES = (-128, -127, -122, -85, -64, -33, -1, 0, 1, 31, 63, 85, 119, 122, 126, 127)

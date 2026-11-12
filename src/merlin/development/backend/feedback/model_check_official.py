@@ -12,10 +12,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.tree_hash import hash_tree
-from merlin.model_check.bundle import Bundle
-from merlin.model_check.models import default_models_path, target_from_contract
+from merlin.evaluation.model.bundle import Bundle
+from merlin.evaluation.model.models import default_models_path, target_from_contract
 
-REPORT_SCHEMA = "merlin.model_check.report.v1"
+REPORT_SCHEMA = "merlin.evaluation.model.report.v1"
 
 
 def _invoke(
@@ -36,7 +36,7 @@ def _invoke(
     argv = [
         sys.executable,
         "-m",
-        "merlin.model_check",
+        "merlin.evaluation.model",
         command,
         "--submission",
         str(submission),

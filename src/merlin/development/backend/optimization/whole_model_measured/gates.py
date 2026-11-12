@@ -27,6 +27,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured import jobs as J
 from merlin.development.backend.optimization.whole_model_measured.identity import (
     IdentityError,
@@ -35,7 +36,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
     read_json,
     write_json_atomic,
 )
-from merlin.perf import whole_model_verdict as V
 
 #: Substrings that name an INFRASTRUCTURE fault -- never a fact about the candidate's own bytes.
 #: Structural fault-CLASS markers, not a target or model name: the class recurs across targets and
@@ -327,11 +327,11 @@ def coverage_gate(
 
 # --------------------------------------------------------------- 3. the instruction rule
 def _default_checker() -> Callable[..., Mapping[str, Any]]:
-    """The whole-program scanner (``merlin.perf.isa_prohibition.check_build``).  Resolved lazily so a
+    """The whole-program scanner (``merlin.analysis.perf.isa_prohibition.check_build``).  Resolved lazily so a
     missing scanner is a REFUSAL at gate time, never an import error that skips the gate."""
     import importlib
 
-    return importlib.import_module("merlin.perf.isa_prohibition").check_build
+    return importlib.import_module("merlin.analysis.perf.isa_prohibition").check_build
 
 
 def isa_gate(

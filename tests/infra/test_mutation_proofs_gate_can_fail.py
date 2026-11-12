@@ -134,8 +134,8 @@ def pinned_backend(tmp_path):
             "pyproject.toml": '[tool.setuptools]\npackages = ["fixture"]\npackage-dir = {fixture = "python/fixture"}\n',
             ".gitignore": "generated.py\n",
             "python/fixture/__init__.py": "",
-            "python/fixture/consumer.py": "from merlin.perf import tracked_owner\n",
-            "tools/inspect.py": "from merlin.perf import tracked_tool_owner\n",
+            "python/fixture/consumer.py": "from merlin.analysis.perf import tracked_owner\n",
+            "tools/inspect.py": "from merlin.analysis.perf import tracked_tool_owner\n",
         },
     )
 

@@ -19,9 +19,9 @@ def prepare(source, *, package, mechanism):
                 policy=policy, output="OWN_EMITTED_PRODUCT")
 ```
 
-Types are `PipelineSession` from `merlin.transforms.pipeline_state`, and
+Types are `PipelineSession` from `merlin.compiler.transforms.pipeline_state`, and
 `PolicyFacts`, `RegisteredPass`, `PipelinePolicy`, `PipelineVariant` from
-`merlin.transforms.pipeline_policy`. Both paths must have identical initial
+`merlin.compiler.transforms.pipeline_policy`. Both paths must have identical initial
 IR/context stamps, facts and registered pass contracts. The last registered
 pass must be the same actual target emitter and return nonempty text/bytes in
 the named current-session analysis. Independent pass verification still applies.

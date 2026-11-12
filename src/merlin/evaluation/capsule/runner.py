@@ -4,6 +4,30 @@ from __future__ import annotations
 
 import sys
 
+from merlin.development.targetgen import oracle_policy as _oracle_policy
+from merlin.development.targetgen.capsule_common import discover_capsules as discover_capsules
+from merlin.development.targetgen.capsule_common import load_capsule as load_capsule
+from merlin.development.targetgen.oracle_policy import _SIM_ORACLES as _SIM_ORACLES
+from merlin.development.targetgen.oracle_policy import _bespoke_sim_via as _bespoke_sim_via
+from merlin.development.targetgen.oracle_policy import _chipyard_available as _chipyard_available
+from merlin.development.targetgen.oracle_policy import _endpoint_of as _endpoint_of
+from merlin.development.targetgen.oracle_policy import _ensure_sim_oracles_discovered as _ensure_sim_oracles_discovered
+from merlin.development.targetgen.oracle_policy import _screen_tiers_of as _screen_tiers_of
+from merlin.development.targetgen.oracle_policy import _sim_oracle_lock as _sim_oracle_lock
+from merlin.development.targetgen.oracle_policy import _SimOracle as _SimOracle
+from merlin.development.targetgen.oracle_policy import chipyard_l3_selection as chipyard_l3_selection
+from merlin.development.targetgen.oracle_policy import describe_l3_engine as describe_l3_engine
+from merlin.development.targetgen.oracle_policy import register_sim_oracle as register_sim_oracle
+from merlin.development.targetgen.oracle_policy import sim_oracle_caps as sim_oracle_caps
+from merlin.development.targetgen.runner_config import (
+    CONVENTIONAL_RTL_TIERS as _RTL_TIERS,  # noqa: F401 -- legacy override
+)
+from merlin.development.targetgen.runner_config import (
+    CONVENTIONAL_TIER_SIM as _TIER_SIM,  # noqa: F401 -- legacy override
+)
+from merlin.development.targetgen.runner_config import _config_for_target as _config_for_target
+from merlin.development.targetgen.runner_config import _default_config as _default_config
+
 # Explicit compatibility exports retain the established runner API.
 from merlin.evaluation.capsule.adapters import _sim_engine_adapters as _sim_engine_adapters
 from merlin.evaluation.capsule.bundle import _content_identity as _content_identity
@@ -15,25 +39,6 @@ from merlin.evaluation.capsule.bundle import _write_deterministic_npz as _write_
 from merlin.evaluation.capsule.operation import run_capsule as run_capsule
 from merlin.evaluation.capsule.suite import run_suite as run_suite
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.targetgen import oracle_policy as _oracle_policy
-from merlin.targetgen.capsule_common import discover_capsules as discover_capsules
-from merlin.targetgen.capsule_common import load_capsule as load_capsule
-from merlin.targetgen.oracle_policy import _SIM_ORACLES as _SIM_ORACLES
-from merlin.targetgen.oracle_policy import _bespoke_sim_via as _bespoke_sim_via
-from merlin.targetgen.oracle_policy import _chipyard_available as _chipyard_available
-from merlin.targetgen.oracle_policy import _endpoint_of as _endpoint_of
-from merlin.targetgen.oracle_policy import _ensure_sim_oracles_discovered as _ensure_sim_oracles_discovered
-from merlin.targetgen.oracle_policy import _screen_tiers_of as _screen_tiers_of
-from merlin.targetgen.oracle_policy import _sim_oracle_lock as _sim_oracle_lock
-from merlin.targetgen.oracle_policy import _SimOracle as _SimOracle
-from merlin.targetgen.oracle_policy import chipyard_l3_selection as chipyard_l3_selection
-from merlin.targetgen.oracle_policy import describe_l3_engine as describe_l3_engine
-from merlin.targetgen.oracle_policy import register_sim_oracle as register_sim_oracle
-from merlin.targetgen.oracle_policy import sim_oracle_caps as sim_oracle_caps
-from merlin.targetgen.runner_config import CONVENTIONAL_RTL_TIERS as _RTL_TIERS  # noqa: F401 -- legacy override
-from merlin.targetgen.runner_config import CONVENTIONAL_TIER_SIM as _TIER_SIM  # noqa: F401 -- legacy override
-from merlin.targetgen.runner_config import _config_for_target as _config_for_target
-from merlin.targetgen.runner_config import _default_config as _default_config
 
 
 def main(argv: list[str] | None = None) -> int:

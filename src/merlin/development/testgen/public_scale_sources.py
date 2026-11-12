@@ -13,11 +13,11 @@ import json
 import math
 from pathlib import Path
 
+from merlin.compiler.lower.model.device_shim import logical_buffers
+from merlin.development.targetgen.capsule_dram import dtype_bits
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 from merlin.development.testgen.public_compile_sources import MAX_CASES, MAX_SOURCE_BYTES, PublicCompileCase, _file
-from merlin.llvmlower.device_shim import logical_buffers
-from merlin.targetgen.capsule_dram import dtype_bits
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
-from merlin.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
 
 
 def _supported_accumulator_types(source):
@@ -33,7 +33,7 @@ def _supported_accumulator_types(source):
     from xdsl.utils.lexer import Input
     from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
 
-    from merlin.targetgen.contract.mlir_source_admission import MlirSourceUnavailable, admit_mlir_source
+    from merlin.development.targetgen.contract.mlir_source_admission import MlirSourceUnavailable, admit_mlir_source
 
     try:
         admit_mlir_source(

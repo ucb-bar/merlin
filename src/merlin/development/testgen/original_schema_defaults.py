@@ -11,14 +11,14 @@ from pathlib import Path
 
 from merlin.common import invocation_record as I
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.frontend_typed_add import defaults_request
 from merlin.development.testgen.operator_schema_intake import _selection
-from merlin.targetgen.frontend_typed_add import defaults_request
 
 ENVIRONMENT = {"PATH": "/usr/bin:/bin", "LANG": "C.UTF-8"}
 
 
 def observer():
-    return module_source_path("merlin.targetgen.torch_schema_defaults_observer")
+    return module_source_path("merlin.development.targetgen.torch_schema_defaults_observer")
 
 
 def observe_members(*, schema_record, basis, destination, version, transport="per_member"):

@@ -404,7 +404,7 @@ def _stage(out: Path, proposed: str, result: Path) -> None:
     seed_run = plan["seed"]["run"]
     corpus = planned_corpus(plan, run_dir, out / "corpus")
     planning_inventory(corpus, workspace, run_dir)
-    from merlin.targetgen import seeded_grade
+    from merlin.development.targetgen import seeded_grade
 
     environment = {
         FCW.ENV: json.dumps(
@@ -447,7 +447,7 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
     import yaml
 
     from merlin.development.backend import corpus_inputs
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     argv = plan["argv"]
 
@@ -473,7 +473,7 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
 def planning_inventory(corpus: Path, workspace: Path, run_dir: Path) -> None:
     """The planned corpus's public planning inventory (workload roles), as the session stages it."""
     from merlin.development.backend import capability_inventory, joint_control
-    from merlin.targetgen.capsule_common import discover_capsules
+    from merlin.development.targetgen.capsule_common import discover_capsules
 
     contract = corpus / "contract"
     native = discover_capsules(corpus / "public", labels={"public", "dev"}, contract=contract)
@@ -582,7 +582,7 @@ def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str
     from merlin.development.backend.context import load_context
     from merlin.development.backend.feedback.public_scalability import install
     from merlin.development.backend.feedback.selfcheck import main as selfcheck
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     descriptor = Path(os.environ["MERLIN_TARGET_EXPERIMENT"])
     context = load_context(descriptor, repo=Path(os.environ["MERLIN_REPO_ROOT"]))

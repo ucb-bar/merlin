@@ -16,11 +16,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import campaign as CAMPAIGN
 from merlin.development.backend.optimization import gsim_certificate as PRODUCER
 from merlin.development.backend.optimization import gsim_gate as GATE
 from merlin.development.backend.optimization import revealed_corpus as RC
+from merlin.evaluation.harness import hash_tree
 
 SCHEMA = "merlin.heldout-gsim-qualification.v1"
 
@@ -39,8 +39,8 @@ def lower_with_functional_baseline(
     functional_base: Path, member: RC.RevealedMember, artifact_dir: Path, timeout: int, *, contract_root: Path
 ) -> Path:
     """Run the immutable package ABI through K2-K6 and emit only into ``artifact_dir``."""
-    from merlin.targetgen import capsule_common as COMMON
-    from merlin.targetgen import package_runtime as OOT
+    from merlin.development.targetgen import capsule_common as COMMON
+    from merlin.development.targetgen import package_runtime as OOT
 
     package = OOT.load_package(functional_base, contract=contract_root)
     OOT.integrity_scan(package)

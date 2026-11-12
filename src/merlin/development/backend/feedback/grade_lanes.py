@@ -8,7 +8,7 @@ third owners while slots were free, and nothing else started until 02:43. The au
 ungraded for 35 minutes at a time while the configured cadence was two minutes.
 
 Each running case of a grade is in the *short* or the *long* lane. It is long when its estimated seconds
-(the scheduler's measured costs, :func:`merlin.targetgen.capsule_scheduling.measured_costs`) exceed the
+(the scheduler's measured costs, :func:`merlin.development.targetgen.capsule_scheduling.measured_costs`) exceed the
 grade cadence, or once it has already run longer than the cadence: a mispriced case is reclassified by
 its own elapsed time, and a case with no price yet starts short and is priced by this run's result. The
 boundary is the cadence the grader was configured with, not a constant: a case that would outlast one

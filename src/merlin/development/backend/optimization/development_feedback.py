@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
 from merlin.development.backend.optimization import corpus as CORPUS
 from merlin.development.backend.optimization import corpus_feedback as CF
 from merlin.development.backend.optimization import feedback_metrics as FM
@@ -31,8 +31,8 @@ from merlin.development.backend.optimization.sweep_policy import (  # noqa: F401
     sweep_workers,
 )
 from merlin.development.backend.optimization.whole_model_profile import load_selected_inputs as _load_whole_model_inputs
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.evaluation.harness import hash_tree
 
 
 def _measurement_selection(value):
@@ -65,7 +65,7 @@ class DevelopmentGsimFeedback:
     peak_basis: str = ""
     #: The machine's derived bounds for each member's ROOFLINE: array geometry from the RTL facts and
     #: the memory-path widths of the exact elaboration the certified timing engine was built from
-    #: (:func:`merlin.perf.capsule_roofline.machine_bounds`). None leaves every roofline UNKNOWN with
+    #: (:func:`merlin.analysis.perf.capsule_roofline.machine_bounds`). None leaves every roofline UNKNOWN with
     #: that reason; it never substitutes a width.
     machine_bounds: Mapping[str, Any] | None = None
     #: The target's counter-byte binding evidence, probed once per stage the first time a counter
@@ -222,7 +222,7 @@ class DevelopmentGsimFeedback:
 
             verify(self._capsule_development_scope)
             raise StageGateError("capsule development cannot dispatch GSIM/RTL execution")
-        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+        from merlin.analysis.perf.execution_policy import require_probe_execution  # noqa: PLC0415
 
         if measurement_plan is not None:
             _measurement_selection(measurement_plan)
@@ -360,7 +360,7 @@ class DevelopmentGsimFeedback:
         without candidate output or cycles, prefers an objective member, and stays fixed for the
         stage.  Formal promotion still evaluates the entire sealed cohort.
         """
-        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+        from merlin.analysis.perf.execution_policy import require_probe_execution  # noqa: PLC0415
 
         members = []
         for member in tuple(getattr(self.corpus, "capsules", ()) or ()):
@@ -403,7 +403,7 @@ class DevelopmentGsimFeedback:
                 "reason": "physical counters lack exhaustive RTL-bound byte semantics",
             }
         try:
-            from merlin.perf.dma_volume import physical_volume_from_counters  # noqa: PLC0415
+            from merlin.analysis.perf.dma_volume import physical_volume_from_counters  # noqa: PLC0415
 
             volume = physical_volume_from_counters(readings, counter_facts=facts)
         except Exception as exc:  # noqa: BLE001 - a failed binding remains unknown
@@ -474,8 +474,8 @@ class DevelopmentGsimFeedback:
         declared_commands = None
         representation = None
         if isinstance(command, Mapping):
-            from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
-            from merlin.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
+            from merlin.analysis.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+            from merlin.analysis.perf.movement_volume import movement_from_command_buffer  # noqa: PLC0415
 
             movement = movement_from_command_buffer(command)
             declared_commands = sum(1 for row in movement.commands if ((row.bytes_in or 0) + (row.bytes_out or 0)) > 0)
@@ -528,7 +528,7 @@ class DevelopmentGsimFeedback:
         family, sep, capsule = str(identity or "").strip().partition("/")
         if not sep or not family or not capsule:
             raise StageGateError("a profiled member is named as family/capsule from the frozen tuning corpus")
-        from merlin.perf.execution_policy import require_probe_execution  # noqa: PLC0415
+        from merlin.analysis.perf.execution_policy import require_probe_execution  # noqa: PLC0415
 
         for member in tuple(getattr(self.corpus, "capsules", ()) or ()):
             if member.family == family and member.capsule == capsule:
@@ -686,7 +686,7 @@ class DevelopmentGsimFeedback:
     def _stopping(self, cells: Sequence[Mapping[str, Any]], *, label: str, elapsed_s: float) -> dict[str, Any]:
         """Should the search stop? Every condition's answer, fired or not.
 
-        Delegated wholesale to :mod:`merlin.perf.select`, whose declared thresholds are exactly the
+        Delegated wholesale to :mod:`merlin.analysis.perf.select`, whose declared thresholds are exactly the
         question worth asking: has the search stopped moving (three consecutive queries improving
         less than 1%), and has it got close enough to what is actually attainable (within 10% of the
         achievable target)? A plateau alone is a weak signal -- a search can sit still far from the
@@ -697,8 +697,8 @@ class DevelopmentGsimFeedback:
         of a rate no program on this machine has ever reached would never fire, and stopping short
         because a nameplate number says there is headroom would never stop.
         """
-        from merlin.perf import select as SELECT  # noqa: PLC0415
-        from merlin.perf.budget import Budget, unpriced_channel  # noqa: PLC0415
+        from merlin.analysis.perf import select as SELECT  # noqa: PLC0415
+        from merlin.analysis.perf.budget import Budget, unpriced_channel  # noqa: PLC0415
 
         comparable = [c for c in cells if c.get("comparable")]
         if not comparable:

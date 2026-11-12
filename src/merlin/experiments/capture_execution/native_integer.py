@@ -14,7 +14,7 @@ import numpy as np
 
 from merlin.common import mlir_query as mq
 from merlin.common import strict_json
-from merlin.targetgen.frontend_trace import loads_frontend_trace
+from merlin.development.targetgen.frontend_trace import loads_frontend_trace
 
 MODE = "native_integer_v1"
 

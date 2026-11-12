@@ -94,7 +94,7 @@ def build_quantizer(
         selected = recipe.get("software_admission")
         if selected is None:
             return True  # Compatibility recipes retain their recorded policy.
-        from merlin.targetgen.software_spec import admit_operation
+        from merlin.development.targetgen.software_spec import admit_operation
 
         value = node.args[0].meta.get("val") if node.args and isinstance(node.args[0], torch.fx.Node) else None
         prospective = {

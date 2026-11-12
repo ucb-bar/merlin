@@ -12,8 +12,8 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from merlin.targetgen import tool_registry as _TR
-from merlin.targetgen.contract.readback_policy import READBACK_TRANSPORTS
+from merlin.development.targetgen import tool_registry as _TR
+from merlin.development.targetgen.contract.readback_policy import READBACK_TRANSPORTS
 
 MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
 

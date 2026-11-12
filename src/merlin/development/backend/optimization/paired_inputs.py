@@ -11,7 +11,6 @@ from typing import Any
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import campaign as PC
 from merlin.development.backend.optimization import candidate_verification as VERIFY
 from merlin.development.backend.optimization import corpus as P2_CORPUS
@@ -19,6 +18,7 @@ from merlin.development.backend.optimization import gsim_gate as GATE
 from merlin.development.backend.optimization import measurement_evidence as ME
 from merlin.development.backend.optimization import paired_measurement as PM
 from merlin.development.backend.optimization import revealed_corpus as RC
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)

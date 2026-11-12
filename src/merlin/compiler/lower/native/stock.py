@@ -19,11 +19,11 @@ from merlin.common import compile_trace, invocation_record
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.compiler.lower.llvm.normalize import normalize_float_literals as _fix_float_literals
 from merlin.compiler.lower.llvm.passes import bind_index_width as _bind_index_width
+from merlin.compiler.lower.model import fusion_guard
+from merlin.compiler.lower.model.toolchain import llvm_install, mlir_translate
 from merlin.compiler.lower.native.policy import SINK_DEALLOC_PASS, _upstream_pipeline
 from merlin.compiler.lower.native.recipe import LoweringRecipe
 from merlin.compiler.passes.contract import PipelineError
-from merlin.llvmlower import fusion_guard
-from merlin.llvmlower.toolchain import llvm_install, mlir_translate
 from merlin.runtime.build_runtime import run_in_build_view
 
 
@@ -83,7 +83,7 @@ def lower(
         from xdsl.dialects.builtin import StringAttr
 
         from merlin.common.dense_float_ir import DenseFloatPrinter
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         module = parse_mlir_text(text)
         module.attributes["llvm.data_layout"] = StringAttr(data_layout)

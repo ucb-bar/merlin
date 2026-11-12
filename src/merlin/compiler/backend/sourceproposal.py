@@ -13,10 +13,10 @@ import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
+from merlin.compiler.dialects.lowering.global_plan import BufferRepresentation, RegionAlternative, ValueRepresentation
+from merlin.compiler.dialects.lowering.global_plan_emission import _component_boundary
 from merlin.compiler.ir.semantics import validator_identity as _validator_identity
-from merlin.system.topology import SelectedTopology
-from merlin.xdsl_dialects.lowering.global_plan import BufferRepresentation, RegionAlternative, ValueRepresentation
-from merlin.xdsl_dialects.lowering.global_plan_emission import _component_boundary
+from merlin.target.system.topology import SelectedTopology
 
 
 def _record(value):
@@ -27,7 +27,7 @@ def _source_members():
     import sys
 
     from merlin.compiler.ir import boundary, semantics
-    from merlin.transforms import certificates
+    from merlin.compiler.transforms import certificates
 
     owner = sys.modules[__name__]
     return (
@@ -46,7 +46,7 @@ def _source_members():
 
 def source_numerical_identity(source, nodes: tuple[int, ...]) -> str:
     """Bind original IR arithmetic/order/parameters; this is not equivalence proof."""
-    from merlin.transforms.certificates import ir_text
+    from merlin.compiler.transforms.certificates import ir_text
 
     source.revalidate()
     if type(nodes) is not tuple or not nodes or any(type(n) is not int for n in nodes):
@@ -158,7 +158,7 @@ proposal_boundary = _boundary
 
 
 def _check(source, proposal, topology, *, original_cpu):
-    from merlin.llvmlower.offload_plan import OffloadSource
+    from merlin.compiler.lower.model.offload_plan import OffloadSource
 
     if (
         type(source) is not OffloadSource

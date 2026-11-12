@@ -14,11 +14,11 @@ from merlin.compiler.artifact import Compilation
 from merlin.compiler.backend.cabi import TensorPort
 from merlin.compiler.backend.stateful import CRegionABI2, context_reservations, read_c_abi, selected_context
 from merlin.compiler.backend.workspace import CWorkspaceABI
+from merlin.compiler.dialects.lowering.arena_plan import _buf_bytes
+from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
 from merlin.compiler.lower.c.dispatch import DispatchCall, emit_program_c
 from merlin.compiler.schedule.arena import ArenaRequirements
 from merlin.runtime.program import build_program
-from merlin.xdsl_dialects.lowering.arena_plan import _buf_bytes
-from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
 
 @dataclass(frozen=True)

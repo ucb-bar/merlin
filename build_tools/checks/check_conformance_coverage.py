@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: does a target's capsule corpus cover the coverage requirement DERIVED for it?
 
-The requirement comes from :mod:`merlin.targetgen.conformance` — the intersection of what the target's
+The requirement comes from :mod:`merlin.development.targetgen.conformance` — the intersection of what the target's
 capability manifest admits with what the real target-models' captures contain, expressed in
 ``cert_capsule_cover``'s ``(semantic_family, dtype, tile_alignment)`` cells. This script reports which
 required cells no capsule exercises.
@@ -26,11 +26,11 @@ Modes, mirroring the other gates in this directory:
                        under --fail-on-uncovered. Every measured gap still fails either way.
 
 Three axes are measured. The ``(semantic_family, dtype, tile_alignment)`` cells say WHAT the corpus
-computes; the COMPOSITION axis (:mod:`merlin.targetgen.boundary`) says how the work is assembled --
+computes; the COMPOSITION axis (:mod:`merlin.development.targetgen.boundary`) says how the work is assembled --
 ``A``, ``A->A``, ``H->A->H``, ``A->H->A``, ``routing``, ``H``. They are reported side by side and never
 crossed: a cross product would demand cells no real model presents. Composition debt is ratcheted under a
 ``composition:`` prefix so the axes cannot collide in one flat ratchet file. The MEMORY-MAPPING axis
-(:mod:`merlin.targetgen.memory_regime`) says which regime the program puts the target's on-chip operand
+(:mod:`merlin.development.targetgen.memory_regime`) says which regime the program puts the target's on-chip operand
 store in -- ``fits_double`` / ``fits_single`` / ``fits_on_reuse`` / ``spills`` -- because a corpus whose
 capsules all fit the store many times over cannot detect a memory-mapping failure at all.
 
@@ -46,8 +46,8 @@ import json
 import sys
 from pathlib import Path
 
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 from merlin.evaluation.capsule import eligibility as capsule_eligibility
-from merlin.targetgen import capsule_common as capsule_capsule_common
 
 _HERE = Path(__file__).resolve()
 for _p in (_HERE.parents[2] / "src",):
@@ -55,7 +55,7 @@ for _p in (_HERE.parents[2] / "src",):
         sys.path.insert(0, str(_p))
 
 from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
-from merlin.targetgen import conformance as CF  # noqa: E402
+from merlin.development.targetgen import conformance as CF  # noqa: E402
 
 
 class ClaimModelInApplications(Exception):
@@ -88,7 +88,7 @@ def _applications(te) -> dict:
     """
     from merlin.common.artifacts import recaptures_dir
     from merlin.common.paths import repo_root
-    from merlin.targetgen import claim_models as CM
+    from merlin.development.targetgen import claim_models as CM
 
     spec = dict(getattr(te, "workload_spec", None) or {})
     declared = spec.get("applications")
@@ -241,7 +241,7 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
     is then reported over captured models -- so a capture doing both jobs means the corpus was built
     from the model it is said to generalize to. This used to return EVERY bundle, the four claim models
     included, and lstmnetvit was already in both roles. The split is declared in
-    ``src/merlin/resources/contracts/claim_models.yaml`` and applied by ``merlin.targetgen.claim_models``.
+    ``src/merlin/resources/contracts/claim_models.yaml`` and applied by ``merlin.development.targetgen.claim_models``.
 
     Matching runs on the bundle's RAW directory name, before the label is prettified: the matcher works
     on token boundaries and the prettified label erases the tokens it needs.
@@ -250,7 +250,7 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
     has to derive the requirement BOTH ways to check that holding the claim models out costs no cell --
     never for producing a requirement.
     """
-    from merlin.targetgen import claim_models as CM
+    from merlin.development.targetgen import claim_models as CM
 
     root = model_root or (artifacts_dir() / "recaptures")
     if not root.is_dir():
@@ -268,7 +268,7 @@ def _captures(model_root: Path | None = None, *, include_claim_models: bool = Fa
 
 def _target_experiment(target: str) -> Path | None:
     """Resolve an explicitly selected matching descriptor or its authored source owner."""
-    from merlin.targetgen.target_experiment import descriptor_for
+    from merlin.development.targetgen.target_experiment import descriptor_for
 
     return descriptor_for(target)
 
@@ -280,7 +280,7 @@ def _contract_target(target: str) -> str:
     (a configuration-qualified name beside a short directory). Resolving a contract by the directory
     name then finds nothing, which is why some targets had no derived requirement at all.
     """
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     desc = _target_experiment(target)
     if desc is None:
@@ -293,7 +293,7 @@ def _contract_target(target: str) -> str:
 
 def audit(target: str, *, spec_path: Path | None = None) -> dict:
     """Derive (or load) the requirement and measure the corpus against it."""
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     desc = _target_experiment(target)
     if desc is None:
@@ -517,7 +517,7 @@ def _load_ratchet(p: Path | None) -> set[str]:
     return out
 
 
-#: Every axis besides cells that :func:`merlin.targetgen.conformance.uncovered` measures, as
+#: Every axis besides cells that :func:`merlin.development.targetgen.conformance.uncovered` measures, as
 #: ``(key in the report, tag in the ratchet)``.
 #:
 #: THE TABLE IS THE VERDICT. `uncovered_debt` iterates it rather than repeating a list comprehension
@@ -656,12 +656,12 @@ def main(argv=None) -> int:
                 file=sys.stderr,
             )
             return 2
+        from merlin.development.targetgen.application_inventory import application_demand_inventory
+        from merlin.development.targetgen.corpora import descriptor_path
+        from merlin.development.targetgen.target_experiment import load_target_experiment
         from merlin.development.testgen.declarations import for_target
         from merlin.development.testgen.evidence import export_evidence, select_evidence
         from merlin.development.testgen.profiles import selected_software_spec_path
-        from merlin.targetgen.application_inventory import application_demand_inventory
-        from merlin.targetgen.corpora import descriptor_path
-        from merlin.targetgen.target_experiment import load_target_experiment
 
         try:
             descriptor = descriptor_path(targets[0])
@@ -730,8 +730,8 @@ def main(argv=None) -> int:
         # `audit` and a crash from `--write` -- the path that actually creates the file.
         # Imported here rather than at module scope, matching `_contract_target`'s own local import:
         # this script runs before merlin is necessarily importable in every environment it is used in.
-        from merlin.targetgen.corpora import descriptor_path
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.corpora import descriptor_path
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         _te = load_target_experiment(descriptor_path(targets[0]))
         # SAME EVIDENCE AS `audit`, corpus included. `--write` is the path that creates the tracked
@@ -781,7 +781,7 @@ def main(argv=None) -> int:
         sidecar_path = None
         full_inventory = None
         if _app_paths:
-            from merlin.targetgen.application_inventory import application_demand_inventory
+            from merlin.development.targetgen.application_inventory import application_demand_inventory
 
             full_inventory = application_demand_inventory(_app_paths, _contract_target(targets[0]), detailed=True)
             digest = hashlib.sha256(

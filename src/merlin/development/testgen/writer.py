@@ -8,6 +8,11 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import capsule_golden as CG  # noqa: E402
+from merlin.development.targetgen import corpus_spec as CS  # noqa: E402
+from merlin.development.targetgen import golden_store as GS  # noqa: E402
+from merlin.development.targetgen import numeric_falsifiability as NF  # noqa: E402
+from merlin.development.targetgen.contract.description import write_description
 from merlin.development.testgen.golden_cache import _golden_cached
 from merlin.development.testgen.numerics import (
     _float_golden,
@@ -19,11 +24,6 @@ from merlin.development.testgen.numerics import (
     specir_oracle_source_identity,
 )
 from merlin.development.testgen.sealed_generation import capture_source
-from merlin.targetgen import capsule_golden as CG  # noqa: E402
-from merlin.targetgen import corpus_spec as CS  # noqa: E402
-from merlin.targetgen import golden_store as GS  # noqa: E402
-from merlin.targetgen import numeric_falsifiability as NF  # noqa: E402
-from merlin.targetgen.contract.description import write_description
 
 INTEGER_CONTRACTION_BOUND_OPS = frozenset(
     {
@@ -73,7 +73,7 @@ def _skip_or_require_m2m(entry: dict) -> None:
 
 def _integer_reference_bound(entry: dict, cap: dict) -> dict:
     """Screen concrete integer contraction stimuli against selected internal width."""
-    from merlin.targetgen.operation_numerics import integer_partial_sum_bound
+    from merlin.development.targetgen.operation_numerics import integer_partial_sum_bound
 
     semantics = entry.get("numerical_semantics") or {}
     operation = cap["operation"]
@@ -125,7 +125,7 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
             initial_values=initial_values,
         )
         if result["status"] == "may_overflow":
-            from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+            from merlin.development.targetgen.operation_numerics import integer_matrix_partial_sum_bound
 
             result = integer_matrix_partial_sum_bound(
                 semantics,
@@ -231,7 +231,7 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
         }
 
     if op == "sibling_feed":
-        from merlin.targetgen.corpus_sibling_feed import merged_operand
+        from merlin.development.targetgen.corpus_sibling_feed import merged_operand
 
         members = [
             {"region": region, "partial_sum_bound": bounded_matmul(attrs["lhs"], attrs[weight])}
@@ -248,7 +248,7 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
             rhs_values=[int(v) for v in down.data],
         )
         if result["status"] == "may_overflow":
-            from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+            from merlin.development.targetgen.operation_numerics import integer_matrix_partial_sum_bound
 
             result = integer_matrix_partial_sum_bound(
                 semantics,
@@ -300,7 +300,7 @@ def _integer_reference_bound(entry: dict, cap: dict) -> dict:
         initial_values=initial,
     )
     if result["status"] == "may_overflow" and op == "conv2d":
-        from merlin.targetgen.operation_numerics import integer_matrix_partial_sum_bound
+        from merlin.development.targetgen.operation_numerics import integer_matrix_partial_sum_bound
 
         patches = CG.im2col(
             lhs,
@@ -368,7 +368,7 @@ def _source_integer_reference_bound(entry: dict, cap: dict, directory: Path) -> 
 
 def _spec_integer_reference_bound(entry: dict, cap: dict, directory: Path) -> dict:
     """Bound both the spec program and the separately materialized capsule operands."""
-    from merlin.targetgen.operation_numerics import integer_partial_sum_bound
+    from merlin.development.targetgen.operation_numerics import integer_partial_sum_bound
 
     operation = cap.get("operation") or {}
     attrs = operation.get("attributes") or {}
@@ -530,7 +530,7 @@ def _finish_capsule(entry, binding, out_root, written, *, component_only=False, 
             raise ValueError("source frontier cannot skip qualification under a target-bound writer")
         cap["public_source_frontier"] = arithmetic(entry, cap, d, protocol=diagnostic_source_protocol)
         dirty = True
-    from merlin.targetgen.native_storage_source import native_storage_source_spec
+    from merlin.development.targetgen.native_storage_source import native_storage_source_spec
 
     # An integer storage type does not make a cast or permutation a mesh MAC.
     # This exception is limited to the validated nonaccelerating native source
@@ -646,7 +646,7 @@ _DECLARED_BLOCKS = (
     # The oracle-tier ceiling and the sibling a capped member rests on. Declared
     # once in a profile and carried onto every member derived from it, so the
     # link between a screened member and the capsule that certifies it is
-    # machine-readable rather than prose. See merlin.targetgen.tier_policy.
+    # machine-readable rather than prose. See merlin.development.targetgen.tier_policy.
     "max_oracle_tier",
     "max_timing_tier",
     "extends",
@@ -747,7 +747,7 @@ def _verify_a_forbidden_lane_is_provable(d: Path, cap: dict, target: str | None)
     forbid = {str(x) for x in ((cap.get("lanes") or {}).get("forbid") or ())}
     if "on_mesh" not in forbid:
         return
-    from merlin.targetgen import boundary as BD
+    from merlin.development.targetgen import boundary as BD
 
     prof = BD.profile_capsule(d, str(target))
     if prof.kind == BD.HOST_ONLY:
@@ -783,7 +783,7 @@ def _validate_lane_declaration(entry: dict, binding) -> None:
         )
     target = getattr(binding, "target", None)
     if forbid and target:
-        from merlin.targetgen.routing import reachable_lanes
+        from merlin.development.targetgen.routing import reachable_lanes
 
         unreachable = sorted(set(forbid) - reachable_lanes(target))
         if unreachable:
@@ -816,7 +816,7 @@ def _stamp_member_geometry(cap: dict, binding) -> bool:
     target = str(getattr(binding, "target", "") or "")
     if not target:
         return False
-    from merlin.perf.member_geometry import stamp_for
+    from merlin.analysis.perf.member_geometry import stamp_for
 
     block = stamp_for(cap, target=target)
     # None and a block saying `in_census: false` are different answers: the first is "this member's
@@ -857,7 +857,7 @@ def _backfill_required_classes(cap: dict, binding) -> bool:
         return False
     attrs = (cap.get("operation") or {}).get("attributes", {}) or {}
     modes = exp.get("modes", {}) or {}
-    from merlin.targetgen import isa_taxonomy as IT
+    from merlin.development.targetgen import isa_taxonomy as IT
 
     tax = IT.taxonomy_for_target(binding.target)  # {} when the target ships no ISA definition
     if not tax or not tax.get("by_class"):
@@ -901,7 +901,7 @@ def _emit_micro_model_loader(entry: dict, target: str, out_root, *, capture_dtyp
     hardware and software contracts, and puts the others on the host. The run passes its frozen capture
     and software-spec snapshots, so the loader cannot drift with an ambient target file.
     """
-    from merlin.targetgen import micro_model as MM
+    from merlin.development.targetgen import micro_model as MM
 
     # Derived-only execution passes exact run-owned snapshots. Pop the internal
     # selector before the entry becomes a public capsule or provenance record.
@@ -952,7 +952,7 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
         if entry.get("materialized_capture"):
             artifact = source_artifacts.materialized_model_artifacts(entry["materialized_capture"])
             written = source_model_sources.write_model_capsule(entry, eb, out_root, artifact=artifact)
-            from merlin.targetgen.materialized_integer_capture import selected
+            from merlin.development.targetgen.materialized_integer_capture import selected
 
             if selected(entry["materialized_capture"]):
                 from merlin.development.testgen.capture_execution_attestation import require_verified_execution
@@ -986,8 +986,8 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     # interface; int/MX datapaths keep the direct-MLIR engines below (the endorsed fallback for the
     # dtypes torch/torchAO does not faithfully model, e.g. int8xint8 systolic or block-scaled MX).
     if entry.get("source") == "pytorch" or entry.get("pytorch_ref"):
-        from merlin.targetgen.application_inventory import int_mm_source_is_qualified
-        from merlin.targetgen.capsule_builtin_source import native_storage_source_spec
+        from merlin.development.targetgen.application_inventory import int_mm_source_is_qualified
+        from merlin.development.targetgen.capsule_builtin_source import native_storage_source_spec
 
         # AN ENTRY THAT NAMES A QUANTIZATION SCHEME has said which arithmetic its program must contain,
         # so the float-regime restriction below does not apply to it. The restriction exists because a

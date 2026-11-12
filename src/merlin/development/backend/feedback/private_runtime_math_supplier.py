@@ -7,8 +7,8 @@ source/compiler/flags, never by the link trace's claimed defining filename.
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
+from merlin.development.targetgen.host_linkage_contract import runtime_recipe
 from merlin.runtime.host_math import host_math_recipe, runtime_symbol_bindings
-from merlin.targetgen.host_linkage_contract import runtime_recipe
 
 
 def select(policy, contracts, compiler, recipe_path):

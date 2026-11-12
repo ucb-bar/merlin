@@ -5,15 +5,15 @@ probes say what that program DOES, without a whole-model run:
 
 * **timing** (:func:`time_group`): the program on the elaborated-RTL emulator, on the model's own inputs
   to the group, graded exactly against the reference recomputed from those inputs -- the same run the
-  phase-2 fast tier makes (:func:`merlin.perf.whole_model_group_timing.time_group_programs`), for one
+  phase-2 fast tier makes (:func:`merlin.analysis.perf.whole_model_group_timing.time_group_programs`), for one
   named group. The cycles are the EMULATOR's own device and a RANKING signal: the run's own measurement
   ladder adjudication rides with them, and the board alone adjudicates a cycle count.
 * **profile** (:func:`profile_group`): the group's hardware-counter facts and its instruction census
   by role. Counter NAMES come from the target's own counter header
-  (:func:`merlin.perf.hw_counters.counters_for_target`): the per-engine busy/overlap block factored out of
+  (:func:`merlin.analysis.perf.hw_counters.counters_for_target`): the per-engine busy/overlap block factored out of
   the header, and every other cycle-unit counter it declares under its own name. Counter VALUES are read
   from a console the program printed and are admitted only through
-  :func:`merlin.perf.counter_trust.values_or_refusal` for the engine that ran it, and only when the
+  :func:`merlin.analysis.perf.counter_trust.values_or_refusal` for the engine that ran it, and only when the
   console's counter-schema digest (if it states one) is the header the names came from. The census is
   the whole one-group ELF's custom instructions by derived role, split into the group's kernel and the
   program's own code (:func:`.phase2.whole_model_measured.group_capsules.isa_scan`).
@@ -45,7 +45,7 @@ PROFILE_SCHEMA = "merlin_group_profile_v1"
 TIMING_SCHEMA = "merlin_group_timing_probe_v1"
 UNKNOWN = "UNKNOWN"
 #: The unit token a counter header declares in a duration counter's name (the unit query
-#: :func:`merlin.perf.hw_counters.counters_with_unit` answers); a busy figure is a duration.
+#: :func:`merlin.analysis.perf.hw_counters.counters_with_unit` answers); a busy figure is a duration.
 _DURATION_UNIT = "CYCLES"
 _NOT_A_CLAIM = (
     "a ranking and structure signal from the elaborated-RTL emulator; the cycle figure is that device's "
@@ -75,7 +75,7 @@ def time_group(
     counter profile. Returns the timing row (``status``, ``cycles``, ``correct``, ``refusal`` ...) with
     the device label, the run's own cycle adjudication and where its console is.
     """
-    from merlin.perf import whole_model_group_timing as GT
+    from merlin.analysis.perf import whole_model_group_timing as GT
 
     group = int(record["group"])
     timed = GT.time_group_programs(
@@ -119,7 +119,7 @@ def engine_of(timing: Mapping[str, Any]) -> str | None:
 
 def counter_facts(target: str) -> dict[str, Any]:
     """The counter names the target's own header declares: the busy/overlap block and other durations."""
-    from merlin.perf import hw_counters as HWC
+    from merlin.analysis.perf import hw_counters as HWC
 
     discovery = HWC.counters_for_target(target)
     if discovery.get("status") != "derived":
@@ -145,8 +145,8 @@ def counter_facts(target: str) -> dict[str, Any]:
 
 def counter_values(facts: Mapping[str, Any], console: str | None, *, engine: str | None) -> dict[str, Any]:
     """The derived counters' values in ``console``, admitted only for a trusted engine and the same header."""
-    from merlin.perf import counter_trust as CT
-    from merlin.perf import hw_counters as HWC
+    from merlin.analysis.perf import counter_trust as CT
+    from merlin.analysis.perf import hw_counters as HWC
 
     if facts.get("status") != "derived":
         return _unknown("no counter names were derived for this target, so nothing can be read")
@@ -181,8 +181,8 @@ def counter_values(facts: Mapping[str, Any], console: str | None, *, engine: str
 
 def instruction_census(record: Mapping[str, Any], *, target: str) -> dict[str, Any]:
     """The one-group ELF's custom instructions by derived role: the group's kernel and the program's code."""
+    from merlin.analysis.perf import isa_prohibition as ISA
     from merlin.development.backend.optimization.whole_model_measured.group_capsules import GroupCapsuleError, isa_scan
-    from merlin.perf import isa_prohibition as ISA
 
     try:
         report = isa_scan(record, target=target, roles=())

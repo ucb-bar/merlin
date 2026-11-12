@@ -407,7 +407,7 @@ def _compile_kernel_so(args: tuple) -> str:
     import shutil
     from pathlib import Path
 
-    from ..llvmlower.lower import lower_model
+    from merlin.compiler.lower.model.lower import lower_model
 
     text, workdir_str, so_path = args
     wd = Path(workdir_str)
@@ -610,9 +610,13 @@ def execute(
     import hashlib
     import platform
 
-    from ..llvmlower.abi import HostModel
-    from ..llvmlower.kernel_backend import compile_host, extract_kernel, host_scalar_result_dtype
-    from ..xdsl_dialects._common import text as to_text
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.kernel_backend import (
+        compile_host,
+        extract_kernel,
+        host_scalar_result_dtype,
+    )
 
     workdir = Path(workdir)
     cache_dir = Path(cache_dir) if cache_dir is not None else None
@@ -839,7 +843,7 @@ def execute(
 
     from xdsl.dialects.builtin import TensorType
 
-    from ..llvmlower.abi import ScalarArg
+    from merlin.compiler.lower.model.abi import ScalarArg
 
     def run_call(op):
         placements.verify_call(op)
@@ -864,7 +868,7 @@ def execute(
                     # f32 -> per-tensor symmetric integer at the mesh boundary. The clip bound comes from
                     # the datapath's own width, not from a literal 127: a narrower or wider integer mesh
                     # would otherwise be fed operands saturated to some other unit's range.
-                    from ..targetgen.capsule_dram import dtype_bits as _dbits
+                    from merlin.development.targetgen.capsule_dram import dtype_bits as _dbits
 
                     _bits = _dbits(op_dt)
                     lim = float(2 ** (_bits - 1) - 1)
@@ -1221,19 +1225,17 @@ def _normalize_model_module(
     quant_select=None,
 ) -> None:
     """The one normalization sequence used by execution and exact audit replay."""
+    from merlin.compiler.lower.model.torchao_affine import lower_torchao_affine_quant
     from merlin.compiler.lower.scalar.casts import fix_bool_fptosi, fix_bool_sitofp
     from merlin.compiler.quantization.linalg import lower_quant_ext
     from merlin.compiler.transforms.matmul import collapse_overrank_matmul, lower_bf16_matmul_f32acc
-
-    from ..llvmlower.torchao_affine import lower_torchao_affine_quant
 
     lower_torchao_affine_quant(module)
     collapse_overrank_matmul(module)
     _propagate_quant_inner(module)
     if int8_compute:
+        from merlin.compiler.lower.model.quant_passes import apply_quant, compute_passes
         from merlin.compiler.quantization.scope import captured_quantized_contraction
-
-        from ..llvmlower.quant_passes import apply_quant, compute_passes
 
         # Match the compiled captured-scope path: a BF16 dequantized operand
         # needs an F32 accumulator before the INT8 contraction selector runs.
@@ -1286,9 +1288,9 @@ def run_model(
     import hashlib
     import os as _os
 
-    from ..frontends.linalg_mlir import parse_mlir_file
-    from ..llvmlower.quant_passes import compute_passes
-    from ..xdsl_dialects.lowering.outline import outline_dispatches
+    from merlin.compiler.dialects.lowering.outline import outline_dispatches
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+    from merlin.compiler.lower.model.quant_passes import compute_passes
 
     if not int8_compute and quant_passes is not None:
         raise ValueError("quant_passes requires int8_compute=True")
@@ -1367,7 +1369,7 @@ def run_model(
         # report built from the capture is not evidence that an epilogue stayed with its producer.
         # Keep the result separate from the dynamic dispatch ledger: this proves only emitted
         # structure, not where a completed call ran.
-        from ..perf import placement_census as _placement_census
+        from merlin.analysis.perf import placement_census as _placement_census
 
         try:
             _mesh_counts["planned_outlined_alignment"] = _placement_census.planned_outlined_alignment(

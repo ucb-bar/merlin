@@ -53,7 +53,7 @@ FAMILIES = (
     "data_movement",
     "connected_chain",
 )
-#: Canonical semantic family (:mod:`merlin.targetgen.semantic_families`) -> operation family.
+#: Canonical semantic family (:mod:`merlin.development.targetgen.semantic_families`) -> operation family.
 _SEMANTIC = {
     "contraction": "contraction",
     "attention": "attention",
@@ -130,7 +130,7 @@ def _single_row(declaration: dict, op) -> bool:
 
 def _windowed(declaration: dict) -> bool:
     try:
-        from merlin.targetgen.op_form_regimes import has_window
+        from merlin.development.targetgen.op_form_regimes import has_window
 
         return has_window(declaration)
     except Exception:  # noqa: BLE001 -- unknown structure is not a window
@@ -144,7 +144,7 @@ def _primary(declaration: dict) -> str | None:
     semantic = _mapping(declaration.get("semantic")).get("semantic_family")
     if not isinstance(semantic, str) or not semantic:
         try:
-            from merlin.targetgen import semantic_families
+            from merlin.development.targetgen import semantic_families
 
             semantic = semantic_families.from_op(op if isinstance(op, str) else None)
         except Exception:  # noqa: BLE001

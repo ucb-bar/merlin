@@ -15,13 +15,13 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.lower.connected import ConnectedCompilation, plan_connected_region
 from merlin.compiler.planning import explore as F
 from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.shared_input_schedule import SharedInputSchedule
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.transforms.dense_planning import DenseResources
-from merlin.transforms.pipeline_state import PipelineContext
+from merlin.compiler.transforms.dense_planning import DenseResources
+from merlin.compiler.transforms.pipeline_state import PipelineContext
 from merlin.verification.lean_contract import document_digest
 
 IDENTITY = "affine_map<(m,n)->(m,n)>"

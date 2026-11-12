@@ -39,10 +39,10 @@ from merlin.development.backend.context import (
 )
 from merlin.development.backend.feedback import certification_gates
 from merlin.development.backend.feedback.qualification_summary import summarize as qualification_summary
+from merlin.development.targetgen import capsule_grade as CG  # noqa: E402
+from merlin.development.targetgen import tier_integrity as _TI  # noqa: E402
 from merlin.evaluation.capsule import adapters as capsule_adapters
 from merlin.evaluation.capsule import availability as capsule_availability
-from merlin.targetgen import capsule_grade as CG  # noqa: E402
-from merlin.targetgen import tier_integrity as _TI  # noqa: E402
 
 # Allowed (answer-free) numeric fields. Everything else in the numeric block is dropped.
 _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
@@ -50,7 +50,7 @@ _SAFE_NUMERIC = {"status", "policy", "mismatch_count"}
 
 def _original_cohort_complete(score: dict) -> bool:
     """A measured denominator cannot discard an original required obligation."""
-    from merlin.targetgen.expected_refusal import execution_denominator
+    from merlin.development.targetgen.expected_refusal import execution_denominator
 
     admission = score.get("cohort_admission")
     if not isinstance(admission, dict):
@@ -451,7 +451,7 @@ def _per_capsule_from_results(runs_root: Path, *, only_capsule: str | None = Non
                     else None
                 )
             )(r.get("tier_reuse") if candidate_feedback is None else None),
-            # A seeded grade's pass carried in full from its seed run (merlin.targetgen.seeded_grade):
+            # A seeded grade's pass carried in full from its seed run (merlin.development.targetgen.seeded_grade):
             # "carried from <run>", an operator run name. Nothing else can ride the field.
             **(
                 lambda v: (
@@ -742,7 +742,7 @@ def _emitted_cost(capsule_result: Path) -> dict | None:
     return out or None
 
 
-#: Every severity the liveness screen can reach, worst first (mirrors ``merlin.liveness.report.Severity``
+#: Every severity the liveness screen can reach, worst first (mirrors ``merlin.verification.liveness.report.Severity``
 #: plus the aggregate ``ok`` verdict). Named here so the redacted row can TYPE-CHECK a severity instead of
 #: passing through whatever string happened to be in the (agent-writable) report file.
 LIVENESS_SEVERITIES: tuple[str, ...] = ("fault", "stall", "unknown", "warn", "info", "ok")
@@ -758,7 +758,7 @@ LIVENESS_SEVERITIES: tuple[str, ...] = ("fault", "stall", "unknown", "warn", "in
 #: side effect of this field existing.
 REFUSING_SEVERITIES: frozenset[str] = frozenset({"fault", "stall", "unknown"})
 
-#: The screen's rule slugs (``merlin.liveness.interconnect`` + ``merlin.liveness.preconditions``). An
+#: The screen's rule slugs (``merlin.verification.liveness.interconnect`` + ``merlin.verification.liveness.preconditions``). An
 #: ALLOWLIST, not a passthrough: `rule` is a string read from a file inside the agent's own work tree, so
 #: an unrecognised slug is counted under ``other`` rather than echoed, and no free-form text can ride out
 #: of the screen onto the redacted row.
@@ -847,7 +847,7 @@ def _liveness_screen(capsule_result: Path) -> dict | None:
         tgt = rep.get("target")
         if isinstance(tgt, str) and tgt and all(c.isalnum() or c in "_-" for c in tgt):
             try:
-                from merlin.targetgen.dram_facts import dram_window_for
+                from merlin.development.targetgen.dram_facts import dram_window_for
 
                 _base, size, why = dram_window_for(tgt)
                 if isinstance(why, str) and size == win:
@@ -885,7 +885,7 @@ def _loop_target_sim_via(context: InvocationContext) -> tuple[str, str]:
     descriptor is absent, so a descriptor-less invocation still grades on the RTL-derived (arc) tier."""
     desc = context.descriptor
     if desc.is_file():
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         te = load_target_experiment(desc)
         return te.target, te.sim_via
@@ -921,7 +921,7 @@ def run(
     # tier the capsule asked for. Without this the loop picks the endpoint's fastest tier, which for an
     # endpoint that exposes an additive cheap tier below its declared gold tier means grading against a
     # tier the capsule never declared.
-    from merlin.targetgen.contract.materialize import declared_oracle_tiers as _declared
+    from merlin.development.targetgen.contract.materialize import declared_oracle_tiers as _declared
 
     _decl = _declared(capsules_root)
     # THE PER-ROUND GATE CERTIFIES; it does not merely screen. Hand the grade the target's whole
@@ -933,7 +933,7 @@ def run(
     #
     # Grading the round on the screen alone is unsound in exactly one direction, and it was measured:
     # one submission passed the cheap functional tier on 20 of 20 capsules while the RTL tier passed 1.
-    # A screen may eliminate; it may never certify (see merlin.targetgen.tier_policy).
+    # A screen may eliminate; it may never certify (see merlin.development.targetgen.tier_policy).
     from merlin.development.backend import joint_control
 
     _loop_adapters = (

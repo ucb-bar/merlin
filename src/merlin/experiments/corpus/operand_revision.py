@@ -1,10 +1,11 @@
 """Explicit operator-reviewed additive observer revision; never a relocation."""
+
 from __future__ import annotations
 
 import copy
 
+from merlin.development.targetgen.rocc.selected_operand_protocol import _json, _read_pin
 from merlin.runtime.backends.rocc_selection import select_operand_protocol
-from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin
 
 SCHEMA = "merlin.operand_observer_revision.v1"
 
@@ -18,8 +19,14 @@ def select(contract, selection, review_pin):
     """
     review_bytes = _read_pin(review_pin, 2 * 1024 * 1024)
     review = _json(review_bytes, 2 * 1024 * 1024)
-    required = {"schema", "previous_sidecar_sha256", "selected_sidecar_sha256", "original_facts_sha256",
-                "field_additions", "source_pin_replacements"}
+    required = {
+        "schema",
+        "previous_sidecar_sha256",
+        "selected_sidecar_sha256",
+        "original_facts_sha256",
+        "field_additions",
+        "source_pin_replacements",
+    }
     if type(review) is not dict or set(review) != required or review["schema"] != SCHEMA:
         raise ValueError("observer revision requires a closed explicit review")
     previous = contract.get("rocc_operand_selection")
@@ -27,10 +34,12 @@ def select(contract, selection, review_pin):
         raise ValueError("observer revision requires an existing selected observer")
     if type(selection) is not dict or set(selection) != set(previous):
         raise ValueError("observer revision requires complete selected facts and sidecar")
-    if (previous["sidecar"]["sha256"] != review["previous_sidecar_sha256"]
-            or selection["sidecar"]["sha256"] != review["selected_sidecar_sha256"]
-            or previous["original_facts"]["sha256"] != review["original_facts_sha256"]
-            or selection["original_facts"]["sha256"] != review["original_facts_sha256"]):
+    if (
+        previous["sidecar"]["sha256"] != review["previous_sidecar_sha256"]
+        or selection["sidecar"]["sha256"] != review["selected_sidecar_sha256"]
+        or previous["original_facts"]["sha256"] != review["original_facts_sha256"]
+        or selection["original_facts"]["sha256"] != review["original_facts_sha256"]
+    ):
         raise ValueError("observer revision identities differ from the explicit review")
     originals = {k: _read_pin(v, 16 * 1024 * 1024) for k, v in previous.items()}
     revised = {k: _read_pin(v, 16 * 1024 * 1024) for k, v in selection.items()}
@@ -50,9 +59,13 @@ def select(contract, selection, review_pin):
         names = [f["name"] for f in fields]
         old_fields = before.get("protocol", {}).get("roles", {}).get("classes", {}).get(name, {}).get("fields")
         new_fields = stripped.get("protocol", {}).get("roles", {}).get("classes", {}).get(name, {}).get("fields")
-        if (type(old_fields) is not list or type(new_fields) is not list or len(set(names)) != len(names)
-                or set(names) & {f["name"] for f in old_fields}
-                or [f for f in new_fields if f.get("name") in names] != fields):
+        if (
+            type(old_fields) is not list
+            or type(new_fields) is not list
+            or len(set(names)) != len(names)
+            or set(names) & {f["name"] for f in old_fields}
+            or [f for f in new_fields if f.get("name") in names] != fields
+        ):
             raise ValueError("observer addition replaced existing fields or differs from review")
         stripped["protocol"]["roles"]["classes"][name]["fields"] = [f for f in new_fields if f.get("name") not in names]
     replacements = review["source_pin_replacements"]
@@ -71,8 +84,10 @@ def select(contract, selection, review_pin):
     base = copy.deepcopy(contract)
     del base["rocc_operand_selection"]
     result = select_operand_protocol(base, selection)
-    if (_read_pin(review_pin, 2 * 1024 * 1024) != review_bytes
-            or any(_read_pin(previous[k], 16 * 1024 * 1024) != v for k, v in originals.items())
-            or any(_read_pin(selection[k], 16 * 1024 * 1024) != v for k, v in revised.items())):
+    if (
+        _read_pin(review_pin, 2 * 1024 * 1024) != review_bytes
+        or any(_read_pin(previous[k], 16 * 1024 * 1024) != v for k, v in originals.items())
+        or any(_read_pin(selection[k], 16 * 1024 * 1024) != v for k, v in revised.items())
+    ):
         raise ValueError("observer revision inputs changed before publication")
     return result

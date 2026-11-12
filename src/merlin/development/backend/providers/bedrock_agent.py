@@ -3,7 +3,7 @@
 The `claude` CLI (the default agent) speaks the Anthropic Messages API ONLY, so a non-Anthropic Bedrock
 model (glm5 / qwen-coder / nemotron / ...) cannot drive it. This module is a drop-in alternative for one
 ROUND: it runs an agentic Converse loop whose tools (`run_bash` / `write_file` / `read_file`) execute
-INSIDE the SAME masked bwrap sandbox the claude agent uses (`merlin.targetgen.sandbox.bwrap.wrap`), so
+INSIDE the SAME masked bwrap sandbox the claude agent uses (`merlin.development.targetgen.sandbox.bwrap.wrap`), so
 answer-masking + integrity are identical. It produces the agent's `submission/` in the workspace and
 writes a claude-stream-json-COMPATIBLE transcript (`assistant` events with `usage` + `tool_use` blocks),
 so the driver's grading (`qa_grade`), token/cost accounting (`experiment_tokens.parse_transcript`) and
@@ -287,7 +287,7 @@ def _extract_output(
 def _bash_in_sandbox(
     te, ws: Path, bundle: dict, command: str, sandbox: str, timeout: int, *, private_run_dir: Path | None
 ) -> str:
-    from merlin.targetgen.sandbox import bwrap as _BW
+    from merlin.development.targetgen.sandbox import bwrap as _BW
 
     if sandbox == "bwrap":
         if private_run_dir is None:
@@ -547,7 +547,7 @@ def run_round(
             f"at runtime; your OWN code is only the {te.target}-SPECIFIC lowering. Also browse the full RTL repo "
             "mounted at `" + te.target + "/rtl/` (23 files) when you need a datapath/encoding detail. "
             "Consult the CCA seam menu as an authoring reference (READ "
-            "`merlin/python/merlin/kernels/cca_contract.py` + `action_catalog.py`; "
+            "`merlin/python/merlin/analysis/kernels/cca_contract.py` + `action_catalog.py`; "
             "cca_contract.check_bijection('" + te.target + "') / action_catalog.escalation_ladder) as the "
             "what-to-build checklist. Do NOT run the RTL-facts GENERATORS or FileCheck directly — the generators need "
             "RTL/simulator access that is masked in your sandbox, and FileCheck runs grader-side (its results "

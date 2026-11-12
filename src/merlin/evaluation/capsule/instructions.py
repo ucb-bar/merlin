@@ -3,7 +3,7 @@
 A run may declare instruction roles its candidate programs must not use (``prohibited_instruction_roles``,
 a statement in the closed vocabulary of :mod:`merlin.analysis.instruction_roles`). Which
 instructions carry such a role is the target's derived instruction facts, never a list written here
-(:mod:`merlin.perf.isa_prohibition`). This module holds the capsule grader's side of that rule, kept out
+(:mod:`merlin.analysis.perf.isa_prohibition`). This module holds the capsule grader's side of that rule, kept out
 of :mod:`.operation` so the runner only calls it.
 """
 
@@ -16,11 +16,11 @@ def graded_prohibited_roles(capsule: dict) -> tuple[str, ...]:
     """The prohibited instruction roles a graded capsule's program is held to.
 
     The run's declared policy, from the environment the Phase 1 adapter hands every grader
-    (:data:`merlin.perf.whole_model_gate.ROLES_ENV`), together with the roles the sealed corpus stamped
+    (:data:`merlin.analysis.perf.whole_model_gate.ROLES_ENV`), together with the roles the sealed corpus stamped
     into the capsule's own candidate arm (``performance.arms.candidate.instruction_policy``). Either
     source alone is enough to make the scan required: a capsule graded outside the adapter keeps the
     rule its corpus was sealed under."""
-    from merlin.perf.whole_model_gate import ROLES_ENV
+    from merlin.analysis.perf.whole_model_gate import ROLES_ENV
 
     roles = {r.strip() for r in (os.environ.get(ROLES_ENV) or "").split(",") if r.strip()}
     arm = (((capsule.get("performance") or {}).get("arms") or {}).get("candidate") or {}).get("instruction_policy")
@@ -33,7 +33,7 @@ def prohibited_instruction_report(capsule: dict, generated, *, target: str) -> d
     """The whole-ELF prohibited-instruction scan of every executable this grade linked, or ``None`` when
     the capsule's program is held to no role (:func:`graded_prohibited_roles`).
 
-    Every ELF :func:`run_executables` finds is walked in full (:func:`merlin.perf.isa_prohibition.scan_elf`
+    Every ELF :func:`run_executables` finds is walked in full (:func:`merlin.analysis.perf.isa_prohibition.scan_elf`
     reads every executable section, so an instruction reached only through a function pointer, or never
     executed, is found exactly like one on the hot path). ``clean`` is ``True`` only when every ELF was
     measured and none carries a prohibited instruction, ``False`` when any carries one, and ``None``
@@ -42,8 +42,8 @@ def prohibited_instruction_report(capsule: dict, generated, *, target: str) -> d
     roles = graded_prohibited_roles(capsule)
     if not roles:
         return None
+    from merlin.analysis.perf.isa_prohibition import SCHEMA, scan_elf
     from merlin.evaluation.capsule.certificates import run_executables
-    from merlin.perf.isa_prohibition import SCHEMA, scan_elf
 
     elfs = []
     for path in run_executables(generated):
@@ -144,10 +144,10 @@ def enforce_executed_stream(capsule: dict, trace: dict, *, target: str, tiers: d
     roles = executed_stream_roles(capsule)
     if not roles:
         return None
+    from merlin.analysis.perf.isa_prohibition import stream_reason, stream_report
+    from merlin.development.targetgen.capsule_common import _cat
+    from merlin.development.targetgen.package_runtime import CertFailure
     from merlin.evaluation.capsule.tier import TierResult
-    from merlin.perf.isa_prohibition import stream_reason, stream_report
-    from merlin.targetgen.capsule_common import _cat
-    from merlin.targetgen.package_runtime import CertFailure
 
     report = stream_report(trace, target=target, roles=roles)
     if report["clean"] is not False:

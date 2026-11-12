@@ -10,7 +10,7 @@
 # WHAT AN ENTRY IS, AND IS NOT. An entry is a REVIEWED CORRECTION: it records what the spec declares, what
 # the machine does, which side is authoritative, and what still has to happen upstream. It is NOT an
 # allowlist for quieting `check_isa_matches_rtl.py`. Recording an entry is the same act that makes
-# `merlin.targetgen.isa_lint` warn a backend off the wrong bits, so "declare it and change nothing" does
+# `merlin.development.targetgen.isa_lint` warn a backend off the wrong bits, so "declare it and change nothing" does
 # not buy silence — it buys the warning reaching the consumer. Never add an entry to make a gate pass; add
 # it because someone read the three sources and decided which one is right.
 #
@@ -38,7 +38,7 @@
 #   upstream:              where the real fix has to land; null while nobody has taken it
 #
 # Produced/checked by `build_tools/checks/check_isa_matches_rtl.py` (which prints ready-to-paste YAML for
-# every undeclared disagreement) and read by `merlin.targetgen.isa_rtl_crosscheck`.
+# every undeclared disagreement) and read by `merlin.development.targetgen.isa_rtl_crosscheck`.
 
 version: 1
 

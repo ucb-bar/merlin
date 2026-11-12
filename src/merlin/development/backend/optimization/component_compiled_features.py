@@ -13,9 +13,13 @@ import stat
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from merlin.analysis.perf import compiled_static_features as S
+from merlin.analysis.perf import component_source_demand as D
+from merlin.analysis.perf.component_cost import ComponentCostScope
 from merlin.common import execution_deadline
 from merlin.common import invocation_record as I
 from merlin.common.strict_json import loads
+from merlin.compiler.lower.model import codegen
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization.contracts import (
     StageGateError,
@@ -25,17 +29,13 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
 )
 from merlin.development.backend.optimization.feedback_protocol import FeedbackValueLimits, encode_feedback_value
-from merlin.llvmlower import codegen
-from merlin.perf import compiled_static_features as S
-from merlin.perf import component_source_demand as D
-from merlin.perf.component_cost import ComponentCostScope
-from merlin.targetgen import capsule_common, component_program
-from merlin.targetgen import compile_only_execution as CO
-from merlin.targetgen.contract import compile as compile_owner
-from merlin.targetgen.contract import elf_admission as admission_owner
-from merlin.targetgen.contract.build_service import BuildOnlyService
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
-from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.development.targetgen import capsule_common, component_program
+from merlin.development.targetgen import compile_only_execution as CO
+from merlin.development.targetgen.contract import compile as compile_owner
+from merlin.development.targetgen.contract import elf_admission as admission_owner
+from merlin.development.targetgen.contract.build_service import BuildOnlyService
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
 
 
 def _plain(path, *, file=False):

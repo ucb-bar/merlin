@@ -11,7 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from weakref import WeakKeyDictionary
 
-from merlin.llvmlower.target_data_layout import selected_index_bits
+from merlin.compiler.lower.model.target_data_layout import selected_index_bits
 
 _ISSUED = WeakKeyDictionary()
 

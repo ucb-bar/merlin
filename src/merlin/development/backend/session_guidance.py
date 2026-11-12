@@ -39,11 +39,11 @@ def stage(
         else:
             stage_task(arm, ws, run_dir, sandbox=a.sandbox, task_scope=_task_scope_record, policy_root=_policy_root)
         from merlin.development.backend.resource_prompt import append_resource_guidance
-        from merlin.targetgen.public_codegen_budget import policy_from_profile, require_public_members
+        from merlin.development.targetgen.public_codegen_budget import policy_from_profile, require_public_members
 
         resource_policy = policy_from_profile(bundle.get("compiler_tool_profile") or {})
         if resource_policy is not None:
-            from merlin.targetgen.capsule_common import discover_capsules
+            from merlin.development.targetgen.capsule_common import discover_capsules
 
             public_members = discover_capsules(
                 [_policy_root] if _policy_root is not None else _te().graded_roots(),

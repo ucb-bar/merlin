@@ -19,8 +19,8 @@ from merlin.common.digest import is_sha256
 from merlin.development.backend.optimization import contracts as CONTRACTS
 from merlin.development.backend.optimization import prompt as PP
 from merlin.development.backend.optimization.contracts import StageGateError
+from merlin.development.targetgen.target_experiment import TargetExperiment
 from merlin.experiments.corpus.phase_selection import validate_phase_selections
-from merlin.targetgen.target_experiment import TargetExperiment
 
 
 @dataclass(frozen=True)
@@ -87,8 +87,8 @@ def _component_objectives(record, members):
         ):
             raise StageGateError("component objective lacks its generator declaration identity")
         return {}
+    from merlin.development.targetgen import phase_policy as policy
     from merlin.development.testgen.component_generation import SCHEMA, digest, require_written
-    from merlin.targetgen import phase_policy as policy
 
     if (
         not isinstance(record, Mapping)

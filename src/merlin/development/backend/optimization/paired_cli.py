@@ -23,7 +23,7 @@ from merlin.development.backend.optimization import measurement_library_binding 
 from merlin.development.backend.optimization import measurement_support as MS
 from merlin.development.backend.optimization import paired_inputs as PI
 from merlin.development.backend.optimization import paired_measurement as PM
-from merlin.targetgen.target_experiment import TargetExperiment, load_target_experiment
+from merlin.development.targetgen.target_experiment import TargetExperiment, load_target_experiment
 
 
 def main(

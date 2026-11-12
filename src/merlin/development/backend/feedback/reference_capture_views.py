@@ -17,7 +17,7 @@ from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
-from merlin.kernels.kernel_evidence import EvidenceFact, cca_projection
+from merlin.analysis.kernels.kernel_evidence import EvidenceFact, cca_projection
 
 SELECTION = "MERLIN_REFERENCE_CAPTURE_SELECTION"
 SCHEMA = "merlin.reference_capture_selection.v1"
@@ -41,8 +41,8 @@ def _dispatch(model, *, op, fences, configurations, target, source="reference", 
 
 def lift_selected(raw, source_pin, *, symbol, workspace, reference_root, facts, contract, target, descriptor, limit):
     """Return a fresh typed lift only for a source in the original host selection."""
+    from merlin.analysis.kernels.reference_capture import source_function
     from merlin.development.backend.feedback import reference_analysis as A
-    from merlin.kernels.reference_capture import source_function
 
     selected = os.environ.get(SELECTION)
     if not selected:
@@ -207,7 +207,7 @@ def lift_selected(raw, source_pin, *, symbol, workspace, reference_root, facts, 
         for pin in clean_evidence["artifacts"]
     ]
     dataflow = observed["tile_dataflow"]
-    from merlin.kernels.mechanism_inference import repeated_read_mechanisms
+    from merlin.analysis.kernels.mechanism_inference import repeated_read_mechanisms
 
     report = dict(
         kind="captured_reference_analysis",
@@ -255,12 +255,12 @@ def candidate_view(inputs, *, entry_symbol, decoder):
     """Count actual emitted IR through existing decoder and closed-CFG owners."""
     from xdsl.parser import Parser
 
+    from merlin.analysis.perf.emitted_work import summarize_emitted_work
     from merlin.analysis.schedule_structure import ScheduleModel
     from merlin.common.ir_lock import IR_LOCK
     from merlin.development.backend.feedback.reference_views import source_view
-    from merlin.perf.emitted_work import summarize_emitted_work
-    from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
-    from merlin.targetgen.rocc.decode import decode_module
+    from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
+    from merlin.development.targetgen.rocc.decode import decode_module
 
     def gap(reason, *, required_adapter, **details):
         return dict(
@@ -393,7 +393,7 @@ def candidate_view(inputs, *, entry_symbol, decoder):
 
 
 def compare_candidate(reference, candidate, expert, ours):
-    from merlin.kernels.cca_compare import compare_evidence
+    from merlin.analysis.kernels.cca_compare import compare_evidence
 
     projected = candidate.get("captured_reference_axes") or {}
     problems = reference["problems"]

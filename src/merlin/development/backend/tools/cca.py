@@ -7,7 +7,7 @@ the assisted arms (arm-3 / arm-4), so the mandated calls resolve as plain import
     from action_catalog import escalation_ladder
     escalation_ladder("spatial.dataflow", "<target>")  # the FLAG->..->CODEGEN route ladder for one axis
 
-Imports NOTHING from merlin (full merlin does not import in the sandbox: merlin/kernels/types.py shadows
+Imports NOTHING from merlin (full merlin does not import in the sandbox: merlin/analysis/kernels/types.py shadows
 stdlib ``types`` on a flat sys.path, and regions.py needs the unstaged merlin.common.paths). It forwards
 each request to the driver-side :mod:`cca_broker` via <ws>/.cca_channel and returns the parsed JSON.
 Both entry points are ORACLE-FREE (public CCA structure — no golden is ever involved).

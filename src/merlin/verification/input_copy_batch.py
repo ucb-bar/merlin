@@ -14,9 +14,9 @@ from math import prod
 import numpy as np
 from xdsl.dialects.builtin import IntegerType
 
-from merlin.perf.constant_control_cfg import MAX_OPERATIONS
-from merlin.perf.host_cfg_activity import _INTEGER, _payload_bytes
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.analysis.perf.constant_control_cfg import MAX_OPERATIONS
+from merlin.analysis.perf.host_cfg_activity import _INTEGER, _payload_bytes
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
 
 from .input_copy_integer import integer
 from .input_copy_loops import control_dependencies, loop_axes, region_cost

@@ -7,9 +7,9 @@ The independent held qualification determines whether this projection suffices.
 
 import numpy as np
 
+from merlin.analysis.perf import dynamic_census as C
+from merlin.analysis.perf.candidate_features import FEATURE_KEYS
 from merlin.common.digest import is_sha256
-from merlin.perf import dynamic_census as C
-from merlin.perf.candidate_features import FEATURE_KEYS
 
 LEGACY_FEATURES = ("/compiled/emitted/action_sites", "/compiled/linked/executable_bytes")
 FEATURES = (*LEGACY_FEATURES, *("/candidate/" + key for key in FEATURE_KEYS), *C.FEATURES)

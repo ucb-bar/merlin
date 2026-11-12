@@ -12,11 +12,11 @@ from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, traits_def
 from xdsl.traits import MemoryWriteEffect
 
 from merlin.common.paths import repo_root
-from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
-from merlin.semantic_compiler.rules import AddressConstraint
-from merlin.transforms.analyses import IRIndex
-from merlin.transforms.certificates import ir_digest, parse_ir
-from merlin.transforms.resource_allocation import (
+from merlin.compiler.semantic.allocation_types import Reservation, StorageBank
+from merlin.compiler.semantic.rules import AddressConstraint
+from merlin.compiler.transforms.analyses import IRIndex
+from merlin.compiler.transforms.certificates import ir_digest, parse_ir
+from merlin.compiler.transforms.resource_allocation import (
     ATTRIBUTE,
     InstructionConstraints,
     ResourceBinding,

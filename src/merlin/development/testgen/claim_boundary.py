@@ -25,7 +25,7 @@ def is_held_out(value: object, held_out: Iterable[str]) -> str | None:
 def held_out_models(te) -> list[str]:
     """Every model barred from derivation for this experiment: the descriptor's claim roster, its
     declared evaluation-only models, and the reviewed registry's claim and evaluation-only models."""
-    from merlin.targetgen import claim_models as CM
+    from merlin.development.targetgen import claim_models as CM
 
     spec = getattr(te, "workload_spec", None) or {}
     declared = [*(spec.get("models") or ()), *(spec.get("evaluation_only_models") or ())]

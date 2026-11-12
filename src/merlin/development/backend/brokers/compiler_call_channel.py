@@ -194,7 +194,7 @@ def _verify_owner_selection(owner):
     import yaml
 
     from merlin.common.bundle_snapshot import MARKER, bundle_snapshot_root
-    from merlin.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.tool_profile import verify_tool_profile
 
     if type(owner) is not dict or set(owner) != {
         "workspace",

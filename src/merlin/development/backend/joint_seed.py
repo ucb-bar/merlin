@@ -8,7 +8,7 @@ operator review, and both default to off):
 
 * ``inherit_certificates_for_identical_executables: true`` lets a certificate earned
   by byte-identical program bytes under byte-identical grading code carry into this
-  run through :mod:`merlin.targetgen.tier_cache` (its portable instrument mode,
+  run through :mod:`merlin.development.targetgen.tier_cache` (its portable instrument mode,
   ``MERLIN_TIER_CERT_PORTABLE=1``, which the launch must also set). A carried verdict
   is labelled as carried with its source record; anything whose program or judge
   differs is executed again. Verdict-level credit is still not inherited.
@@ -138,7 +138,7 @@ def stage(options, workspace, run_dir):
     result["reviewed_joint_seed"] = origin
     result["current_credit_granted"] = False
     result["inherited_clock"] = False
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     carry = origin.get(CARRY) is True
     if carry != tier_cache.portable():
@@ -148,7 +148,7 @@ def stage(options, workspace, run_dir):
         )
     result["certificate_carry_over"] = {
         "enabled": carry,
-        "mechanism": "merlin.targetgen.tier_cache portable instrument identity",
+        "mechanism": "merlin.development.targetgen.tier_cache portable instrument identity",
         "scope": (
             "a tier verdict carries only when the program execution identity and the grading "
             "instrument are byte-identical; carried verdicts are labelled carried with their source "

@@ -27,7 +27,7 @@ then turns it into a reviewed source-only joint seed (``merlin.experiments.phase
 * gSIM is optional: continuous gSIM promotion is turned off for the seeded policy;
 * with verdicts carried, ``MERLIN_SEEDED_GRADE`` names the seed run: grades carry the screen tier for
   byte-identical executables too, grade changed cases first, then timing work by largest gap, then
-  carried cases, and label carried passes ``carried from <run>`` (``merlin.targetgen.seeded_grade``).
+  carried cases, and label carried passes ``carried from <run>`` (``merlin.development.targetgen.seeded_grade``).
 
 The runtime's preflight-only mode refuses a seed, so ``preflight`` checks the seed itself (bytes,
 review, option validation and a scratch placement exactly as the session stages it, whose compiler
@@ -353,7 +353,7 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
     if carry["certificates"] or carry["results"]:
         environment["MERLIN_TIER_CERT_PORTABLE"] = "1"
         # Seeded grades carry the screen for byte-identical executables, grade what changed first and
-        # label carried passes (merlin.targetgen.seeded_grade). Never set for a from-scratch plan.
+        # label carried passes (merlin.development.targetgen.seeded_grade). Never set for a from-scratch plan.
         environment["MERLIN_SEEDED_GRADE"] = seed["run"]["run_id"]
         # The seeded order (changed first, then timing by gap, then carried) applies only to an
         # unselected order; the base specs select information-first, which would keep it off.
@@ -512,8 +512,8 @@ def compile_staged(record: dict, options, submission: Path, scratch: Path) -> di
     """Complete the session's staging (the full compiler beside the seed), then compile one small case."""
     import yaml
 
-    from merlin.targetgen.contract.materialize import descriptor_corpus_roots
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.contract.materialize import descriptor_corpus_roots
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     probe = _sibling("seed_compile_probe")
     if options.compiler_access == "full_compiler":

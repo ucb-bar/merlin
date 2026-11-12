@@ -120,7 +120,7 @@ class DensePanelPipelineResult:
 
     def revalidate(self):
         from merlin.compiler.schedule.library_sources import shared_library_sources
-        from merlin.transforms.certificates import ir_digest
+        from merlin.compiler.transforms.certificates import ir_digest
 
         if (
             self.output_readout is not None
@@ -364,7 +364,7 @@ def schedule_source_dense_panel(
         read_source_dense_readout,
         read_source_dense_readout_chain,
     )
-    from merlin.transforms.certificates import ir_digest
+    from merlin.compiler.transforms.certificates import ir_digest
 
     if type(module) is not ModuleOp or not any(op is operation for op in module.walk()):
         raise ValueError("panel source must be an original typed operation inside its current module")

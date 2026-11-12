@@ -148,8 +148,8 @@ def _analyze_open(
     if format == "source_mlir":
         from xdsl.utils.exceptions import ParseError, VerifyException
 
-        from merlin.frontends.linalg_mlir import parse_mlir_text
-        from merlin.kernels.kernel_evidence import semantic_region_from_ir
+        from merlin.analysis.kernels.kernel_evidence import semantic_region_from_ir
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         if len(raw) > _MAX_TEXT:
             raise ValueError("analysis_source_parse_failed")
@@ -241,7 +241,7 @@ def _analyze_open(
         projected, cca = candidate_view(inputs, entry_symbol=entry_symbol, decoder=decoder)
         return (dict(report, input=pin, artifact_inputs=input_pins, captured_reference_axes=projected), cca)
     if format == "command_buffer":
-        from merlin.perf.command_buffer_diagnostics import representation_activity
+        from merlin.analysis.perf.command_buffer_diagnostics import representation_activity
 
         document = json.loads(raw)
         if (
@@ -263,7 +263,7 @@ def _analyze_open(
             None,
         )
     if format == "semantic_region":
-        from merlin.kernels.kernel_evidence import SemanticRegion
+        from merlin.analysis.kernels.kernel_evidence import SemanticRegion
 
         try:
             document = json.loads(raw)
@@ -288,7 +288,7 @@ def _analyze_open(
             from xdsl.parser import Parser
 
             from merlin.common.ir_lock import IR_LOCK
-            from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
+            from merlin.development.targetgen.oot_starterkit.llvm_context import make_llvm_context
 
             try:
                 with IR_LOCK:

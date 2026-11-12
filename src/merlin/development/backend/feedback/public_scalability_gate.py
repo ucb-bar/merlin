@@ -6,11 +6,11 @@ import json
 import traceback
 from pathlib import Path
 
+from merlin.compiler.lower.model.device_ir_scalability import DeviceIRBudget
 from merlin.development.backend.brokers.common_transforms import CommonTransformService
 from merlin.development.backend.optimization.contracts import exact_tree_record, sha256_file
-from merlin.llvmlower.device_ir_scalability import DeviceIRBudget
-from merlin.targetgen import capsule_common as capsule_capsule_common
-from merlin.targetgen.public_codegen_budget import policy_from_profile, resources_complete
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen.public_codegen_budget import policy_from_profile, resources_complete
 
 
 class PublicResourceGateError(RuntimeError):
@@ -97,7 +97,7 @@ def run_gate(*, run_dir, candidate, context, capsules_root, contract, facts_path
 
 def _observe(*, owner, candidate, context, capsules_root, contract, facts_path, work_root):
     from merlin.development.backend.feedback import compile_only
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     policy = selected_policy(owner) if owner is not None else None
     if policy is None:
@@ -280,8 +280,8 @@ def verify_retained_resource_observation(run_dir, *, selection_path, verdict_pat
     from merlin.development.backend.feedback import compile_only, compiler_profile_runtime, scale_probe_child
     from merlin.development.backend.feedback.compiler_profile_child import _pin, _plain
     from merlin.development.backend.optimization.retained_revisions import source_inventory
+    from merlin.development.targetgen.sandbox import bwrap
     from merlin.development.testgen import public_scale_sources
-    from merlin.targetgen.sandbox import bwrap
 
     run_dir = _plain(run_dir)
     selection, selection_pin = _read_observation(selection_path)

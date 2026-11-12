@@ -19,9 +19,9 @@ from types import MethodType
 from merlin.common import invocation_record
 from merlin.common.cpu_pool import shared_compute_pool
 from merlin.development.backend.feedback import compiler_profile_runtime as R
-from merlin.targetgen import package_runtime as P
-from merlin.targetgen.compiler_library import active_compiler_library
-from merlin.targetgen.compiler_pass_selection import _pin, _tree
+from merlin.development.targetgen import package_runtime as P
+from merlin.development.targetgen.compiler_library import active_compiler_library
+from merlin.development.targetgen.compiler_pass_selection import _pin, _tree
 
 SCHEMA = "merlin.original_profile_compiler_emission.v2"
 _PENDING = weakref.WeakSet()

@@ -174,12 +174,12 @@ def _authorize_if_needed(name, plan):
 def _observe(case, *, runtime, context, directory, require_complete=True):
     """Use the original Phase 2 producer verifier and namespace runner."""
     raise_if_stopping()
-    from merlin.benchharness import hash_tree
     from merlin.development.backend.feedback.candidate_observations import observe_generated_artifacts
     from merlin.development.backend.optimization import archive_count_observation as OBS
     from merlin.development.backend.optimization import campaign as PC
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.evaluation.harness import hash_tree
 
     root, compiler = Path(case["generated_root"]), Path(case["compiler"])
     if hash_tree(compiler)["sha256"] != case["compiler_sha256"]:

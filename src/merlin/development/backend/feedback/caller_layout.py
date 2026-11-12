@@ -65,7 +65,7 @@ def _provider_digest(info: Any, module: Any) -> str:
         raise ValueError("selected caller-layout source roster is empty or duplicated")
     contract = Path(info.contract_path)
     records = []
-    from merlin.targetgen.plugins import is_core_module_source
+    from merlin.development.targetgen.plugins import is_core_module_source
 
     for path in (*declared, contract, root / "provider.yaml"):
         path = Path(path)
@@ -175,7 +175,7 @@ def _checked_projection(layout: Any, command_buffer: dict) -> dict:
             encoding = (params.get("storage_encodings") or {}).get(name)
             if not isinstance(encoding, dict):
                 raise ValueError("explicit caller layout has no declared encoding")
-            from merlin.perf.storage_encoding import GroupedAxesStorage
+            from merlin.analysis.perf.storage_encoding import GroupedAxesStorage
 
             selected = GroupedAxesStorage.from_dict(encoding)
             if (
@@ -202,11 +202,11 @@ def _declared_core_backend(info: Any, module: Any, plugins: Any) -> bool:
 
 def inspect_caller_layout(*, submission: Path, command_buffer_member: str, target: str, facts_path: Path) -> dict:
     """Describe only physical pointer storage under one selected, source-pinned provider."""
-    from merlin.perf import storage_encoding
+    from merlin.analysis.perf import storage_encoding
+    from merlin.development.targetgen import plugins
     from merlin.runtime import bound_caller_layout, storage_binding
     from merlin.runtime.backends import base as backends
     from merlin.runtime.backends.chipyard_rocc_bound import BoundRoCCBackend
-    from merlin.targetgen import plugins
 
     cb_path = _ordinary_member(Path(submission), command_buffer_member)
     cb_bytes = cb_path.read_bytes()

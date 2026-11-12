@@ -9,17 +9,17 @@ from pathlib import Path
 
 import yaml
 
+from merlin.analysis.perf.profile import TRAITS  # noqa: E402
 from merlin.common.digest import is_sha256
 from merlin.common.paths import repo_root  # noqa: E402
-from merlin.development.testgen.provenance import _document_digest
-from merlin.perf.profile import TRAITS  # noqa: E402
-from merlin.runtime.backends.base import EXECUTION_CAPABILITIES  # noqa: E402
-from merlin.targetgen.software_spec import (
+from merlin.development.targetgen.software_spec import (
     load_software_spec,
     numerical_datapath,
     software_spec_identity,
     software_spec_path_for_recipe,
 )
+from merlin.development.testgen.provenance import _document_digest
+from merlin.runtime.backends.base import EXECUTION_CAPABILITIES  # noqa: E402
 
 _SYNTHESIS_INPUT_KEYS = frozenset({"conformance_spec_sha256", "recipe_sha256", "workload_spec_sha256"})
 
@@ -434,7 +434,7 @@ _MEMBER_CLASSES = frozenset({"LAW", "OBJECTIVE", "REFERENCE"})
 #: where a placement decision is actually made and paid for. `L6_global` is the whole-program decision:
 #: quantization, packing, encoding, layout propagation. Declaring them here does not create the
 #: families; it makes them nameable, so a family that needs one is not forced to file under a level
-#: that means something else. `merlin.perf.profile` now carries the canonical trait an L6 family needs
+#: that means something else. `merlin.analysis.perf.profile` now carries the canonical trait an L6 family needs
 #: (`multiple_operand_encodings`), which was the part that could not be added in YAML at all.
 _PERFORMANCE_LEVELS = frozenset(
     {
@@ -1034,7 +1034,7 @@ def load_profile(
     The holdout spec (op + dtype + exact shape) is an answer, not a contract: the tracked profile lives
     inside the ``src/merlin/resources/contracts/`` tree every arm is granted read-only, so a holdout declared there is
     readable by the agent under test. It therefore lives in ``profiles/<target>.hidden.yaml``, which is
-    gitignored and masked by :mod:`merlin.targetgen.sandbox.answer_surfaces`. When the sidecar is absent
+    gitignored and masked by :mod:`merlin.development.targetgen.sandbox.answer_surfaces`. When the sidecar is absent
     -- a public clone, or a sandbox where it is masked -- this returns the public profile unchanged and
     the run simply emits no hidden capsules, which is the correct behaviour rather than an error.
 
@@ -1203,8 +1203,8 @@ def load_profile(
         # sweep states the OBLIGATION and lets the tile edge compute the points.
         prof["sweeps"] = list(prof.get("sweeps") or []) + list(held.get("sweeps") or [])
     if descriptor is not None:
+        from merlin.development.targetgen.target_experiment import load_target_experiment
         from merlin.development.testgen.claim_boundary import assert_no_claim_capsules, held_out_models
-        from merlin.targetgen.target_experiment import load_target_experiment
 
         assert_no_claim_capsules(list(prof.get("capsules") or ()), held_out_models(load_target_experiment(descriptor)))
     return prof

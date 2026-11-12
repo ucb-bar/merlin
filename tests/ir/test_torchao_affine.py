@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.llvmlower.torchao_affine import (
+from merlin.compiler.lower.model.torchao_affine import (
     lower_torchao_affine_quant,
 )
 
@@ -23,7 +23,7 @@ def _module_text(in_shape, *, scheme: str | None = _SCHEME, scale_shape=None):
 
 
 def _parse(text):
-    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     return parse_mlir_text(text)
 
@@ -32,8 +32,8 @@ def _run_case(x):
     """Lower + outline + compile + execute one case; returns ``(scale, q)`` as numpy."""
     import tempfile
 
+    from merlin.compiler.dialects.lowering.outline import outline_dispatches
     from merlin.runtime.dispatch_runtime import execute
-    from merlin.xdsl_dialects.lowering.outline import outline_dispatches
 
     module = _parse(_module_text(x.shape))
     assert lower_torchao_affine_quant(module) == 2

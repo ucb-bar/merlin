@@ -18,7 +18,7 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.targetgen.fp8_codec import fp8_e4m3_encode
+from merlin.development.targetgen.fp8_codec import fp8_e4m3_encode
 
 ABI_SCHEMA = "semantic_mxfp8_gemm_operand_abi_v1"
 NATIVE_FAMILY = "kernels/gemm_mxgemmini"

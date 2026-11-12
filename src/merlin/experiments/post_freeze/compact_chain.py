@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from merlin.model_check import chain_image_readback as readback
+from merlin.evaluation.model import chain_image_readback as readback
 
 
 def selected(chain_pin):

@@ -92,7 +92,7 @@ def with_native_output_quantization(
     dequantized native output grid. Graph outputs and mutable/unknown readers
     retain their existing cut. Selection uses source operation/dataflow only.
     """
-    from merlin.targetgen import _integer_epilogue as epilogue
+    from merlin.development.targetgen import _integer_epilogue as epilogue
 
     _static_int8(recipe, "native output quantization")
     if CONTRACTION not in (recipe.get("families") or ()) or recipe.get("accumulator_dtype") != "int32":
@@ -119,7 +119,7 @@ def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mappi
     Existing target readout geometry is a legality input, never an instruction
     implementation or an execution claim. No extension is selected by default.
     """
-    from merlin.targetgen import _integer_epilogue as epilogue
+    from merlin.development.targetgen import _integer_epilogue as epilogue
 
     activation = _static_int8(recipe, key)
     weight = recipe.get("weight") or {}
@@ -136,17 +136,17 @@ def with_integer_extension(recipe: Mapping[str, Any], *, key: str, policy: Mappi
     if not block["exits"]["requant"]:
         raise ValueError("integer extensions require an open native requantizing exit")
     if key == "accumulator_residual":
-        from merlin.targetgen import _integer_residual as residual
+        from merlin.development.targetgen import _integer_residual as residual
 
         if "operand_sum_grid" in recipe:
             raise ValueError("accumulator residual and shared operand sums cannot own the same graph")
         residual.check(policy)
     elif key == "integer_mean":
-        from merlin.targetgen import _integer_pool as pool
+        from merlin.development.targetgen import _integer_pool as pool
 
         pool.check(policy)
     elif key == "projection_input_reuse":
-        from merlin.targetgen import _projection_input_reuse as projection
+        from merlin.development.targetgen import _projection_input_reuse as projection
 
         projection.validate(policy, block["scale"]["columns_per_scale"])
     else:
@@ -182,7 +182,7 @@ def with_shared_grid_operand_sums(
     same-projection coordinate transforms are excluded without naming models.
     This selects a new recipe domain, not a guarantee of float-model accuracy.
     """
-    from merlin.targetgen import _integer_operand_sum as sums
+    from merlin.development.targetgen import _integer_operand_sum as sums
 
     body = json.loads(json.dumps(dict(recipe)))
     if CONTRACTION not in (body.get("families") or ()):
@@ -275,7 +275,7 @@ def with_activation_contractions(
             "schema": "activation_contraction_admission_v1",
             "minimum_reduction": minimum_reduction,
         }
-    from merlin.targetgen._activation_contractions import activation_reduction_minimum
+    from merlin.development.targetgen._activation_contractions import activation_reduction_minimum
 
     activation_reduction_minimum(body)
     body["recipe_sha256"] = digest(body)
@@ -286,8 +286,8 @@ def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str,
     """``recipe`` (a derived ``quant_recipe_v1`` document) whose weight codes are chosen by GPTQ.
 
     The switch is ``weight.rounding = "gptq"`` with ``weight.gptq`` holding every parameter of
-    :data:`merlin.targetgen._gptq.PARAMETERS`. ``parameters`` override
-    :data:`~merlin.targetgen._gptq.DEFAULT_PARAMETERS`. The grid stays the recipe's own: the same
+    :data:`merlin.development.targetgen._gptq.PARAMETERS`. ``parameters`` override
+    :data:`~merlin.development.targetgen._gptq.DEFAULT_PARAMETERS`. The grid stays the recipe's own: the same
     dtype, range, symmetry and scale granularity, with the same observed scales. GPTQ only picks
     which integer each weight takes on that grid, using the calibration inputs of its layer (see
     ``_gptq.py``). Without the key a recipe rounds to nearest and its digest is what it always was.
@@ -298,7 +298,7 @@ def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str,
     activations (``quantize_`` rounds the weights itself), a weight format that is not a symmetric
     integer, and a weight scale granularity that the static path cannot express.
     """
-    from merlin.targetgen import _gptq
+    from merlin.development.targetgen import _gptq
 
     if recipe.get("schema") != SCHEMA or recipe.get("status") != DERIVED:
         raise ValueError("only a derived quant_recipe_v1 can be extended")
@@ -336,7 +336,7 @@ def with_gptq_weights(recipe: Mapping[str, Any], **parameters: Any) -> dict[str,
 
 
 def _observer_valid(name: Any) -> bool:
-    from merlin.targetgen._recipe_observers import percentile_of
+    from merlin.development.targetgen._recipe_observers import percentile_of
 
     return name in _OBSERVERS or percentile_of(name) is not None
 

@@ -50,7 +50,7 @@ def _raw_sources(facts):
 def prepare(bundle, common, *, profile, experiment, repo, corpus_paths):
     """Return a new base bundle and public grants for one unsealed release."""
     from merlin.development.backend import author_input_views, public_runtime_abi
-    from merlin.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.development.targetgen.sandbox.bwrap import resolve_grant
 
     if not profile.raw_rtl_study:
         raise ValueError("raw author input preparation requires its explicit versioned profile")

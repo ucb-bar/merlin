@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.mechanism_probe import ProbeBinding
 from merlin.development.backend.optimization import authoring as AUTHORING
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
 from merlin.development.backend.optimization import portfolio_checkpoint as CHECKPOINT
@@ -26,7 +26,7 @@ from merlin.development.backend.optimization.mechanism_program import MechanismP
 from merlin.development.backend.optimization.mechanism_rounds import MechanismRounds
 from merlin.development.backend.optimization.portfolio_evaluation import FastPortfolioEvaluation
 from merlin.development.backend.optimization.revision_journal import RevisionJournal
-from merlin.perf.mechanism_probe import ProbeBinding
+from merlin.evaluation.harness import hash_tree
 
 
 class RevisionSession:

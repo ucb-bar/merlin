@@ -20,8 +20,8 @@ from pathlib import Path
 from types import FunctionType
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower.reviewed_pass_capabilities import ReviewedPassCapabilities
-from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+from merlin.compiler.lower.model.reviewed_pass_capabilities import ReviewedPassCapabilities
+from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
 
 PROTOCOL = "merlin.original_parent_pass_qualification.v1"
 SCHEMA = "merlin.sealed_parent_pass_delegation.v1"

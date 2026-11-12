@@ -17,9 +17,9 @@ from typing import Any
 
 from merlin.development.backend.optimization import contracts as C
 from merlin.development.backend.optimization.stage_inputs import StageE2ESentinel
+from merlin.development.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
+from merlin.development.targetgen.semantic_search import SearchLimits, search_linalg_inventory
 from merlin.target.spec.instructions import validate_normalized_instruction_model
-from merlin.targetgen.contract.linalg_iface import is_linalg_on_tensors, parse_linalg_mlir
-from merlin.targetgen.semantic_search import SearchLimits, search_linalg_inventory
 
 SCHEMA = "merlin.phase2.host_semantic_search.v1"
 _MODEL = Path("software/instruction-semantics.json")

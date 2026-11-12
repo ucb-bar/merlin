@@ -8,17 +8,17 @@ their own exact CompletedObservation records and selected PipelineContext.
 import json
 from dataclasses import replace
 
-from merlin.transforms.certificates import ir_text, parse_ir
-from merlin.transforms.evaluated_exploration import (
+from merlin.compiler.transforms.certificates import ir_text, parse_ir
+from merlin.compiler.transforms.evaluated_exploration import (
     CompletedObservation,
     ExplorationIdentity,
     exploration_context_identity,
 )
-from merlin.transforms.pass_exploration import ExplorationGeometry, ValidationPartition
-from merlin.transforms.pipeline import PipelineOptions, apply_common_pipeline
-from merlin.transforms.pipeline_policy import PipelineVariant, PolicyFacts, RegisteredPass
-from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
-from merlin.transforms.shape_policy import PerformanceDomain, ShapeCaseFeedback, propose_shape_policies
+from merlin.compiler.transforms.pass_exploration import ExplorationGeometry, ValidationPartition
+from merlin.compiler.transforms.pipeline import PipelineOptions, apply_common_pipeline
+from merlin.compiler.transforms.pipeline_policy import PipelineVariant, PolicyFacts, RegisteredPass
+from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
+from merlin.compiler.transforms.shape_policy import PerformanceDomain, ShapeCaseFeedback, propose_shape_policies
 
 CONTEXT = PipelineContext(library="example_simulated_domain")
 PATHS = (PipelineVariant("original", ("emit",)), PipelineVariant("normalize", ("normalize", "emit")))

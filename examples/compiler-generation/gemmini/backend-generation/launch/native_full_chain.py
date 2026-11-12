@@ -11,7 +11,7 @@ import launch_phase1 as P
 
 from merlin.common.digest import sha256_file
 from merlin.development.backend.feedback import private_model_chain as chain
-from merlin.model_check import cli
+from merlin.evaluation.model import cli
 
 
 def owner_alive(pin):
@@ -52,7 +52,7 @@ def wait_owner(run_dir, pin, deadline):
 
 def model_arguments(argv):
     """Accept safe-path/unbuffered interpreter flags without assuming a prefix length."""
-    positions = [i for i, arg in enumerate(argv[:-1]) if arg == "-m" and argv[i + 1] == "merlin.model_check"]
+    positions = [i for i, arg in enumerate(argv[:-1]) if arg == "-m" and argv[i + 1] == "merlin.evaluation.model"]
     if len(positions) != 1:
         raise ValueError("full-chain job is not the selected model-check invocation")
     return argv[positions[0] + 2 :]

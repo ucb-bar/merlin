@@ -14,12 +14,12 @@ from xdsl.dialects import arith, builtin, math
 from xdsl.ir import BlockArgument, OpResult
 
 from merlin.common import mlir_query as Q
+from merlin.development.targetgen.contract.linalg_iface import _effects, _scalar_body
 from merlin.development.testgen import operator_dense_projection as P
 from merlin.development.testgen import operator_initializer_identity as ID
 from merlin.development.testgen import operator_mixed_exclusion as M
 from merlin.development.testgen import operator_registered_exclusion as G
 from merlin.development.testgen import operator_typed_exclusion as T
-from merlin.targetgen.contract.linalg_iface import _effects, _scalar_body
 
 SCHEMA = "merlin.phase0.pure_capture_source_exclusion.v1"
 BODY_SCHEMA = "merlin.phase0.pure_capture_scalar_dag.v1"

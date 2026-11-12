@@ -14,7 +14,7 @@ AST (no regex, per this repo's own rule) so a differently-spelled instance is st
    integer constant while the other side names something containing "group" (``group``, ``group_id``,
    ``gid``, ``self.group``, ...) -- ``if group == 70:``, ``GROUP_FIX = {1: ..., 70: ...}``,
    ``match group_index: case 70:``. A package's OWN kernel objects are already named ``g<N>`` by the
-   harness that links them (see ``src/merlin/perf/isa_prohibition.py``), so a group number
+   harness that links them (see ``src/merlin/analysis/perf/isa_prohibition.py``), so a group number
    legitimately appears in build output and file NAMES; what is refused is a group number used as a
    VALUE inside the package's OWN control flow.
 2. **Hardcoded shape tables.** A literal container (list/tuple/dict) with several entries that are

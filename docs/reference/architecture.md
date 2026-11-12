@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [repo_structure, ../guides/04-planning, ../guides/06-lowering]
-code_refs: [src/merlin/api.py, src/merlin/compiler, src/merlin/system, src/merlin/runtime, src/merlin/verification, src/merlin/xdsl_dialects]
+code_refs: [src/merlin/api.py, src/merlin/compiler, src/merlin/target/system, src/merlin/runtime, src/merlin/verification, src/merlin/compiler/dialects]
 ---
 
 # Compiler architecture
@@ -69,7 +69,7 @@ their original bytes and source identities; they are not discovered as fresh def
 
 ## Representations
 
-The xDSL prototypes live in `src/merlin/xdsl_dialects/`:
+The xDSL prototypes live in `src/merlin/compiler/dialects/`:
 
 | Namespace | Role |
 | --- | --- |

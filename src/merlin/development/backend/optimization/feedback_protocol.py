@@ -15,8 +15,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
 SCHEMA = "merlin.feedback_value.v1"
 

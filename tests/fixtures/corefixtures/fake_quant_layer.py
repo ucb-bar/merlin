@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from merlin.xdsl_dialects.lowering import compute_groups as CG
+from merlin.compiler.dialects.lowering import compute_groups as CG
 
 
 class Oracle:
@@ -31,7 +31,7 @@ class Oracle:
 
     def declared_readout(self):
         """This synthetic target's ``readout_epilogue_capability``, as the facet a real one derives."""
-        from merlin.targetgen import readout_facet as RF
+        from merlin.development.targetgen import readout_facet as RF
 
         declared = ({"selector": "out", "applies": list(self.applies)},) if self.applies is not None else ()
         return RF.TargetReadout((RF.ReadoutFacet(target=self.target, readouts=declared),))

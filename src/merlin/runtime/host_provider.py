@@ -79,8 +79,8 @@ def _function_abis(source):
     primitive calls. Aggregate, byval/sret, address-space, non-C conventions and
     unknown ABI attributes refuse rather than guessing a function type.
     """
-    from merlin.llvmlower.late_quant_rne import _identity as name
-    from merlin.llvmlower.late_quant_rne import _tokens
+    from merlin.compiler.lower.model.late_quant_rne import _identity as name
+    from merlin.compiler.lower.model.late_quant_rne import _tokens
 
     scalar = {"void", "ptr", "float", "double", "i1", "i8", "i16", "i32", "i64"}
     abi = {}
@@ -273,7 +273,7 @@ def prepare_host_provider(builder, context, *, inspector):
     if builder is None:
         return (), None
     if type(builder) is MethodType:
-        from merlin.llvmlower.shared_source_routing import resolve_pointwise_provider
+        from merlin.compiler.lower.model.shared_source_routing import resolve_pointwise_provider
 
         builder = resolve_pointwise_provider(builder, context)
         if builder is None:

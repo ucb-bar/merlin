@@ -12,18 +12,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.development.backend.optimization import contracts as P2_CONTRACTS
-from merlin.development.backend.optimization.portfolio_options import PortfolioInvocation, worker_arguments
-from merlin.experiments import frozen_python
-from merlin.experiments import source_snapshot as perf_snapshot
-from merlin.experiments.measured_launch import without_unsealed_board_catalog
-from merlin.perf.host_resources import (
+from merlin.analysis.perf.host_resources import (
     HostResourcePolicy,
     HostResourceTripwire,
     sample_host_memory,
     summarize_samples,
     violations,
 )
+from merlin.development.backend.optimization import contracts as P2_CONTRACTS
+from merlin.development.backend.optimization.portfolio_options import PortfolioInvocation, worker_arguments
+from merlin.experiments import frozen_python
+from merlin.experiments import source_snapshot as perf_snapshot
+from merlin.experiments.measured_launch import without_unsealed_board_catalog
 
 
 @dataclass(frozen=True)

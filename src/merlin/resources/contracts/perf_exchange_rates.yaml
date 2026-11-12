@@ -1,6 +1,6 @@
 # WHAT ONE UNIT OF EACH RESOURCE COSTS, stated as measured hardware facts.
 #
-# WHY THIS FILE EXISTS. `merlin.perf.cost_terms` prices a composite only from rates whose provenance
+# WHY THIS FILE EXISTS. `merlin.analysis.perf.cost_terms` prices a composite only from rates whose provenance
 # is recorded, and makes the composite UNPRICED when a moved term has no rate — deliberately, because
 # "a guessed rate silently decides which optimizations the loop pursues". That is the right refusal.
 # But the project then went and kept its ONE measured rate in a TEST FILE
@@ -16,14 +16,14 @@
 # name. Two bitstreams in `hardware_pins.yaml` both elaborate `FireSimGemminiRocketConfig` onto the
 # same U250 platform and are different silicon — different sizes, digests and Gemmini revisions. So
 # entries below key on the pin registry's ARTIFACT NAME, which is unique per device, and never on the
-# config string. `merlin.perf.design_identity.design_string()` resolves a run's design keys to that
+# config string. `merlin.analysis.perf.design_identity.design_string()` resolves a run's design keys to that
 # name by two independent facts (the declared queue hw-config AND the artifact digest), returning
 # UNKNOWN with a reason when either is missing or disagrees.
 #
 # A RATE THAT DOES NOT CLOSE IS NOT A RATE. Every entry declares `closure_residual_fraction`: the
 # error when the priced terms are summed and compared against the measured total for a program where
 # all of them are known. A sweep can always fit a slope through two points; only closure says the
-# slope means anything. `merlin.perf.exchange_rates` REFUSES an entry above the bound declared below,
+# slope means anything. `merlin.analysis.perf.exchange_rates` REFUSES an entry above the bound declared below,
 # so an unclosed rate reports as unpriced rather than quietly weighting a composite.
 #
 # EVERY `measured` FIELD IS A VALUE A NAMED RUN PRODUCED. Nothing here is a goal, and nothing is

@@ -50,12 +50,12 @@ from merlin.compiler.build.zephyr.memory import (
     require_external_arena,
 )
 from merlin.compiler.build.zephyr.tree import TreeConfiguration
+from merlin.compiler.lower.model import c_runtime, toolchain
+from merlin.compiler.lower.model.lower import lower_model_file
+from merlin.compiler.lower.model.masked_contraction import MaskEffectContract
+from merlin.compiler.lower.model.source_expression_interval import IntervalEffectContract
+from merlin.compiler.lower.model.source_scalar_carrier_binding import host_admitted
 
-from ...llvmlower import c_runtime, toolchain
-from ...llvmlower.lower import lower_model_file
-from ...llvmlower.masked_contraction import MaskEffectContract
-from ...llvmlower.source_expression_interval import IntervalEffectContract
-from ...llvmlower.source_scalar_carrier_binding import host_admitted
 from . import spike as _spike
 from ._model_statistics import (
     _sustained_stats as _sustained_stats,
@@ -389,20 +389,20 @@ def _prepare_model_mlir(
     numpy interpreter applies in ``dispatch_runtime.run_model`` (collapse over-rank
     `aten.linear` matmuls; dequantize int8 weights; f32-accumulate bf16 matmuls; fix the
     sitofp(i1) bool-cast sign). Without them only clean LLMs (small_llama) lower."""
+    from merlin.compiler.dialects._common import text as to_text
+    from merlin.compiler.frontend.linalg_mlir import parse_mlir_file
+    from merlin.compiler.lower.model.torchao_affine import lower_torchao_affine_quant
     from merlin.compiler.lower.scalar.casts import fix_bool_fptosi, fix_bool_sitofp
     from merlin.compiler.quantization.linalg import lower_quant_ext
     from merlin.compiler.transforms.matmul import collapse_overrank_matmul, lower_bf16_matmul_f32acc
 
-    from ...frontends.linalg_mlir import parse_mlir_file
-    from ...llvmlower.torchao_affine import lower_torchao_affine_quant
-    from ...xdsl_dialects._common import text as to_text
     from ..dispatch_runtime import _propagate_quant_inner
 
     policy_path = work / "quantization-policy.json"
     policy_path.unlink(missing_ok=True)
     if not int8_compute and quant_passes is not None:
         raise ValueError("quant_passes requires int8_compute=True")
-    from ...llvmlower.quant_passes import compute_passes
+    from merlin.compiler.lower.model.quant_passes import compute_passes
 
     selected_passes = compute_passes(quant_passes) if int8_compute else ()
     if respect_captured_quantization_scope and quant_passes is not None and selected_passes != ("contraction_int8",):
@@ -414,7 +414,7 @@ def _prepare_model_mlir(
     if composed_host_layout is not None:
         if complete_group_device is not None:
             raise ValueError("composed host layouts cannot precede a second group binding")
-        from ...llvmlower.host_graph_policy import prepare_group_layout
+        from merlin.compiler.lower.model.host_graph_policy import prepare_group_layout
 
         module = prepare_group_layout(
             module,
@@ -426,7 +426,7 @@ def _prepare_model_mlir(
     # choose_qparams/quantize arrive as opaque calls to externs nothing defines, and the two paths
     # diverging here is precisely how a bundle ends up interpretable but unlinkable.
     lower_torchao_affine_quant(module)
-    from ...llvmlower.scalar_square import canonicalize_scalar_squares
+    from merlin.compiler.lower.model.scalar_square import canonicalize_scalar_squares
 
     _squares = canonicalize_scalar_squares(module)
     if _squares:
@@ -440,7 +440,7 @@ def _prepare_model_mlir(
     # its bytes. Left alone, the two paths disagree in the worst possible way: the interpreter gates
     # cos 1.0 while the binary computes on whatever the allocator last left in those pages.
     # A module with no quantized subclass is untouched, so every other bundle lowers byte-identically.
-    from ...llvmlower import qinner as _qinner
+    from merlin.compiler.lower.model import qinner as _qinner
 
     _qargs = _qinner.lift(module)
     if _qargs:
@@ -454,7 +454,7 @@ def _prepare_model_mlir(
         # transcendentals require explicit selection; the default is contractions/conv only.
         # lower_quant_ext stays AFTER as the f32 fallback for any dequant the int8 passes did not
         # convert (nonzero-zp, embeddings).
-        from ...llvmlower.quant_passes import apply_quant
+        from merlin.compiler.lower.model.quant_passes import apply_quant
 
         if respect_captured_quantization_scope:
             # A captured quantized contraction may carry bf16 dequantized
@@ -505,8 +505,8 @@ def _prepare_model_mlir(
     # Restrict a sole static observer before assigning any complete device ABI.
     # Source-projected routes have already bound their original graph and use
     # this same callable explicitly before constructing that source selection.
-    from ...llvmlower.contraction_row_slice import prepare_contraction_row_slices
-    from ...llvmlower.contraction_row_slice import selected as row_slice_selected
+    from merlin.compiler.lower.model.contraction_row_slice import prepare_contraction_row_slices
+    from merlin.compiler.lower.model.contraction_row_slice import selected as row_slice_selected
 
     if row_slice_selected():
         module, row_slice_report = prepare_contraction_row_slices(module, bundle_dir=bundle_dir)
@@ -519,10 +519,10 @@ def _prepare_model_mlir(
     if complete_group_device is not None:
         policy = getattr(complete_group_device, "pre_group_layout", None)
         if policy is not None:
-            from ...llvmlower.host_graph_policy import prepare_group_layout
+            from merlin.compiler.lower.model.host_graph_policy import prepare_group_layout
 
             module = prepare_group_layout(module, policy, work / "pre_group_layout")
-        from ...llvmlower.device_offload import rewrite_groups_to_device
+        from merlin.compiler.lower.model.device_offload import rewrite_groups_to_device
 
         early_group_rewrite = rewrite_groups_to_device(
             module,
@@ -568,7 +568,7 @@ def _prepare_model_mlir(
         import json as _json
         import math as _math
 
-        from ...llvmlower import quant_hoist as _qh
+        from merlin.compiler.lower.model import quant_hoist as _qh
 
         if bundle_dir is None:
             raise ValueError(
@@ -585,7 +585,7 @@ def _prepare_model_mlir(
             f"args={len(_hargs)} elements={sum(_math.prod(a.shape) for a in _hargs):,}"
         )
     if fuse_quant_round:
-        from ...llvmlower.quant_round import fuse_round_clamp_convert
+        from merlin.compiler.lower.model.quant_round import fuse_round_clamp_convert
 
         _rrep: dict = {}
         fuse_round_clamp_convert(module, report_out=_rrep)
@@ -602,7 +602,7 @@ def _prepare_model_mlir(
     # `vectorized_transcendental_activation` use. Reported, not silent: a pass that rewrote nothing and
     # a pass that could not reach anything both return 0, and only the counters separate them.
     if vectorize_amax_reduction:
-        from ...llvmlower import reduce_vec as _reduce_vec
+        from merlin.compiler.lower.model import reduce_vec as _reduce_vec
 
         _vrep: dict = {}
         _reduce_vec.apply(module, lanes=vec_lanes, min_rank=_VEC_RANK_MIN_RANK, max_rank=vec_max_rank, report_out=_vrep)
@@ -689,7 +689,7 @@ def _prepare_model_mlir(
             f"extent, {skip_rank} outside the rank bound, {skip_map} on a "
             f"non-projected-permutation indexing map)"
         )
-    from ...llvmlower.splat_inputs import scalarize_splat_inputs
+    from merlin.compiler.lower.model.splat_inputs import scalarize_splat_inputs
 
     _splats = scalarize_splat_inputs(module)
     if _splats:
@@ -698,7 +698,7 @@ def _prepare_model_mlir(
         # What the PREPARED module actually contains, for the caller to check its levers against.
         # A transform lever finds its work by op NAME; one whose ops are all absent still builds,
         # gates clean and reports as applied.
-        from ...mining.lever_applicability import module_op_counts
+        from merlin.analysis.mining.lever_applicability import module_op_counts
 
         op_counts_out.update(module_op_counts(module))
     # THE GATE. Nothing downstream can tell an uninitialized buffer from a computed one: it lowers,
@@ -710,7 +710,10 @@ def _prepare_model_mlir(
     out = work / "model.prepared.mlir"
     prepared_text = to_text(module)
     if early_group_rewrite is not None:
-        from ...llvmlower.declaration_access import patch_declaration_arg_attrs, unpatched_declarations
+        from merlin.compiler.lower.model.declaration_access import (
+            patch_declaration_arg_attrs,
+            unpatched_declarations,
+        )
 
         by_access: dict[tuple[str, ...], list[str]] = {}
         for symbol in early_group_rewrite.signatures:
@@ -864,16 +867,15 @@ def prepare_for_lowering(
     and output bytes; semantic, effect and provider proofs remain caller-owned.
     No callback preserves the ordinary preparation path and bytes.
     """
-    from merlin.compiler.optimizations.pointwise import vec_noncontraction_lanes as _vec_lanes
-    from merlin.compiler.optimizations.pointwise import vec_noncontraction_max_rank as _vec_max_rank
-
-    from ...llvmlower.device_preparation import (
+    from merlin.compiler.lower.model.device_preparation import (
         freeze_device_offload_selection,
         prepare_device_route,
         require_device_offload_selection,
         require_supported_device_preparation,
         retain_device_offload_source,
     )
+    from merlin.compiler.optimizations.pointwise import vec_noncontraction_lanes as _vec_lanes
+    from merlin.compiler.optimizations.pointwise import vec_noncontraction_max_rank as _vec_max_rank
 
     offload_selection = (
         freeze_device_offload_selection(device) if device_offload_invocation is None else device_offload_invocation
@@ -905,7 +907,7 @@ def prepare_for_lowering(
         # The explicitly selected original host writer must be inlined before
         # bufferization so its output is forwarded and its scratch lifetime is
         # owned once by the real public entry, through ordinary upstream passes.
-        from ...llvmlower.tensor_helper_inlining import FEATURE as _SPATIAL_HOST_INLINE
+        from merlin.compiler.lower.model.tensor_helper_inlining import FEATURE as _SPATIAL_HOST_INLINE
 
         features = features | {_SPATIAL_HOST_INLINE}
     # Read the vec-family point off the IMPLIES CLOSURE, not off the raw set. `normalize` is what
@@ -922,12 +924,11 @@ def prepare_for_lowering(
     _closed = _normalize(features)
     _lanes = _vec_lanes(_closed)
     _max_rank = _vec_max_rank(_closed)
+    from merlin.compiler.lower.model.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
+    from merlin.compiler.lower.model.quant_round import FEATURE as _FUSE_QUANT_ROUND
+    from merlin.compiler.lower.model.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
     from merlin.compiler.optimizations.registry import NAMED_INT8_CONTRACTION_NAME, QUANTIZE_BEFORE_GATHER_NAME
     from merlin.compiler.quantization.scope import FEATURE as _CAPTURED_QUANT_SCOPE
-
-    from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
-    from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
-    from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
 
     _op_counts: dict[str, int] = {}
     _preparation_input = mlir_path
@@ -936,7 +937,7 @@ def prepare_for_lowering(
     if getattr(device, "pre_group_layout", None) is not None and not _early_complete_groups:
         raise ValueError("pre-group layout is deferred: requires ordinary complete-group binding")
     if _sibling_selected:
-        from ...llvmlower.device_preparation import prepare_sibling_device_host
+        from merlin.compiler.lower.model.device_preparation import prepare_sibling_device_host
 
         _preparation_input = prepare_sibling_device_host(device, mlir_path, work, offload_selection)
         _early_complete_groups = False
@@ -973,7 +974,7 @@ def prepare_for_lowering(
     # source bytes. Those ordinary passes retain the checked numerical result;
     # a stale policy is never rebound to an arbitrary later source.
     if not _closed & {"lower_roundeven_to_intrinsic", "lower_exact_math_inline", _FUSE_QUANT_ROUND}:
-        from ...llvmlower.automatic_host import prepare_automatic_host
+        from merlin.compiler.lower.model.automatic_host import prepare_automatic_host
 
         prepared = prepare_automatic_host(
             Path(prepared), Path(work) / "automatic_host", policy_path=Path(work) / "quantization-policy.json"
@@ -992,8 +993,8 @@ def prepare_for_lowering(
     _applicability_source = _op_counts
 
     def _finish_preparation(path: Path) -> tuple[Path, frozenset[str]]:
-        from ...llvmlower.prepared_model_transform import apply_prepared_model_transform
-        from ...llvmlower.repeated_pointwise import prepare_repeated_pointwise
+        from merlin.compiler.lower.model.prepared_model_transform import apply_prepared_model_transform
+        from merlin.compiler.lower.model.repeated_pointwise import prepare_repeated_pointwise
 
         require_device_offload_selection(device, offload_selection)
         path = prepare_repeated_pointwise(
@@ -1017,8 +1018,8 @@ def prepare_for_lowering(
         """
         nonlocal _applicability_source
         try:
-            from ...frontends.linalg_mlir import parse_mlir_file as _parse
-            from ...mining.lever_applicability import module_op_counts as _counts
+            from merlin.analysis.mining.lever_applicability import module_op_counts as _counts
+            from merlin.compiler.frontend.linalg_mlir import parse_mlir_file as _parse
 
             _applicability_source = _counts(_parse(mod_path))
         except Exception:  # unparseable here: keep the earlier census rather than no check
@@ -1027,7 +1028,7 @@ def prepare_for_lowering(
 
     def _report_inapplicable_levers() -> None:
         try:
-            from ...mining.lever_applicability import inapplicable_features as _inapplicable
+            from merlin.analysis.mining.lever_applicability import inapplicable_features as _inapplicable
 
             for _name, _why in _inapplicable(features, _applicability_source).items():
                 print(
@@ -1099,7 +1100,7 @@ def prepare_for_lowering(
     # contraction that has become a call is no longer on the vector path, so the register-block table
     # below must be derived from the IR that REMAINS. Inert unless a routing was supplied, and inert
     # again unless that routing carries a selector or source-bound catalog. The placement decision
-    # is made elsewhere (merlin.system.place or the catalog's exact source binding), never here.
+    # is made elsewhere (merlin.target.system.place or the catalog's exact source binding), never here.
     prepared = prepare_device_route(
         device, prepared, work, early_complete_groups=_early_complete_groups, selection=offload_selection
     )
@@ -1139,7 +1140,9 @@ def prepare_for_lowering(
                 f"baseline and report as applied"
             )
         if "reuse_tensor_destination" in features:
-            from ...llvmlower.insert_slice_destination import rewrite_prepared_file as _reuse_destination
+            from merlin.compiler.lower.model.insert_slice_destination import (
+                rewrite_prepared_file as _reuse_destination,
+            )
 
             prepared = _reuse_destination(
                 prepared,
@@ -1148,6 +1151,8 @@ def prepare_for_lowering(
             )
         _judge_levers_on(prepared)
         return _finish_preparation(prepared)
+    from merlin.compiler.lower.model import im2col_identity_view as _iv
+    from merlin.compiler.lower.model import im2col_pack as _ip
     from merlin.compiler.optimizations.perop import (
         PEROP_BLOCK_NAME,
         PEROP_MR_FILL_NAME,
@@ -1158,9 +1163,6 @@ def prepare_for_lowering(
         parse_perop_mr_sentinel,
         parse_perop_nr_sentinel,
     )
-
-    from ...llvmlower import im2col_identity_view as _iv
-    from ...llvmlower import im2col_pack as _ip
 
     _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
     _nr_named = sorted({n for f in features if (n := parse_perop_nr_sentinel(f)) is not None})
@@ -1424,7 +1426,9 @@ def prepare_for_lowering(
         else:
             features = features - {PEROP_BLOCK_NAME}
     if "reuse_tensor_destination" in features:
-        from ...llvmlower.insert_slice_destination import rewrite_prepared_file as _reuse_destination
+        from merlin.compiler.lower.model.insert_slice_destination import (
+            rewrite_prepared_file as _reuse_destination,
+        )
 
         prepared = _reuse_destination(
             prepared,
@@ -1448,11 +1452,11 @@ def _strip_provenance(prepared: Path, work: Path, features: frozenset[str]) -> P
     numerics and the gate all still passing. Nothing after this point reads the module through
     xDSL (the lowering is textual, the profiler is line-based), which is what makes here safe.
     """
-    from ...llvmlower.prov_cse import FEATURE as _CSE_PROV_NAME
+    from merlin.compiler.lower.model.prov_cse import FEATURE as _CSE_PROV_NAME
 
     if _CSE_PROV_NAME not in features:
         return prepared
-    from ...llvmlower.prov_cse import rewrite_prepared_file as _strip
+    from merlin.compiler.lower.model.prov_cse import rewrite_prepared_file as _strip
 
     return _strip(prepared, work)
 
@@ -2027,7 +2031,7 @@ def build_app(
         raise ZephyrModelError("Zephyr build toolchain unavailable (see env in module doc)")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
-    from ...llvmlower.weight_prepack import prepare_build_bundle
+    from merlin.compiler.lower.model.weight_prepack import prepare_build_bundle
 
     model_dir = prepare_build_bundle(model_dir, work, features)
     inputs_npz = inputs_npz or (model_dir / "inputs.npz")
@@ -2093,7 +2097,7 @@ def build_app(
             device=device,
             prepared_model_transform=prepared_model_transform,
         )
-        from ...llvmlower.device_offload import build_arguments, load_sidecar
+        from merlin.compiler.lower.model.device_offload import build_arguments, load_sidecar
 
         if build_arguments(load_sidecar(work), expected_granularity=getattr(device, "granularity", None))["signatures"]:
             raise ZephyrModelError("active device route has no device-object/final-link admission consumer")
@@ -2107,7 +2111,7 @@ def build_app(
         # model is still running. Without it a stalled image can only say that it stalled; with it, it
         # says where. The table is written next to the image so a returned PROF line resolves to a name.
         if debug:
-            from ...llvmlower import op_profile as _op_profile
+            from merlin.compiler.lower.model import op_profile as _op_profile
 
             try:
                 text, prof_table = _op_profile.instrument(Path(prepared).read_text(), structural=True)
@@ -2719,7 +2723,7 @@ def _parse_console(console: str, rc: int) -> dict[str, Any]:
     # `PROF <id> <ticks> <hits>` from an op_profile build. The K1 path already reads these; this one
     # dropped them on the floor, so a Zephyr/FireSim console carried per-op cycles that no caller could
     # reach -- which is why the vector unit had no measured rate while the matrix unit had one.
-    from ...llvmlower import op_profile as _op_profile  # `op_profile` is a parameter name here
+    from merlin.compiler.lower.model import op_profile as _op_profile  # `op_profile` is a parameter name here
 
     prof = _op_profile.parse_prof_lines(console)
     if prof:
@@ -3025,7 +3029,7 @@ def build_and_run(
 
     ``n_harts``/``iters``/``warmup`` select the multicore and sustained-inference images;
     ``rvv_schedule``/``cflags_override``/``features`` pass an RVV package's codegen through
-    (the same seam :mod:`merlin.mining.apply` uses) so a package can be measured here.
+    (the same seam :mod:`merlin.analysis.mining.apply` uses) so a package can be measured here.
     """
     # spike needs at least as many harts as the image will use, or the pinned workers have
     # nowhere to run and the pool silently clamps to fewer threads.

@@ -12,7 +12,7 @@ and assert what it did. Milliseconds, no simulation. See `docs/guides/09-verific
   names are defined in-tree and therefore have a derivation source.
 - **Never CHECK a generated target dialect's op mnemonics.** Those are invented per backend-generation
   run. That experiment was run, corroborated over 383 runs, and removed — see
-  `merlin/python/merlin/targetgen/rtl_check_compiler.py`. Per-target derived tests are generated into
+  `merlin/python/merlin/development/targetgen/rtl_check_compiler.py`. Per-target derived tests are generated into
   `out/artifacts/verify/lit/<target>/`, never tracked here.
 - Run via `tests/ir/test_lit_suite.py`, or directly:
   `third_party/llvm-build/bin/llvm-lit -sv tests/data/lit`.

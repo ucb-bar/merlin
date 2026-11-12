@@ -23,7 +23,6 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization import campaign as CAMPAIGN
 from merlin.development.backend.optimization import contracts as CONTRACTS
 from merlin.development.backend.optimization import functional_cohort as COHORT
@@ -34,7 +33,8 @@ from merlin.development.backend.optimization import gsim_workload as WORKLOAD
 from merlin.development.backend.optimization import heldout_qualification as HQUAL
 from merlin.development.backend.optimization import qualification_policy as QPOLICY
 from merlin.development.backend.optimization import revealed_corpus as RC
-from merlin.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.target_experiment import load_target_experiment
+from merlin.evaluation.harness import hash_tree
 
 SCHEMA = "merlin.functional-gsim-qualification.v2"
 POLICY = "formal-public-plus-hidden-admission-distinct-workloads.v1"

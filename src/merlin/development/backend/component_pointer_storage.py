@@ -15,9 +15,9 @@ from pathlib import Path
 
 from merlin.development.backend.component_compile_admission import verify_compile_roster
 from merlin.development.backend.optimization import contracts as C
+from merlin.development.targetgen.contract import pointer_storage as storage_owner
+from merlin.development.targetgen.contract.pointer_storage import OriginalPointerStorageContract, PointerStoragePolicy
 from merlin.development.testgen.rtl_intake import RtlIntakePin, _outside, _plain
-from merlin.targetgen.contract import pointer_storage as storage_owner
-from merlin.targetgen.contract.pointer_storage import OriginalPointerStorageContract, PointerStoragePolicy
 
 SCHEMA = "merlin.original_pointer_storage_selection.v1"
 _ISSUED = weakref.WeakKeyDictionary()

@@ -10,14 +10,13 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
-from merlin.semantic_compiler.model import KernelRequest
-
-from .contraction_k import (
+from merlin.compiler.semantic.model import KernelRequest
+from merlin.compiler.transforms.contraction_k import (
     OrderedKTiling,
     materialize_row_major_k_slices,
     partition_ordered_matmul_k,
 )
-from .contraction_mn import (
+from merlin.compiler.transforms.contraction_mn import (
     OrderedMNTiling,
     assemble_row_major_mn_outputs,
     materialize_row_major_mn_inputs,
@@ -156,7 +155,7 @@ class LoopedMNKTiling:
     k_head_pad_element: bytes | None = None
 
     def __post_init__(self) -> None:
-        from .contraction_k import _validated_oriented_source
+        from merlin.compiler.transforms.contraction_k import _validated_oriented_source
 
         _validated_oriented_source(self.source, self.qualified_policy)
         if any(

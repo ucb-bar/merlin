@@ -73,8 +73,8 @@ def _parser_digest() -> str:
     # this route, not just its thin query wrapper.
     paths = (
         root / "common" / "mlir_query.py",
-        root / "frontends" / "linalg_mlir.py",
-        root / "xdsl_dialects" / "fp8.py",
+        root / "compiler" / "frontend" / "linalg_mlir.py",
+        root / "compiler" / "dialects" / "fp8.py",
     )
     return _digest(b"".join(path.read_bytes() for path in paths))
 

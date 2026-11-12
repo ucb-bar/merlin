@@ -7,13 +7,13 @@ that bar?
 
 WHAT A FORM IS. The capsule corpus's own definition
 (:func:`merlin.development.testgen.model_forms.form_key`, over the entry in the orientation the program
-asks for it, :func:`merlin.xdsl_dialects.lowering.group_command.device_orientation`): the op, its
+asks for it, :func:`merlin.compiler.dialects.lowering.group_command.device_orientation`): the op, its
 epilogue, its operand dtype, its scale class, its bias and the part of its geometry a lowering must
 handle differently -- never its extents. Every group of any capture is put in exactly one form, from the
 capture's whole-program statement (the same statement the builder asks the package from), so the forms
 are a function of a capture and nothing here names a model, a group or a shape. A PREDICTED cost per
 group is the same derived bound the phase-0 perf-cells product ranks by
-(:mod:`merlin.perf.group_headroom`, the target's own RTL facts); a group it has no formula for predicts
+(:mod:`merlin.analysis.perf.group_headroom`, the target's own RTL facts); a group it has no formula for predicts
 UNKNOWN, never zero. Beside it, each group carries the validated schedule cost proxy's rank signal
 (``rank_transactions``): an order over groups, reported and never used as a share basis.
 
@@ -54,8 +54,8 @@ UNKNOWN = "UNKNOWN"
 
 def form_of_entry(entry: Mapping[str, Any], *, window_mean: bool) -> tuple[dict[str, Any], str]:
     """The corpus's form key for one stated entry, in the orientation the program asks for it."""
+    from merlin.compiler.dialects.lowering.group_command import device_orientation
     from merlin.development.testgen import model_forms as MF
-    from merlin.xdsl_dialects.lowering.group_command import device_orientation
 
     oriented = device_orientation(dict(entry), {"stored_operand": None}) if window_mean else dict(entry)
     key = MF.form_key(oriented)
@@ -81,8 +81,8 @@ def contract_of_entry(contract: Any):
 
 def statement_forms(model_capsule: str | Path, *, target: str) -> list[dict[str, Any]]:
     """Every compute group of the capture, with its form and its predicted (derived-bound) cycles."""
-    from merlin.perf import group_headroom as GH
-    from merlin.perf import whole_model_build as W
+    from merlin.analysis.perf import group_headroom as GH
+    from merlin.analysis.perf import whole_model_build as W
 
     capsule = W.load_model_capsule(model_capsule)
     buffer = W.state(capsule, target=target)

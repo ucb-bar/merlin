@@ -10,12 +10,12 @@ from dataclasses import asdict
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower import borrowed_buffer_calls as K
-from merlin.llvmlower import device_build as B
-from merlin.llvmlower import device_preparation as P
-from merlin.llvmlower import sibling_source_route as S
-from merlin.llvmlower.device_shim import ShimUnit
-from merlin.llvmlower.host_transform_chain import HostLLVMArtifact
+from merlin.compiler.lower.model import borrowed_buffer_calls as K
+from merlin.compiler.lower.model import device_build as B
+from merlin.compiler.lower.model import device_preparation as P
+from merlin.compiler.lower.model import sibling_source_route as S
+from merlin.compiler.lower.model.device_shim import ShimUnit
+from merlin.compiler.lower.model.host_transform_chain import HostLLVMArtifact
 
 from .device_descriptor_results import _bind, _build_record, _observed
 
@@ -47,25 +47,32 @@ class _SiblingBorrowedCalls:
         self.selection_state = selected.record()
         self.observations = {}
         self.functions = tuple((f, f.__code__) for f in self._entrypoints())
-        owners = (Path(__file__), Path(S.__file__), Path(P.__file__), Path(B.__file__), Path(K.__file__),
-                  Path(P.__file__).with_name("device_shim.py"),
-                  Path(P.__file__).with_name("sibling_component_route.py"),
-                  Path(P.__file__).with_name("head_source_route.py"),
-                  Path(__file__).with_name("device_descriptor_results.py"),
-                  Path(__file__).with_name("backends") / "spike_model.py")
+        owners = (
+            Path(__file__),
+            Path(S.__file__),
+            Path(P.__file__),
+            Path(B.__file__),
+            Path(K.__file__),
+            Path(P.__file__).with_name("device_shim.py"),
+            Path(P.__file__).with_name("sibling_component_route.py"),
+            Path(P.__file__).with_name("head_source_route.py"),
+            Path(__file__).with_name("device_descriptor_results.py"),
+            Path(__file__).with_name("backends") / "spike_model.py",
+        )
         retained = tuple(HostLLVMArtifact.capture(p) for p in owners)
         observed, products = _observed(built.shim_invocation)
         c_path, object_path = built.shim_object.with_suffix(".c"), built.shim_object
-        if (observed.get("stage") != "device_shim_compilation"
-                or observed["inputs"] != [{"path": str(c_path.resolve()), "sha256": sha256_file(c_path)}]
-                or observed["outputs"] != [{"path": str(object_path.resolve()), "sha256": sha256_file(object_path)}]
-                or c_path.read_text() != self.unit_text):
+        if (
+            observed.get("stage") != "device_shim_compilation"
+            or observed["inputs"] != [{"path": str(c_path.resolve()), "sha256": sha256_file(c_path)}]
+            or observed["outputs"] != [{"path": str(object_path.resolve()), "sha256": sha256_file(object_path)}]
+            or c_path.read_text() != self.unit_text
+        ):
             raise ValueError("sibling borrowed calls require the actually compiled logical shim")
         retained = (*retained, *products)
         objects = {object_path.resolve()}
         bridge_record = {
-            role: {"path": str(path.resolve()), "sha256": sha256_file(path),
-                   "size_bytes": path.stat().st_size}
+            role: {"path": str(path.resolve()), "sha256": sha256_file(path), "size_bytes": path.stat().st_size}
             for role, path in (("source", c_path), ("object", object_path))
         }
         bridge_record["compilation"] = built.shim_invocation
@@ -80,11 +87,13 @@ class _SiblingBorrowedCalls:
             if self.unit_text.count(bridge) != 1:
                 raise ValueError("sibling borrowed calls lost the exact complete result bridge")
             entry = built.custody[component.device_symbol].get("sibling_source")
-            if entry != dict(source_ir_sha256=selected.source_ir_sha256,
-                             interface_sha256=sha256_file_text(component.interface),
-                             borrowed_effects=selected.record()["effects"],
-                             original_epilogues_and_all_live_outputs_preserved=True,
-                             descriptor_bridge=bridge_record):
+            if entry != dict(
+                source_ir_sha256=selected.source_ir_sha256,
+                interface_sha256=sha256_file_text(component.interface),
+                borrowed_effects=selected.record()["effects"],
+                original_epilogues_and_all_live_outputs_preserved=True,
+                descriptor_bridge=bridge_record,
+            ):
                 raise ValueError("sibling device compilation lost its original writer custody")
         for symbol in built.kernels:
             for role in ("translation", "optimization", "optimized_import", "compilation", "rename"):
@@ -102,49 +111,86 @@ class _SiblingBorrowedCalls:
         self.products = tuple(unique.values())
         self.revalidate()
         pins = (*self.source_pins, *((p.path, p.sha256) for p in self.products))
-        self.calls = K.from_writers(source, (c.writer for c in components), pins,
-                                    self.revalidate, self.observe_native)
+        self.calls = K.from_writers(source, (c.writer for c in components), pins, self.revalidate, self.observe_native)
         if compilation is not None:
             for i, product in enumerate(self.products):
                 _bind(compilation, f"sibling_borrowed_owner_{i}", product)
 
     @staticmethod
     def _entrypoints():
-        return (_SiblingBorrowedCalls.__init__, _SiblingBorrowedCalls.revalidate,
-                _SiblingBorrowedCalls.observe_native, _SiblingBorrowedCalls._entrypoints,
-                _SiblingBorrowedCalls._routing_state,
-                sibling_borrowed_calls, S.component_hosts, S._borrowed_bridge, S.borrowed_bridge_source, S.require_route,
-                K.from_writers, K._callback_binding, _build_record, _observed, sha256_file_text)
+        return (
+            _SiblingBorrowedCalls.__init__,
+            _SiblingBorrowedCalls.revalidate,
+            _SiblingBorrowedCalls.observe_native,
+            _SiblingBorrowedCalls._entrypoints,
+            _SiblingBorrowedCalls._routing_state,
+            sibling_borrowed_calls,
+            S.component_hosts,
+            S._borrowed_bridge,
+            S.borrowed_bridge_source,
+            S.require_route,
+            K.from_writers,
+            K._callback_binding,
+            _build_record,
+            _observed,
+            sha256_file_text,
+        )
 
     def _routing_state(self):
         route = self.routing
-        return (route.device, str(route.package_dir), route.operand_dtype, route.accum_dtype,
-                route.granularity, json.dumps(route.numeric_policy, sort_keys=True),
-                *(id(getattr(route, name)) for name in
-                  ("select", "capture", "target_schedule", "linked_elf_admission", "target_configuration",
-                   "llvm_transform_chain", "device_ir_budget", "intermediate_storage", "pre_group_layout")))
+        return (
+            route.device,
+            str(route.package_dir),
+            route.operand_dtype,
+            route.accum_dtype,
+            route.granularity,
+            json.dumps(route.numeric_policy, sort_keys=True),
+            *(
+                id(getattr(route, name))
+                for name in (
+                    "select",
+                    "capture",
+                    "target_schedule",
+                    "linked_elf_admission",
+                    "target_configuration",
+                    "llvm_transform_chain",
+                    "device_ir_budget",
+                    "intermediate_storage",
+                    "pre_group_layout",
+                )
+            ),
+        )
 
     def revalidate(self):
         # The complete host graph was checked once at the actual compile/input
         # boundary above. Its emitted source is pinned, rather than reparsed at
         # each native callback. The original live writer/effect roster remains
         # authoritative; equal copied effects cannot refresh it.
-        if (self.invocation.sibling_host is not self.host
-                or S.require_route(self.routing, self.invocation.sibling_source) is not self.selected
-                or self.selected.record() != self.selection_state
-                or self.selected.effects is not self.effects
-                or self._routing_state() != self.route_state
-                or len(S.component_hosts(self.host)) != len(self.components)
-                or any(current is not original for current, original in
-                       zip(S.component_hosts(self.host), self.components, strict=True))
-                or any(c.writer is not w or w.borrowed_effects is not self.effects
-                       for c, w in zip(self.components, self.writers, strict=True))
-                or json.dumps([asdict(c.writer) for c in self.components], sort_keys=True) != self.writer_state
-                or self.built.shim_unit is not self.unit or self.unit.text != self.unit_text
-                or _build_record(self.built) != self.build_state
-                or (*self.invocation.sources, self.invocation.sidecar) != self.source_pins
-                or any(f is not original or f.__code__ is not code
-                       for f, (original, code) in zip(self._entrypoints(), self.functions, strict=True))):
+        if (
+            self.invocation.sibling_host is not self.host
+            or S.require_route(self.routing, self.invocation.sibling_source) is not self.selected
+            or self.selected.record() != self.selection_state
+            or self.selected.effects is not self.effects
+            or self._routing_state() != self.route_state
+            or len(S.component_hosts(self.host)) != len(self.components)
+            or any(
+                current is not original
+                for current, original in zip(S.component_hosts(self.host), self.components, strict=True)
+            )
+            or any(
+                c.writer is not w or w.borrowed_effects is not self.effects
+                for c, w in zip(self.components, self.writers, strict=True)
+            )
+            or json.dumps([asdict(c.writer) for c in self.components], sort_keys=True) != self.writer_state
+            or self.built.shim_unit is not self.unit
+            or self.unit.text != self.unit_text
+            or _build_record(self.built) != self.build_state
+            or (*self.invocation.sources, self.invocation.sidecar) != self.source_pins
+            or any(
+                f is not original or f.__code__ is not code
+                for f, (original, code) in zip(self._entrypoints(), self.functions, strict=True)
+            )
+        ):
             raise ValueError("original sibling borrowed owner or compiled product changed")
         for path, digest in self.source_pins:
             if path.is_symlink() or sha256_file(path) != digest:

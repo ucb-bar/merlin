@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import copy
 
-from merlin.targetgen.interface_observations import epilogue_carrier
-from merlin.targetgen.semantic_families import from_op
-from merlin.targetgen.software_spec import admit_operation
+from merlin.development.targetgen.interface_observations import epilogue_carrier
+from merlin.development.targetgen.semantic_families import from_op
+from merlin.development.targetgen.software_spec import admit_operation
 
 
 def _screen_scope_chain(spec: dict, entry: dict, capsule: dict | None) -> dict:
@@ -112,7 +112,7 @@ def screen_entry(
         and any(type(count) is int and count > 1 for count in (declared_regions, observed_regions))
     )
     if compound_program:
-        from merlin.targetgen.corpus_spec import BUILDERS
+        from merlin.development.targetgen.corpus_spec import BUILDERS
 
         compound_program = op in BUILDERS
     if (
@@ -151,7 +151,7 @@ def screen_entry(
     generalization = (capsule or {}).get("semantic") or entry.get("generalization") or {}
     host_only = generalization.get("must_accelerate") is False and generalization.get("eligible") is False
     if host_only:
-        from merlin.targetgen.host_capabilities import admit_host_operation
+        from merlin.development.targetgen.host_capabilities import admit_host_operation
 
         # A probe built from an observed host operation names the frontend operator it reproduces;
         # declarations that name exact operators can then recognize it before it is written.
@@ -230,7 +230,7 @@ def intersect_requirement(requirement: dict, spec: dict, contract: dict) -> dict
     Unknown typed constraints remain required obligations rather than being
     silently omitted or treated as reviewed support.
     """
-    from merlin.targetgen.eligibility import capability_map_from_contract
+    from merlin.development.targetgen.eligibility import capability_map_from_contract
 
     result = copy.deepcopy(requirement)
     capabilities = capability_map_from_contract(contract) or {}

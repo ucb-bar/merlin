@@ -25,7 +25,7 @@ Ranked lists: `largest_headroom` (by `headroom_cycles`), `lowest_utilization` (b
 `without_evidence` (passing cases with no complete timing or no structural bound), `counts`,
 `median_array_utilization_pct` (grade block only, over ranked entries).
 
-## The structural roofline (`performance.structural_roofline`, schema `merlin.perf.partial_roofline.v1`)
+## The structural roofline (`performance.structural_roofline`, schema `merlin.analysis.perf.partial_roofline.v1`)
 
 | Field | Definition |
 |---|---|

@@ -16,7 +16,7 @@ from merlin.runtime.modelinputs import file_sha256
 
 
 def require_linked_symbols(elf: Path, symbols: set[str]) -> None:
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     command = [str(toolchain.nm()), "--defined-only", "--extern-only", str(elf)]
     result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=True)
@@ -68,7 +68,7 @@ def audit_built_device_host_compute(
     from xdsl.dialects import builtin, func, llvm
     from xdsl.parser import Parser
 
-    from merlin.llvmlower.device_build import executable_kernel_entry
+    from merlin.compiler.lower.model.device_build import executable_kernel_entry
     from merlin.verification import host_compute_audit as HA
     from merlin.verification.llvm_symbols import defined_function
 
@@ -196,7 +196,7 @@ def audit_built_device_host_compute(
                 f"linked group {index} host-compute audit is unknown, not clean; " + "; ".join(reasons)[:1600],
                 check="host_compute",
             )
-        from merlin.llvmlower import toolchain
+        from merlin.compiler.lower.model import toolchain
 
         undefined = subprocess.run(
             [str(toolchain.nm()), "--undefined-only", "--extern-only", str(obj)],

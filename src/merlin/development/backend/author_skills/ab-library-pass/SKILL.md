@@ -51,5 +51,5 @@ description: "A/B-test one catalogue library mechanism against your current comp
    [Sweeps](reference/sweeps.md#idle-construction-and-baselines) explains source identities,
    baseline/candidate progress and existing-emitter selection requirements.
 
-Compile-only: `merlin.transforms.pipeline_policy.evaluate_variants`. See `explore-schedules`
+Compile-only: `merlin.compiler.transforms.pipeline_policy.evaluate_variants`. See `explore-schedules`
 and `shape-schedule-selection`.

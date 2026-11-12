@@ -14,9 +14,9 @@ required_top_level_fields:
   - kconfig
   - driver_api
   - samples
-producer: merlin.targetgen.synthesize.zephyr_plan
+producer: merlin.development.targetgen.synthesize.zephyr_plan
 consumers:
-  - merlin.targetgen.generate.zephyr_module
+  - merlin.development.targetgen.generate.zephyr_module
   - merlin/integrations/zephyr
 validation_notes: >-
   driver_api must center on the Merlin-owned generic API (submit/wait/get_metrics). The

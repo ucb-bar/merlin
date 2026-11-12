@@ -7,7 +7,7 @@ directory under the purgeable cache, and prints where everything is:
 1. **The candidate.** A measured-mode job directory (``job.json`` names the target and the build
    options; ``package/`` is the snapshot that was measured), or a package directory with the same
    build options given explicitly (``--build-options FILE`` or ``--capsule``/``--machine``/...).
-2. **The group's program.** :func:`merlin.perf.whole_model_group_timing.build_group_programs` with
+2. **The group's program.** :func:`merlin.analysis.perf.whole_model_group_timing.build_group_programs` with
    ``ask_only``: the package is asked for that group alone, every other group is stated by the
    reference, and the group becomes a one-step program of the target's own whole-model driver -- the
    interface the package was given, its command buffer and target artifact, the object, the program
@@ -19,14 +19,14 @@ directory under the purgeable cache, and prints where everything is:
    model -- the ``spike`` machine its job declares -- with the simulator's execution and commit log,
    stopped after ``--run-to`` instructions. Every memory request the log commits is recorded, in
    order, as ``requested_addresses.json``; with ``--locality-granule`` its exact recurrence census
-   (:func:`merlin.perf.address_locality.address_locality`) is taken at each granule, and
+   (:func:`merlin.analysis.perf.address_locality.address_locality`) is taken at each granule, and
    ``merlin experiment census locality`` re-takes it at any other.
 5. **Source-line attribution** (``--trace``): the program is linked a second time from the same
    inputs with debug information added, and that companion is admitted only if its allocated bytes and
-   relocations are the program's (:func:`merlin.perf.debug_companion.verify_debug_companion`). The
+   relocations are the program's (:func:`merlin.analysis.perf.debug_companion.verify_debug_companion`). The
    functional model's PC histogram of the program is then symbolized against the companion by the LLVM
    symbolizer of the target's own toolchain (beside the compiler its build recipe names) and attributed
-   per function and source line (:func:`merlin.perf.debug_companion.attribute_symbolized_pcs`). Any step
+   per function and source line (:func:`merlin.analysis.perf.debug_companion.attribute_symbolized_pcs`). Any step
    that cannot be taken leaves the attribution ``UNKNOWN``, with the reason.
 6. **Timing and a counter profile** (``--time``, ``--profile``; :mod:`.group_probes`): the group's
    program on the elaborated-RTL emulator, graded exactly and tagged a ranking signal; and the group's
@@ -192,7 +192,7 @@ def resolve_candidate(source: str | Path, args: argparse.Namespace | None = None
 
 
 def _group(text: str) -> int:
-    from merlin.perf.whole_model_partial import parse_groups
+    from merlin.analysis.perf.whole_model_partial import parse_groups
 
     groups = parse_groups([text])
     if len(groups) != 1:
@@ -212,9 +212,9 @@ def rebuild(
 ) -> dict[str, Any]:
     """Build ``group`` of ``candidate`` alone under ``work``, inside a compile trace that dumps every stage.
     ``debug_companion`` also links the program's debug-information companion (for source attribution)."""
+    from merlin.analysis.perf import whole_model_group_timing as GT
     from merlin.common import compile_trace as T
     from merlin.compiler import inspect as debug
-    from merlin.perf import whole_model_group_timing as GT
     from merlin.runtime.backends import base as backends
 
     options = candidate["options"]
@@ -353,7 +353,7 @@ def address_census(
     line size. Without one the addresses are recorded and the census is not taken."""
     from dataclasses import asdict
 
-    from merlin.perf import address_locality as AL
+    from merlin.analysis.perf import address_locality as AL
 
     log = trace.get("log")
     if not trace.get("available") or not log or not Path(log).is_file():
@@ -386,7 +386,7 @@ def address_census(
 
 # ---------------------------------------------------------------------------- source attribution
 
-#: The symbolizer whose JSON records :func:`merlin.perf.debug_companion.attribute_symbolized_pcs` reads.
+#: The symbolizer whose JSON records :func:`merlin.analysis.perf.debug_companion.attribute_symbolized_pcs` reads.
 SYMBOLIZER = "llvm-symbolizer"
 UNKNOWN = "UNKNOWN"
 
@@ -426,8 +426,8 @@ def source_attribution(candidate: Mapping[str, Any], record: Mapping[str, Any], 
 
     The counts are the functional model's instruction executions of the whole one-group program (its
     setup and checks included), never cycles and never a measured region."""
-    from merlin.perf import debug_companion as DC
-    from merlin.perf import group_efficiency as E
+    from merlin.analysis.perf import debug_companion as DC
+    from merlin.analysis.perf import group_efficiency as E
 
     machine = candidate.get("machine")
     if machine is None:

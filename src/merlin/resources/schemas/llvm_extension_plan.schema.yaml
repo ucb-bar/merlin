@@ -13,9 +13,9 @@ required_top_level_fields:
   - initial_strategy
   - out_of_tree_candidates
   - fork_triggers
-producer: merlin.targetgen.synthesize.llvm_extension_plan
+producer: merlin.development.targetgen.synthesize.llvm_extension_plan
 consumers:
-  - merlin.targetgen.generate.llvm_plan
+  - merlin.development.targetgen.generate.llvm_plan
   - third_party/llvm-project (only if a fork is later justified)
 validation_notes: >-
   requires_llvm_fork is one of false|maybe|true. Do not emit real backend patches from this

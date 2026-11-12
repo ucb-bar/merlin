@@ -32,8 +32,8 @@ def install(te, frozen: Path | None):
 
 
 def selected(context):
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.experiments.runner import fingerprint
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(context.descriptor)
     binding = (te.workload_spec or {}).get(S.KEY)
@@ -70,7 +70,7 @@ def request_policy(sim=None, tiers="", *, inspection=False):
 def complete(score, observed, *, names):
     """A projection can never replace unrun, wrong-engine or partial ordinary evidence."""
     from merlin.development.backend.feedback.qa import _original_cohort_complete
-    from merlin.targetgen.capsule_common import tier_status
+    from merlin.development.targetgen.capsule_common import tier_status
 
     if not _original_cohort_complete(score) or score.get("gradeable") is not True:
         return False
@@ -140,9 +140,9 @@ def _grade(
 ):
     """Recompute with the original grader and recheck complete input/candidate custody."""
     from merlin.development.backend.feedback.selfcheck import _adapters
+    from merlin.development.targetgen import capsule_grade as CG
     from merlin.experiments.corpus.preparation import copy_input
     from merlin.experiments.runner import fingerprint
-    from merlin.targetgen import capsule_grade as CG
 
     before, candidate = fingerprint(root), hash_tree(Path(submission))["sha256"]
     if S.verify(root, target=context.target) != record:
@@ -184,7 +184,7 @@ def _grade(
         if name in observed:
             raise ValueError("duplicate public scalability execution observation")
         from merlin.development.backend.feedback.joint_performance import attach as attach_performance
-        from merlin.targetgen.capsule_common import load_capsule
+        from merlin.development.targetgen.capsule_common import load_capsule
 
         generated = output / "runs" / "runs" / capsule_eligibility.suite_for(context.target) / name / "generated"
         performance_started = time.monotonic()
@@ -274,8 +274,8 @@ def grade(submission, **kwargs):
         "target": context.target,
         "complete_roster_requested": kwargs.get("names") is None,
     }
+    from merlin.development.targetgen import capsule_grade
     from merlin.evaluation.capsule import runner as capsule_runner
-    from merlin.targetgen import capsule_grade
 
     with I.observe_call(
         output.parent / "issuers",
@@ -303,7 +303,7 @@ def verify_issued(path, *, descriptor, candidate):
     from merlin.common import invocation_record as I
     from merlin.common.digest import sha256_file
     from merlin.common.strict_json import loads
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(descriptor)
     selection = S.selected(te)
@@ -346,7 +346,7 @@ def verify_issued(path, *, descriptor, candidate):
 
 
 def _sim_via(context):
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     return load_target_experiment(context.descriptor).sim_via
 
@@ -471,7 +471,7 @@ def public_result(result):
     """Expose outcomes, never values, golden digests, streams or private artifact paths."""
     from merlin.common.path_scrub import scrub_host_paths
     from merlin.development.backend.feedback.qa import _redact_detail
-    from merlin.targetgen.capsule_common import tier_status
+    from merlin.development.targetgen.capsule_common import tier_status
 
     def failure(row):
         raw = row.get("failure") or {}

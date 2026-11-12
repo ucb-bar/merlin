@@ -15,9 +15,9 @@ from dataclasses import asdict
 from pathlib import Path
 
 from merlin.development.backend.optimization import campaign
-from merlin.targetgen.sandbox import bwrap as BW
-from merlin.targetgen.sandbox import toolchain as TC
-from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import toolchain as TC
+from merlin.development.targetgen.sandbox.answer_surfaces import AnswerSurface
 
 
 def _digest(record: dict) -> str:

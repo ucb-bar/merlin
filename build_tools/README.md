@@ -39,7 +39,7 @@ figures, captured tables and one-off campaigns are available from their original
 Git revisions; they are not part of the maintained tool surface.
 
 Corpus preparation lives in `src/merlin/development/testgen/`, numerical references
-in `src/merlin/evaluation/`, and expert disassembly capture in `src/merlin/mining/`.
+in `src/merlin/evaluation/`, and expert disassembly capture in `src/merlin/analysis/mining/`.
 Target-specific preparation stays with its example.
 
 Repository checks cover source policy, packaging, documentation and maintained

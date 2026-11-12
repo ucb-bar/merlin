@@ -21,7 +21,7 @@ from merlin.compiler.invocation import invoke, request_identity
 from merlin.compiler.partition.regions import partition_execution
 from merlin.compiler.planning.execution import SelectedExecution
 from merlin.compiler.request import CompileOptions, CompileRequest, Source
-from merlin.transforms.certificates import ir_text
+from merlin.compiler.transforms.certificates import ir_text
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ class PlannedCompiler:
         self.selection.revalidate()
 
     def validate(self, request):
-        from merlin.frontends.linalg_mlir import parse_mlir_text
+        from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
         self._revalidate()
         if request.source.kind != "mlir":

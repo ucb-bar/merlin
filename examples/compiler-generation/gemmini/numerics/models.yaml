@@ -1,4 +1,4 @@
-# Models judged by `python -m merlin.model_check` for this target.
+# Models judged by `python -m merlin.evaluation.model` for this target.
 # Contract: docs/guides/09-verification.md. Each program lists its @forward model inputs (in0, in1, ...) in
 # order, each taken from:
 #   {from: input, key: K}                         the input's model-ready array K
@@ -8,13 +8,13 @@
 # plus `carry: j` -- from the second step on, the program's own output j of the previous step (a state).
 # The bindings restate each capture's session contract (session_contract.yaml); a program with `steps`
 # runs that many times.
-schema: merlin.model_check.models.v1
+schema: merlin.evaluation.model.models.v1
 target: gemmini
 
 # The only shared numerical-report policy. Per-model quality bars stay in judged.admission.
 # Historical sealed configs are immutable; offline reports pin this policy separately.
 numerics:
-  version: merlin.model_check.numerics.v1
+  version: merlin.evaluation.model.numerics.v1
   report_only: true
   functional:
     atol: 0.000002

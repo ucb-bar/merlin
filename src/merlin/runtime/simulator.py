@@ -8,7 +8,7 @@ target-supplied semantics.
 
 Every whole-op opcode here (RMSNORM / SOFTMAX / GELU / SOFTCAP / ROPE / ATTENTION_QK / ATTENTION_PV /
 CONV2D / MOVEMENT / …) implements the SAME definition as the golden engine's op of that name
-(:mod:`merlin.targetgen.capsule_golden`), so the functional tier and the numeric oracle cannot
+(:mod:`merlin.development.targetgen.capsule_golden`), so the functional tier and the numeric oracle cannot
 disagree about what a conformant command buffer means. An opcode with no definition here raises
 ``SimulationError`` rather than being skipped.
 """

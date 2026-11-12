@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 from math import prod
 
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 
 CONTRACTIONS = {"aten.linear.default", "aten.mm.default", "aten.matmul.default"}
 SUPPORTED = CONTRACTIONS | {

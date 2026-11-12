@@ -13,7 +13,6 @@ from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.component_lineage import run_component_origin_round
 from merlin.development.backend.optimization import broker as B
@@ -26,6 +25,7 @@ from merlin.development.backend.optimization.component_experiment import strict_
 from merlin.development.backend.optimization.component_final_qualification import qualify_observed_component_descendant
 from merlin.development.backend.optimization.component_workflow import ComponentOnlyPolicy
 from merlin.development.backend.optimization.transcript_audit import audit_codex_transcript
+from merlin.evaluation.harness import hash_tree
 
 
 def run_component_stage(

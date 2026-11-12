@@ -281,9 +281,9 @@ def select(
     selected = selection_record(options)
     if selected is None:
         return None
-    from merlin.targetgen.sandbox import bwrap as BW
-    from merlin.targetgen.sandbox import toolchain as TC
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import toolchain as TC
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     home, auth = Path(selected["home_root"]), Path(selected["auth_source"])
     if overlap(home, workspace) or overlap(home, private_run) or overlap(auth, workspace):
@@ -302,7 +302,7 @@ def select(
     library_root = None
     if compiler_library_selection is not None:
         from merlin.development.backend.optimization.compiler_libraries import guest_root
-        from merlin.targetgen.compiler_library import CompilerLibrarySelection
+        from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
 
         if type(compiler_library_selection) is not CompilerLibrarySelection:
             raise ValueError("client library paths require an original reviewed selection")

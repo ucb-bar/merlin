@@ -81,7 +81,7 @@ EXTENSIONS = {
 ABSTRACTIONS = [
     (
         "graph_and_contract",
-        ["merlin.common.mlir_query", "merlin.xdsl_dialects.contract"],
+        ["merlin.common.mlir_query", "merlin.compiler.dialects.contract"],
         "Typed source and explicit contracts; derive patterns, shapes, numeric semantics and complete live-outs.",
     ),
     (
@@ -89,7 +89,7 @@ ABSTRACTIONS = [
         [
             "merlin.compiler.transforms.multioutput",
             "merlin.compiler.schedule.shared_input_groups",
-            "merlin.llvmlower.prepared_operand_schedule",
+            "merlin.compiler.lower.model.prepared_operand_schedule",
         ],
         "Existing restricted region matchers and preparation planning/install APIs; "
         "no blanket fusion proof or automatic wiring.",
@@ -111,13 +111,13 @@ ABSTRACTIONS = [
     ),
     (
         "optional_dialect_exploration",
-        ["merlin.xdsl_dialects.schedule", "merlin.xdsl_dialects.interface"],
+        ["merlin.compiler.dialects.schedule", "merlin.compiler.dialects.interface"],
         "Existing dialect representations; target lowering integration must be demonstrated, "
         "not assumed from availability.",
     ),
     (
         "owned_host_and_boundary",
-        ["merlin.llvmlower.host_tensor_codegen", "merlin.compiler.transforms.host"],
+        ["merlin.compiler.lower.model.host_tensor_codegen", "merlin.compiler.transforms.host"],
         "Existing generic host codegen and optimization route; preserve host/device ownership, "
         "ABI and exact numerical seams.",
     ),

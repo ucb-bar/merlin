@@ -48,7 +48,7 @@ def _identity(entry: Mapping[str, Any]) -> str:
 
 
 def _weight_args(directory: Path, cap: Mapping[str, Any]):
-    from merlin.xdsl_dialects.lowering import stream_plan
+    from merlin.compiler.dialects.lowering import stream_plan
 
     attrs = (cap.get("operation") or {}).get("attributes") or {}
     weights = attrs.get("weights") if isinstance(attrs.get("weights"), Mapping) else {}
@@ -102,7 +102,7 @@ def _covered(written: Path, identity: str, expected_cap: dict, expected_program:
         raise QualificationMissing(f"group capsule {written.name} differs from the requested numerical program")
     if (written / "capsule.interface.mlir").read_text(encoding="utf-8") != expected_program:
         raise QualificationMissing(f"group capsule {written.name} differs from the requested interface program")
-    from merlin.targetgen import golden_store as GS
+    from merlin.development.targetgen import golden_store as GS
 
     golden_path = written / GS.DOCUMENT
     if not golden_path.is_file():
@@ -184,8 +184,8 @@ def _qualify(entry, cap, directory: Path, binding, out_root: Path) -> dict:
     import yaml
 
     from merlin.common import mlir_query as mq
+    from merlin.development.targetgen import group_capsule_entries as G
     from merlin.development.testgen.group_forms import write_group_capsule
-    from merlin.targetgen import group_capsule_entries as G
 
     if "source_integer_proof" in entry:
         from merlin.development.testgen.connected_integer_qualification import qualify as connected_qualify
@@ -262,7 +262,7 @@ def _qualify(entry, cap, directory: Path, binding, out_root: Path) -> dict:
     return {
         "schema": SCHEMA,
         "status": "qualified",
-        "grouping": "merlin.targetgen.group_capsule_entries.entries",
+        "grouping": "merlin.development.targetgen.group_capsule_entries.entries",
         "device_groups": stated["accelerator_groups"],
         "covered_groups": stated["stated"],
         "group_capsules": groups,

@@ -158,7 +158,7 @@ def neutral_adapter():
 def dense_inputs(shape=(5, 14, 13), tile=(2, 3, 4)):
     """Problem, resources and storage in the planning form every dense pass consumes."""
     from merlin.compiler.schedule.compact_dense import DenseLoopStorage, DenseMemoryView
-    from merlin.transforms.dense_planning import DenseProblem, DenseResources
+    from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
 
     p = DenseProblem(*shape, *tile, 1, 1, 4)  # m,k,n, primitive tile m,k,n, lhs/rhs/accumulator bytes
     rows = 256, 48, 64  # assigned rows per view: take them from YOUR capacities after reservations
@@ -236,7 +236,7 @@ def example() -> dict:
         make_dense_schedule_plan,
         parse_dense_schedule_plan,
     )
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     adapter = neutral_adapter()
     p, r, s = dense_inputs()

@@ -89,7 +89,7 @@ def selected_firrtl(path: str | Path, *, target: str, config: str, source_reloca
 
     Facts of ``config`` itself yield their own FIRRTL input. Facts of another configuration yield
     the FIRRTL of their verified simulation correspondence to ``config`` (see
-    :func:`merlin.targetgen.rtl.unit_correspondence.execution_binding`), byte-verified on disk and
+    :func:`merlin.development.targetgen.rtl.unit_correspondence.execution_binding`), byte-verified on disk and
     marked with ``facts_config``; anything else refuses.
     """
     lexical = Path(path)
@@ -98,7 +98,7 @@ def selected_firrtl(path: str | Path, *, target: str, config: str, source_reloca
     source = lexical.resolve()
     raw = source.read_bytes()
     original_document = json.loads(raw)
-    from merlin.targetgen.rtl.source_relocations import relocate_operand_sources
+    from merlin.development.targetgen.rtl.source_relocations import relocate_operand_sources
 
     try:
         document = relocate_operand_sources(original_document, source_relocations)
@@ -144,7 +144,7 @@ def selected_firrtl(path: str | Path, *, target: str, config: str, source_reloca
 
 
 def _corresponding_firrtl(document: dict, source: Path, *, target: str, config: str) -> dict[str, str]:
-    from merlin.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
+    from merlin.development.targetgen.rtl.unit_correspondence import ExecutionBindingError, execution_binding
 
     try:
         binding = execution_binding(document, config=config)
@@ -202,7 +202,7 @@ def native_engine(target: str, simulator: str, facts: dict[str, str]):
     if not backend.available(simulator):
         raise ModelExecutionInputError(f"{target} backend reports {simulator} unavailable")
     if simulator == "gsim":
-        from merlin.targetgen import gsim_emulator
+        from merlin.development.targetgen import gsim_emulator
 
         env_var = getattr(backend, "GSIM_EMU_ENV", None)
         citation = gsim_emulator.citation(target, env_var=env_var, backend=backend)

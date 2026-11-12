@@ -117,9 +117,9 @@ def output_region(elf_bytes, cb):
 
 def reopen(result_path):
     """Retained native custody plus original dense numerical contract; no new verdict."""
+    from merlin.analysis.perf.whole_model_gsim import read_dump
     from merlin.development.backend.feedback import tier_boundary_join as J
     from merlin.development.backend.feedback.candidate_execution_products import reopen_operator_tier_products
-    from merlin.perf.whole_model_gsim import read_dump
 
     result_path = Path(result_path)
     result_pin = pin(result_path)

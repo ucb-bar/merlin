@@ -93,8 +93,8 @@ def load_adapter(package, relative):
 
 
 def prepare(adapter, source, package, mechanism):
-    from merlin.transforms.pipeline_policy import PipelinePolicy, PolicyFacts, registry_metadata
-    from merlin.transforms.pipeline_state import PipelineSession
+    from merlin.compiler.transforms.pipeline_policy import PipelinePolicy, PolicyFacts, registry_metadata
+    from merlin.compiler.transforms.pipeline_state import PipelineSession
 
     try:
         binding = adapter.prepare(source, package=package, mechanism=mechanism)
@@ -113,7 +113,7 @@ def prepare(adapter, source, package, mechanism):
 
 
 def execute(binding):
-    from merlin.transforms.pipeline_policy import execute_policy
+    from merlin.compiler.transforms.pipeline_policy import execute_policy
 
     result = execute_policy(**binding)
     artifact = result.artifact
@@ -211,7 +211,7 @@ def apply(args):
     proposed = prepare(other, source, variant.resolve(), args.mechanism)
     if baseline["session"].stamp() != proposed["session"].stamp() or baseline["facts"] != proposed["facts"]:
         raise ValueError("Paired pipelines must start from identical current source and selected facts")
-    from merlin.transforms.pipeline_policy import registry_metadata
+    from merlin.compiler.transforms.pipeline_policy import registry_metadata
 
     if registry_metadata(baseline["registry"]) != registry_metadata(proposed["registry"]):
         raise ValueError("Both pipelines must use the same registered pass/emitter contracts")

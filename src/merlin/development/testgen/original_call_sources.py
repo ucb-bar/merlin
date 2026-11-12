@@ -12,9 +12,8 @@ import json
 from pathlib import Path
 
 from merlin.common.jsonio import canonical_json
-from merlin.development.testgen import original_schema_defaults as D
-from merlin.targetgen.frontend_original_call import call_contracts
-from merlin.targetgen.original_operator_sources import (
+from merlin.development.targetgen.frontend_original_call import call_contracts
+from merlin.development.targetgen.original_operator_sources import (
     ADD_FORM_SCHEMA,
     FORM_SCHEMA,
     MATMUL_FORM_SCHEMA,
@@ -26,6 +25,7 @@ from merlin.targetgen.original_operator_sources import (
     original_add_forms,
     policy_compatibility,
 )
+from merlin.development.testgen import original_schema_defaults as D
 
 SCHEMA = "merlin.original_call_sources.v1"
 LINEAR_SCHEMA = "merlin.original_call_sources.v2"
@@ -42,10 +42,10 @@ BUDGET_SCHEMA = "merlin.original_call_source_budget.v1"
 READER_MODULES = (
     __name__,
     "merlin.development.testgen.original_schema_defaults",
-    "merlin.targetgen.frontend_original_call",
-    "merlin.targetgen.original_operator_sources",
-    "merlin.targetgen.frontend_typed_add",
-    "merlin.targetgen.torch_schema_defaults_observer",
+    "merlin.development.targetgen.frontend_original_call",
+    "merlin.development.targetgen.original_operator_sources",
+    "merlin.development.targetgen.frontend_typed_add",
+    "merlin.development.targetgen.torch_schema_defaults_observer",
 )
 _LIMITS = {
     "max_sources",
@@ -79,22 +79,22 @@ def reader_modules(version):
         raise ValueError("original source readers need an explicit supported factory version")
     return (
         READER_MODULES
-        + (("merlin.targetgen.original_pointwise_sources",) if version >= 3 else ())
-        + (("merlin.targetgen.original_transpose_sources",) if version >= 4 else ())
-        + (("merlin.targetgen.original_broadcast_add_sources",) if version >= 5 else ())
-        + (("merlin.targetgen.original_scalar_binary_sources",) if version >= 6 else ())
+        + (("merlin.development.targetgen.original_pointwise_sources",) if version >= 3 else ())
+        + (("merlin.development.targetgen.original_transpose_sources",) if version >= 4 else ())
+        + (("merlin.development.targetgen.original_broadcast_add_sources",) if version >= 5 else ())
+        + (("merlin.development.targetgen.original_scalar_binary_sources",) if version >= 6 else ())
         + (
             (
-                "merlin.targetgen.original_metadata_sources",
+                "merlin.development.targetgen.original_metadata_sources",
                 "merlin.development.testgen.zero_return_intake",
-                "merlin.targetgen.torch_zero_return_observer",
+                "merlin.development.targetgen.torch_zero_return_observer",
             )
             if version >= 8
             else ()
         )
-        + (("merlin.targetgen.original_triangular_sources",) if version >= 9 else ())
-        + (("merlin.targetgen.original_reshape_sources",) if version >= 10 else ())
-        + (("merlin.targetgen.original_reduction_sources",) if version >= 11 else ())
+        + (("merlin.development.targetgen.original_triangular_sources",) if version >= 9 else ())
+        + (("merlin.development.targetgen.original_reshape_sources",) if version >= 10 else ())
+        + (("merlin.development.targetgen.original_reduction_sources",) if version >= 11 else ())
     )
 
 
@@ -112,16 +112,16 @@ def validate_budget(budget):
 def _forms(trace, schemas, defaults, *, numerical_semantics, version, tensor_bindings=None, zero_returns=None):
     add_forms = original_add_forms
     if version >= 5:
-        from merlin.targetgen.original_broadcast_add_sources import broadcast_add_forms
+        from merlin.development.targetgen.original_broadcast_add_sources import broadcast_add_forms
 
         add_forms = broadcast_add_forms
     factories = [conv2d_forms] if version == 1 else [conv2d_forms, matmul_forms, add_forms]
     if version >= 3:
-        from merlin.targetgen.original_pointwise_sources import pointwise_forms
+        from merlin.development.targetgen.original_pointwise_sources import pointwise_forms
 
         factories.append(pointwise_forms)
     if version >= 4:
-        from merlin.targetgen.original_transpose_sources import transpose_forms
+        from merlin.development.targetgen.original_transpose_sources import transpose_forms
 
         factories.append(transpose_forms)
     forms = [
@@ -130,7 +130,7 @@ def _forms(trace, schemas, defaults, *, numerical_semantics, version, tensor_bin
         for form in factory(trace, schemas, defaults, numerical_semantics=numerical_semantics)
     ]
     if version >= 6:
-        from merlin.targetgen.original_scalar_binary_sources import scalar_binary_forms
+        from merlin.development.targetgen.original_scalar_binary_sources import scalar_binary_forms
 
         forms.extend(
             scalar_binary_forms(
@@ -143,21 +143,21 @@ def _forms(trace, schemas, defaults, *, numerical_semantics, version, tensor_bin
             )
         )
     if version >= 8:
-        from merlin.targetgen.original_metadata_sources import metadata_forms
+        from merlin.development.targetgen.original_metadata_sources import metadata_forms
 
         forms.extend(
             metadata_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics, zero_returns=zero_returns)
         )
     if version >= 9:
-        from merlin.targetgen.original_triangular_sources import triu_forms
+        from merlin.development.targetgen.original_triangular_sources import triu_forms
 
         forms.extend(triu_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
     if version >= 10:
-        from merlin.targetgen.original_reshape_sources import reshape_forms
+        from merlin.development.targetgen.original_reshape_sources import reshape_forms
 
         forms.extend(reshape_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
     if version >= 11:
-        from merlin.targetgen.original_reduction_sources import reduction_forms
+        from merlin.development.targetgen.original_reduction_sources import reduction_forms
 
         forms.extend(reduction_forms(trace, schemas, defaults, numerical_semantics=numerical_semantics))
     return forms
@@ -199,42 +199,49 @@ def _sources(calls, forms, *, budget, total, requested, version=1):
     """Derive the entire requested source roster before any loader allocation."""
     pointwise = {}
     if version >= 3:
-        from merlin.targetgen.original_pointwise_sources import FORM_SCHEMA as POINTWISE_FORM_SCHEMA
-        from merlin.targetgen.original_pointwise_sources import pointwise_source
+        from merlin.development.targetgen.original_pointwise_sources import FORM_SCHEMA as POINTWISE_FORM_SCHEMA
+        from merlin.development.targetgen.original_pointwise_sources import pointwise_source
 
         pointwise = {POINTWISE_FORM_SCHEMA: pointwise_source}
     if version >= 4:
-        from merlin.targetgen.original_transpose_sources import FORM_SCHEMA as TRANSPOSE_FORM_SCHEMA
-        from merlin.targetgen.original_transpose_sources import transpose_source
+        from merlin.development.targetgen.original_transpose_sources import FORM_SCHEMA as TRANSPOSE_FORM_SCHEMA
+        from merlin.development.targetgen.original_transpose_sources import transpose_source
 
         pointwise[TRANSPOSE_FORM_SCHEMA] = transpose_source
     if version >= 5:
-        from merlin.targetgen.original_broadcast_add_sources import FORM_SCHEMA as BROADCAST_FORM_SCHEMA
-        from merlin.targetgen.original_broadcast_add_sources import broadcast_add_source
+        from merlin.development.targetgen.original_broadcast_add_sources import FORM_SCHEMA as BROADCAST_FORM_SCHEMA
+        from merlin.development.targetgen.original_broadcast_add_sources import broadcast_add_source
 
         pointwise[BROADCAST_FORM_SCHEMA] = broadcast_add_source
     if version >= 6:
-        from merlin.targetgen.original_scalar_binary_sources import FORM_SCHEMA as SCALAR_BINARY_FORM_SCHEMA
-        from merlin.targetgen.original_scalar_binary_sources import INTEGER_FORM_SCHEMA, scalar_binary_source
+        from merlin.development.targetgen.original_scalar_binary_sources import FORM_SCHEMA as SCALAR_BINARY_FORM_SCHEMA
+        from merlin.development.targetgen.original_scalar_binary_sources import (
+            INTEGER_FORM_SCHEMA,
+            scalar_binary_source,
+        )
 
         pointwise[SCALAR_BINARY_FORM_SCHEMA if version == 6 else INTEGER_FORM_SCHEMA] = scalar_binary_source
     if version >= 8:
-        from merlin.targetgen.original_metadata_sources import ASSERTION_SCHEMA, CAST_SCHEMA, metadata_source
+        from merlin.development.targetgen.original_metadata_sources import (
+            ASSERTION_SCHEMA,
+            CAST_SCHEMA,
+            metadata_source,
+        )
 
         pointwise.update({CAST_SCHEMA: metadata_source, ASSERTION_SCHEMA: metadata_source})
     if version >= 9:
-        from merlin.targetgen.original_triangular_sources import FORM_SCHEMA as TRIANGULAR_FORM_SCHEMA
-        from merlin.targetgen.original_triangular_sources import triu_source
+        from merlin.development.targetgen.original_triangular_sources import FORM_SCHEMA as TRIANGULAR_FORM_SCHEMA
+        from merlin.development.targetgen.original_triangular_sources import triu_source
 
         pointwise[TRIANGULAR_FORM_SCHEMA] = triu_source
     if version >= 10:
-        from merlin.targetgen.original_reshape_sources import FORM_SCHEMA as RESHAPE_FORM_SCHEMA
-        from merlin.targetgen.original_reshape_sources import reshape_source
+        from merlin.development.targetgen.original_reshape_sources import FORM_SCHEMA as RESHAPE_FORM_SCHEMA
+        from merlin.development.targetgen.original_reshape_sources import reshape_source
 
         pointwise[RESHAPE_FORM_SCHEMA] = reshape_source
     if version >= 11:
-        from merlin.targetgen.original_reduction_sources import FORM_SCHEMA as REDUCTION_FORM_SCHEMA
-        from merlin.targetgen.original_reduction_sources import reduction_source
+        from merlin.development.targetgen.original_reduction_sources import FORM_SCHEMA as REDUCTION_FORM_SCHEMA
+        from merlin.development.targetgen.original_reduction_sources import reduction_source
 
         pointwise[REDUCTION_FORM_SCHEMA] = reduction_source
     indexed = {form["node"]: form for form in forms}

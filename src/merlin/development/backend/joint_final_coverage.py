@@ -16,7 +16,7 @@ from pathlib import Path
 from merlin.common.tree_hash import hash_tree
 from merlin.development.backend import joint_control
 from merlin.development.backend.joint_final_model_l3 import MISSING as MODEL_L3_MISSING
-from merlin.targetgen import capsule_common as capsule_capsule_common
+from merlin.development.targetgen import capsule_common as capsule_capsule_common
 
 
 def _write(path, document):
@@ -146,7 +146,7 @@ def _apply_score(group, score, model_l3=None):
 
 def _apply_program_result(group, result, compiler_sha256):
     """Keep source-selected program obligations separate from core conformance."""
-    from merlin.targetgen.capsule_common import tier_status
+    from merlin.development.targetgen.capsule_common import tier_status
 
     rows = result.get("observed") or {}
     expected = set(group["obligations"])
@@ -191,8 +191,8 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
     from merlin.development.backend.feedback.selfcheck import _adapters
     from merlin.development.backend.feedback.visible_model_gate import _program_row
     from merlin.development.backend.joint_model_activation import grade_model_scope
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen.target_experiment import load_target_experiment
 
     state = joint_control.selected()
     if state is None or joint_control.remaining(drain=True) > 0:
@@ -447,8 +447,8 @@ def validate(prepared, *, inputs, frozen: Path, compiler_sha256: str):
 def _completion_order_after_coverage(groups, output, target, remaining):
     """The race check over published native passes, best-effort in the time left (never gating)."""
     from merlin.development.backend.joint_final_model_l3 import _result
-    from merlin.targetgen import capsule_grade as CG
-    from merlin.targetgen import completion_order_gate as G
+    from merlin.development.targetgen import capsule_grade as CG
+    from merlin.development.targetgen import completion_order_gate as G
 
     results = {}
     for name in ("core", "scalability"):

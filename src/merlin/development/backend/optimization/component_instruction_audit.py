@@ -17,8 +17,8 @@ from pathlib import Path
 from merlin.common import invocation_record
 from merlin.development.backend.optimization.component_instruction_policy import IndependentInstructionPolicy
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, sha256_file, write_json
-from merlin.targetgen.contract.elf_admission import LinkedElfAdmissionService
-from merlin.targetgen.elf_lanes import ElfUnreadable, executable_sections
+from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.development.targetgen.elf_lanes import ElfUnreadable, executable_sections
 
 
 @dataclass(frozen=True)

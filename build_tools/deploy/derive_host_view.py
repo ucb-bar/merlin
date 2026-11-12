@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.targetgen.target_experiment import HostLaneMatrix
+from merlin.development.targetgen.target_experiment import HostLaneMatrix
 
 
 def derive(*, descriptor: Path, source_root: Path, output: Path) -> dict:

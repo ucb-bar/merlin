@@ -69,8 +69,8 @@ Inside `generated/`, grouped by who wrote the file:
   - `input.interface.mlir` is the input your tool received.
   - `lowered.target.mlir` is the stdout of `lower_interface_to_target`.
   - `command_buffer.json` comes from `emit_command_buffer` or `emit_analysis_bundle`.
-  - `lowered.llvm.mlir` is the stdout of the target-artifact command (`merlin.targetgen.capsule_common.lower_interface`).
-- **The object build** (`merlin.targetgen.contract.compile`). The harness builds these from your bytes:
+  - `lowered.llvm.mlir` is the stdout of the target-artifact command (`merlin.development.targetgen.capsule_common.lower_interface`).
+- **The object build** (`merlin.development.targetgen.contract.compile`). The harness builds these from your bytes:
   - `kernel.llvm.mlir` is a copy of the lowered IR, and `kernel.ll` is its `mlir-translate` output.
   - `kernel.o` is the object, compiled with `-fstack-usage`.
   - `kernel.su` is the compiler's stack report, and `kernel.measured.su` is its canonical view.
@@ -80,7 +80,7 @@ Inside `generated/`, grouped by who wrote the file:
 - **Executed evidence**:
   - `numeric_report.yaml` holds `status`, `mismatch_count`, `max_abs_error`, `first_mismatch` and `per_output`.
   - `oracle_console.log` is the simulator console.
-  - `executed/ENGINE/DIGEST/` holds the exact program each engine ran (`merlin.targetgen.executed_program`).
+  - `executed/ENGINE/DIGEST/` holds the exact program each engine ran (`merlin.development.targetgen.executed_program`).
 - **Harness analyses of your output**:
   - `instruction_trace.json` is the decode of `lowered.llvm.mlir`.
   - `liveness_report.json` and `placement_census.json` are analyses of the same output.

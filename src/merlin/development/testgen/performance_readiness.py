@@ -8,14 +8,14 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import corpus_spec as CS
+from merlin.development.targetgen.rtl.facts import observed_facts
+from merlin.development.targetgen.target_experiment import load_target_experiment
+from merlin.development.targetgen.target_registry import observed_contract
 from merlin.development.testgen.evidence import evidence_artifacts
 from merlin.development.testgen.freeze import selection
 from merlin.development.testgen.profiles import load_profile
 from merlin.development.testgen.sweeps import expand_sweeps
-from merlin.targetgen import corpus_spec as CS
-from merlin.targetgen.rtl.facts import observed_facts
-from merlin.targetgen.target_experiment import load_target_experiment
-from merlin.targetgen.target_registry import observed_contract
 
 
 def check_performance_oracles(command: dict, *, target: str, profile_target: str, diagnostic: bool) -> None:

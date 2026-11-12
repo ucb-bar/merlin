@@ -7,14 +7,14 @@ All execution and target static legality remain separately required evidence.
 
 from __future__ import annotations
 
+from merlin.development.targetgen import component_program, corpus_spec
+from merlin.development.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
+from merlin.development.targetgen.contract.linalg_iface import parse_linalg_mlir
+from merlin.development.targetgen.semantic_families import from_op
 from merlin.development.testgen import component_compile_graphs as G
 from merlin.development.testgen import component_graph_variants as F
 from merlin.development.testgen.component_semantic_basis import PROVENANCE
 from merlin.development.testgen.rtl_intake import RtlIntakeRefusal
-from merlin.targetgen import component_program, corpus_spec
-from merlin.targetgen.contract.compile_only import CompileOnlySourceAbi, CompileOnlyTensor
-from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
-from merlin.targetgen.semantic_families import from_op
 
 SCHEMA = "merlin.component_compile_only_plan.v1"
 OBLIGATIONS = ("semantic_coverage", "index_bounds", "resource_legality", "complete_output_coverage")

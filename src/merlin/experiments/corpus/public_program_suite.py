@@ -14,7 +14,7 @@ import yaml
 
 from merlin.common.digest import sha256_file
 from merlin.common.strict_json import loads
-from merlin.targetgen.public_program_timing import is_public_program
+from merlin.development.targetgen.public_program_timing import is_public_program
 
 KEY = "public_program_suite"
 SCHEMA = "merlin.corpus.public_program_suite.v1"
@@ -40,8 +40,8 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
     of this capture. ``screen_written`` checks that original capture binding;
     this helper neither chooses a lane nor substitutes device support claims.
     """
+    from merlin.development.targetgen.frozen_placement import read as read_placement
     from merlin.development.testgen.program_admission import accelerator_placement_refusal, screen_written
-    from merlin.targetgen.frozen_placement import read as read_placement
 
     if not is_public_program(capsule) or capsule.get("kind") != "model":
         raise ValueError("public program placement requires an original complete model source")
@@ -61,9 +61,9 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
 def read(path, *, target):
     """Reopen the full selected tree, declarations and original source/reference bindings."""
     from merlin.development.backend.capability_inventory import _digest
+    from merlin.development.targetgen.frozen_placement import read as read_placement
     from merlin.development.testgen import operator_exclusion as exclusion
     from merlin.development.testgen.public_programs import verify_written
-    from merlin.targetgen.frozen_placement import read as read_placement
 
     from ..runner import fingerprint
     from .preparation import ordinary_tree

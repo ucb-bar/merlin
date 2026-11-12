@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib.util
 
 from merlin.common.paths import ext_path
-from merlin.targetgen.program_oracle import run_raw_program
+from merlin.development.targetgen.program_oracle import run_raw_program
 
 
 def assemble(*, source: str, fixture: dict, **_kwargs) -> dict:

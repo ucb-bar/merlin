@@ -4,7 +4,7 @@
 It accepts exactly two interface shapes -- one 16x16 movement (isa/A1_mvin_mvout) and one
 single-tile weight-stationary matmul (isa/A2_single_tile_matmul) -- and refuses everything else.
 Every encoding constant is read from ``gemmini_isa.h`` beside this file, which Merlin GENERATES from
-the RTL facts and the target contract (merlin.targetgen.isa_header_gen): funct codes, the RoCC
+the RTL facts and the target contract (merlin.development.targetgen.isa_header_gen): funct codes, the RoCC
 opcode, command-register field offsets, CONFIG selector codes and local-address flag bits. The only
 facts taken from the public Gemmini ISA description rather than the header are the protocol choices
 a probe has to make: weight-stationary dataflow is value 1 of the CONFIG_EX dataflow field, unit
@@ -78,7 +78,11 @@ def _attr(line: str, key: str) -> str:
 def parse(path: Path) -> dict:
     """The command buffer of a supported interface, or :class:`Refused`."""
     text = path.read_text(encoding="utf-8")
-    ops = [line.strip() for line in text.splitlines() if "= merlin_iface." in line or line.strip().startswith("merlin_iface.")]
+    ops = [
+        line.strip()
+        for line in text.splitlines()
+        if "= merlin_iface." in line or line.strip().startswith("merlin_iface.")
+    ]
     tensors: dict[str, dict] = {}
     values: dict[str, str] = {}
     commands: list[dict] = []
@@ -103,19 +107,29 @@ def parse(path: Path) -> dict:
             src = values[rhs.split()[1]]
             values[lhs] = f"{src}_res"
             commands.append(
-                {"opcode": "RES_PACK", "operands": {"src": src, "dst": f"{src}_res"}, "attributes": {"layout": _attr(rhs, "layout")}}
+                {
+                    "opcode": "RES_PACK",
+                    "operands": {"src": src, "dst": f"{src}_res"},
+                    "attributes": {"layout": _attr(rhs, "layout")},
+                }
             )
         elif kind == "matmul":
             a, b = (s.strip().rstrip(",") for s in rhs.split(":", 1)[0].split()[1:3])
             values[lhs] = lhs.lstrip("%")
-            commands.append({"opcode": "MATMUL_RESIDENT", "operands": {"lhs": values[a], "rhs": values[b], "dst": values[lhs]}})
+            commands.append(
+                {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": values[a], "rhs": values[b], "dst": values[lhs]}}
+            )
         elif kind == "commit":
             src = values[rhs.split()[1]]
             if "epilogue = []" not in rhs:
                 raise Refused("the probe handles only a commit without epilogue")
             dst = _attr(rhs, "name")
             commands.append(
-                {"opcode": "COMMIT", "operands": {"src": src, "dst": dst}, "attributes": {"epilogue": [], "output_dtype": _attr(rhs, "output_dtype")}}
+                {
+                    "opcode": "COMMIT",
+                    "operands": {"src": src, "dst": dst},
+                    "attributes": {"epilogue": [], "output_dtype": _attr(rhs, "output_dtype")},
+                }
             )
             values[lhs] = dst
         elif kind == "evict":

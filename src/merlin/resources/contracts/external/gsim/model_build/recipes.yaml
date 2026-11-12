@@ -14,7 +14,7 @@
 # the cert tier, and that difference is exactly what a probe must not blur.
 #
 # WHERE THE BUILD LANDS. `out/build/rtl_engines/<target>/<engine>/` — the derived home
-# `merlin.targetgen.gsim_emulator.engine_home` resolves and the engine policy selects out of. An engine
+# `merlin.development.targetgen.gsim_emulator.engine_home` resolves and the engine policy selects out of. An engine
 # installed there is REGISTERED; nothing else has to be exported.
 #
 # PROVENANCE. A built model must carry a `build_receipt.json` binding its bytes to the FIRRTL and the

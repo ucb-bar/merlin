@@ -231,7 +231,7 @@ def normalize_instruction_semantics(
     if software_source_bytes is not None:
         if sw is None:
             raise ValueError("software source bytes require a selected software spec")
-        from merlin.targetgen.software_spec import validate_software_spec
+        from merlin.development.targetgen.software_spec import validate_software_spec
 
         raw_software = yaml.safe_load(software_source_bytes)
         if validate_software_spec(raw_software, target=target) != sw:

@@ -33,6 +33,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_builder
 from merlin.development.backend.optimization.whole_model_measured import capabilities as CAP
 from merlin.development.backend.optimization.whole_model_measured import gates as G
 from merlin.development.backend.optimization.whole_model_measured import registry as R
@@ -40,7 +41,6 @@ from merlin.development.backend.optimization.whole_model_measured.identity impor
 from merlin.development.backend.optimization.whole_model_measured.objective import WholeModelObjective
 from merlin.development.backend.optimization.whole_model_measured.service import MeasurementService
 from merlin.development.testgen import instruction_roles as IR
-from merlin.perf import whole_model_builder
 
 CONFIG_SCHEMA = "merlin_whole_model_objective_config_v1"
 DERIVED_MECHANISMS = "derive_from_capture"
@@ -113,7 +113,7 @@ def sealed_policy_source(document: Mapping[str, Any], *, target: str, manifest: 
         return Path(manifest)
     if document.get(SEALED_POLICY_MANIFEST):
         return Path(str(document[SEALED_POLICY_MANIFEST]))
-    from merlin.targetgen.target_experiment import descriptor_for, load_target_experiment
+    from merlin.development.targetgen.target_experiment import descriptor_for, load_target_experiment
 
     descriptor = document.get("descriptor") or descriptor_for(target)
     if descriptor is None:
@@ -219,7 +219,7 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
     if out.get(FUSED_REGIONS) not in (None, True, False):
         raise ConfigError(f"{FUSED_REGIONS} is true or false, not {out.get(FUSED_REGIONS)!r}")
 
-    from merlin.perf.whole_model_open import is_open_model
+    from merlin.analysis.perf.whole_model_open import is_open_model
 
     decisions, regions = {}, {}
     sections = [(name, out.get(name)) for name in CANDIDATE_SECTIONS]
@@ -237,7 +237,7 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
             open_model = is_open_model(capsule, target)
         elif has_capsule:
             try:
-                from merlin.perf.whole_model_capsule import load_model_capsule
+                from merlin.analysis.perf.whole_model_capsule import load_model_capsule
 
                 load_model_capsule(capsule)  # a directory that is not a whole model capsule is refused first
                 open_model = is_open_model(capsule, target)
@@ -277,7 +277,10 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
                 "allow_regions": options["allow_regions"],
             }
     if policy == DERIVED_MECHANISMS:
-        out["mechanism_derivation"] = {"source": "merlin.perf.whole_model_open.is_open_model", "sections": decisions}
+        out["mechanism_derivation"] = {
+            "source": "merlin.analysis.perf.whole_model_open.is_open_model",
+            "sections": decisions,
+        }
     out["fused_region_decision"] = {"default": "allowed", "opted_out": opted_out, "sections": regions}
     return out
 
@@ -289,9 +292,9 @@ EXACTNESS = "exactness"
 
 
 def exactness_contract(document: Mapping[str, Any], *, target: str):
-    """The :class:`merlin.perf.exactness.Contract` a config declares: by value, by path, or the default
+    """The :class:`merlin.analysis.perf.exactness.Contract` a config declares: by value, by path, or the default
     (every form exact) when it declares none.  A declared contract that cannot be read is an error."""
-    from merlin.perf import exactness as EX
+    from merlin.analysis.perf import exactness as EX
 
     declared = document.get(EXACTNESS)
     try:

@@ -16,7 +16,7 @@
   "added": [
     {
       "path": "opu_shim.py",
-      "source": "src/merlin/llvmlower/opu_shim.py",
+      "source": "src/merlin/compiler/lower/model/opu_shim.py",
       "source_revision": "34340db7e7433549e640018bfaa4309abe88577e",
       "source_sha256": "9971facfa6b6bb55e6f77e03f09c5191c35d5b3f1d923d695b7f29d0a7daf977",
       "sha256": "bd34b52a64f1cb82c8253b6735e8709a9cd745c8f2131e257502a2f34d866d7b"

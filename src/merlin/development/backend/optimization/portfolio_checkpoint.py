@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
 from merlin.common.digest import sha256_bytes
 from merlin.development.backend.optimization import broker_evidence as BE
 from merlin.development.backend.optimization import contracts as P2_CONTRACTS
@@ -25,6 +24,7 @@ from merlin.development.backend.optimization.mechanism_evidence import (
     verify_checkpoint_work_order,
 )
 from merlin.development.backend.optimization.revision_journal import RevisionJournal
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)
@@ -266,7 +266,7 @@ def load_historical_reference(
     path: Path, sha256: str, *, target: str | None = None, candidate_roots: Sequence[Path] = ()
 ) -> tuple[bytes, dict[str, Any]]:
     """Read one explicit host bundle, never discover receipts or mint timing authority."""
-    from merlin.perf.historical_reference import reference_summary
+    from merlin.analysis.perf.historical_reference import reference_summary
 
     if (
         not BE._is_sha256(sha256)
@@ -373,7 +373,7 @@ def consume_authoring_checkpoint(path: Path, *, context: CheckpointVerificationC
             raise ValueError("authoring checkpoint historical reference summary changed")
     authority = document.get("compiler_edit_authority")
     if authority is not None:
-        from merlin.perf.compiler_edit_scope import inspect_compiler_edits, validate_edit_contract
+        from merlin.analysis.perf.compiler_edit_scope import inspect_compiler_edits, validate_edit_contract
 
         initial = path.parent / "edit_scope_seed"
         if (
@@ -496,7 +496,7 @@ def consume_global_candidate(path: Path, *, context: CheckpointVerificationConte
             raise ValueError("sealed historical reference summary changed")
     authority = document.get("compiler_edit_authority")
     if authority is not None:
-        from merlin.perf.compiler_edit_scope import inspect_compiler_edits, validate_edit_contract
+        from merlin.analysis.perf.compiler_edit_scope import inspect_compiler_edits, validate_edit_contract
 
         initial = path.parent / "edit_scope_seed"
         if (

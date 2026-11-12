@@ -14,7 +14,7 @@ timing observations. Join the original Spike and gSIM execution records: sharing
 a kernel object does not mean that their wrapper ELFs are identical. Preserve
 both ELF hashes and the selected timing boundary.
 
-Use `merlin.perf.fast_estimate_validation` and `component_screen` for diagnostic
+Use `merlin.analysis.perf.fast_estimate_validation` and `component_screen` for diagnostic
 fits and validation. Aggregate repeated observations of the same executed
 program/workload before fitting. Hold all versions of a capsule together, and
 merge groups that share the exact source interface. Otherwise, renamed copies of

@@ -67,8 +67,8 @@ def _registry(expected: object = None, *, legacy: bool = False) -> tuple[Source,
 
 def _tools() -> tuple[Source, ...]:
     from merlin.common import quant_formats
+    from merlin.development.targetgen import isa_spec, software_spec, transfer_contracts
     from merlin.target.spec import computation, instructions, normalize, quantization, signature, source
-    from merlin.targetgen import isa_spec, software_spec, transfer_contracts
 
     modules = (
         source,
@@ -163,7 +163,7 @@ def load_spec(path: str | Path, target: str | None = None) -> ExpandedSpec:
         document.get("format_registry_sha256") if not legacy else None, legacy=legacy
     )
     if legacy:
-        from merlin.targetgen.software_spec import validate_software_spec
+        from merlin.development.targetgen.software_spec import validate_software_spec
 
         candidate = validate_software_spec(document, target=target, source=source_path)
         computations, obligations, definitions = {}, [], []

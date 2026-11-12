@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen.compiler_library import CompilerLibrarySelection
-from merlin.targetgen.compiler_pass_selection import restore_original_selection
+from merlin.development.targetgen.compiler_library import CompilerLibrarySelection
+from merlin.development.targetgen.compiler_pass_selection import restore_original_selection
 
 
 def add_selection_arguments(parser):

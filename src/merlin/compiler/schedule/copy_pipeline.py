@@ -23,7 +23,7 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     verify_temporary_storage,
 )
-from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 
 @dataclass(frozen=True)

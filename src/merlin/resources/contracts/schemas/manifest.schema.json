@@ -132,7 +132,7 @@
         },
         "publication": {
           "type": "object",
-          "description": "Optional single-champion publication record, written by merlin.targetgen.publish (WS-E). At most one package per target carries champion: true; the publish bridge exports that package as the target's own public repo.",
+          "description": "Optional single-champion publication record, written by merlin.development.targetgen.publish (WS-E). At most one package per target carries champion: true; the publish bridge exports that package as the target's own public repo.",
           "properties": {
             "champion": {
               "type": "boolean"

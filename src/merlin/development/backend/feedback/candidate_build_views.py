@@ -129,10 +129,10 @@ def publish(
     never the linked harness, input tensors, golden values or runtime sections.
     """
     from merlin.analysis.artifact_reader import PinnedELF, open_ordinary
+    from merlin.analysis.perf.pc_instruction_listing import normalized_text
     from merlin.development.backend.brokers.selfcheck import _submission_digest
     from merlin.development.backend.feedback.candidate_observations import reopen_native_products
-    from merlin.perf.pc_instruction_listing import normalized_text
-    from merlin.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
 
     workspace, public_root, private_root, generated, compiler = map(
         _plain, (workspace, public_root, private_root, generated, compiler)

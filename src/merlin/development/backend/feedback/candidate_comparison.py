@@ -26,12 +26,12 @@ def _digest(value):
 
 def stream_facts(commands, structure, evidence_id, reason=None):
     """Width, buffering and overlap facts of one build's proved command stream (else explicit unknown)."""
-    from merlin.kernels.mechanism_applicability import NO_STREAM, STREAM_FACTS, STREAM_SCOPE
+    from merlin.analysis.kernels.mechanism_applicability import NO_STREAM, STREAM_FACTS, STREAM_SCOPE
 
     unknown = {name: dict(status="unknown", reason=reason or NO_STREAM, scope=STREAM_SCOPE) for name in STREAM_FACTS}
     if commands is None or structure is None:
         return unknown
-    from merlin.kernels.mechanism_applicability import EXTRA_FACTS, stream_effects
+    from merlin.analysis.kernels.mechanism_applicability import EXTRA_FACTS, stream_effects
 
     derived = stream_effects({}, structure, commands, evidence_id=evidence_id)
     extra = {name: derived[name] for name, *_ in EXTRA_FACTS if name in derived}  # present only when derived
@@ -40,7 +40,7 @@ def stream_facts(commands, structure, evidence_id, reason=None):
 
 def stream_changes(before, after):
     """Per-role width, buffering and overlap of ``after`` relative to ``before`` (factual directions)."""
-    from merlin.kernels.mechanism_applicability import _stream_rows
+    from merlin.analysis.kernels.mechanism_applicability import _stream_rows
 
     def record(build):
         return dict(derived_effects=dict(facts=build.get("stream_facts") or {}))
@@ -237,7 +237,7 @@ def _undeclared_applied(before, after, emitted):
 
 
 def _stream_fact_names():
-    from merlin.kernels.mechanism_applicability import EXTRA_FACTS, STREAM_FACTS
+    from merlin.analysis.kernels.mechanism_applicability import EXTRA_FACTS, STREAM_FACTS
 
     return STREAM_FACTS + tuple(name for name, *_ in EXTRA_FACTS)
 

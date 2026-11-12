@@ -47,7 +47,7 @@ def _certify_tile_via_executor(target, mlir, *, m, k, n, binding, timeout, numer
         W = np.rint(rng.standard_normal((k, n)) * 3).clip(-8, 7).astype(np.float32)
         stimulus = "exactly-representable small integers"
     else:
-        from ..targetgen import corpus_operands as CO
+        from merlin.development.targetgen import corpus_operands as CO
 
         A = np.asarray(CO.operand_values((m, k), binding.operand_dtype, salt=0xA7), dtype=np.float32).reshape(m, k)
         W = np.asarray(CO.operand_values((k, n), binding.operand_dtype, salt=0x5E), dtype=np.float32).reshape(k, n)
@@ -174,12 +174,13 @@ def _mesh_verify(
     _certify_tile_via_executor = _tile_certifier
     import tempfile
 
+    from merlin.development.targetgen import corpus_spec as CS
+    from merlin.development.targetgen import package_runtime as oot_runner
+    from merlin.development.targetgen.oracle_policy import _SIM_ORACLES
+    from merlin.development.targetgen.oracle_policy import selected_endpoint as _endpoint_of
+    from merlin.development.targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
+
     from ..common.paths import runs_root
-    from ..targetgen import corpus_spec as CS
-    from ..targetgen import package_runtime as oot_runner
-    from ..targetgen.oracle_policy import _SIM_ORACLES
-    from ..targetgen.oracle_policy import selected_endpoint as _endpoint_of
-    from ..targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
 
     pkg_dir = package or _default_oot_package(target)
     out: dict = {
@@ -220,7 +221,7 @@ def _mesh_verify(
     # literal here -- a tier is a fidelity and which simulator answers at it is the contract's business.
     # A target that declares no cheap tier yields None and the screen is reported UNAVAILABLE rather
     # than skipped, because "nobody could tell" and "nothing to tell" are different facts.
-    from ..targetgen.oracle_policy import selected_screen_tiers as _screen_tiers_of
+    from merlin.development.targetgen.oracle_policy import selected_screen_tiers as _screen_tiers_of
 
     _screens = _screen_tiers_of(target) if _via_oot else ()
     screen_tier, screen_sim = _screens[-1] if _screens else (None, None)

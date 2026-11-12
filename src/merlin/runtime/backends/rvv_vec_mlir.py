@@ -3,7 +3,7 @@ MLIR→LLVM compiler (lower_model). NO hand-written C kernel.
 
 This replaces the C-emitter (`rvv_vec_codegen.py`) with the merlin way: the vector ops are
 expressed as `linalg.generic` (elementwise) and a reduction, and lowered through
-`merlin.llvmlower.lower_model`. We certify on the host target (x86 via ctypes) against the
+`merlin.compiler.lower.model.lower_model`. We certify on the host target (x86 via ctypes) against the
 Merlin reference — proving the compiler path, not a kernel. (The same module lowers to a
 riscv object; native-RVV vectorization currently covers contractions, so elementwise/reduction
 lower to scalar RVV-target code — correct, just not yet vector-instruction'd; see SV findings.)
@@ -126,8 +126,8 @@ def run_host(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str,
 
     import numpy as np
 
-    from merlin.llvmlower.abi import HostModel
-    from merlin.llvmlower.lower import lower_model
+    from merlin.compiler.lower.model.abi import HostModel
+    from merlin.compiler.lower.model.lower import lower_model
     from merlin.runtime.reference import outputs_match, reference_outputs
 
     sh = _shapes(cb)
@@ -164,8 +164,8 @@ def lower_rvv(cb: dict[str, Any], workdir: str | Path | None = None) -> dict[str
     import tempfile
     from pathlib import Path
 
-    from merlin.llvmlower.custom_isa import disassemble
-    from merlin.llvmlower.lower import lower_model
+    from merlin.compiler.lower.model.custom_isa import disassemble
+    from merlin.compiler.lower.model.lower import lower_model
 
     text, _, _ = emit_mlir(cb)
     work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="vecrvv_"))

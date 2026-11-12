@@ -258,8 +258,8 @@ def run(contract, output, epochs):
         ConvolutionReadoutTransferLaw,
         ConvolutionResidentInputRows,
     )
-    from merlin.targetgen.isa_dialect_gen import generate_package
-    from merlin.targetgen.isa_spec import Argument, EncodingField, Instruction, IsaType, ResolvedISA
+    from merlin.development.targetgen.isa_dialect_gen import generate_package
+    from merlin.development.targetgen.isa_spec import Argument, EncodingField, Instruction, IsaType, ResolvedISA
 
     if contract["schema"] != "merlin.toy_convolution_adapter.v1" or contract["domain"] != "sequential-toy-only":
         raise ValueError("toy contracts cannot qualify a physical target")

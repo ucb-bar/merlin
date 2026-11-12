@@ -532,7 +532,7 @@ def verify_written(capsule, directory):
     published = [names[v] for v in S.references(nodes[-1]["args"])]
     if published != program["outputs"]:
         raise ValueError("public boundary capture did not preserve exactly the original live-out boundary")
-    from merlin.targetgen import golden_store
+    from merlin.development.targetgen import golden_store
 
     golden = golden_store.load_golden(directory)
     if golden.get("golden_source") != "host_torch_eager" or len(golden.get("outputs") or {}) != len(program["outputs"]):

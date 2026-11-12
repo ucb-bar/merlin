@@ -9,7 +9,7 @@ from merlin.compiler.schedule.copy_coalescing import coalesce_private_copies
 from merlin.compiler.schedule.copy_coalescing_check import CopyMergeLaw
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
-from merlin.semantic_compiler.allocation_types import StorageBank
+from merlin.compiler.semantic.allocation_types import StorageBank
 
 
 def project(call):

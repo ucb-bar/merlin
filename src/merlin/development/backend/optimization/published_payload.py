@@ -16,9 +16,9 @@ from pathlib import Path
 
 import yaml
 
-from merlin.benchharness import hash_tree
 from merlin.development.backend.optimization.contracts import StageGateError
-from merlin.targetgen import package_records
+from merlin.development.targetgen import package_records
+from merlin.evaluation.harness import hash_tree
 
 
 @dataclass(frozen=True)

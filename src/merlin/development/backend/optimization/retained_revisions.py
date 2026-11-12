@@ -381,7 +381,7 @@ class RetainedRevisionStore:
                 extras = existing.keys() - desired.keys()
                 contract = self.authority.contract
                 ancillary = tuple(Path(name) for name in contract.get("ancillary_paths", ()))
-                from merlin.perf.compiler_edit_scope import helper_extensions
+                from merlin.analysis.perf.compiler_edit_scope import helper_extensions
 
                 helpers = tuple(Path(row["directory"]) for row in helper_extensions(contract))
                 for name in extras:

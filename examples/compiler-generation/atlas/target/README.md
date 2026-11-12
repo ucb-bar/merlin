@@ -109,12 +109,12 @@ Produce evidence from one selected elaboration, not a mixture of standalone
 spec-generated hardware and Chipyard memory/hierarchy sources:
 
 ```sh
-python -m merlin.targetgen.rtl.source_selection \
+python -m merlin.development.targetgen.rtl.source_selection \
   --target atlas --generator atlas-npu --config EE290SimConfig \
   --core-root AtlasTile --firrtl /selected/elaboration/design.fir \
   --hierarchy /selected/elaboration/top_module_hierarchy.json \
   --firtool /selected/circt/bin/firtool --output /generated/atlas/source-1
-python -m merlin.targetgen.rtl.circt_introspect --target atlas \
+python -m merlin.development.targetgen.rtl.circt_introspect --target atlas \
   --source-bundle /generated/atlas/source-1/source-selection.json \
   --out /generated/atlas/source-1/facts.json
 merlin-target-tools rtl-source-audit \

@@ -57,9 +57,9 @@ def _public_rtl_board(selected, private_arena_mb, *, descriptor, target):
     operator board selection may choose another catalog entry only if its exact
     RTL configuration and DTS still match the protected native facts.
     """
+    from merlin.development.targetgen.owned_host_model_execution import _selected_facts
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.runtime.boards import load_boards
-    from merlin.targetgen.owned_host_model_execution import _selected_facts
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     experiment = load_target_experiment(descriptor)
     if experiment.target != target or not experiment.host_board:

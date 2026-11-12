@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
+from merlin.development.targetgen.rocc.selected_operand_protocol import _json, _read_pin, selected_inputs
 from merlin.experiments.definition import SpecError, read_yaml
-from merlin.targetgen.rocc.selected_operand_protocol import _json, _read_pin, selected_inputs
 
 
 def existing_selection(contract: tuple[Path, str] | None, facts: Path | None):

@@ -213,7 +213,7 @@ admission:
     host_route_states_a_reason_the_target_does_not_contradict: "a region placed on a host lane is a
       refusal, and it must say why in `params.lane_placement[].reason`. The reason must not be
       contradicted by the target's OWN derived capability: if the target's readout facet
-      (`merlin.targetgen.readout_facet`) licenses the epilogue stage the family needs, then `family X
+      (`merlin.development.targetgen.readout_facet`) licenses the epilogue stage the family needs, then `family X
       has no datapath here` is false and the region was refused for a reason the hardware denies.
       Measured on a deployable ResNet-50 package: 116 of 119 host-routed regions state a no-datapath
       reason while the target's own backend declares a readout applying acc_scale, relu and maxpool.
@@ -275,7 +275,7 @@ admission:
     optional: [op]
     example: {op: "rmsnorm", reason: "no lowering for this operation on this target yet"}
 
-# Optional manifest declarations for the WHOLE-MODEL build path (merlin.perf.whole_model_build). Both
+# Optional manifest declarations for the WHOLE-MODEL build path (merlin.analysis.perf.whole_model_build). Both
 # are OFF unless the package's own manifest.yaml declares them; a package that declares neither sees no
 # change in how it is built, whatever the build's own flags are. Neither entry says HOW to use the
 # mechanism it names -- what a package does with a region or a pass is the package's own compiler
@@ -296,7 +296,7 @@ whole_model_optional:
       recomputed from the inputs the device held and the boundary is checked from them. Every member
       counts as package-answered while the region's kernel is linked; a region whose kernel is not
       linked puts every member back on the target's library."
-    who_decides_legality: "merlin.llvmlower.region_legality.legal_regions, from the model's own
+    who_decides_legality: "merlin.compiler.lower.model.region_legality.legal_regions, from the model's own
       dataflow, and the TARGET's own declaration of which ops its driver can hold as an internal
       member (its whole-model driver's FUSED_REGION_INTERNAL_OPS; a target that declares
       LINKS_FUSED_REGIONS false or nothing is never offered a region) -- never the package's; a

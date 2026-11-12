@@ -40,7 +40,7 @@ def _built_mesh_package(pkg_dir: str, timeout: int):
         hit = _MESH_PKG_CACHE.get(key)
     if hit is not None:
         return hit
-    from ..targetgen.package_runtime import build_package, integrity_scan, load_package
+    from merlin.development.targetgen.package_runtime import build_package, integrity_scan, load_package
 
     obj = load_package(pkg_dir, contract=None)  # the same sequence run_entrypoints does when pkg is None
     integrity_scan(obj)
@@ -84,7 +84,7 @@ def _resolve_oot_mesh_simulator(target: str, simulator: str | None = None) -> st
     with _MESH_SIM_LOCK:
         if key in _MESH_SIM_CACHE:
             return _MESH_SIM_CACHE[key]
-        from ..targetgen.oracle_policy import select_chipyard_engine as chipyard_l3_selection
+        from merlin.development.targetgen.oracle_policy import select_chipyard_engine as chipyard_l3_selection
 
         selected = chipyard_l3_selection(target)
         engine = str(selected.get("engine") or "").strip()
@@ -160,9 +160,10 @@ def _matmul_via_oot_cert(
     _default_oot_package = _package_selector
     import tempfile
 
+    from merlin.development.targetgen import capsule_common as CC
+    from merlin.development.targetgen import package_runtime as oot_runner
+
     from ..common.paths import runs_root
-    from ..targetgen import capsule_common as CC
-    from ..targetgen import package_runtime as oot_runner
 
     sim = _resolve_oot_mesh_simulator(target, simulator)
     pkg = package or _default_oot_package(target)
@@ -228,7 +229,7 @@ def _matmul_via_program_oracle(
     _default_oot_package = _package_selector
     if not model_ext:
         return None
-    from ..targetgen import mesh_program_run
+    from merlin.development.targetgen import mesh_program_run
 
     return mesh_program_run.matmul_on_program_oracle(
         target,
@@ -270,12 +271,13 @@ def _matmul_via_bespoke_sim(
     import base64
     import tempfile
 
+    from merlin.development.targetgen import capsule_common as CC
+    from merlin.development.targetgen import mesh_program_run as MP
+    from merlin.development.targetgen.capsule_common import make_run_paths
+    from merlin.development.targetgen.oracle_policy import _SIM_ORACLES
+    from merlin.development.targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
+
     from ..common.paths import runs_root
-    from ..targetgen import capsule_common as CC
-    from ..targetgen import mesh_program_run as MP
-    from ..targetgen.capsule_common import make_run_paths
-    from ..targetgen.oracle_policy import _SIM_ORACLES
-    from ..targetgen.oracle_policy import selected_sim_via as _bespoke_sim_via
 
     pkg = package or _default_oot_package(target)
     if pkg is None:

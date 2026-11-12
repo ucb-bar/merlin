@@ -32,7 +32,7 @@ def deallocation_passes(
     if slice_outputs is None:
         slice_outputs = os.environ.get("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "1") == "1"
     if sink is None:
-        from merlin.llvmlower.optional_passes import switched
+        from merlin.compiler.lower.model.optional_passes import switched
 
         sink = switched("sink-deallocs", bool(os.environ.get("MERLIN_SINK_DEALLOCS")))
     passes = [

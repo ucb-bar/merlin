@@ -21,7 +21,15 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from merlin.benchharness import hash_tree
+from merlin.analysis.perf.component_cost import ComponentCostScope, ComponentFeatureObservation, complete_component_cost
+from merlin.analysis.perf.component_screen import (
+    ComponentOpportunity,
+    ComponentScreenPolicy,
+    rank_component_opportunities,
+    validate_component_screen_report,
+)
+from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
+from merlin.analysis.perf.phase2_calibration_bundle import prepare_phase2_calibration
 from merlin.development.backend.optimization import corpus as C
 from merlin.development.backend.optimization.component_baseline import verify_baseline_admission
 from merlin.development.backend.optimization.component_compiled_arms import CompiledStaticArmFeatures
@@ -36,15 +44,7 @@ from merlin.development.backend.optimization.component_workflow import (
 )
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256, mapping_file, sha256_file
 from merlin.development.backend.optimization.portfolio_launch import acquire_host_resource_lease
-from merlin.perf.component_cost import ComponentCostScope, ComponentFeatureObservation, complete_component_cost
-from merlin.perf.component_screen import (
-    ComponentOpportunity,
-    ComponentScreenPolicy,
-    rank_component_opportunities,
-    validate_component_screen_report,
-)
-from merlin.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.perf.phase2_calibration_bundle import prepare_phase2_calibration
+from merlin.evaluation.harness import hash_tree
 
 
 class ComponentAnalyticalResults(dict):

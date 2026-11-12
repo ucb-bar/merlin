@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from merlin.targetgen.input_palette import findings, pattern, realize
+from merlin.development.targetgen.input_palette import findings, pattern, realize
 
 NUMERIC_INPUT_EFFECTS = frozenset(
     {

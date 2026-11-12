@@ -19,7 +19,7 @@ KIND = "declared_resource_boundary"
 
 
 def derive(spec, *, owner, axis, target, tile, dtype, fixed, evidence, resolve_extent):
-    from merlin.targetgen.capsule_dram import dtype_bits
+    from merlin.development.targetgen.capsule_dram import dtype_bits
 
     allowed = {"derive", "resource", "capacity_fact", "reservation_facts", "quantum", "tail_offsets", "allocations"}
     if not isinstance(spec, dict) or set(spec) - allowed or spec.get("derive") != KIND:

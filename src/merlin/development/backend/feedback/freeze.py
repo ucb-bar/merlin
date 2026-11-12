@@ -12,7 +12,7 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.benchharness import hash_tree, repo_sha
+from merlin.evaluation.harness import hash_tree, repo_sha
 
 
 def freeze(run_dir: Path, *, repo: Path) -> dict:
@@ -31,7 +31,7 @@ def freeze(run_dir: Path, *, repo: Path) -> dict:
         rec["oot"] = history  # the harness-owned `frozen` tag on exactly these bytes
     (run_dir / "freeze.json").write_text(json.dumps(rec, indent=2), encoding="utf-8")
     if history is not None and history.get("frozen_commit"):
-        from merlin.targetgen import target_index
+        from merlin.development.targetgen import target_index
 
         target_index.refresh_for_run(run_dir, 1)  # the index lists the new frozen compiler
     return rec

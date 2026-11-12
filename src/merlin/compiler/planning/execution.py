@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from math import prod
 
 from merlin.compiler.backend.sourceproposal import AdmittedProposal
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval, GlobalPlan, verify_global_plan
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval, GlobalPlan, verify_global_plan
 
 
 def _record(value):

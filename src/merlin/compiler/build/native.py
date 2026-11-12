@@ -31,9 +31,9 @@ def publish_layout(staged, manifest, document):
 
 def compile_report(args, *, load_request, load_limits, write_status):
     """Build and publish one actual selected native artifact."""
-    from merlin.semantic_compiler.linalg_bridge import LinalgBridgeError
-    from merlin.semantic_compiler.snapshot import open_native_snapshot
-    from merlin.semantic_compiler.target_binding import (
+    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.snapshot import open_native_snapshot
+    from merlin.compiler.semantic.target_binding import (
         NativeCompilationError,
         load_native_target_binding,
         verify_native_publication,

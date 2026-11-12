@@ -7,15 +7,15 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.benchharness import hash_tree
-from merlin.development.backend.optimization import broker_evidence as BE
-from merlin.development.backend.optimization import contracts as P2_CONTRACTS
-from merlin.development.backend.optimization import fast_evaluation_installation as FAST
-from merlin.perf.execution_policy import (
+from merlin.analysis.perf.execution_policy import (
     FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
     GLOBAL_AUTHORING_ROUND_MAX_SECONDS,
 )
-from merlin.perf.host_resources import HostResourcePolicy
+from merlin.analysis.perf.host_resources import HostResourcePolicy
+from merlin.development.backend.optimization import broker_evidence as BE
+from merlin.development.backend.optimization import contracts as P2_CONTRACTS
+from merlin.development.backend.optimization import fast_evaluation_installation as FAST
+from merlin.evaluation.harness import hash_tree
 
 _DESCRIPTION = "Launch full-graph authoring with optional bounded isolated probes, never model simulation."
 _GIB = 1024**3

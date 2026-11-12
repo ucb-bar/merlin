@@ -14,7 +14,7 @@ from pathlib import Path
 
 from merlin.common.digest import sha256_bytes, sha256_file
 from merlin.common.jsonio import write_pretty_json
-from merlin.llvmlower import codegen_env
+from merlin.compiler.lower.model import codegen_env
 
 FILENAME = "lowering_recipe.json"
 
@@ -73,7 +73,7 @@ def bind_host_transform_chain(recipe: Path, receipt: Path, *, source: Path, sele
     The original returned LLVM witness is retained. This extends observation
     through host LLVM emission only, never claiming codegen/link qualification.
     """
-    from merlin.llvmlower.host_transform_chain import recheck_host_transform_chain
+    from merlin.compiler.lower.model.host_transform_chain import recheck_host_transform_chain
 
     record = json.loads(recipe.read_text())
     chain = recheck_host_transform_chain(receipt)
@@ -97,7 +97,7 @@ def bind_ciface_annotation(recipe: Path, before: str, after: str, report: dict) 
     Retain the upstream witness and independently reproduce the exact annotation.
     This does not authorize arbitrary text changes or alter any lifetime premise.
     """
-    from merlin.llvmlower import ciface_inline
+    from merlin.compiler.lower.model import ciface_inline
 
     def identity(text: str) -> dict:
         payload = text.encode("utf-8")

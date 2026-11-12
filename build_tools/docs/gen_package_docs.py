@@ -35,7 +35,7 @@ def _first_docline(init: Path) -> str:
     """The docstring's first PARAGRAPH, unwrapped -- not its first physical line.
 
     Reading one line cut nine package purposes mid-sentence wherever the author had wrapped at 100
-    columns: `merlin.mining` published "fork an iteration of the RVV codegen (a transform-dialect"
+    columns: `merlin.analysis.mining` published "fork an iteration of the RVV codegen (a transform-dialect"
     to the module index and to its own AGENT.md, with the close paren and the verb on line two.
     """
     try:

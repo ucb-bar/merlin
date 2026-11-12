@@ -1,4 +1,4 @@
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 
 def contraction(shape, dtypes, *, lhs="a", rhs="b", output="r", tag="matmul"):

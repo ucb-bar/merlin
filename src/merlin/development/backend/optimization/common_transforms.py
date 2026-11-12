@@ -36,7 +36,7 @@ def check_action() -> BrokerAction:
 
 
 def supports_check(profile) -> bool:
-    from merlin.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
+    from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE
 
     return isinstance(profile, dict) and profile.get("common_substrate") == CURRENT_COMMON_SUBSTRATE
 

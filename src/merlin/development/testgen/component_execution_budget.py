@@ -14,8 +14,8 @@ from pathlib import Path
 
 import yaml
 
+from merlin.development.targetgen import component_program, corpus_spec
 from merlin.development.testgen.component_generation import digest
-from merlin.targetgen import component_program, corpus_spec
 
 SCHEMA = "merlin.component_execution_budget.v1"
 RECEIPT_SCHEMA = "merlin.component_execution_admission.v1"
@@ -91,7 +91,7 @@ def measure(source):
         payload += count * ((_bits(row["dtype"]) + 7) // 8)
     palette = source["input_palette"]
     if palette is not None:
-        from merlin.targetgen.input_palette import validate as validate_palette
+        from merlin.development.targetgen.input_palette import validate as validate_palette
 
         validate_palette(palette)
         # corpus_spec.build realizes palette leaves once before the independent

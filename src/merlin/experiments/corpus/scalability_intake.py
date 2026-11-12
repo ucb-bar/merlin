@@ -13,8 +13,8 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import sha256_file
+from merlin.development.targetgen.capsule_common import load_capsule
 from merlin.development.testgen.program_admission import accelerator_placement_refusal, screen_written
-from merlin.targetgen.capsule_common import load_capsule
 
 from ..runner import fingerprint
 from . import public_scalability as S
@@ -29,7 +29,7 @@ def check_convolution_metadata(capsule: dict, source: Path) -> None:
     """
     if capsule.get("operation", {}).get("op") != "conv2d":
         return
-    from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
 
     program = parse_interface_mlir(source.read_text())
     commands = [row for row in program["commands"] if row["opcode"] == "CONV2D"]

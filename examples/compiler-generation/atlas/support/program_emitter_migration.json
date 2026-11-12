@@ -4,7 +4,7 @@
   "status": "migration_only_not_numerical_or_hardware_qualification",
   "files": [
     {
-      "source": "src/merlin/targetgen/oracle_helpers/npu_emit.py",
+      "source": "src/merlin/development/targetgen/oracle_helpers/npu_emit.py",
       "source_sha256": "5f6aa38f7bb896c4f1939f22191961016e4808c19dff40004d2bbb31483e2324",
       "destination": "atlas_program_emit.py",
       "destination_sha256": "5f6aa38f7bb896c4f1939f22191961016e4808c19dff40004d2bbb31483e2324",

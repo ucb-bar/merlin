@@ -14,9 +14,9 @@ from dataclasses import asdict
 from pathlib import Path
 from types import MethodType
 
+from merlin.analysis.perf import capsule_roofline as R
+from merlin.compiler.lower.model.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
 from merlin.development.backend.optimization.contracts import StageGateError, document_sha256
-from merlin.llvmlower.reviewed_pass_capabilities import PassCapabilityBinding, ReviewedPassCapability
-from merlin.perf import capsule_roofline as R
 from merlin.runtime import _native_files as F
 
 MECHANISM = "emitted_schedule_service_effects"

@@ -76,7 +76,7 @@ def evidence_failures(score):
             failures.append(f"functional_hidden_{key}_malformed")
     if evidence.get("n_admitted_capsules") != score.get("n_capsules"):
         failures.append("functional_hidden_denominator_mismatch")
-    from merlin.targetgen.expected_refusal import execution_denominator
+    from merlin.development.targetgen.expected_refusal import execution_denominator
 
     executable, refusal_failures = execution_denominator(score)
     failures.extend(refusal_failures)

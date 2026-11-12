@@ -1,6 +1,6 @@
 """Carry a seed run's tier verdicts into a seeded run that grades with another framework export.
 
-:mod:`merlin.targetgen.tier_cache` keys a verdict on the program (execution identity) and on the
+:mod:`merlin.development.targetgen.tier_cache` keys a verdict on the program (execution identity) and on the
 judge (instrument digest). A run started without ``MERLIN_TIER_CERT_PORTABLE=1`` names its judge's
 files by absolute path inside its own frozen export, so its verdicts can never match a run that
 executes from another export, even when every grading byte is the same.
@@ -24,7 +24,7 @@ instrument, and says where it came from (``source: carried from <run>``; ``carri
 ``pass`` records are carried, as in the cache itself. The seeded run must set
 ``MERLIN_TIER_CERT_PORTABLE=1`` (the reviewed joint seed requires it) for a lookup to find them,
 and ``MERLIN_SEEDED_GRADE=<seed run>`` for its grades to carry the screen tier too and to order and
-label their work by what the seed proved (:mod:`merlin.targetgen.seeded_grade`, which reads the
+label their work by what the seed proved (:mod:`merlin.development.targetgen.seeded_grade`, which reads the
 index of carried test cases written here).
 """
 
@@ -138,7 +138,7 @@ def portable_digest(files, root: Path) -> str:
 
 
 def _instrument(engine: str, tier: str, grading_path: str, basis: str) -> str:
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     payload = {"version": tier_cache.RECORD_VERSION, "engine": engine, "tier": str(tier), "grading_path": grading_path}
     if basis == BASIS_PORTABLE:
@@ -149,7 +149,7 @@ def _instrument(engine: str, tier: str, grading_path: str, basis: str) -> str:
 def old_instruments(pairs, old_root: Path, keys) -> dict:
     """``{stored instrument: (engine, tier, basis)}`` reproducible from the old export's bytes."""
     from merlin.common.provenance import source_digest
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     olds = [old for _, old in pairs]
     digests = {
@@ -203,7 +203,7 @@ def rekey(
 ) -> dict:
     """Re-key the seed run's carried verdicts into ``dest``; returns what was carried and why not."""
     from merlin.common.paths import checkout_root
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     store, old_root = Path(store), Path(seed_framework)
     new_root = Path(new_root) if new_root is not None else checkout_root()
@@ -275,7 +275,7 @@ def rekey(
         index.setdefault(payload["capsule"], []).append(str(tier))
     if index:
         # Which test cases a seeded grade may expect to carry: orders its work, never a pass.
-        from merlin.targetgen.seeded_grade import write_index
+        from merlin.development.targetgen.seeded_grade import write_index
 
         report["seeded_index"] = str(write_index(dest, seed_run_id, index))
     same = (
@@ -304,7 +304,7 @@ def main(argv=None) -> int:
     parser.add_argument("--report", help="write the report here as well")
     parser.add_argument("--reviewed", help="JSON {file: {old_sha256, new_sha256, reason}} of reviewed judge changes")
     args = parser.parse_args(argv)
-    from merlin.targetgen import tier_cache
+    from merlin.development.targetgen import tier_cache
 
     store = Path(args.store) if args.store else tier_cache.cache_root()
     report = rekey(

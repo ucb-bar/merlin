@@ -46,7 +46,7 @@ def grade_selected_model(
         candidate_capsule = _pin_model_capsule(candidate_capsule, private_root / "capsule")
     checked_scope = nullcontext()
     if checked_source_diagnostic is not None:
-        from merlin.targetgen.checked_source_model_diagnostic import scoped_checked_source_diagnostic
+        from merlin.development.targetgen.checked_source_model_diagnostic import scoped_checked_source_diagnostic
 
         checked_scope = scoped_checked_source_diagnostic(checked_source_diagnostic)
     with checked_scope:

@@ -19,7 +19,7 @@ def require_support(target: str) -> Path:
 
     Only ABSENCE skips: a provider that IS selected and then fails to load still fails the test that
     reaches it, so a backend broken by a refactor never reads as a green skip."""
-    from merlin.targetgen import target_registry
+    from merlin.development.targetgen import target_registry
 
     selected = target_registry.explicit_targets().get(target)
     if selected is None:
@@ -29,7 +29,7 @@ def require_support(target: str) -> Path:
 
 def missing_support(*targets: str) -> list[str]:
     """The targets among ``targets`` with no support provider selected on ``MERLIN_TARGET_PATH``."""
-    from merlin.targetgen import target_registry
+    from merlin.development.targetgen import target_registry
 
     selected = target_registry.explicit_targets()
     return [target for target in targets if target not in selected]
@@ -47,7 +47,7 @@ def requires_support(*targets: str):
 
 def driver_file(target: str, name: str) -> Path:
     """``<selected support>/whole_model/<name>`` for ``target``, or skip when none is selected."""
-    from merlin.targetgen import target_registry
+    from merlin.development.targetgen import target_registry
 
     require_support(target)
     path = Path(target_registry.resolve(target).base) / "whole_model" / name
@@ -98,7 +98,7 @@ def requires_recipe_support(target: str):
 
 def selected_is_generic(target: str) -> bool:
     """Whether ``target``'s selected support is DATA served by a generic core backend (no private code)."""
-    from merlin.targetgen import plugins, target_registry
+    from merlin.development.targetgen import plugins, target_registry
 
     if target_registry.explicit_targets().get(target) is None:
         return False

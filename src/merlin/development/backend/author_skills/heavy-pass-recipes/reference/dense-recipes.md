@@ -1,7 +1,7 @@
 # Dense recipes: accumulator-bound output and long K
 
 Both recipes share one upstream with the shape-schedule-selection skill's
-`capacity_pipeline_example.py`: RTL facts -> `merlin.targetgen.address_space` capacities (array edge,
+`capacity_pipeline_example.py`: RTL facts -> `merlin.development.targetgen.address_space` capacities (array edge,
 operand and accumulator stores) -> `DenseProblem` with the array edge as the primitive tile ->
 `DenseLoopStorage`/`DenseResources` whose byte budgets ARE the store windows, so `dense_blocks`
 offers only blocks that fit. Nothing below is a number written into the lowering: every bound is a

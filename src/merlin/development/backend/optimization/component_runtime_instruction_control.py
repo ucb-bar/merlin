@@ -20,7 +20,7 @@ from merlin.development.backend.optimization.contracts import (
     sha256_file,
     write_json,
 )
-from merlin.targetgen.contract.build_service import BuildOnlyService
+from merlin.development.targetgen.contract.build_service import BuildOnlyService
 
 _SYMBOL = "merlin_private_prohibited_instruction_control"
 

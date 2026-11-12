@@ -84,9 +84,9 @@ REQUIRED_SCHEMAS = [
     "deployment_profile",
     # Quantization-format registry entry schema (merlin.common.quant_formats).
     "quant_format",
-    # Per-form exactness contract every whole-model gate enforces (merlin.perf.exactness).
+    # Per-form exactness contract every whole-model gate enforces (merlin.analysis.perf.exactness).
     "exactness_contract",
-    # Full-model check report (merlin.model_check): build, census, kernel exactness, model metrics.
+    # Full-model check report (merlin.evaluation.model): build, census, kernel exactness, model metrics.
     "model_check_report",
     # Custody of sealed Phase 0 evidence (merlin.experiments.corpus.evidence_custody).
     "evidence_seal",
@@ -667,7 +667,7 @@ def check_library_boundary(errors):
     # `merlin.common.corpora`, which has never existed -- an author following the instruction found no
     # such module, and the gate that reported four docstring false positives also told them the wrong
     # place to put the fix.
-    _sanctioned = "merlin.targetgen.corpora"
+    _sanctioned = "merlin.development.targetgen.corpora"
     for relative in _source_layout.python_files(Path(ROOT), _source_layout.SOURCE_SCAN_ROOTS):
         key = relative.as_posix()
         stable = _source_layout.policy_path(key)

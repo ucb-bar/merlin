@@ -12,7 +12,7 @@ import json
 from dataclasses import dataclass
 
 from merlin.compiler.backend.sourceproposal import SourceProposal, proposal_boundary, source_numerical_identity
-from merlin.xdsl_dialects.lowering.global_plan import CycleInterval, RegionAlternative
+from merlin.compiler.dialects.lowering.global_plan import CycleInterval, RegionAlternative
 
 
 def propose(source, *, resource, memory_domain, cuts=(), budget, preparation=None, workspace_limit=0):

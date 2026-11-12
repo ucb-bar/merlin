@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import module_source_path
+from merlin.development.targetgen.frontend_use_def import original_use_def_semantics
 from merlin.development.testgen import component_automatic_plan as P
 from merlin.development.testgen.component_coverage_plan import ComponentCoveragePlan
 from merlin.development.testgen.component_execution_budget import validate as validate_budget
@@ -22,7 +23,6 @@ from merlin.development.testgen.component_generation import digest
 from merlin.development.testgen.component_semantic_basis import BasisSource, ComponentSemanticBasis
 from merlin.development.testgen.minimal_software import validate_minimal_software
 from merlin.development.testgen.software_intake import REVIEW_SCHEMA, IndependentSoftwareIntake, _bindings
-from merlin.targetgen.frontend_use_def import original_use_def_semantics
 
 SCHEMA = "merlin.component_automatic_policy.v1"
 EFFECT_POLICY_SCHEMA = "merlin.component_automatic_policy.v2"
@@ -534,8 +534,8 @@ def resolve(
         for name in (
             __name__,
             P.__name__,
-            "merlin.targetgen.frontend_use_def",
-            "merlin.targetgen.frontend_trace",
+            "merlin.development.targetgen.frontend_use_def",
+            "merlin.development.targetgen.frontend_trace",
             "merlin.development.testgen.component_semantic_basis",
             "merlin.development.testgen.minimal_software",
             "merlin.development.testgen.component_arithmetic_obligations",
@@ -546,7 +546,7 @@ def resolve(
             _pin(module_source_path(name), "packing-source-reader")
             for name in (
                 "merlin.development.testgen.component_packing_sources",
-                "merlin.targetgen.corpus_spec",
+                "merlin.development.targetgen.corpus_spec",
             )
         )
     if typed_record is not None:
@@ -558,8 +558,8 @@ def resolve(
         sources += [
             _pin(module_source_path(name), "typed-add-reader")
             for name in (
-                "merlin.targetgen.frontend_typed_add",
-                "merlin.targetgen.torch_schema_defaults_observer",
+                "merlin.development.targetgen.frontend_typed_add",
+                "merlin.development.targetgen.torch_schema_defaults_observer",
                 "merlin.development.testgen.typed_add_sources",
                 "merlin.development.testgen.original_schema_defaults",
             )
@@ -759,8 +759,8 @@ def verify(record, *, report, verify_sources=True):
     effects = None
     selected_effects = _selected_effects(policy)
     if selected_effects:
+        from merlin.development.targetgen.frontend_operator_effects import original_operator_effects
         from merlin.development.testgen.operator_schema_intake import verify_record
-        from merlin.targetgen.frontend_operator_effects import original_operator_effects
 
         if record["schema"] not in {
             EFFECT_RECEIPT_SCHEMA,
@@ -951,7 +951,7 @@ def verify(record, *, report, verify_sources=True):
             str(module_source_path(name))
             for name in (
                 "merlin.development.testgen.component_packing_sources",
-                "merlin.targetgen.corpus_spec",
+                "merlin.development.targetgen.corpus_spec",
             )
         }:
             raise ValueError("automatic packing lost its exact source preparation reader")

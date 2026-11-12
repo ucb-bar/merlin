@@ -6,7 +6,7 @@ clang-23 (``MERLIN_CLANG``, ``MERLIN_MLIR_INSTALL`` or the checkout's ``third_pa
 them ships in this repo, and a hosted CI runner has none, so a test that lowers through them must skip
 there rather than fail on a missing interpreter deep inside the library.
 
-Resolution is :mod:`merlin.llvmlower.toolchain`'s own, so a skip names exactly the tool the library
+Resolution is :mod:`merlin.compiler.lower.model.toolchain`'s own, so a skip names exactly the tool the library
 would have run. Only ABSENCE skips: a toolchain that is present and then fails still fails the test.
 """
 
@@ -24,7 +24,7 @@ def _present(tool: Path) -> bool:
 
 def _refuse_selected_missing(absent, selection_keys, *, reason):
     """Missing optional tools may skip; an explicit unavailable selection fails."""
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     if absent and any(toolchain._env(key) for key in selection_keys):
         pytest.fail("selected " + reason, pytrace=False)
@@ -32,7 +32,7 @@ def _refuse_selected_missing(absent, selection_keys, *, reason):
 
 def missing_lowering() -> list[str]:
     """The pieces of the host lowering toolchain this host lacks, named as the library resolves them."""
-    from merlin.llvmlower import toolchain
+    from merlin.compiler.lower.model import toolchain
 
     absent = []
     if toolchain._env("MERLIN_COMPILER_DRIVER", "python") == "stock-cli":

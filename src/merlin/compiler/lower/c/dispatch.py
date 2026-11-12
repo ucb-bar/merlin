@@ -12,9 +12,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from math import lcm
 
+from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
 from merlin.compiler.schedule.arena import check_bounded_arena
 from merlin.runtime.program import MerlinProgram
-from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
 from .sources import c_source_pair
 

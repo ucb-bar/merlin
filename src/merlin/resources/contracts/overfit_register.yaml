@@ -98,7 +98,7 @@ entries:
     status: triaged
     owner: sched
     items:
-      - merlin/python/merlin/xdsl_dialects/schedule.py
+      - merlin/python/merlin/compiler/dialects/schedule.py
     why: >-
       Four ops of the scheduling-decision dialect -- `plan`, `bind`, `apply_policy` and
       `vector_strategy` -- are constructed NOWHERE outside the dialect's own example builder and read
@@ -121,7 +121,7 @@ entries:
     status: triaged
     owner: sched
     items:
-      - merlin/python/merlin/xdsl_dialects/lowering/schedule_decisions.py
+      - merlin/python/merlin/compiler/dialects/lowering/schedule_decisions.py
     why: >-
       Three more ops -- `hoist_pack`, `preserve_layout` and `keep_accumulator_live` -- ARE constructed
       on the production lowering path, and nothing ever reads them back. Measured 2026-09-17: one
@@ -143,7 +143,7 @@ entries:
     status: triaged
     owner: sched
     items:
-      - merlin/python/merlin/xdsl_dialects/schedule.py
+      - merlin/python/merlin/compiler/dialects/schedule.py
     why: >-
       Three members of the verifier-checked `KNOWN_INTERFACES` set -- `event_token_queue`,
       `producer_consumer_fifo` and `command_region` -- have zero consumers anywhere in the library
@@ -213,7 +213,7 @@ entries:
     status: triaged
     owner: compiler
     items:
-      - merlin/python/merlin/xdsl_dialects/lowering/compute_groups.py
+      - merlin/python/merlin/compiler/dialects/lowering/compute_groups.py
     why: >-
       `plan()` scores a group's epilogue absorption as admitted when growth stopped at nothing OR when
       a `quantize` is among its stages. The second clause is a statement about the QUANTIZATION REGIME

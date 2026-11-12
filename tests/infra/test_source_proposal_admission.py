@@ -10,9 +10,9 @@ from merlin.compiler.backend.sourceproposal import (
     admit_proposal,
     source_numerical_identity,
 )
-from merlin.llvmlower.offload_plan import bind_source
-from merlin.system.topology import select_topology
-from merlin.transforms.dense_ir import recognize_signed_integer_matmul
+from merlin.compiler.lower.model.offload_plan import bind_source
+from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
+from merlin.target.system.topology import select_topology
 
 
 def example():

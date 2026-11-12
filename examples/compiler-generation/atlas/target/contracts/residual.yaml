@@ -19,7 +19,7 @@ compute_units:
     semantic_capabilities:
       - {family: contraction, dtypes: [fp8_e4m3], ranks: [2, 3]}
       # Both below are what capability_derive establishes from the selected RTL facts and ISA role
-      # (derivation: merlin.targetgen.capability_derive.derive, via merlin.targetgen.capability_manifests.manifest_for)
+      # (derivation: merlin.development.targetgen.capability_derive.derive, via merlin.development.targetgen.capability_manifests.manifest_for)
       # census (semantic_capabilities_derived of manifest_for('atlas')), declared so the audit's
       # drift is empty rather than reporting them missing:
       #   elementwise_map <- role 'acc_readout_scaled' (MXUAccumulatorPopE1): the scaled readout of

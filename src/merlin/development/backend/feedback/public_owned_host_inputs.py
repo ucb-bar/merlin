@@ -53,9 +53,9 @@ def verify(selection, *, target, descriptor, repo=None):
     No directory search, target-name default, ambient host-selection fallback,
     synthetic model record, arena clamp or author-visible projection is used.
     """
+    from merlin.development.targetgen.target_experiment import load_target_experiment
     from merlin.runtime.boards import load_boards
     from merlin.runtime.modelinputs import selected_firrtl
-    from merlin.targetgen.target_experiment import load_target_experiment
 
     request = _pinned(selection)
     if request.stat().st_size > MAX_RECORD_BYTES:

@@ -486,7 +486,7 @@
  },
  "generator": {
   "method": "mlc RTL discovery (target-agnostic: mesh, datapaths(2 from cell geometry), lane_datapaths(0 named from lane replication), timing(29/109 modules), funct, register_layouts(12), elaborated_features(derived)) + chipyard FIRRTL grep/HW-port fallback",
-  "name": "merlin.targetgen.rtl.circt_introspect",
+  "name": "merlin.development.targetgen.rtl.circt_introspect",
   "version": "rtl-introspect-v12-inherent-attribute-graph"
  },
  "schema_version": "2.0"

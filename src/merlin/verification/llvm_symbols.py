@@ -2,7 +2,7 @@
 
 from xdsl.dialects.builtin import SymbolRefAttr
 
-from merlin.transforms.analysis_types import operation_name
+from merlin.compiler.transforms.analysis_types import operation_name
 
 
 def defined_function(module, symbol):

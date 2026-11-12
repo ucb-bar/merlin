@@ -13,8 +13,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from merlin.development.backend import launch_config as L
-from merlin.model_check import bundle as B
-from merlin.model_check import seal as S
+from merlin.evaluation.model import bundle as B
+from merlin.evaluation.model import seal as S
 
 
 def save(path: Path, value: object) -> None:

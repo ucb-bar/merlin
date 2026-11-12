@@ -57,8 +57,8 @@ def _exclusion_implementation():
             "merlin.development.testgen.connected_integer_qualification",
             "merlin.common.mlir_query",
             "merlin.common.strict_json",
-            "merlin.targetgen.contract.linalg_iface",
-            "merlin.targetgen.component_program",
+            "merlin.development.targetgen.contract.linalg_iface",
+            "merlin.development.targetgen.component_program",
             "merlin.verification.merlin_iface_semantics",
         )
     )
@@ -178,7 +178,7 @@ class FrozenPublicDiagnosticCorpus:
         result = deepcopy(original)
         result["source_role"] = "pytorch_model_slice"
         result["required_oracle_tiers"] = ["L0", "L1", "L2", "L3"]
-        from merlin.targetgen.capsule_common import schemas, verify_capture_tool
+        from merlin.development.targetgen.capsule_common import schemas, verify_capture_tool
 
         schemas.validate_capsule(result, contract=contract)
         verify_capture_tool(member.source_dir, result)

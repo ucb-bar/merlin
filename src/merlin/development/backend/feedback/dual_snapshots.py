@@ -36,7 +36,7 @@ from merlin.development.backend.feedback import (
     source_quiet,
 )
 from merlin.development.backend.feedback.background_admission import SubmissionNotReady
-from merlin.targetgen.capsule_scheduling import admission_relevance, observe_admission
+from merlin.development.targetgen.capsule_scheduling import admission_relevance, observe_admission
 
 #: How long a grade refused for low disk space waits before the volume is checked again.
 LOW_SPACE_RETRY_S = 60.0

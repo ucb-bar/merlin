@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from merlin.development.targetgen import capsule_golden as CG
 from merlin.evaluation.capsule.cpu import _grade_cpu_step
 from merlin.evaluation.capsule.diagnostics import _absent_outputs as _absent_outputs
 from merlin.evaluation.capsule.diagnostics import _oracle_kind as _oracle_kind
@@ -12,7 +13,6 @@ from merlin.evaluation.capsule.lanes import _sim_telemetry
 from merlin.evaluation.capsule.numerics import _absent_output_detail
 from merlin.evaluation.capsule.records import OracleMeasurement
 from merlin.evaluation.capsule.tier import TierResult as TierResult
-from merlin.targetgen import capsule_golden as CG
 
 
 def assess_oracle(

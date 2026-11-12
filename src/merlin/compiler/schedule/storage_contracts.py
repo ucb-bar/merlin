@@ -16,9 +16,9 @@ from merlin.compiler.kernel_ir.ir import Call, evaluate
 from merlin.compiler.schedule.configuration import ConfigurationAdapter, ConfigurationEffects
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, StorageOptimizationUnavailable
-from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
-from merlin.targetgen.isa_dialect_gen import encode_instruction
-from merlin.targetgen.isa_spec import resolve_fact_integer
+from merlin.compiler.semantic.allocation_types import Reservation, StorageBank
+from merlin.development.targetgen.isa_dialect_gen import encode_instruction
+from merlin.development.targetgen.isa_spec import resolve_fact_integer
 
 
 def _fields(value, keys, label):

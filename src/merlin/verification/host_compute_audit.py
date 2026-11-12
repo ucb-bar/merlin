@@ -16,7 +16,7 @@ budget. The raw arithmetic and excluded address counts remain visible: a narrow
 output may require many commands without any host arithmetic on tensor values.
 
 The host is always a RISC-V core, scalar or vector, so nothing here depends on the accelerator:
-the counts come from the emitted LLVM-dialect function (:mod:`merlin.perf.host_cfg_activity`), the
+the counts come from the emitted LLVM-dialect function (:mod:`merlin.analysis.perf.host_cfg_activity`), the
 placement from the compute-group plan, and the join from the function symbol.
 
 * An ACCELERATOR group is audited against the budget.
@@ -145,7 +145,7 @@ def audit_group(
     if function is None:
         row.update(verdict=NOT_EMITTED, why="no function with this symbol is in the emitted module")
         return row
-    from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
+    from merlin.analysis.perf.host_cfg_activity import analyze_host_cfg_activity
 
     activity = analyze_host_cfg_activity(function)
     dynamic = activity.get("dynamic_operations")

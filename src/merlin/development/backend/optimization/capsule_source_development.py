@@ -11,8 +11,8 @@ from pathlib import Path
 from merlin.common.cpu_pool import AUTHOR, cpu_priority
 from merlin.development.backend.optimization import public_diagnostic_corpus as PDC
 from merlin.development.backend.optimization.contracts import StageGateError, canonical_json, mapping_file, sha256_file
-from merlin.targetgen.common_transforms import CommonTransformService
-from merlin.targetgen.target_experiment import TargetExperiment
+from merlin.development.targetgen.common_transforms import CommonTransformService
+from merlin.development.targetgen.target_experiment import TargetExperiment
 
 
 def _pin(path):
@@ -272,8 +272,8 @@ def validate_preparation(development, selection, preparation, library, diagnosti
 
     if development is None or preparation is not None:
         return P.validate_stage_selection(selection, preparation, library, diagnostic, search, contract)
-    from merlin.targetgen.checked_source_model_diagnostic import MECHANISM, CheckedSourceModelDiagnostic
-    from merlin.targetgen.compiler_pass_selection import CompilerPassSelection
+    from merlin.development.targetgen.checked_source_model_diagnostic import MECHANISM, CheckedSourceModelDiagnostic
+    from merlin.development.targetgen.compiler_pass_selection import CompilerPassSelection
 
     if (
         type(development) is not CapsuleSourceDevelopment

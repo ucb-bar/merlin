@@ -3,7 +3,7 @@
 The optimization catalogue offers a mechanism only when every capability it requires is
 ``supported``; an ``unknown`` one turns it into a discovery question. Several of those
 capabilities are properties the RTL facts (``timing_structure``) and the derived command-ordering
-record (:mod:`merlin.targetgen.rtl.command_ordering`) already describe: which command queues the
+record (:mod:`merlin.development.targetgen.rtl.command_ordering`) already describe: which command queues the
 dispatch unit holds, whether a younger command proceeds before an older one completes, which
 address dependencies the hardware tracks, which configuration a later command reads, and which
 local rows one command covers.
@@ -58,7 +58,7 @@ def ordering_input(pin=None, *, facts_document=None, facts_path=None, contract_p
     the record is withheld (never a fallback) and the reason recorded. Without a pin, a derived
     ``command_ordering`` section of the facts themselves is used."""
     if pin:
-        from merlin.targetgen.rtl.command_ordering_selection import SCHEMA
+        from merlin.development.targetgen.rtl.command_ordering_selection import SCHEMA
 
         if isinstance(pin, (str, Path)):
             pin = {"path": str(pin), "sha256": _sha(pin)}

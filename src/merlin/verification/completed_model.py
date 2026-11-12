@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
-from merlin.llvmlower.compilation_recipe import verify_completed_recipe
+from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
 from merlin.runtime.modelinputs import strict_tree_sha256
 
 SCHEMA = "merlin.completed_model_link_revalidation.v1"
@@ -49,7 +49,7 @@ def _reopen_nested(value):
 
 
 def _original_policy(selected, receipt):
-    from merlin.llvmlower.host_graph_policy import read_host_graph_policy
+    from merlin.compiler.lower.model.host_graph_policy import read_host_graph_policy
 
     software = _reopen(selected["software_spec"])
     if selected["target"] != receipt["inputs"]["target"]:
@@ -91,7 +91,7 @@ def _layout_permissions(receipt, recipe):
         if expected is None or any(expected[k] != record[k] for k in ("path", "sha256")):
             raise ValueError("completed link layout replay differs from its completed recipe")
         _reopen(record)
-    from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
+    from merlin.compiler.lower.model.graph_optimizations import recheck_host_graph_artifacts
 
     root = Path(receipt["output"]["elf"]).parent / "pre_group_layout"
     if recheck_host_graph_artifacts(root, policy) != products:

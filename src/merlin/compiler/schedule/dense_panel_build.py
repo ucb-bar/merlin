@@ -78,7 +78,7 @@ def _windows(problem, block, storage, resources, offsets=None):
         raise ValueError("panel overlap requires one primitive K slice and assigned private accumulators")
     if block.m > resources.max_m_blocks or block.n > resources.max_n_blocks or block.k > resources.max_k_blocks:
         raise ValueError("panel block exceeds original supported domain")
-    from merlin.transforms.dense_planning import dense_blocks
+    from merlin.compiler.transforms.dense_planning import dense_blocks
 
     canonical = dense_blocks(problem, replace(resources, max_m_blocks=block.m, max_n_blocks=block.n, max_k_blocks=1))
     if block not in canonical:
@@ -131,7 +131,7 @@ def select_dense_panel_window_offsets(problem, block, resources, storage, *, ban
     """
     from math import lcm
 
-    from merlin.semantic_compiler.allocation_types import StorageBank
+    from merlin.compiler.semantic.allocation_types import StorageBank
 
     if (
         type(banks) is not tuple

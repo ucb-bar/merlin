@@ -10,8 +10,8 @@ def interface_sharing(products, *, pin, command_buffer=None, lanes=None, max_wit
     """Read shared operands from the original closed-grammar interface parser."""
     from collections import defaultdict
 
-    from merlin.kernels.mechanism_inference import packing_profiles
-    from merlin.perf.work_volume import work_from_command_buffer
+    from merlin.analysis.kernels.mechanism_inference import packing_profiles
+    from merlin.analysis.perf.work_volume import work_from_command_buffer
 
     uses = defaultdict(list)
     for product in products:
@@ -90,10 +90,10 @@ def interface_sharing(products, *, pin, command_buffer=None, lanes=None, max_wit
 
 def selected_lanes(*, facts=None, target=None):
     """Use original selected facts, never a width supplied by an artifact manifest."""
+    from merlin.analysis.kernels.mechanism_inference import ReductionLanes
     from merlin.compiler.schedule.blocks import BlockScheduleError
     from merlin.compiler.schedule.derive import geometry_from_address_space
-    from merlin.kernels.mechanism_inference import ReductionLanes
-    from merlin.targetgen.address_space import derive_address_space
+    from merlin.development.targetgen.address_space import derive_address_space
 
     lanes, inputs = None, []
     lane_status = dict(status="unknown", reason="selected_reduction_geometry_unavailable")
@@ -117,7 +117,7 @@ def selected_lanes(*, facts=None, target=None):
 
 
 def source_report(module, pin, *, facts=None, target=None):
-    from merlin.kernels.mechanism_inference import source_mechanisms
+    from merlin.analysis.kernels.mechanism_inference import source_mechanisms
 
     lanes, lane_status, inputs = selected_lanes(facts=facts, target=target)
     result = source_mechanisms(module, evidence_id="source:" + pin["sha256"], lanes=lanes)

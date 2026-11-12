@@ -19,7 +19,7 @@ from pathlib import Path
 
 from merlin.development.backend.optimization import compiler_libraries as overlays
 from merlin.development.backend.optimization import compiler_library_state as state
-from merlin.targetgen.compiler_library import (
+from merlin.development.targetgen.compiler_library import (
     CompilerLibrarySelection,
     active_compiler_library,
     scoped_compiler_library,
@@ -96,8 +96,8 @@ def _performance_guidance(workspace, run_dir, inventory, *, repo=None, descripto
         return text
     try:
         from merlin.development.backend.optimization_suggestions import prepare
-        from merlin.targetgen.rtl.command_ordering_selection import ENV as ORDERING_ENV
-        from merlin.targetgen.target_experiment import load_target_experiment
+        from merlin.development.targetgen.rtl.command_ordering_selection import ENV as ORDERING_ENV
+        from merlin.development.targetgen.target_experiment import load_target_experiment
 
         contract = load_target_experiment(descriptor).declared_contract_path() if descriptor else None
         # The run's ordering selection (pinned by the launch plan) settles ordering capabilities.
@@ -225,7 +225,7 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
 
     text += scaffold_prompt(snapshot)
     text += _performance_guidance(workspace, run_dir, inventory, repo=repo, descriptor=descriptor)
-    from merlin.targetgen.compiler_library_fork import enabled, stage
+    from merlin.development.targetgen.compiler_library_fork import enabled, stage
 
     if enabled(snapshot):
         stage(snapshot, workspace / "submission")
@@ -317,7 +317,7 @@ def child_arguments():
 
 def _shared_pass_file(path, digest, *, expected=None):
     from merlin.common.digest import sha256_file
-    from merlin.targetgen.shared_pass_contract import validate_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_contract import validate_shared_pass_requirement
 
     if (
         path.is_symlink()
@@ -337,7 +337,7 @@ def _shared_pass_file(path, digest, *, expected=None):
 
 def _shared_pass_arguments(contract):
     from merlin.common.digest import sha256_file
-    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_context import active_shared_pass_requirement
 
     expected = active_shared_pass_requirement()
     path = contract.parent.parent / "shared_pass_requirement.json"
@@ -384,7 +384,7 @@ def selected_child(function):
             if path != required_path:
                 raise ValueError("shared-pass child requirement is foreign to the selected run")
             requirement = _shared_pass_file(path, digest)
-        from merlin.targetgen.shared_pass_context import scoped_shared_pass_requirement
+        from merlin.development.targetgen.shared_pass_context import scoped_shared_pass_requirement
 
         with scoped_compiler_library(selection), scoped_shared_pass_requirement(requirement):
             token = _INITIAL.set((selection, contract))
@@ -411,7 +411,10 @@ def background_target(function):
     if _INITIAL.get() is None:
         return function, reference_joined
     child_arguments()
-    from merlin.targetgen.shared_pass_context import active_shared_pass_requirement, scoped_shared_pass_requirement
+    from merlin.development.targetgen.shared_pass_context import (
+        active_shared_pass_requirement,
+        scoped_shared_pass_requirement,
+    )
 
     requirement = active_shared_pass_requirement()
     selected = _INITIAL.get()
@@ -465,7 +468,7 @@ def sandbox_overlay(parts, *, workspace, bundle, context, private_run_dir):
         return list(result.argv), result.env_prefix
     if active_compiler_library() is None:
         return parts, ""
-    from merlin.targetgen.compiler_profile_admission import original_compiler_imports
+    from merlin.development.targetgen.compiler_profile_admission import original_compiler_imports
 
     if bundle.get("compiler_tool_profile") is None:
         result = overlays.apply(_Mounts(tuple(parts), ""))

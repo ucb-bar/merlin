@@ -146,7 +146,7 @@ def default_package(dtype: str, *, bundle: Path | None = None) -> str:
     says so.
     """
     from merlin.compiler.backend.host import DTYPE_STRATEGIES as _DTYPE_STRATEGIES
-    from merlin.targetgen.publish import PublishError, select_champion
+    from merlin.development.targetgen.publish import PublishError, select_champion
 
     strategy = _DTYPE_STRATEGY.get(dtype)
     if strategy is None and bundle is not None:

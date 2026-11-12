@@ -6,7 +6,7 @@
 # reporting path could not tell a ranking signal from an adjudicated measurement.
 #
 # ⚠️ THE CHECK THAT COULD NOT FAIL. The elaborated-RTL equivalence certificate compares OUTPUT BYTES
-# and nothing else -- `evidence: output_bytes`, stated in src/merlin/targetgen/
+# and nothing else -- `evidence: output_bytes`, stated in src/merlin/development/targetgen/
 # rtl_engine_policy.py's own docstring -- while the certificate producer WRITES the literal constants
 # `cycle_accurate: true` and `fidelity: elaborated_rtl_cycle_accurate` into every document it emits,
 # and the gate downstream then requires those fields to be true. They are true because they were
@@ -22,19 +22,19 @@
 # WHAT THIS FILE IS. The roster of rungs, as DATA -- the same posture as src/merlin/resources/contracts/storage.yaml
 # (concerns) and src/merlin/resources/contracts/perf_reference_targets.yaml (program identities): adding or
 # re-authorising a rung is a reviewed edit to a contract file, and no module may know what any
-# particular rung is called. Read by src/merlin/perf/measurement_ladder.py.
+# particular rung is called. Read by src/merlin/analysis/perf/measurement_ladder.py.
 #
 # WHAT THIS FILE IS NOT. A fourth spelling of the ladder. Three already exist and each is right about
 # its own axis:
 #
-#   * merlin.kernels.measurement.TIER_ORDER  -- the TIER a number was reached at, per target, with
+#   * merlin.analysis.kernels.measurement.TIER_ORDER  -- the TIER a number was reached at, per target, with
 #     `citable()` as the existing (claim-kind-blind) predicate. Every rung below binds to one of its
 #     tiers, and a test holds the two together.
-#   * merlin.targetgen.rtl_engine_policy.ENGINE_PRIORITY -- WHICH engine answers at the elaborated-RTL
+#   * merlin.development.targetgen.rtl_engine_policy.ENGINE_PRIORITY -- WHICH engine answers at the elaborated-RTL
 #     fidelity, in cost order. Its docstring already says the load-bearing thing: "the cert tier is a
 #     FIDELITY, not a simulator", and an engine adopted on an output-bytes certificate "has been
 #     adopted on a narrower claim than this ranking implies". That sentence is this file's thesis.
-#   * merlin.targetgen.runner_config.conventional_tier_sim() -- the capsule tier -> simulator map (L3 elaborated
+#   * merlin.development.targetgen.runner_config.conventional_tier_sim() -- the capsule tier -> simulator map (L3 elaborated
 #     RTL, L5 FireSim).
 #
 # The dimension NONE of them has is the one that was missing: authority is per CLAIM KIND. The
@@ -79,9 +79,9 @@ rungs:
 
   cost_proxy:
     summary: An analytic transaction-count model of what a schedule asks the device for.
-    tier: static                    # merlin.kernels.measurement.TIER_ORDER
+    tier: static                    # merlin.analysis.kernels.measurement.TIER_ORDER
     engines: []                     # not an engine; arithmetic over the schedule
-    implemented_by: merlin.perf.schedule_proxy
+    implemented_by: merlin.analysis.perf.schedule_proxy
     cost: microseconds
     establishes:
       - ranking
@@ -113,12 +113,12 @@ rungs:
 
   elaborated_rtl:
     summary: The elaborated design, simulated. A SEARCH SIGNAL and a structural oracle.
-    tier: rtl                       # merlin.kernels.measurement.TIER_ORDER
-    # Binds to merlin.targetgen.rtl_engine_policy.ENGINE_PRIORITY, which ranks these by COST because
+    tier: rtl                       # merlin.analysis.kernels.measurement.TIER_ORDER
+    # Binds to merlin.development.targetgen.rtl_engine_policy.ENGINE_PRIORITY, which ranks these by COST because
     # their fidelity is equal. Which one answers is an availability decision; none of them is
     # promoted to a cycle authority by being chosen.
     engines: [vcs, gsim, verilator]
-    capsule_tier: L3                # merlin.targetgen.runner_config.conventional_tier_sim()
+    capsule_tier: L3                # merlin.development.targetgen.runner_config.conventional_tier_sim()
     cost: minutes
     establishes:
       - ranking
@@ -148,9 +148,9 @@ rungs:
 
   fpga_firesim:
     summary: The design on an FPGA. The rung that adjudicates a cycle number.
-    tier: fpga                      # merlin.kernels.measurement.TIER_ORDER
+    tier: fpga                      # merlin.analysis.kernels.measurement.TIER_ORDER
     engines: [firesim]
-    capsule_tier: L5                # merlin.targetgen.runner_config.conventional_tier_sim()
+    capsule_tier: L5                # merlin.development.targetgen.runner_config.conventional_tier_sim()
     cost: about an hour, queued, one job at a time
     establishes:
       - ranking
@@ -164,7 +164,7 @@ rungs:
       what_it_covers: >-
         The elaborated design executing on hardware, with the cycle count read out of the design's
         own counters and carried in a queued-FireSim receipt
-        (merlin.perf.firesim_receipt, schema merlin_queued_firesim_receipt_v1).
+        (merlin.analysis.perf.firesim_receipt, schema merlin_queued_firesim_receipt_v1).
     # ADJUDICATION IS NOT THE WHOLE OF QUOTABILITY. A FireSim number is still not comparable to
     # another one across devices, program identities or cycle scopes -- see
     # src/merlin/resources/contracts/perf_reference_targets.yaml, which is the contract for those three refusals and

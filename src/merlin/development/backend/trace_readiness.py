@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.targetgen.rocc.semantics import BoundSemantics
+from merlin.development.targetgen.rocc.semantics import BoundSemantics
 
 
 def _observable_fields(program: dict) -> set[str]:
@@ -104,8 +104,8 @@ def require_ready(
     roots, *, target: str, contract: Path, output: Path, hidden_roots=None, expected_hidden_capsules: int | None = None
 ) -> dict:
     """Use the same selected backend and capsule discovery as grading, once per admission."""
+    from merlin.development.targetgen.capsule_common import discover_capsules
     from merlin.runtime.backends import base
-    from merlin.targetgen.capsule_common import discover_capsules
 
     backend = base.get_backend(target)
     capsules = discover_capsules(roots, labels={"public", "dev", "hidden"}, contract=contract)

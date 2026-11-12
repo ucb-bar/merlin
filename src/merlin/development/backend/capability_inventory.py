@@ -272,7 +272,7 @@ def stage_selected(workspace, run_dir, *, context, public_roots, contract, exclu
     from merlin.development.backend.feedback.public_programs import selected as selected_programs
     from merlin.development.backend.feedback.rolling_scalability import Selection
     from merlin.development.backend.joint_control import selected
-    from merlin.targetgen.capsule_common import discover_capsules, load_capsule
+    from merlin.development.targetgen.capsule_common import discover_capsules, load_capsule
 
     state = selected()
     if state is None:

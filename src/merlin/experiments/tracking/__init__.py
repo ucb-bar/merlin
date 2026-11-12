@@ -26,7 +26,7 @@ TARGET_PAGE = "target.html"
 def dashboard_dir(target: str, *, artifacts_root: str | Path | None = None) -> Path:
     """``out/artifacts/experiments/<target>/dashboard/`` (the contract's declared home)."""
     from merlin.common.artifacts import declared_home
-    from merlin.targetgen import package_records
+    from merlin.development.targetgen import package_records
 
     return (
         declared_home(DASHBOARD_HOME, artifacts_root=artifacts_root) / package_records.component(target) / DASHBOARD_DIR

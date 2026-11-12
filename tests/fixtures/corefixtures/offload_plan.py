@@ -1,9 +1,9 @@
 from dataclasses import replace
 
 from corefixtures.dense_source import contraction
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower.offload_plan import bind_source
-from merlin.transforms.pipeline_state import PipelineContext
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.lower.model.offload_plan import bind_source
+from merlin.compiler.transforms.pipeline_state import PipelineContext
 
 
 def example(*, widths=("i8", "i8", "i32"), shape=(3, 7, 5)):

@@ -24,7 +24,7 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     _project,
 )
-from merlin.semantic_compiler.allocate import _reservation_problem
+from merlin.compiler.semantic.allocate import _reservation_problem
 
 
 @dataclass(frozen=True)

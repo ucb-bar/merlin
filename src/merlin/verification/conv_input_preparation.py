@@ -12,9 +12,9 @@ import numpy as np
 from xdsl.dialects.builtin import DenseIntOrFPElementsAttr, IntegerType, ModuleOp, UnitAttr
 from xdsl.dialects.llvm import AddressOfOp, GlobalOp, LLVMArrayType, LLVMPointerType, LLVMVoidType
 
-from merlin.perf.constant_control_cfg import MAX_BLOCK_VISITS, MAX_OPERATIONS, integer_operation
-from merlin.perf.host_cfg_activity import _INTEGER, _payload_bytes
-from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.analysis.perf.constant_control_cfg import MAX_BLOCK_VISITS, MAX_OPERATIONS, integer_operation
+from merlin.analysis.perf.host_cfg_activity import _INTEGER, _payload_bytes
+from merlin.compiler.dialects.lowering.integer_constant_eval import constant_integer
 
 from .input_copy_batch import execute as execute_copy_batch
 from .input_copy_loops import copy_regions
@@ -89,7 +89,7 @@ def prove_input_preparation(function, activity, context, *, target, batch_copies
 
 
 def _prove(function, activity, context, *, target, batch_copies):
-    from merlin.targetgen.rocc.decode import _asm_template, _parse_insn, _semantics
+    from merlin.development.targetgen.rocc.decode import _asm_template, _parse_insn, _semantics
 
     if activity.get("status") != "derived":
         raise ValueError("input preparation requires independently finite CFG counts")
@@ -119,7 +119,7 @@ def _prove(function, activity, context, *, target, batch_copies):
     if semantics is None or getattr(semantics, "word_bits", None) != 64:
         raise ValueError("input preparation has no explicitly selected 64-bit operand observer")
     isa = semantics.isa_constants(target)
-    from merlin.targetgen.rtl.firrtl_load_states import LoadStateMapping
+    from merlin.development.targetgen.rtl.firrtl_load_states import LoadStateMapping
 
     load_states = getattr(semantics, "load_states", None)
     if load_states is not None and type(load_states) is not LoadStateMapping:

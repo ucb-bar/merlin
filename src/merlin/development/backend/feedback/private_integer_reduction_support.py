@@ -16,20 +16,20 @@ from typing import Any
 
 from merlin.common import mlir_query as mq
 from merlin.common.digest import is_sha256
-from merlin.development.backend.feedback import private_control_support as control
-from merlin.development.backend.feedback.private_index_source import _same_json_value
-from merlin.frontends.linalg_extremum_patterns import recognize_static_i64_argmin
-from merlin.frontends.linalg_integer_reductions import recognize_static_integer_reduction
-from merlin.frontends.linalg_patterns import (
+from merlin.compiler.frontend.linalg_extremum_patterns import recognize_static_i64_argmin
+from merlin.compiler.frontend.linalg_integer_reductions import recognize_static_integer_reduction
+from merlin.compiler.frontend.linalg_patterns import (
     InvalidLinalgPattern,
     _screen_static_linalg_source,
     recognize_static_pointwise,
 )
-from merlin.frontends.linalg_reduction_source_body import INTEGER_REDUCTION_TARGETS as _TARGETS
-from merlin.frontends.linalg_reduction_source_body import (
+from merlin.compiler.frontend.linalg_reduction_source_body import INTEGER_REDUCTION_TARGETS as _TARGETS
+from merlin.compiler.frontend.linalg_reduction_source_body import (
     STATIC_INTEGER_REDUCTION_SOURCE_BODY_SCHEMA,
     serialized_reduction_pattern,
 )
+from merlin.development.backend.feedback import private_control_support as control
+from merlin.development.backend.feedback.private_index_source import _same_json_value
 
 FIELD = "integer_reduction_host_support"
 PENDING = "source_integer_reduction_host_pending_build"

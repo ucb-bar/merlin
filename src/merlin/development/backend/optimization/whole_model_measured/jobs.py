@@ -15,8 +15,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from merlin.analysis.perf import whole_model_verdict as V
 from merlin.development.backend.optimization.whole_model_measured.identity import now
-from merlin.perf import whole_model_verdict as V
 
 JOB_SCHEMA = "merlin_whole_model_job_v1"
 RESULT_SCHEMA = "merlin_whole_model_measurement_result_v1"

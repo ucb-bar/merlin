@@ -23,7 +23,7 @@ from merlin.compiler.frontend.inputs import (
     load_compile_inputs,
     load_lifted_argument_bytes,
 )
-from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 
 @dataclass(frozen=True)

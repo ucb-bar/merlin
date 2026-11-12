@@ -76,8 +76,8 @@ They agree on an interval iff their 255 transition points coincide (127 with ReL
 first accumulator value with `y_ref ≥ q`, and `T_q` the first `t` with `clamp(rne(f32(t)·M)) ≥ q`.
 Exactness needs one integer `D = T_q − S_q` for every `q`. `group_exact_float.prove` checks exactly
 this, through `requantization.synthesize_bias`
-(`src/merlin/xdsl_dialects/lowering/group_exact_float.py:71-131`,
-`src/merlin/llvmlower/requantization.py:253-339`). Preconditions (`group_exact_float.py:27-68,84-112`):
+(`src/merlin/compiler/dialects/lowering/group_exact_float.py:71-131`,
+`src/merlin/compiler/lower/model/requantization.py:253-339`). Preconditions (`group_exact_float.py:27-68,84-112`):
 stages are binary32, ordered cast < scale < bias < ReLU < quantize. The output is signed i8 with zero
 point 0. Scales are positive, weights stored i8, the bias F32. The domain is `[−B, B]`, with
 `B = 128 · max_j Σ_k |W_kj| < 2^31`. It covers every int8 input, so the proof needs no sample data.
@@ -325,13 +325,13 @@ That changes the scale by at most `1/(2m)`, which is small because `s_A ≪ s_r`
 
 | Artifact | What it declares | Source |
 |---|---|---|
-| Recipe `quant_recipe_v1` | `families`; a digest over everything but `why`; opt-in families such as `activation_contraction` change it | `src/merlin/targetgen/quant_recipe.py:51-65,156-159,336-376` |
-| Recipe additions | `software_admission` and `software_numerical_engine`, added before the digest | `src/merlin/targetgen/quantization_spec.py:340-362` |
-| Software spec `merlin.software_spec.v1` | [software-spec.yaml](../target/software-spec.yaml); validated in code, with no file in `src/merlin/resources/schemas/`; unknown top-level keys are ignored | `src/merlin/targetgen/software_spec.py:169-314` |
+| Recipe `quant_recipe_v1` | `families`; a digest over everything but `why`; opt-in families such as `activation_contraction` change it | `src/merlin/development/targetgen/quant_recipe.py:51-65,156-159,336-376` |
+| Recipe additions | `software_admission` and `software_numerical_engine`, added before the digest | `src/merlin/development/targetgen/quantization_spec.py:340-362` |
+| Software spec `merlin.software_spec.v1` | [software-spec.yaml](../target/software-spec.yaml); validated in code, with no file in `src/merlin/resources/schemas/`; unknown top-level keys are ignored | `src/merlin/development/targetgen/software_spec.py:169-314` |
 | Numerical contracts | only `operand_sum_exhaustive_i8_v1`, a witness with `bound_lsb` and `max_error_lsb` | `software_spec.py:21,214-218,522-551` |
 | Spec identity | the file's sha256, carried by test generation evidence and the release corpus manifest | `software_spec.py:346-354` |
 | backend optimization exactness contract | `mode: exact` or `bounded` with `max_abs_lsb`; `forms: []` | [exactness.yaml](../backend-generation/optimization/exactness.yaml) |
-| model_check | submission rows `{id, opcodes, description, reason}`, judged by §4.3; any declaration fails the model gate as "not wired" | `src/merlin/model_check/approximations.py:15-50`; `commands.py:575-579` |
+| model_check | submission rows `{id, opcodes, description, reason}`, judged by §4.3; any declaration fails the model gate as "not wired" | `src/merlin/evaluation/model/approximations.py:15-50`; `commands.py:575-579` |
 
 Nothing links a declared approximation to a reviewed statement by the target. No approximation kind
 states an error bound.
