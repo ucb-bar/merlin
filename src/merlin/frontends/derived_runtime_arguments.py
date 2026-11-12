@@ -82,7 +82,7 @@ def checked_source_layout_call(parent_module, provenance, record, profile):
         refuse()
 
 
-def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False):
+def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False, source_views=False, provenance=None):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
 
@@ -167,13 +167,20 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
     inputs = [buffer for buffer in buffers if buffer["effect"] != "write"]
     outputs = {buffer["name"]: buffer for buffer in buffers if buffer["effect"] != "read"}
     mapping, result_order = record.get("source_operand_bindings"), record.get("source_result_order")
+    view_records = record.get("source_tensor_views")
+    if view_records is not None and (source_views is not True or not isinstance(view_records, dict)):
+        refuse()
+    view_names = set(view_records or {})
     if (not isinstance(mapping, dict) or set(mapping) != {b["name"] for b in inputs}
             or any(not isinstance(name, str) for name in mapping.values())
-            or len(set(mapping.values())) != len(mapping) or set(mapping.values()) != set(schema_names)
+            or len(set(mapping.values())) != len(mapping) or set(mapping.values()) | view_names != set(schema_names)
             or not isinstance(result_order, list) or len(result_order) != len(outputs)
             or set(result_order) != set(outputs) or len(call.results) != len(outputs)):
         refuse()
     by_name = dict(zip(schema_names, call.arguments, strict=True))
+    if view_records is not None:
+        from .derived_source_views import checked_source_views
+        checked_source_views(view_records, mapping, by_name, values, provenance)
 
     view_policy = record.get("tensor_views")
     if view_policy is not None and (tensor_views is not True or view_policy != "dense-row-major-v1"):

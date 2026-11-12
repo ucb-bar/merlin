@@ -73,7 +73,16 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   each call's concrete cost independently. Zero extents contribute zero; costs
   must fit i64. No evaluator archive/digest or producer-only shape claim supplies
   these facts. The evaluator budgets scratch separately from final outputs.
-  Dense model value views require `t2m.model-kernel-binding.v2` and its explicit
+  Source model tensor views require `t2m.model-kernel-binding.v3` and explicit
+  `t2m.captured-source-tensor-views.v1`. Independently recover static canonical
+  transpose/positive rank-preserving slice coordinates from original parent
+  SSA; compare every coordinate to captured typed integer kernel arguments and
+  the exact executable allocation-root pointer binding. Account for every
+  original schema tensor operand. Rehashed records, unrelated roots and profile
+  downgrades refuse. Logical relationships grant no physical public alias,
+  mutation or numeric permission; evaluator data remains excluded.
+  Dense model value views require `t2m.model-kernel-binding.v2` (or v3 with
+  source views) and its explicit
   `t2m.captured-dense-tensor-views.v1` profile. Reopen each original typed parent
   call. Optional semantic source-layout selections additionally require
   `t2m.captured-source-layout.v1`: bind all source geometry options to distinct

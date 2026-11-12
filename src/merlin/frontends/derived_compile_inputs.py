@@ -62,7 +62,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     weights = {name: checked(name) for name in ("weights.safetensors", "weights.safetensors.manifest.json")}
     bindings_raw = checked("kernel-bindings.json")
     bindings = json.loads(bindings_raw)
-    if (bindings.get("schema") not in ("t2m.model-kernel-binding.v1", "t2m.model-kernel-binding.v2")
+    if (bindings.get("schema") not in ("t2m.model-kernel-binding.v1", "t2m.model-kernel-binding.v2", "t2m.model-kernel-binding.v3")
             or bindings.get("mlir_sha256") != _sha(raw)):
         raise ValueError("derived source correspondence does not bind the current model")
     parent_raw = checked("parent/capture_receipt.json")
@@ -111,7 +111,12 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
-    tensor_views = bindings["schema"] == "t2m.model-kernel-binding.v2"
+    source_views = bindings["schema"] == "t2m.model-kernel-binding.v3"
+    if (source_views != any("source_tensor_views" in call for call in calls)
+            or source_views != ("source_tensor_view_binding_profile" in bindings)
+            or source_views and bindings["source_tensor_view_binding_profile"] != "t2m.captured-source-tensor-views.v1"):
+        raise ValueError("derived source tensor views require the explicit v3 binding profile")
+    tensor_views = bindings["schema"] == "t2m.model-kernel-binding.v2" or source_views and "tensor_view_binding_profile" in bindings
     if (tensor_views and (bindings.get("tensor_view_binding_profile") != "t2m.captured-dense-tensor-views.v1"
                         or not any(call.get("tensor_views") == "dense-row-major-v1" for call in calls))
             or not tensor_views and ("tensor_view_binding_profile" in bindings
@@ -137,7 +142,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
         for call in selected_calls:
             checked_source_layout_call(parent_module, provenance, call, source_layout_profile)
-        if spec.get("runtime_scalars") or any(call.get("tensor_views") for call in selected_calls):
+        if spec.get("runtime_scalars") or any(call.get("tensor_views") or call.get("source_tensor_views") for call in selected_calls):
             if (spec.get("runtime_scalars")
                     and bindings.get("argument_binding_profile") != "t2m.captured-runtime-arguments.v1"):
                 raise ValueError("derived runtime kernel arguments require their explicit binding profile")
@@ -146,7 +151,8 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 if type(ordinal) is not int or ordinal in runtime_ordinals:
                     raise ValueError("derived runtime kernel call correspondence is ambiguous")
                 runtime_ordinals.add(ordinal)
-                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call, tensor_views=tensor_views))
+                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call, tensor_views=tensor_views,
+                                      source_views=source_views, provenance=provenance))
         if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
             if not runtime_shapes and any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):

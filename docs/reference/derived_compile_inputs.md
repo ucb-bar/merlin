@@ -3,17 +3,20 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-09
+last_verified: 2026-11-11
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
   - src/merlin/frontends/derived_compile_inputs.py
+  - src/merlin/frontends/derived_runtime_arguments.py
+  - src/merlin/frontends/derived_source_views.py
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - src/merlin/xdsl_dialects/standard_bufferization.py
   - src/merlin/xdsl_dialects/standard_memref.py
   - merlin/tests/ir/test_derived_compile_inputs.py
+  - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
   - merlin/tests/ir/test_standard_bufferization.py
   - merlin/tests/ir/test_standard_memref.py
@@ -39,6 +42,20 @@ execution reports and their digests are absent from the compiler view. All
 selected files are checked against the producer receipt and their parent/kernel
 relations before an atomic publication. Unknown dependencies, unresolved calls,
 unregistered operations and malformed lineage refuse without publishing a stage.
+
+Bound-model correspondence v3 selects
+`t2m.captured-source-tensor-views.v1` for additional original schema operands
+that are views of a declared owning root. `derived_source_views` independently
+recovers static canonical transpose/positive rank-preserving slice coordinates
+from parent SSA, then compares every coordinate and type to captured typed
+integer arguments and the executable allocation-root pointer binding. Identical
+tensor casts are transparent. All original schema tensor operands remain
+accounted for. Rehashed records, wrong roots/pointers, changed scalar facts,
+word-changing regions and missing/downgraded profiles refuse before publication.
+Dense row-major value reshapes retain their existing optional profile alongside
+these source views. The public model ABI stays unchanged; logical relationships
+grant no physical alias, mutation, numeric or target permission. Evaluator
+archives/digests never supply view or scalar facts.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
 multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible
