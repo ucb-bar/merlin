@@ -40,6 +40,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   fields in the stage projection, broken byte links and authority grants;
   retain legacy pointer packages without a capsule. Descriptor-origin bindings
   require a complete capsule. Custody grants no source equivalence or aliases.
+  Capsule v2 additionally retains native generic original source, the printer
+  identity, executable protected TTIR and the original typed contract graph.
+  Check original/generic/protected links before copying; normalization must
+  consume the protected source, and an unnormalized generic stage must consume
+  that same protected source. Both v1 and v2 keep exact compiler rosters and
+  exclude evaluator fields; v2 supplies no arithmetic or wrapper ABI permission.
   `kernel_typed_storage.py` independently derives private byte-plane shapes and
   per-public-result guard costs for explicit typed storage transport. Public
   dtypes/shapes stay unchanged. Check the exact profile/function marker and

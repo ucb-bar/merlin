@@ -19,10 +19,102 @@ _BASE = frozenset(
     }
 )
 _NORMALIZED = frozenset({"allocation-normalized.ttir", "allocation-intake.json", "allocation-inventory.json"})
+_PROTECTED = frozenset(
+    {
+        "allocation-generic.mlir",
+        "allocation-native-print.json",
+        "allocation-protected.ttir",
+        "allocation-protection.json",
+    }
+)
 
 
 def _record(raw):
     return {"sha256": hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+
+def _checked_protection(copied, source_entry):
+    """Validate the v2 compiler-byte chain without importing producer code."""
+    report = json.loads(copied["allocation-protection.json"])
+    native = json.loads(copied["allocation-native-print.json"])
+    original = copied["allocation-original.ttir"]
+    if (
+        set(report)
+        != {
+            "schema",
+            "source_entry",
+            "fp8_overflow",
+            "artifacts",
+            "source_graph",
+            "fp8_conversions",
+            "assembly_conversions",
+            "grants_semantics",
+        }
+        or report.get("schema") != "t2m.source-protection.v1"
+        or report.get("source_entry") != source_entry
+        or report.get("grants_semantics") is not False
+        or report.get("fp8_overflow") not in (None, "ieee", "satfinite", "satfinite-nan-inf", "per-cast")
+        or report.get("artifacts")
+        != {
+            "original": _record(original),
+            "generic": _record(copied["allocation-generic.mlir"]),
+            "protected": _record(copied["allocation-protected.ttir"]),
+        }
+        or not isinstance(report.get("source_graph"), dict)
+        or set(report["source_graph"]) != {"operations", "blocks", "attributes"}
+        or not isinstance(report["source_graph"]["operations"], list)
+        or not report["source_graph"]["operations"]
+        or not isinstance(report["source_graph"]["blocks"], list)
+        or not isinstance(report.get("fp8_conversions"), list)
+        or not isinstance(report.get("assembly_conversions"), list)
+    ):
+        raise ValueError("allocation source protection differs from its original/generic/protected custody")
+    if (
+        set(native)
+        != {
+            "schema",
+            "triton_version",
+            "flags",
+            "operations",
+            "normalization",
+            "target_backend",
+            "native_source_verified",
+            "native_generic_roundtrip_verified",
+            "grants_semantics",
+            "source_sha256",
+            "output_sha256",
+            "implementation",
+        }
+        or native.get("schema") != "t2m.native-source-print.v1"
+        or native.get("normalization") != "not-performed"
+        or native.get("target_backend") != "not-invoked"
+        or native.get("grants_semantics") is not False
+        or native.get("native_source_verified") is not True
+        or native.get("native_generic_roundtrip_verified") is not True
+        or native.get("flags") != ["--mlir-print-op-generic", "--mlir-print-local-scope", "--mlir-print-debuginfo"]
+        or native.get("source_sha256") != _record(original)["sha256"]
+        or native.get("output_sha256") != _record(copied["allocation-generic.mlir"])["sha256"]
+    ):
+        raise ValueError("allocation source protection lacks its complete native source round trip")
+    implementation = native.get("implementation", {})
+    digest = implementation.get("binary_sha256")
+    if (
+        set(implementation)
+        != {
+            "binary_sha256",
+            "binary_bytes",
+            "printer_options",
+            "source_reference_revision",
+            "source_reference_is_build_receipt",
+        }
+        or type(implementation.get("binary_bytes")) is not int
+        or implementation["binary_bytes"] <= 0
+        or not isinstance(digest, str)
+        or len(digest) != 64
+        or any(c not in "0123456789abcdef" for c in digest)
+        or implementation.get("source_reference_is_build_receipt") is not False
+    ):
+        raise ValueError("allocation source protection lacks the native printer implementation identity")
 
 
 def checked_allocation_sources(checked, provenance, bound_source):
@@ -35,17 +127,23 @@ def checked_allocation_sources(checked, provenance, bound_source):
         return {}
     if (
         not isinstance(capsule, dict)
-        or capsule.get("schema") != "t2m.source-allocation-capsule.v1"
+        or set(capsule) != {"schema", "normalized", "artifacts", "grants_semantics"}
+        or capsule.get("schema") not in ("t2m.source-allocation-capsule.v1", "t2m.source-allocation-capsule.v2")
         or type(capsule.get("normalized")) is not bool
         or capsule.get("grants_semantics") is not False
     ):
         raise ValueError("unknown or authority-granting allocation source capsule")
     names = _BASE | (_NORMALIZED if capsule["normalized"] else frozenset())
+    protected = capsule["schema"] == "t2m.source-allocation-capsule.v2"
+    if protected:
+        names |= _PROTECTED
     if set(capsule.get("artifacts", {})) != names:
         raise ValueError("allocation source capsule has an incomplete or noncompiler roster")
     copied = {name: checked(name) for name in sorted(names)}
     if any(capsule["artifacts"][name] != _record(data) for name, data in copied.items()):
         raise ValueError("allocation source capsule artifact differs from its byte record")
+    if protected:
+        _checked_protection(copied, binding["source_entry"])
     if (
         binding.get("schema") != "t2m.source-allocation-bindings.v1"
         or binding.get("grants_semantics") is not False
@@ -72,7 +170,13 @@ def checked_allocation_sources(checked, provenance, bound_source):
     ):
         raise ValueError("descriptor allocation source interface differs from its custody record")
     stage = json.loads(copied["allocation-source-stage.json"])
-    input_name = "allocation-normalized.ttir" if capsule["normalized"] else "allocation-original.ttir"
+    input_name = (
+        "allocation-normalized.ttir"
+        if capsule["normalized"]
+        else "allocation-protected.ttir"
+        if protected
+        else "allocation-original.ttir"
+    )
     stage_records = {
         "source.ttir": _record(copied[input_name]),
         "lowered.mlir": _record(copied["allocation-input.mlir"]),
@@ -139,7 +243,8 @@ def checked_allocation_sources(checked, provenance, bound_source):
             not set(intake) <= allowed
             or intake.get("schema") != "t2m.intake-pass.v1"
             or intake.get("target_backend") != "not-invoked"
-            or intake.get("source_sha256") != _record(copied["allocation-original.ttir"])["sha256"]
+            or intake.get("source_sha256")
+            != _record(copied["allocation-protected.ttir" if protected else "allocation-original.ttir"])["sha256"]
             or intake.get("output_sha256") != _record(copied["allocation-normalized.ttir"])["sha256"]
             or inventory.get("normalization_passes") != intake.get("pipeline")
             or inventory.get("normalized_opcodes") != intake.get("normalized_opcodes")

@@ -16,7 +16,7 @@ def encoded(value):
     return json.dumps(value, sort_keys=True).encode()
 
 
-def fixture(*, normalized=False, descriptor=False):
+def fixture(*, normalized=False, descriptor=False, protected=False):
     original, generic, bound = b"original source", b"generic source", b"bound source"
     arguments = {
         "schema": "t2m.source-allocation-arguments.v2" if descriptor else "t2m.source-allocation-arguments.v1",
@@ -29,13 +29,59 @@ def fixture(*, normalized=False, descriptor=False):
         "allocation-arguments.json": encoded(arguments),
         "allocation-source-stderr.log": b"",
     }
+    if protected:
+        files.update(
+            {
+                "allocation-generic.mlir": b"complete original generic source",
+                "allocation-protected.ttir": b"executable protected source",
+            }
+        )
+        files["allocation-native-print.json"] = encoded(
+            {
+                "schema": "t2m.native-source-print.v1",
+                "triton_version": "3.7.1",
+                "flags": ["--mlir-print-op-generic", "--mlir-print-local-scope", "--mlir-print-debuginfo"],
+                "operations": 2,
+                "normalization": "not-performed",
+                "target_backend": "not-invoked",
+                "native_source_verified": True,
+                "native_generic_roundtrip_verified": True,
+                "grants_semantics": False,
+                "source_sha256": record(original)["sha256"],
+                "output_sha256": record(files["allocation-generic.mlir"])["sha256"],
+                "implementation": {
+                    "binary_sha256": "3" * 64,
+                    "binary_bytes": 128,
+                    "printer_options": "MLIR-registerAsmPrinterCLOptions; LLVM-C-LLVMParseCommandLineOptions",
+                    "source_reference_revision": "4" * 40,
+                    "source_reference_is_build_receipt": False,
+                },
+            }
+        )
+        files["allocation-protection.json"] = encoded(
+            {
+                "schema": "t2m.source-protection.v1",
+                "source_entry": "kernel",
+                "fp8_overflow": "per-cast",
+                "grants_semantics": False,
+                "artifacts": {
+                    "original": record(original),
+                    "generic": record(files["allocation-generic.mlir"]),
+                    "protected": record(files["allocation-protected.ttir"]),
+                },
+                "source_graph": {"operations": [{"opcode": "tt.func"}], "blocks": [], "attributes": "complete"},
+                "fp8_conversions": [],
+                "assembly_conversions": [],
+            }
+        )
+    initial = files["allocation-protected.ttir"] if protected else original
     if normalized:
         files["allocation-normalized.ttir"] = b"normalized source"
         intake = {
             "schema": "t2m.intake-pass.v1",
             "triton_version": "3.7.1",
             "target_backend": "not-invoked",
-            "source_sha256": record(original)["sha256"],
+            "source_sha256": record(initial)["sha256"],
             "output_sha256": record(files["allocation-normalized.ttir"])["sha256"],
             "pipeline": ["triton-rewrite-tensor-descriptor-to-pointer", "canonicalize"],
             "normalized_opcodes": ["tt.func"],
@@ -58,7 +104,7 @@ def fixture(*, normalized=False, descriptor=False):
             "--mlir-print-local-scope",
         ],
         "artifacts": {
-            "source.ttir": record(files["allocation-normalized.ttir"] if normalized else original),
+            "source.ttir": record(files["allocation-normalized.ttir"] if normalized else initial),
             "lowered.mlir": record(generic),
             "stderr.log": record(b""),
         },
@@ -66,7 +112,7 @@ def fixture(*, normalized=False, descriptor=False):
     }
     files["allocation-source-stage.json"] = encoded(stage)
     capsule = {
-        "schema": "t2m.source-allocation-capsule.v1",
+        "schema": "t2m.source-allocation-capsule.v2" if protected else "t2m.source-allocation-capsule.v1",
         "normalized": normalized,
         "artifacts": {name: record(data) for name, data in files.items()},
         "grants_semantics": False,
@@ -91,8 +137,9 @@ def fixture(*, normalized=False, descriptor=False):
 
 
 @pytest.mark.parametrize("normalized,descriptor", [(False, False), (True, False), (True, True)])
-def test_checked_source_capsules_copy_only_the_explicit_compiler_roster(normalized, descriptor):
-    trace, files, bound = fixture(normalized=normalized, descriptor=descriptor)
+@pytest.mark.parametrize("protected", [False, True])
+def test_checked_source_capsules_copy_only_the_explicit_compiler_roster(normalized, descriptor, protected):
+    trace, files, bound = fixture(normalized=normalized, descriptor=descriptor, protected=protected)
     selected = []
 
     def checked(name):
@@ -102,6 +149,65 @@ def test_checked_source_capsules_copy_only_the_explicit_compiler_roster(normaliz
     assert checked_allocation_sources(checked, trace, bound) == files
     assert set(selected) == set(files)
     assert all(name.startswith("allocation-") for name in selected)
+
+
+@pytest.mark.parametrize("normalized", [False, True])
+@pytest.mark.parametrize(
+    "change",
+    [
+        "generic",
+        "protected",
+        "original",
+        "entry",
+        "authority",
+        "evaluator",
+        "printer-source",
+        "printer-flags",
+        "printer-roundtrip",
+        "printer-authority",
+        "printer-evaluator",
+        "printer-binary",
+        "normalizer-input",
+        "downgrade",
+        "missing",
+    ],
+)
+def test_rehashed_protected_source_chain_refuses_inconsistent_links(normalized, change):
+    trace, files, bound = fixture(normalized=normalized, protected=True)
+    capsule = trace["source_argument_binding"]["source_capsule"]
+    name = "allocation-native-print.json" if change.startswith("printer-") else "allocation-protection.json"
+    report = json.loads(files[name])
+    if change in ("generic", "protected", "original"):
+        report["artifacts"][change] = record(b"different compiler source")
+    elif change == "entry":
+        report["source_entry"] = "other"
+    elif change in ("authority", "printer-authority"):
+        report["grants_semantics"] = True
+    elif change in ("evaluator", "printer-evaluator"):
+        report["reference_sha256"] = "5" * 64
+    elif change == "printer-source":
+        report["source_sha256"] = "5" * 64
+    elif change == "printer-flags":
+        report["flags"].append("--canonicalize")
+    elif change == "printer-roundtrip":
+        report["native_generic_roundtrip_verified"] = False
+    elif change == "printer-binary":
+        report["implementation"]["binary_sha256"] = "g" * 64
+    elif change == "downgrade":
+        capsule["schema"] = "t2m.source-allocation-capsule.v1"
+    elif change == "missing":
+        del files["allocation-protected.ttir"]
+    else:
+        name = "allocation-intake.json" if normalized else "allocation-source-stage.json"
+        report = json.loads(files[name])
+        if normalized:
+            report["source_sha256"] = record(files["allocation-original.ttir"])["sha256"]
+        else:
+            report["artifacts"]["source.ttir"] = record(files["allocation-original.ttir"])
+    files[name] = encoded(report)
+    capsule["artifacts"] = {name: record(data) for name, data in files.items()}
+    with pytest.raises(ValueError, match="source|protection|roster"):
+        checked_allocation_sources(files.__getitem__, trace, bound)
 
 
 @pytest.mark.parametrize(
