@@ -89,10 +89,6 @@ def module_alias(path: Path, root: Path) -> tuple[str, Path] | None:
 def policy_path(path: str) -> str:
     """Stable debt identity for the same merlin module, including shared-namespace distributions."""
     preparation = {
-        "src/merlin/development/testgen/canary_capture.py": "build_tools/scripts/extract_regeneration_canary.py",
-        "src/merlin/development/testgen/synthesis.py": "build_tools/scripts/synth_capsule_corpus.py",
-        "src/merlin/development/testgen/applications.py": "build_tools/scripts/ingest_applications.py",
-        "src/merlin/mining/xnnpack_capture.py": "build_tools/scripts/harvest_xnnpack_fixtures.py",
         "src/merlin/evaluation/w8a8_execution.py": "build_tools/scripts/make_w8a8_golden.py",
         "src/merlin/evaluation/w8a8_eager.py": "build_tools/scripts/make_w8a8_independent_golden.py",
     }
@@ -102,8 +98,6 @@ def policy_path(path: str) -> str:
         return "build_tools/extension_setup.py"
     if path in {"build_tools/hooks/pre-commit", "build_tools/hooks/commit-msg"}:
         return path.replace("build_tools/hooks/", "build_tools/git-hooks/", 1)
-    if path == "src/merlin/evaluation/frameworks/xnnpack_e2e.py":
-        return "build_tools/scripts/k1_e2e_xnnpack.py"
     for group in ("checks", "docs", "packaging", "deploy", "hooks"):
         prefix = f"build_tools/{group}/"
         if path.startswith(prefix):
@@ -113,7 +107,6 @@ def policy_path(path: str) -> str:
 
     # Physical organization does not clear a source's existing review debt.
     for canonical, former in (
-        ("src/merlin/evaluation/frameworks", "src/merlin/baselines"),
         ("src/merlin/development/backend/optimization", "src/merlin/experiments/phase2"),
         ("src/merlin/development/backend", "src/merlin/experiments/phase1"),
         ("src/merlin/development/testgen", "src/merlin/experiments/phase0"),
@@ -121,19 +114,6 @@ def policy_path(path: str) -> str:
     ):
         if path == canonical or path.startswith(canonical + "/"):
             return policy_path(former + path[len(canonical) :])
-    if path == "src/merlin/capture/pretranspose.py":
-        return policy_path("src/merlin/baselines/pretranspose_cli.py")
-    paper = "src/merlin/compare/paper_measurement_"
-    if path.startswith(paper) and path[len(paper) :] in {
-        "protocol.py",
-        "study.py",
-        "contract.py",
-        "build.py",
-        "process.py",
-        "execution.py",
-        "verification.py",
-    }:
-        return policy_path(paper + "controller.py")
     parts = path.split("/")
     if len(parts) >= 3 and parts[0] == "examples" and parts[1] in {"compilation", "compiler-generation", "targets"}:
         leaf = "compiler" if parts[2] == "compiler-api" else parts[2]
@@ -155,8 +135,6 @@ def policy_path(path: str) -> str:
         "src/merlin/compiler/quantization/contraction/constants.py": "merlin/python/merlin/semantic_compiler/precision_constants.py",
         "src/merlin/compiler/quantization/contraction/transform.py": "merlin/python/merlin/semantic_compiler/precision_transform.py",
         "src/merlin/compiler/quantization/contraction/codegen.py": "merlin/python/merlin/semantic_compiler/precision_codegen.py",
-        "src/merlin/compiler/quantization/contraction/scalar.py": "merlin/python/merlin/semantic_compiler/contraction_precision.py",
-        "src/merlin/compiler/quantization/contraction/batched.py": "merlin/python/merlin/semantic_compiler/batched_contraction.py",
         "src/merlin/compiler/lower/native/arguments.py": "merlin/python/merlin/llvmlower/pipeline.py",
         "src/merlin/compiler/lower/native/features.py": "merlin/python/merlin/llvmlower/pipeline.py",
         "src/merlin/compiler/lower/native/invoke.py": "merlin/python/merlin/llvmlower/pipeline.py",
@@ -172,7 +150,6 @@ def policy_path(path: str) -> str:
         "src/merlin/evaluation/capsule/adapters.py": "merlin/python/merlin/targetgen/capsule_runner.py",
         "src/merlin/evaluation/capsule/availability.py": "merlin/python/merlin/targetgen/capsule_runner.py",
         "src/merlin/evaluation/capsule/bundle.py": "merlin/python/merlin/targetgen/capsule_bundle.py",
-        "src/merlin/evaluation/capsule/bundle_worker.py": "merlin/python/merlin/targetgen/_capsule_bundle_worker.py",
         "src/merlin/evaluation/capsule/certificates.py": "merlin/python/merlin/targetgen/capsule_runner.py",
         "src/merlin/evaluation/capsule/cpu.py": "merlin/python/merlin/targetgen/capsule_runner.py",
         "src/merlin/evaluation/capsule/diagnostics.py": "merlin/python/merlin/targetgen/capsule_diagnostics.py",
@@ -221,23 +198,6 @@ def policy_path(path: str) -> str:
         "src/merlin/experiments/corpus/model_requirements.py": "merlin/python/merlin/targetgen/capsule_source.py",
         "src/merlin/experiments/corpus/model_sources.py": "merlin/python/merlin/targetgen/capsule_source.py",
         "src/merlin/experiments/corpus/spec_sources.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/analysis/dse/guidance/insights/facts.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/workloads.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/influence.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/audit.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/findings.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/emit.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/evidence.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/requirements.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/primitives.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/artifacts.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/omissions.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/plots.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/corpus_facts.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/summaries.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/necessity.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insight_mining.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
-        "src/merlin/analysis/dse/guidance/insights/capture.py": "merlin/python/merlin/dse_guidance/insight_mining.py",
         "src/merlin/compiler/optimizations/blocks.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/contraction.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/discovery.py": "merlin/python/merlin/llvmlower/impr_features.py",
@@ -272,12 +232,6 @@ def policy_path(path: str) -> str:
         return "packages/merlin-experiments/src/merlin_experiments/spec.py"
     if path == "src/merlin/experiments" or path.startswith("src/merlin/experiments/"):
         return "packages/merlin-experiments/src/merlin_experiments" + path[len("src/merlin/experiments") :]
-    for owner, historical in (("search", "dse"), ("pressure", "design_pressure"), ("guidance", "dse_guidance")):
-        prefix = "src/merlin/analysis/dse/" + owner
-        if path == prefix or path.startswith(prefix + "/"):
-            return "merlin/python/merlin/" + historical + path[len(prefix) :]
-    if path == "src/merlin/analysis/dse" or path.startswith("src/merlin/analysis/dse/"):
-        return "packages/merlin-dse/src/merlin_dse" + path[len("src/merlin/analysis/dse") :]
     for canonical, former in (
         ("experiments/benchmarks", "merlin/benchmarks"),
         ("src/merlin/resources/benchmarks", "merlin/benchmarks"),

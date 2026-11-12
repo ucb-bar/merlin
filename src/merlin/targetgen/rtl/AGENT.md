@@ -32,7 +32,6 @@ record and supplies neither command acceptance nor scheduling or arithmetic-form
 - `introspect.py` — merlin-rtl-introspect — structure-only FIRRTL census and selected target-declared role probes.
 - `hw_observations.py` — Observe exact HW input slices and equality constants without assigning ISA roles.
 - `muon_introspect.py` — Deterministic, no-LLM extraction of Muon (RadianceMuonConfig) hardware facts from the real RTL.
-- `replay_json_to_h.py` — Convert a RoCC replay spec JSON (gen_rocc_replay) into a C header the arc replay harness #includes.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
      Add hand-written notes (invariants, gotchas) below. -->
@@ -49,10 +48,6 @@ retained; unsupported, partial, aliased or changed source selections refuse.
 The observation does not issue primitive semantic review, source/binary or HW
 correspondence, instruction length, ELF ABI, prohibition, effects or runtime
 authority. A declaration-to-exact-HW-occurrence join remains separately required.
-
-Answer-bearing replay generation lives in the experiments distribution under the
-stable `merlin.targetgen.rtl.gen_rocc_replay` import name. Core owns this namespace
-initializer and the structure-only tooling; extensions never overwrite it.
 
 `hw_graph` projects uniquely owned legacy attributes into properties on a private
 analysis clone for the selected discovery reader. Preserve every original field,
@@ -295,10 +290,6 @@ A two-state cutpoint result supplies no reachability, protocol, instruction,
 physical-transfer or timing authority. Original owners retain file custody.
 
 ## Research workflow responsibilities
-
-`gen_rocc_replay` constructs replay inputs and independent expected outputs for
-the existing native harness. It is host-owned grading tooling, not structure-only
-RTL inspection. Its source identity must remain withheld in `common.access`.
 
 Core owns the `merlin.targetgen.rtl` initializer. Do not add one here. Keep the
 stable module CLI and existing numerical/layout behavior; target generalization

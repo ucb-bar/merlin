@@ -449,7 +449,7 @@ def _has_contraction(kfn) -> bool:
 
 
 def _classify_mesh_matmul(kfn, accept: tuple[str, ...] = ("f32",)) -> dict | None:
-    """Like xnnpack's classify_matmul_kernel but for the MESH route: a plain 2-D ``linalg.matmul`` whose two
+    """Classify a kernel for the MESH route: a plain 2-D ``linalg.matmul`` whose two
     ``ins`` are kernel block args, with an element type this target's mesh can take.
 
     ``accept`` is derived from the target's own declared operand format (plus ``f32``, the host lane's
@@ -631,28 +631,6 @@ def execute(
     compiled: dict[str, Any] = {}  # symbol -> HostModel
     n_unique = 0
 
-    # --- optional XNNPACK kernel-backend routing (default-off) -----------------------------
-    # Classify each kernel func once: if it is a plain 2-D f32 linalg.matmul, record the
-    # block-arg indices of its A/B operands so run_call can compute it through the XNNPACK
-    # host microkernel instead of the Merlin-compiled .so. All other kernels are unaffected.
-    xnn_routes: dict[str, dict] = {}
-    if kernel_backend == "xnnpack":
-        from .backends import xnnpack_host
-
-        if not xnnpack_host.is_available():
-            raise DispatchRuntimeError(
-                "kernel_backend='xnnpack' requested but the XNNPACK host GEMM lib could not "
-                "be built (see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)"
-            )
-        kfns = {
-            op.sym_name.data: op for op in module.walk() if op.name == "func.func" and "$kernel_" in op.sym_name.data
-        }
-        for sym, kfn in kfns.items():
-            route = xnnpack_host.classify_matmul_kernel(kfn)
-            if route is not None:
-                xnn_routes[sym] = route
-        execute.last_xnn_routed = len(xnn_routes)
-
     # --- mesh routing: run each matmul kernel on the target accelerator MESH (real activations) ----------
     # Same structural classifier picks the plain matmul kernels; each is executed on the target's mesh
     # oracle via operand injection (run_matmul_on_mesh) with the LIVE activation/weight arrays, and the
@@ -663,8 +641,7 @@ def execute(
     mesh_routes: dict[str, dict] = {}
     mesh_dp = None  # the target's CorpusBinding, whole (see mesh_datapath)
     # Kernel bodies by symbol, for the host-lane contraction count below. Built LAZILY and cached: the
-    # two existing `kfns` maps are each bound inside a branch (the xnnpack route, and
-    # `kernel_backend == "mesh"`), so neither exists on a plain host run -- reaching for one there is a
+    # `kfns` map is bound inside the `kernel_backend == "mesh"` branch, so it does not exist on a plain host run -- reaching for one there is a
     # NameError, not a missing count. One walk, and only if a host kernel actually executes.
     _host_kfn_cache: dict = {}
 
@@ -835,8 +812,8 @@ def execute(
             if op.name != "func.call":
                 continue
             sym, _ = _kernel_io(op)
-            if sym in seen or sym not in kfuncs or sym in xnn_routes or placements.is_device(op):
-                continue  # xnn-routed kernels are computed by XNNPACK, never compiled
+            if sym in seen or sym not in kfuncs or placements.is_device(op):
+                continue
             seen.add(sym)
             ktext = _ktext(sym)
             digest = hashlib.sha1(ktext.encode()).hexdigest()[:16]
@@ -869,27 +846,6 @@ def execute(
         symbol, outs = _kernel_io(op)
         host_lane = "native_cpu"
         host_evidence: dict = {}
-        route = xnn_routes.get(symbol)
-        if route is not None:
-            from .backends import xnnpack_host
-
-            a = np.ascontiguousarray(env[id(op.operands[route["a"]])], np.float32)
-            b = np.ascontiguousarray(env[id(op.operands[route["b"]])], np.float32)
-            out = xnnpack_host.gemm_f32(a, b).reshape(outs[0][0]).astype(outs[0][1])
-            env[id(op.results[0])] = out
-            mesh_counts["native_host_executed"] = True
-            _record_dispatch(
-                symbol,
-                "xnnpack_host",
-                selected_placement=placements.verify_call(op),
-                placement="host",
-                executor="xnnpack_host",
-                runtime_architecture=native_architecture,
-                target_executed=False,
-            )
-            if tap is not None:
-                tap(op, [out])
-            return
         mroute = mesh_routes.get(symbol)
         if mroute is not None:  # run this matmul LAYER on the target mesh (real data)
             from merlin.runtime.mesh import run_matmul_on_mesh
@@ -1405,8 +1361,6 @@ def run_model(
     if transform_audit_index is not None:
         _mesh_counts["transform_audit_index"] = str(transform_audit_index)
         _mesh_counts["transform_audit_qualification"] = transform_audit_qualification
-    if kernel_backend is None and _os.environ.get("MERLIN_XNNPACK_HOST") == "1":
-        kernel_backend = "xnnpack"
     if kernel_backend == "mesh" and mesh_target:
         # Compare the grouping the target admits with the outline THIS run will execute.  The
         # whole-model runtime still outlines one linalg operation per kernel; a separate planning
@@ -1454,7 +1408,6 @@ def run_model(
         "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
         "kernel_backend": kernel_backend,
         "quantization_passes": effective_quant_passes,
-        "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0) if kernel_backend == "xnnpack" else 0),
         **_mesh_counts,
     }
     goldens_path = model_dir / "goldens.npz"

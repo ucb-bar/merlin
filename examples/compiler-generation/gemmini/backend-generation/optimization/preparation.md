@@ -40,22 +40,6 @@ cannot express the required interface. Keep accelerator-containing work only.
 
 ## Propose at most eight fresh probe measurements
 
-First use the existing selector without running a simulator:
-
-```sh
-python -m merlin.experiments.timing_probes select \
-  --target-hardware gemmini --profile "$PROFILE" \
-  --facts "$FACTS" --contract "$CONTRACT" \
-  --labels "$ORIGINAL_PUBLIC_TIMING_ARCHIVE" \
-  --domain "$INDEPENDENT_PHASE2_LEDGER" \
-  --max-probes 4 --out "$PREP/selection.json"
-```
-
-The archive argument is the original protected public-label archive, not a
-repackaged public JSON projection. Pin the selected facts, timing-space/backend,
-profile, source and hardware identity. `--max-probes` limits distinct requests;
-four requests with two deterministic repeats permit eight fresh gSIM
-measurements. An imported selection above that limit is refused before measuring.
 
 Review this small request set before granting execution:
 

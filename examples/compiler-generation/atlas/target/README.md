@@ -156,13 +156,6 @@ python examples/compiler-generation/atlas/target/characterize_cell.py \
   --output /generated/atlas/cell-1 --domain accumulate
 ```
 
-Inspect the generated `characterization.json`, raw `cases.json`/`vectors.txt`,
-`cell.hw.mlir`, `verilog/`, `harness.cpp`, executed binary and stage logs. The
-shared producer generates every harness and records byte identities; nothing is
-manually written in an output directory. `verify_characterization` from
-`merlin.development.testgen.cell_probe` detects saved-artifact tampering and failed
-native execution. Its finite cell scope does not establish mesh reduction order,
-block scaling, VPU semantics, host conversion, dispatch or full-model lowering.
 
 The separate host manifest lists only FP32 matmul/batch-matmul candidates from
 the pinned RVV schedule. BF16 readout needs an explicit host conversion before an

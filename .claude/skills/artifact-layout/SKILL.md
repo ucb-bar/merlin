@@ -40,7 +40,6 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `kernel-mining/<target>/<op>/` | **target** backend | `merlin-rvv-mine/-autotune/-report` |
 | `kernel-index/<framework>/` | source framework | `kernel-index/-extract/-audit` |
 | `ceiling/` | cross-framework | `kernel-bench` |
-| `compare/<ts>/` | config×workload | `merlin-compare` |
 | `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` | substrate→model→experiment | `scripts/k1_*`, firesim/zephyr/baremetal sweeps |
 | `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
 | `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |

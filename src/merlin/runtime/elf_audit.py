@@ -18,7 +18,7 @@ demos warn about exactly this. Reporting the estimate turns "why is flashing tak
 number we printed up front.
 
 Reads section/segment headers with the toolchain's ``readelf``/``objdump`` (no pyelftools dependency),
-and reuses :mod:`merlin.baselines.rvv_audit` for the instruction mix — including its hard-won preference
+and reuses :mod:`merlin.runtime.rvv_audit` for the instruction mix — including its hard-won preference
 for ``llvm-objdump``, because GNU objdump silently mis-decodes rv64gcv in bulk and fabricates ~0 %
 vector coverage. Fails CLOSED: an unreadable ELF is an error, never a pass.
 """

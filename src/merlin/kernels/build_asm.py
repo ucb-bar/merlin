@@ -11,7 +11,7 @@ Design
 We compile with ``-c`` (object only, no link) so we never need a ``main``/libc, then
 disassemble the object with the chipyard ``objdump`` reused via
 :func:`merlin.llvmlower.custom_isa.disassemble`. The emitted text is plain ``objdump -d``
-so :meth:`merlin.kernels.compare.RvvFingerprint.from_objdump` consumes it unchanged.
+so objdump consumers read it unchanged.
 
 Two corpora, two difficulty tiers:
 

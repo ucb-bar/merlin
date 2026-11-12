@@ -176,7 +176,7 @@ def _resolve_plan(
             f"target {info.name!r} resolved but its dialect plan is unreadable "
             f"({type(exc).__name__}: {exc}). Routing cannot tell 'this target accelerates nothing' "
             f"from 'the plan is somewhere else', and guessing would silently compile the payload as "
-            f"generic computation. Pass target_package= (merlin.targetgen.registry.load_target) or "
+            f"generic computation. Pass target_package= or "
             f"an explicit dialect_plan=."
         ) from exc
 

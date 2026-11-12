@@ -98,8 +98,6 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - packages/merlin-analysis/src/merlin/baselines/buddy_harness.py
-      - merlin/python/merlin/compare/frozen_environment.py
       - merlin/python/merlin/mining/k1.py
     why: >-
       Invisible until 2026-09-14, when the no-target-name gate's name set was derived from the target
@@ -283,21 +281,3 @@ entries:
       recovery handles -- or when each capture ships a temporal descriptor next to its `model.mlir`
       that these read. Delete the entry when `MODEL_ARCH` holds no row that a capture cannot produce.
 
-  - id: model-rosters-and-layer-tokens-are-written-down-per-workload
-    kind: workload_assumption
-    status: untriaged
-    owner: unattributed
-    items:
-      - merlin/python/merlin/baselines/ggml.py
-      - merlin/python/merlin/baselines/buddy.py
-      - merlin/python/merlin/baselines/executorch.py
-      - merlin/python/merlin/dse_guidance/section_select.py
-    surfaced_by: >-
-      A sweep for siblings of `compute_groups.ABSORBABLE` while deriving the absorbable-stage decision
-      from the target's declared readout. Each of these holds a workload fact as a literal in shared
-      code: three baselines carry a hand-written roster of which models they run (`LLM_SUBSET`,
-      `DEFAULT_MODELS`), and section selection carries a token vocabulary for what a repeated layer is
-      called in a capture (`_LAYER_TOKENS`). Whether each is a default a caller may override or a limit
-      a caller cannot see has not been read, and writing a removal condition for code this sweep only
-      grepped would be the fabricated rigour this file's header warns against.
-    surfaced_on: "2026-09-22"

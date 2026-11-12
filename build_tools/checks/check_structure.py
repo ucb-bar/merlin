@@ -48,7 +48,6 @@ REQUIRED_DIRS = [
     "src/merlin/runtime",
     "src/merlin/verification",
     "src/merlin/experiments",
-    "src/merlin/analysis/dse",
     "src/merlin/common",
     "src/merlin/runtime/native/c",
     "src/merlin/runtime/native/abi",
@@ -68,15 +67,6 @@ REQUIRED_SCHEMAS = [
     "instruction_semantics",
     "dialect_plan",
     "kernel_record",
-    "abstraction_candidate",
-    "policy_rule",
-    "workload_region",
-    "design_pressure",
-    "interface_candidate",
-    "dse_result",
-    "exploitability_report",
-    "compilation_strategy",
-    "search_space",
     # Runtime + TargetGen plans (Merlin-owned runtime model; targets adapt it).
     "runtime_adapter_plan",
     "zephyr_plan",
@@ -87,22 +77,9 @@ REQUIRED_SCHEMAS = [
     "metrics",
     "trace",
     # Kernel-mining L6/L8 outputs (feed TargetGen's dialect_plan / llvm_extension_plan).
-    "runtime_candidate",
-    "dialect_requirement",
-    "llvm_requirement",
     # DSE-guidance + rvvgen subsystem schemas (were used but unlisted).
-    "baseline_cost",
-    "cpu_coupling",
-    "dse_axis_triage",
-    "temporal_workload_metadata",
     "rvv_package_manifest",
-    "rvv_result",
-    # Frozen-compiler paper methodology (study input + one matrix-cell result).
-    "paper_study",
-    "paper_run_result",
     "session_contract",
-    "compiler_freeze",
-    "cpu_host_experiment",
     "deployment_profile",
     # Quantization-format registry entry schema (merlin.common.quant_formats).
     "quant_format",
@@ -327,7 +304,7 @@ def _example_test_buckets():
     }
 
 
-_GENERIC_TEST_BUCKETS = {"kernels", "rvv", "dse", "targetgen", "ir", "runtime", "infra"}
+_GENERIC_TEST_BUCKETS = {"kernels", "rvv", "targetgen", "ir", "runtime", "infra"}
 TEST_BUCKETS = (
     _GENERIC_TEST_BUCKETS
     | {Path(relative).parts[-3] for relative in _reference_contract_dirs()}

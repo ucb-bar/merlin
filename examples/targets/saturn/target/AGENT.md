@@ -11,8 +11,6 @@ does not authorize executable plugin loading; no implementation should be added 
 ## What belongs here
 
 - Curated `contracts/` (target_contract.yaml, dialect_plan.yaml) and `docs/`.
-- `kernel_ceiling.yaml`: the bench config (toolchain flags, spike memory map, which bench measures
-  what) for this target's standalone benchmark corpus, read by `merlin.kernels.bench_ceiling`.
 - Pointers to external toolchains via env vars (`MERLIN_CHIPYARD`, `MERLIN_SATURN_SIMV`) — never vendored checkouts.
 
 ## What does not belong here

@@ -11,9 +11,7 @@ changes; the same gates run in pre-commit and CI.
 ## Source ownership
 
 `src/merlin/` owns the single installed package. Test generation lives in `merlin.development.testgen`; backend generation lives in
-`merlin.development.backend`. `merlin.experiments` selects and tracks workflows;
-design-space analysis lives in `merlin.analysis.dse`, and external-framework comparisons
-live in `merlin.evaluation.frameworks`.
+`merlin.development.backend`. `merlin.experiments` selects and tracks workflows.
 The root `merlin/` tree and separate project-named source packages are gone.
 The src layout keeps imports bound to the installed distribution rather than an
 incidental checkout directory. Optional dependencies stay lazy, and wheel membership
@@ -208,7 +206,7 @@ Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or ad
 # Test layout — one suite, organized by subsystem
 
 Cross-subsystem tests live in **`tests/`** (the root project's pytest `testpaths`), organized
-into **subsystem buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`.
+into **subsystem buckets**: `kernels/ rvv/ gemmini/ targetgen/ ir/ runtime/ infra/`.
 The permanent suite is capped at 150 collected cases across owned project roots,
 including parameterization. Retired workflow tests remain in Git/frozen inputs;
 their implementations ship in the main Merlin distribution. The independent
@@ -217,7 +215,7 @@ Rules for the cross-subsystem suite (enforced by
 `build_tools/checks/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
 - A test file is `tests/<bucket>/test_<area>.py` — **never at the `tests/` root**, and
-  `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
+  `<bucket>` must be one of the seven above. Place a new test in the subsystem it exercises.
 - Keep only the compact suite's distinct authored or pinned regression inputs in
   `tests/fixtures/` and `tests/data/`; generated workflow corpora belong under ignored `out/`.
 - Resolve repo paths via `merlin.common.paths.repo_root()`, `module_source_path()` or `data_path()` as appropriate — **never** `Path(__file__).parents[N]`

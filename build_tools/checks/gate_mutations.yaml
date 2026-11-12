@@ -41,17 +41,6 @@ proofs:
       the real JUnit admission fail and the durable report remain passed=false. Process fixtures
       establish no installed-wheel or device qualification.
 
-  check_reference_readiness.py:
-    proof: tests/infra/test_mutation_proofs_gate_can_fail.py::test_missing_reference_region_evidence_changes_the_real_readiness_verdict
-    mutation: >-
-      Invoke the real readiness main and assessment with complete bounded analyzer-transport reports,
-      then remove one included region's only semantic and source-correspondence projection.
-    removes: >-
-      Every semantic/correspondence satisfier for that region is absent. Both declared regions and
-      all seven instruction sites remain in the denominator, so a successful first region cannot
-      replace the missing second region. The same main first returns zero for complete reports,
-      then returns two and retains the blocked summary and original per-region diagnostic.
-
   check_no_target_name.py:
     proof: tests/infra/test_overfit_gates.py::test_a_target_identifier_planted_in_a_clean_module_fails_the_gate
     mutation: >-
@@ -63,17 +52,6 @@ proofs:
       tokenized check can see it; the module's path names no target, so path ownership cannot excuse
       it; the file is in neither the allowlist nor the token ratchet; the line carries no target-ok
       marker; and the clean run returning 0 proves nothing else in the file was already failing.
-  check_opset_coverage.py:
-    proof: tests/infra/test_opset_coverage_gate_can_fail.py::test_an_unclassified_operation_changes_the_real_gate_verdict
-    mutation: >-
-      Replace an explicitly structural source operation with an unclassified
-      operation in the declared vocabulary and invoke the real gate entry point.
-    removes: >-
-      The operation has neither a semantic family nor a structural home. The
-      explicit request has no capabilities, exclusions or ratchet that could
-      supply or forgive a home, and no unrelated cell or member failures. A
-      restored structural operation must return the verdict to clean.
-
   check_numeric_falsifiability.py:
     proof: tests/infra/test_numeric_falsifiability_gate_can_fail.py::test_the_verdict_and_not_only_the_finding_changes
     mutation: >-
@@ -179,17 +157,6 @@ proofs:
       Both ways that report could otherwise pass: the pass is not exempt, and the report is present
       and readable -- the companion test pins that a MISSING report is refused rather than called
       clean, which is the absence-reads-as-pass half of the same defect.
-
-  check_capability_backing.py:
-    proof: tests/infra/test_capability_backing.py::test_the_gate_fails_on_a_reintroduced_unbacked_narrowing
-    mutation: >-
-      Point the gate at one synthetic target whose only contract document declares an elementwise map
-      reachable only behind a contraction, justified by prose alone, and run its main with the ledger
-      ignored.
-    removes: >-
-      Every satisfier the claim could have: no ledger line forgives it, the target declares no hardware
-      pin whose read set could hold a cited file, and the comment names no in-repo path, test or
-      module. The same test then adds a module citation to show the gate passes once one resolves.
 
   check_test_budget.py:
     proof: tests/infra/test_ci_contracts.py::test_global_budget_counts_expanded_cases_not_functions

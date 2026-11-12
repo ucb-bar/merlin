@@ -7,7 +7,7 @@ backends that run the same command buffers on real ISAs/simulators. They are add
 per-instance modules registered there share the ``Backend`` protocol (resolve toolchain →
 ``compile_command_buffer`` → ``run_elf`` → ``parse_output`` → ``run_command_buffer``); a new backend
 is one registry entry. The in-tree instances are the CPU/RVV backends (``spike``, ``rvv_codegen``),
-the whole-model runners (``spike_model``, ``zephyr_model``) and the matmul-routing attribution backends
-(``xnnpack_board`` / ``openblas_board`` / ``ours_board`` / ``xnnpack_host``); accelerator (NPU/GPU)
+the whole-model runners (``spike_model``, ``zephyr_model``) and the outlined int8 matmul route
+(``outlined_int8_board``); accelerator (NPU/GPU)
 instances register from the selected target's support provider.
 """

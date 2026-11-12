@@ -92,8 +92,6 @@ def module_matches(module: str, prefix: str) -> bool:
 #: Whole packages withheld from every compiler author, independent of arm and mode. One identity for
 #: the full-compiler copy boundary, the author SDK staging and the pre-launch acceptance suite.
 AUTHOR_WITHHELD_PREFIXES = (
-    "merlin.baselines",
-    "merlin.capture.pretranspose",
     "merlin.kernels",
     "merlin.mining",
     "merlin.model_check",
@@ -379,13 +377,8 @@ MODULE_ACCESS = (
         ),
     ),
     _module("merlin.targetgen.torch_schema_batch_observer", "grader"),
-    _module("merlin.targetgen.rtl.gen_rocc_replay", "grader"),
-    _module("merlin.verify.replay", "grader"),
-    _module("merlin.verify.replay_layers", "grader"),
     _module("merlin.targetgen.model_slice_export", "grader"),
     _module("merlin.targetgen.group_capsules", "grader"),
-    _module("merlin.targetgen.store_probe", "grader"),
-    _module("merlin.targetgen.evaluation_cohort", "grader"),
     _module(
         "merlin.targetgen.capsule_runner",
         "grader",
@@ -396,7 +389,6 @@ MODULE_ACCESS = (
             "merlin.targetgen.capsule_diagnostics",
             "merlin.evaluation.capsule.runner",
             "merlin.evaluation.capsule.bundle",
-            "merlin.evaluation.capsule.bundle_worker",
             "merlin.evaluation.capsule.diagnostics",
         ),
     ),

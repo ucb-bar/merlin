@@ -167,7 +167,7 @@ def stamp_for(capsule: object, *, target: str) -> dict[str, Any] | None:
         "N": N,
         "out_elements": M * N,
         "geometry_class": label,
-        "classifier": "merlin.analysis.dse.guidance.shape_taxonomy.classify_geometry",
+        "classifier": "merlin.capture.shape_taxonomy.classify_geometry",
         "basis": declared["basis"],
     }
     if not census:

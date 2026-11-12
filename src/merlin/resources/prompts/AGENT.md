@@ -8,8 +8,6 @@ agentic loops. Curated inputs (cannot be generated).
 - `rvv_mining_v1.md`, `rvv_tuning_v1.md` — RVV-specific (their only consumers are RVV modules).
 
 ## Used by (the LIBRARY, not experiments)
-- `merlin.kernels.agent_mine` → `rvv_mining_v{V}.md`
-- `merlin.mining.tuning_agent` → `rvv_tuning_v{V}.md`
 Both resolve the dir via `merlin.common.paths.merlin_dir()/"prompts"` (robust — not `parents[N]`).
 
 ## Invariants

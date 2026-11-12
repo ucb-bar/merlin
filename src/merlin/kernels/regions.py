@@ -85,7 +85,6 @@ REGIONS: dict[str, Region] = {
             "exploration starts from.",
             (
                 "src/merlin/frontends/linalg_mlir.py",
-                "src/merlin/frontends/facts.py",
                 "src/merlin/frontends/registry.py",
             ),
             [
@@ -487,10 +486,7 @@ REGIONS: dict[str, Region] = {
             "cross-cutting",
             "Optimization heuristics (when to apply what)",
             "The CCA->lever router + escalation ladder; DSE candidate selection.",
-            (
-                "src/merlin/kernels/action_catalog.py",
-                "src/merlin/analysis/dse/guidance/candidates.py",
-            ),
+            ("src/merlin/kernels/action_catalog.py",),
             [
                 _ep(
                     "HEURISTIC",
@@ -506,10 +502,7 @@ REGIONS: dict[str, Region] = {
             "Cost model & target capabilities",
             "The cost model + the datatype->compute-unit target-capability manifests (also the INPUT to "
             "agentic target-dialect generation).",
-            (
-                "src/merlin/analysis/dse/search/cost_model.py",
-                "src/merlin/targetgen/capability_manifests.py",
-            ),
+            ("src/merlin/targetgen/capability_manifests.py",),
             [
                 _ep(
                     "DATA",

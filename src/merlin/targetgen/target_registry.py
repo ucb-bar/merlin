@@ -7,8 +7,8 @@ from one place, reusing the path resolvers in `merlin.targetgen.rtl.facts`.
 
 Two kinds of target:
 - ``reference`` — curated metadata on the legacy reference shelf or in physical-checkout examples.
-- ``generated`` — an isolated package under ``artifacts/targets/<name>/<run_id>/``, loaded by
-  :func:`merlin.targetgen.registry.load_target`. This module resolves the reference kind and the
+- ``generated`` — an isolated package under ``artifacts/targets/<name>/<run_id>/``, supplied by the
+  caller. This module resolves the reference kind and the
   base paths; the parametric dialect (from the plan) is built by
   ``merlin.xdsl_dialects.targets.factory``.
 """

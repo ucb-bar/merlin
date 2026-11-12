@@ -53,7 +53,6 @@ def audit(wheels: list[Path]) -> list[str]:
                     "merlin/verify/__init__.py",
                     "merlin/perf/__init__.py",
                     "merlin/kernels/__init__.py",
-                    "merlin/kernels/ceiling_drivers/__init__.py",
                 }:
                     errors.append(f"extension overwrites core namespace initializer: {distribution}:{name}")
     for label, entries in (("file", files), ("command", commands)):

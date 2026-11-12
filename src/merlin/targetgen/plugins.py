@@ -171,7 +171,7 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
     "dialect_module": PluginKey(
         "dialect_module",
         "Pointer to the package's own MLIR/SIMT dialect prototype. NOT the staged pipeline's target "
-        "dialect — that is the package's dialect.py, loaded by targetgen.registry.load_target.",
+        "dialect — that is the package's dialect.py.",
         consumed=False,
         expects="module",
     ),

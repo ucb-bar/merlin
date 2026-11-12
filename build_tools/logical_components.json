@@ -34,7 +34,6 @@
         "merlin.targetgen.completion_order_gate",
         "merlin.targetgen.coverage_report",
         "merlin.targetgen.declared_group_reference",
-        "merlin.targetgen.evaluation_cohort",
         "merlin.targetgen.executed_program",
         "merlin.targetgen.experiment_tokens",
         "merlin.targetgen.grade_offload",
@@ -67,44 +66,24 @@
         "merlin.targetgen.package_certification",
         "merlin.targetgen.private_head_dispatch",
         "merlin.targetgen.private_sibling_dispatch",
-        "merlin.targetgen.rtl.gen_rocc_replay",
         "merlin.targetgen.seeded_grade",
         "merlin.targetgen.simulation_certificate",
         "merlin.targetgen.source_component_selection",
         "merlin.targetgen.source_composition_preferences",
         "merlin.targetgen.source_head_selection",
-        "merlin.targetgen.store_probe",
         "merlin.targetgen.trace_check"
       ]
     },
     "merlin-dse": {
-      "namespaces": [
-        "merlin.analysis.dse"
-      ],
+      "namespaces": [],
       "modules": []
     },
     "merlin-mining": {
       "namespaces": [],
       "modules": [
-        "merlin.mining.autotune",
-        "merlin.mining.baseline",
-        "merlin.mining.beam",
-        "merlin.mining.beam_cli",
-        "merlin.mining.campaign",
-        "merlin.mining.corpus",
-        "merlin.mining.escape_sweep",
         "merlin.mining.fork",
-        "merlin.mining.fork_from_action",
-        "merlin.mining.mine",
-        "merlin.mining.op_sweep",
         "merlin.mining.pass_agent",
         "merlin.mining.pass_slot",
-        "merlin.mining.pass_slot_wiring",
-        "merlin.mining.pmu",
-        "merlin.mining.prior",
-        "merlin.mining.promote_champion",
-        "merlin.mining.reconstruction_batch",
-        "merlin.mining.reconstruction_cli",
         "merlin.mining.reconstruction_experiments",
         "merlin.mining.reconstruction_history",
         "merlin.mining.reconstruction_learning",
@@ -116,33 +95,12 @@
         "merlin.mining.reference_database_audit",
         "merlin.mining.reference_database_io",
         "merlin.mining.reference_subset_cards",
-        "merlin.mining.reference_subsets",
-        "merlin.mining.report",
-        "merlin.mining.route_report",
-        "merlin.mining.runner",
-        "merlin.mining.section_build",
-        "merlin.mining.select",
-        "merlin.mining.sweep",
-        "merlin.mining.tuning_agent",
-        "merlin.mining.wholemodel_proposer",
-        "merlin.mining.workloads",
-        "merlin.mining.xnnpack_capture"
+        "merlin.mining.reference_subsets"
       ]
     },
     "merlin-analysis": {
-      "namespaces": [
-        "merlin.agentreport",
-        "merlin.compare",
-        "merlin.plotting"
-      ],
-      "modules": [
-        "merlin.kernels.ceiling_drivers.multishape_compare",
-        "merlin.kernels.ceiling_drivers.run_expert_gemm",
-        "merlin.perf.recovery",
-        "merlin.verify.plots",
-        "merlin.verify.replay",
-        "merlin.verify.replay_layers"
-      ]
+      "namespaces": [],
+      "modules": []
     }
   }
 }

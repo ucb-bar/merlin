@@ -125,7 +125,7 @@ def lower_module(
 
     This is the whole-model / section compiler entry: ``input_module`` may hold a single matmul,
     the MVP repeated-RHS workload, a chained multi-layer model, or a sliced section — the staged
-    descent is the same. ``target_package`` (a merlin.targetgen.registry.TargetPackage) lowers
+    descent is the same. ``target_package`` (a loaded target package) lowers
     through an ISOLATED, dynamically-loaded target dialect (no core edits, plug-and-play); built-in
     reference targets still work via ``target``.
     """

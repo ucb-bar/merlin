@@ -62,7 +62,7 @@ jobs:
           uv sync --frozen
           --extra dev --extra verify --extra semantic-search
           --extra kernels-ast --extra kernels-exo --extra kernels-parquet
-          --extra kernels-plots --extra experiments --extra analysis --extra triton
+          --extra kernels-plots --extra experiments --extra analysis
       - name: provision independent constant-math reference headers
         run: |
           sudo apt-get update
@@ -104,8 +104,6 @@ jobs:
         run: uv run --no-sync python build_tools/checks/check_holdout_disjointness.py
       - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
         run: uv run --no-sync python build_tools/checks/check_fact_provenance.py
-      - name: capability-backing gate (a claim that narrows a target must cite its source)
-        run: uv run --no-sync python build_tools/checks/check_capability_backing.py
       - name: opcode-documentation gate (every accepted op has ABI semantics)
         run: uv run --no-sync python build_tools/checks/check_opcode_documentation.py
       - name: grammar-documentation gate (spec, dialect and parser accept the same ops)

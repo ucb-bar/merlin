@@ -718,14 +718,8 @@ def compile_rvv(
         out["trajectory_quality"] = res.get("trajectory_quality")
         out["trajectory_correctness"] = res.get("trajectory_correctness")
         out["stage_wall_ns"] = res.get("stage_wall_ns")
-        routed_key = {
-            "xnnpack": "n_xnn_routed",
-            "openblas": "n_openblas_routed",
-            "ours": "n_ours_routed",
-            "outlined_int8": "n_outlined_int8_routed",
-        }.get(kernel_backend or "")
-        eligible_key = {"xnnpack": "n_xnn_eligible", "openblas": "n_openblas_eligible"}.get(kernel_backend or "")
-        candidates_key = {"xnnpack": "n_xnn_candidates", "openblas": "n_openblas_candidates"}.get(kernel_backend or "")
+        routed_key = "n_outlined_int8_routed" if kernel_backend == "outlined_int8" else None
+        eligible_key = candidates_key = None
         out["execution"] = {
             "mode": res.get("execution_mode"),
             "requested_mode": res.get("requested_execution_mode"),

@@ -189,7 +189,7 @@ def lower_to_target(
     """Rebuild the interface module in the target dialect.
 
     ``spec`` (a :class:`TargetSpec`) overrides the built-in reference lookup — this is how an
-    isolated/generated target package (loaded via merlin.targetgen.registry) supplies its own
+    isolated/generated target package supplies its own
     dialect, without the target being hardcoded in this module. When ``spec`` is given,
     ``dialect_plan`` carries the package's interface->target lowering table.
     """
@@ -204,10 +204,7 @@ def lower_to_target(
     if spec is None:
         specs = _specs()
         if target not in specs:
-            raise LoweringError(
-                f"no in-tree reference target for {target!r}; pass a loaded "
-                f"target package's spec (merlin.targetgen.registry.load_target)"
-            )
+            raise LoweringError(f"no in-tree reference target for {target!r}; pass a loaded target package's spec")
         spec = specs[target]
     table = load_lowering_table(dialect_plan, target if dialect_plan is None else None)
     missing = [op for op in EXPECTED_INTERFACE_OPS if op not in table]

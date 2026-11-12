@@ -28,7 +28,7 @@ jobs:
           uv sync --frozen
           --extra dev --extra verify --extra semantic-search
           --extra kernels-ast --extra kernels-exo --extra kernels-parquet
-          --extra kernels-plots --extra experiments --extra analysis --extra triton
+          --extra kernels-plots --extra experiments --extra analysis
       - name: build wheel and source archives once
         run: |
           uv run --no-sync python -m build --no-isolation --outdir "$PWD/out/build/python/releases" .

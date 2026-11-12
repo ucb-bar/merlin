@@ -22,7 +22,7 @@ capsule_corpora:
 #   benchmarks       (standalone_benchmarks) the benchmark tree under the corpus root
 #   target           (standalone_benchmarks) the target that owns this corpus's kernel-ceiling bench
 #                    config: `kernel_ceiling.yaml` in that target's package, resolved through the target
-#                    registry by merlin.kernels.bench_ceiling (flags, memory map, which bench measures what)
+#                    registry (flags, memory map, which bench measures what)
 #   include_subdirs  (single_tu) header roots under the corpus root, in -I order ("" = the root itself)
 # The root is MERLIN_<NAME>_REPO when set (the same convention the kernel-index CLI uses), else the local
 # clone when present, else the ext fallback when present, else the local clone path (so an error names the

@@ -969,8 +969,6 @@ def build_k1_binary(
     op_profile: bool = False,
     dump_cap: int | None = 4096,
     max_session_steps: int | None = None,
-    ours_mr: int = 4,
-    ours_pack_b: bool = False,
     honor_pkg_cflags: bool = False,
 ) -> Path:
     """Cross-compile a K1 Linux RVV binary from the workload + RVV package.
@@ -987,26 +985,17 @@ def build_k1_binary(
     ``<work>/USE_MMAP_WEIGHTS`` records the weights.bin path so :func:`run_on_k1` deploys it.
     Returns the path to the built ELF.
 
-    ``kernel_backend="xnnpack"`` (default-off, additive): route the routable plain 2-D f32
-    ``linalg.matmul`` dispatches to XNNPACK's RVV GEMM ukernel instead of the Merlin-emitted RVV.
-    The prepared MLIR's matmuls are rewritten to ``call @merlin_xnn_gemm_f32`` (see
-    ``runtime.backends.xnnpack_board``); the rest of the model lowers UNCHANGED through the same
-    RVV pipeline, and the XNNPACK ukernel shim ``.o`` is linked in. With ``None`` (default) the
-    binary is byte-for-byte the existing path."""
+    ``kernel_backend="outlined_int8"`` links the reusable outlined W8A8 RVV GEMM body; ``None``
+    (default) lowers every operation through the ordinary pipeline."""
     if fallback_policy not in ("allow", "forbid"):
         raise ValueError("fallback_policy must be 'allow' or 'forbid'")
-    if kernel_backend not in {None, "xnnpack", "openblas", "ours", "qd8", "outlined_int8"}:
+    if kernel_backend not in {None, "outlined_int8"}:
         raise K1Error(f"unknown K1 kernel backend {kernel_backend!r}")
     openmp = _resolve_openmp_selection(parallel=parallel, parallel_harts=parallel_harts, host_effects=host_effects)
     parallel_harts = openmp.parallel_harts
-    # Per-dispatch matmul-bucket timing (default-OFF) is only meaningful with a routed
-    # kernel_backend (the timed region lives in the GEMM shim). Guard FIRST so it fails loud
-    # before any toolchain/model work, and never silently no-op's into an always-zero bucket.
-    if dispatch_timing and kernel_backend not in ("xnnpack", "openblas", "ours"):
-        raise K1Error(
-            "dispatch_timing=True requires kernel_backend in {xnnpack, openblas, ours} "
-            "(the matmul-bucket timer lives in the routed GEMM shim)"
-        )
+    # Per-dispatch matmul-bucket timing needs a routed GEMM shim that carries the timer.
+    if dispatch_timing:
+        raise K1Error("dispatch_timing=True requires a routed GEMM shim with a matmul-bucket timer")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     # PREPACKED WEIGHT LAYOUT (`prepack_weight_layout`, default-off). Apply the model's weight
@@ -1117,159 +1106,6 @@ def build_k1_binary(
             signatures,
             work / "outlined_int8",
             parallel=bool(parallel_harts),
-        )
-    # XNNPACK kernel-backend (default-off, additive): rewrite the routable f32 linalg.matmul ops
-    # in the PREPARED MLIR to external calls (@merlin_xnn_gemm_f32). Everything else lowers
-    # unchanged. n_xnn_routed records the count; the shim .o is built + linked below.
-    _dt = ["-DMERLIN_DISPATCH_TIMING"] if dispatch_timing else []
-    xnn_obj = None
-    n_xnn_routed = 0
-    n_xnn_candidates = 0
-    n_xnn_eligible = 0
-    if kernel_backend == "xnnpack":
-        from ..runtime.backends import xnnpack_board as xb
-
-        if not xb.is_available():
-            raise K1Error(
-                "kernel_backend='xnnpack' but the XNNPACK RVV ukernel/shim is unavailable "
-                "(see MERLIN_XNNPACK_REPO / tmp/kernels/XNNPACK)"
-            )
-        if pkg.is_int8:
-            raise K1Error("kernel_backend='xnnpack' is an f32 GEMM path; int8 datapath not supported")
-        prepared_text = prepared.read_text()
-        n_xnn_candidates, n_xnn_eligible = xb.matmul_routing_coverage(prepared_text)
-        rewritten, n_xnn_routed = xb.rewrite_matmuls_to_xnn(prepared_text)
-        if n_xnn_routed != n_xnn_eligible:
-            raise K1Error(
-                "XNNPACK rewrite did not route the complete declared eligible GEMM set: "
-                f"routed={n_xnn_routed} eligible={n_xnn_eligible}"
-            )
-        prepared = work / "model.prepared.xnn.mlir"
-        prepared.write_text(rewritten)
-        # one numbered alias per distinct matmul signature (private decl per signature).
-        n_sigs = rewritten.count("func.func private @merlin_xnn_gemm_f32_")
-        xnn_obj = xb.build_xnn_object(
-            cc,
-            [
-                "--target=riscv64-unknown-linux-gnu",
-                f"-march={K1_MARCH}",
-                f"-mabi={K1_MABI}",
-                "-O3",
-                "-ffast-math",
-                "-DNDEBUG",
-                *_dt,
-            ],
-            n_sigs,
-            work / "xnn",
-        )
-    # OpenBLAS kernel-backend (default-off, additive): the OpenBLAS analogue of the XNNPACK path
-    # above. Routes the SAME routable f32 linalg.matmul ops to OpenBLAS's RVV 8x8 GEMM ukernel
-    # (@merlin_openblas_gemm_f32); everything else lowers unchanged. n_openblas_routed records the
-    # count; the shim .o is built + linked below.
-    openblas_obj = None
-    n_openblas_routed = 0
-    n_openblas_candidates = 0
-    n_openblas_eligible = 0
-    if kernel_backend == "openblas":
-        from ..runtime.backends import openblas_board as ob
-
-        if not ob.is_available():
-            raise K1Error(
-                "kernel_backend='openblas' but the OpenBLAS RVV ukernel/shim is "
-                "unavailable (see MERLIN_OPENBLAS_REPO / tmp/kernels/OpenBLAS)"
-            )
-        if pkg.is_int8:
-            raise K1Error("kernel_backend='openblas' is an f32 GEMM path; int8 datapath not supported")
-        prepared_text = prepared.read_text()
-        n_openblas_candidates, n_openblas_eligible = ob.matmul_routing_coverage(prepared_text)
-        rewritten, n_openblas_routed = ob.rewrite_matmuls_to_openblas(prepared_text)
-        if n_openblas_routed != n_openblas_eligible:
-            raise K1Error(
-                "OpenBLAS rewrite did not route the complete declared eligible GEMM set: "
-                f"routed={n_openblas_routed} eligible={n_openblas_eligible}"
-            )
-        prepared = work / "model.prepared.openblas.mlir"
-        prepared.write_text(rewritten)
-        n_sigs = rewritten.count("func.func private @merlin_openblas_gemm_f32_")
-        openblas_obj = ob.build_openblas_object(
-            cc,
-            [
-                "--target=riscv64-unknown-linux-gnu",
-                f"-march={K1_MARCH}",
-                f"-mabi={K1_MABI}",
-                "-O3",
-                "-ffast-math",
-                "-DNDEBUG",
-                *_dt,
-            ],
-            n_sigs,
-            work / "openblas",
-        )
-    # OURS kernel-backend (default-off, additive): the attribution-measurement analogue of the
-    # XNNPACK/OpenBLAS paths above. Routes the SAME routable f32 linalg.matmul ops to OUR OWN MR=4
-    # accumulator-resident RVV v3 ukernel (@merlin_ours_gemm_f32), through the IDENTICAL rdtime
-    # bracket — so the ours matmul bucket is MEASURED, not attributed. n_ours_routed records the
-    # count; the shim .o is built + linked below.
-    ours_obj = None
-    n_ours_routed = 0
-    if kernel_backend == "ours":
-        from ..runtime.backends import ours_board as our
-
-        if not our.is_available():
-            raise K1Error(
-                "kernel_backend='ours' but the ours RVV GEMM shim is unavailable "
-                "(runtime/backends/ours_board/ours_gemm_rvv_shim.c)"
-            )
-        if pkg.is_int8:
-            raise K1Error("kernel_backend='ours' is an f32 GEMM path; int8 datapath not supported")
-        rewritten, n_ours_routed = our.rewrite_matmuls_to_ours(prepared.read_text())
-        prepared = work / "model.prepared.ours.mlir"
-        prepared.write_text(rewritten)
-        n_sigs = rewritten.count("func.func private @merlin_ours_gemm_f32_")
-        _ourdt = ["-DOURS_PACK_B"] if ours_pack_b else []
-        ours_obj = our.build_ours_object(
-            cc,
-            [
-                "--target=riscv64-unknown-linux-gnu",
-                f"-march={K1_MARCH}",
-                f"-mabi={K1_MABI}",
-                "-O3",
-                "-ffast-math",
-                "-DNDEBUG",
-                f"-DOURS_MR={int(ours_mr)}",
-                *_ourdt,
-                *_dt,
-            ],
-            n_sigs,
-            work / "ours",
-        )
-    # qd8 kernel-backend (default-off, additive): the DYNAMIC-INT8 analogue of the XNNPACK f32 path.
-    # Routes the SAME routable f32 linalg.matmul ops to XNNPACK's qd8-f32-qc8w RVV GEMM ukernel via a
-    # shim that per-row dynamic-quantizes the activation to int8 (+ the offline per-channel int8 weight),
-    # producing f32. FAIL-CLOSED: build_qd8_object raises until the shim is implemented + K1-validated
-    # (qd8 is lossy vs the f32 golden; its cos gate must be quantization-aware, calibrated on the board).
-    qd8_obj = None
-    n_qd8_routed = 0
-    if kernel_backend == "qd8":
-        from ..runtime.backends import xnnpack_board as xb
-
-        rewritten, n_qd8_routed = xb.rewrite_matmuls_to_qd8(prepared.read_text())
-        prepared = work / "model.prepared.qd8.mlir"
-        prepared.write_text(rewritten)
-        n_sigs = rewritten.count("func.func private @merlin_xnn_qd8_gemm_")
-        qd8_obj = xb.build_qd8_object(
-            cc,
-            [
-                "--target=riscv64-unknown-linux-gnu",
-                f"-march={K1_MARCH}",
-                f"-mabi={K1_MABI}",
-                "-O3",
-                "-ffast-math",
-                "-DNDEBUG",
-                *_dt,
-            ],
-            n_sigs,
-            work / "qd8",
         )
     # PER-OP WHOLE-MODEL PROFILE (default-off, additive). Interleave `@merlin_prof_mark(i32)`
     # calls between the top-level ops of @forward so the board can attribute wall time to the ops
@@ -1513,14 +1349,6 @@ def build_k1_binary(
         *c_inputs,
         model_o,
     ]
-    if xnn_obj is not None:  # XNNPACK RVV GEMM ukernel shim
-        base += [str(xnn_obj)]
-    if openblas_obj is not None:  # OpenBLAS RVV GEMM ukernel shim
-        base += [str(openblas_obj)]
-    if ours_obj is not None:  # ours v3 RVV GEMM ukernel shim (attribution)
-        base += [str(ours_obj)]
-    if qd8_obj is not None:  # qd8 dynamic-int8 RVV GEMM ukernel shim
-        base += [str(qd8_obj)]
     if outlined_int8_obj is not None:  # reusable W8A8 RVV GEMM body
         base += [str(outlined_int8_obj)]
     if not mmap_weights:
@@ -1553,16 +1381,6 @@ def build_k1_binary(
         json.dumps(_census_report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     print(f"[census linked ELF] {_linked_census.as_dict()}", flush=True)
-    if kernel_backend == "xnnpack":
-        (work / "N_XNN_ROUTED").write_text(str(n_xnn_routed))
-        (work / "N_XNN_ELIGIBLE").write_text(str(n_xnn_eligible))
-        (work / "N_XNN_CANDIDATES").write_text(str(n_xnn_candidates))
-    if kernel_backend == "openblas":
-        (work / "N_OPENBLAS_ROUTED").write_text(str(n_openblas_routed))
-        (work / "N_OPENBLAS_ELIGIBLE").write_text(str(n_openblas_eligible))
-        (work / "N_OPENBLAS_CANDIDATES").write_text(str(n_openblas_candidates))
-    if kernel_backend == "ours":
-        (work / "N_OURS_ROUTED").write_text(str(n_ours_routed))
     if kernel_backend == "outlined_int8":
         (work / "N_OUTLINED_INT8_ROUTED").write_text(str(n_outlined_int8_routed))
     return binary
@@ -1582,18 +1400,14 @@ def build_k1_session_binary(
 ) -> Path:
     """Cross-compile all programs in a version-2 session and link one K1 process.
 
-    XNNPACK/OpenBLAS swaps use one process-wide shim object. Stage-local monomorphic aliases are
-    renumbered into a global symbol range before lowering, avoiding both duplicate definitions and
-    cross-stage ABI aliasing while preserving one memory/timing domain for the complete session.
+    All stages share one memory and timing domain in a single process.
     """
     if fallback_policy not in {"allow", "forbid"}:
         raise ValueError("fallback_policy must be 'allow' or 'forbid'")
     openmp = _resolve_openmp_selection(parallel=False, parallel_harts=parallel_harts, host_effects=host_effects)
     parallel_harts = openmp.parallel_harts
-    if kernel_backend not in {None, "xnnpack", "openblas"}:
+    if kernel_backend is not None:
         raise K1Error(f"multi-program kernel backend {kernel_backend!r} is not supported")
-    if kernel_backend is not None and pkg.is_int8:
-        raise K1Error(f"kernel_backend={kernel_backend!r} is an f32 GEMM path")
     model_dir, work = Path(model_dir).resolve(), Path(work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     cc = toolchain_cc()
@@ -1617,25 +1431,7 @@ def build_k1_session_binary(
     features = frozenset(getattr(pkg, "compiler_features", []) or []) or None
     objects: list[Path] = []
     weights: list[dict[str, str]] = []
-    routed_total = 0
-    eligible_total = 0
-    candidate_total = 0
-    signature_total = 0
     stage_censuses: list[tuple[Path, str, dict[str, Any]]] = []
-    backend_module = None
-    backend_symbol = ""
-    if kernel_backend == "xnnpack":
-        from ..runtime.backends import xnnpack_board as backend_module
-
-        backend_symbol = "merlin_xnn_gemm_f32"
-        if not backend_module.is_available():
-            raise K1Error("multi-program XNNPACK RVV shim is unavailable")
-    elif kernel_backend == "openblas":
-        from ..runtime.backends import openblas_board as backend_module
-
-        backend_symbol = "merlin_openblas_gemm_f32"
-        if not backend_module.is_available():
-            raise K1Error("multi-program OpenBLAS RVV shim is unavailable")
 
     for record in manifest["programs"]:
         index, name = int(record["index"]), str(record["name"])
@@ -1657,22 +1453,6 @@ def build_k1_session_binary(
         )
         stage_features = stage_features or None
         renamed = session_bundle.rename_forward(prepared.read_text(encoding="utf-8"), str(record["entrypoint"]))
-        if backend_module is not None:
-            candidates, eligible = backend_module.matmul_routing_coverage(renamed)
-            if kernel_backend == "xnnpack":
-                renamed, routed = backend_module.rewrite_matmuls_to_xnn(renamed)
-            else:
-                renamed, routed = backend_module.rewrite_matmuls_to_openblas(renamed)
-            if routed != eligible:
-                raise K1Error(
-                    f"kernel_backend={kernel_backend!r} did not route the complete declared "
-                    f"eligible GEMM set for stage {name!r}: routed={routed} eligible={eligible}"
-                )
-            renamed, local_signatures = _renumber_backend_aliases(renamed, backend_symbol, signature_total)
-            signature_total += local_signatures
-            routed_total += routed
-            eligible_total += eligible
-            candidate_total += candidates
         prepared = stage_work / "model.prepared.renamed.mlir"
         prepared.write_text(renamed, encoding="utf-8")
         try:
@@ -1757,29 +1537,6 @@ def build_k1_session_binary(
             }
         )
 
-    if backend_module is not None:
-        if routed_total < 1 or signature_total < 1:
-            raise K1Error(f"kernel_backend={kernel_backend!r} routed no eligible operations in the session")
-        backend_work = work / str(kernel_backend)
-        flags = [
-            "--target=riscv64-unknown-linux-gnu",
-            f"-march={K1_MARCH}",
-            f"-mabi={K1_MABI}",
-            "-O3",
-            "-ffast-math",
-            "-DNDEBUG",
-        ]
-        if kernel_backend == "xnnpack":
-            objects.append(backend_module.build_xnn_object(cc, flags, signature_total, backend_work))
-            (work / "N_XNN_ROUTED").write_text(str(routed_total), encoding="utf-8")
-            (work / "N_XNN_ELIGIBLE").write_text(str(eligible_total), encoding="utf-8")
-            (work / "N_XNN_CANDIDATES").write_text(str(candidate_total), encoding="utf-8")
-        else:
-            objects.append(backend_module.build_openblas_object(cc, flags, signature_total, backend_work))
-            (work / "N_OPENBLAS_ROUTED").write_text(str(routed_total), encoding="utf-8")
-            (work / "N_OPENBLAS_ELIGIBLE").write_text(str(eligible_total), encoding="utf-8")
-            (work / "N_OPENBLAS_CANDIDATES").write_text(str(candidate_total), encoding="utf-8")
-
     marker = work / "USE_MMAP_WEIGHTS.json"
     marker.write_text(json.dumps(weights, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     main_c = work / "main_session.c"
@@ -1827,17 +1584,6 @@ def build_k1_session_binary(
     )
     (work / "HAS_SESSION_QUALITY").write_text("1", encoding="utf-8")
     return binary
-
-
-def _renumber_backend_aliases(text: str, symbol_base: str, offset: int) -> tuple[str, int]:
-    """Move one stage's zero-based backend aliases into a process-wide symbol range."""
-    if offset < 0:
-        raise ValueError("backend alias offset must be non-negative")
-    local_signatures = text.count(f"func.func private @{symbol_base}_")
-    for local in range(local_signatures - 1, -1, -1):
-        # Include `(` so `_1` cannot match `_10`; both MLIR calls and declarations use this token.
-        text = text.replace(f"@{symbol_base}_{local}(", f"@{symbol_base}_{offset + local}(")
-    return text, local_signatures
 
 
 def _namespace_stage_object(source: Path, destination: Path, *, index: int, entrypoint: str) -> Path:
@@ -2278,20 +2024,12 @@ def run_on_k1(
     session_repeats: int | None = None,
     dump_cap: int | None = 4096,
     max_session_steps: int | None = None,
-    ours_mr: int = 4,
-    ours_pack_b: bool = False,
 ) -> dict[str, Any]:
     """Cross-compile the workload for K1, deploy over scp, run, and parse OUT/METRIC/DONE.
 
     Returns the ``zephyr_model._parse_console`` result dict augmented with ``vlen`` (the bit-width
     the board reports — vlenb*8, falling back to the :data:`VLEN` constant). The K1 ``cycles`` from
     ``rdcycle`` are real silicon cycles (``cycle_accurate`` in the runner's measurement record).
-
-    ``kernel_backend="xnnpack"`` / ``"openblas"`` (default-off): route the f32 matmul dispatches
-    to XNNPACK's / OpenBLAS's RVV GEMM ukernel. Surfaced as ``n_xnn_routed`` / ``n_openblas_routed``
-    in the result. These are the vectorized path only — they do NOT fall back to scalar/omp (those
-    would drop the routing and silently lie about what ran), so a build/run failure surfaces as an
-    honest exception, not a fallback.
 
     ``dump_cap`` is the number of output elements the board prints, and therefore the CEILING on
     how much of the answer an accuracy verdict can cover -- the host gate scores the printed prefix
@@ -2370,8 +2108,6 @@ def run_on_k1(
                 op_profile=op_profile,
                 dump_cap=dump_cap,
                 max_session_steps=max_session_steps,
-                ours_mr=ours_mr,
-                ours_pack_b=ours_pack_b,
             )
         with board_lock():
             result = _deploy_run(mode, tag, bwork, binary)
@@ -2554,19 +2290,6 @@ def run_on_k1(
                     ),
                     "validation_console": qres.get("console", ""),
                 }
-            nx = bwork / "N_XNN_ROUTED"
-            if nx.is_file():
-                r["n_xnn_routed"] = int(nx.read_text().strip())
-                r["n_xnn_eligible"] = int((bwork / "N_XNN_ELIGIBLE").read_text().strip())
-                r["n_xnn_candidates"] = int((bwork / "N_XNN_CANDIDATES").read_text().strip())
-            no = bwork / "N_OPENBLAS_ROUTED"
-            if no.is_file():
-                r["n_openblas_routed"] = int(no.read_text().strip())
-                r["n_openblas_eligible"] = int((bwork / "N_OPENBLAS_ELIGIBLE").read_text().strip())
-                r["n_openblas_candidates"] = int((bwork / "N_OPENBLAS_CANDIDATES").read_text().strip())
-            nu = bwork / "N_OURS_ROUTED"
-            if nu.is_file():
-                r["n_ours_routed"] = int(nu.read_text().strip())
             ni = bwork / "N_OUTLINED_INT8_ROUTED"
             if ni.is_file():
                 r["n_outlined_int8_routed"] = int(ni.read_text().strip())
@@ -2604,10 +2327,6 @@ def run_on_k1(
         # Exact vector+multicore mode. A paper run must never silently turn this into scalar OpenMP
         # or single-core scalar; the caller selects fallback_policy='forbid' for that contract.
         res = _build_deploy_run("rvv_openmp", "rvv_openmp")
-    elif kernel_backend in ("xnnpack", "openblas", "ours"):
-        # XNNPACK/OpenBLAS/ours are the vectorized f32 routed paths; NO scalar/omp fallback (those
-        # drop the routing and would silently misreport what ran). Any failure is an honest exception.
-        res = _build_deploy_run("rvv", "rvv")
     else:
         try:
             res = _build_deploy_run("rvv", "rvv")

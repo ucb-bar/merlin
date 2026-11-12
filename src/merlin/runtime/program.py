@@ -53,7 +53,7 @@ class KernelEntry:
     roots: list[str] = field(default_factory=list)  # fused root op names (provenance)
     capability: str = "scalar"  # required target capability (scalar|rvv|systolic|simt|...)
     # Model-layer provenance carried from the dispatch node's ``prov.*`` (see the outliner). The
-    # SAME key the cross-compiler compare (ExecuTorch↔Merlin) and the section slicer join on. ``role``
+    # same key the section slicer joins on. ``role``
     # is intentionally NOT stored here — it is derived from ``fqn`` downstream (``dse_guidance``) to
     # keep ``runtime`` free of an analysis-layer import (``dse_guidance`` already imports ``runtime``).
     region_id: str = ""  # prov.region_id (e.g. "matmul_3")

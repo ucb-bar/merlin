@@ -1,17 +1,13 @@
 """What a target package can DO — one classifier, asked by every loader instead of each guessing.
 
-THE PROBLEM THIS IS FOR. Merlin has three loaders that each take a directory and hope:
+THE PROBLEM THIS IS FOR. Merlin has two loaders that each take a directory and hope:
 
 * :func:`merlin.runtime.backends.base._load_oot_backend` wants ``contracts/target_contract.yaml`` with
   a ``plugin.backend`` naming a module that self-registers;
 * :func:`merlin.targetgen.oot_runner.load_package` wants ``manifest.yaml`` (experiment ABI v0.1), an
-  executable tool, and four subprocess ``commands``;
-* :func:`merlin.targetgen.registry.load_target` wants ``manifest.yaml``, ``dialect.py`` exposing
-  ``SPEC_OPS``, and ``lowering.yaml``.
+  executable tool, and four subprocess ``commands``.
 
-The second and third **collide on one filename with disjoint schemas in sibling directories**: given
-``<dir>/manifest.yaml`` alone, no code can say which contract it claims without trial-parsing against
-two schemas, and each loader discovers the mismatch by failing somewhere inside itself — a ``KeyError``,
+Each loader discovers a mismatch by failing somewhere inside itself — a ``KeyError``,
 a ``ContractViolation``, a missing attribute — long after the point where the honest answer was simply
 "this package does not do that".
 

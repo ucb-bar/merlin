@@ -637,13 +637,7 @@ def detect_always_empty_field(corpus: _Corpus) -> list[Finding]:
 #: the list that decides which of them are ever OFFERED. Both directions of the difference are
 #: silent failures, so both are reported. Each side is ``(module, attribute, extractor)`` where the
 #: extractor turns the attribute's value into a set of names.
-REGISTRY_PAIRS = [
-    (
-        "impr-features/ranked-levers",
-        ("merlin.llvmlower.impr_features", "known", "call"),
-        ("merlin.mining.wholemodel_proposer", "RANKED_LEVERS", "first-of-pairs"),
-    ),
-]
+REGISTRY_PAIRS = []
 
 
 def _named_elsewhere(corpus: _Corpus, producer_file: str) -> tuple[set[str], set[str]]:

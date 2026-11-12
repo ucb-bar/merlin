@@ -78,42 +78,4 @@ Require a passing matched-ELF capsule check on gSIM and FireSim before fitting
 any transfer from gSIM cycles to board cycles. A FireSim wrapper is not a drop-in
 gSIM executable, even when it encloses the same chip configuration.
 
-The operator can check the backend generation Spike executable, extension, source revisions
-and full-board ABI, DTS and private program board selection against the backend optimization
-machine with:
 
-```sh
-python -m merlin.development.backend.spike_alignment \
-  --contract CONTRACT --chipyard-root CHIPYARD --spike-runtime SPIKE_RUNTIME \
-  --machines MACHINES --hardware-pins PINS \
-  --board-catalog CATALOG --private-model-spec SPEC
-```
-Set `SPIKE_RUNTIME` to the built `fire_aligned_30mhz` functional package's
-`runtime/` directory. Its deployment receipt and executable, Gemmini extension
-and Boost runtime library must remain together. Launch both backend generation and backend optimization
-with the explicit 16 GiB map at `0x80000000`; the backend generation contract must use
-`--isa=rv64imafdcb_zicsr_zifencei_zihpm_zfh_zba_zbb_zbs --priv=m -p1
--m0x80000000:0x400000000` before
-`{elf}` and select that runtime's library directory. Use the release-selected
-contract, `examples/compiler-generation/gemmini/backend-generation/optimization/whole-model-machines.yaml`,
-`src/merlin/resources/contracts/hardware_pins.yaml`, the release-selected board catalog and
-private full-model specification. A passing report proves those selected Spike,
-ABI, board and DTS identities align; its `rtl_equivalence_proven: false` is deliberate.
-
-Before launch, run the independent gSIM alignment check with the selected
-release contract and facts:
-
-```sh
-python -m merlin.development.backend.gsim_alignment \
-  --contract CONTRACT --rtl-facts FACTS \
-  --chipyard-root CHIPYARD --hardware-pins PINS \
-  --board-catalog CATALOG --gsim-dts GSIM_DTS
-```
-
-Require `gsim_source_aligned: true`. This verifies the reproduced elaboration
-receipt, source commits recorded for the FireSim bitstream, facts FIRRTL,
-strict emulator build receipt, and matching host memory map and ISA in the
-generated gSIM and FireSim DTS files. The historical bitstream's build-time source
-state was not completely preserved, so matching commits alone cannot prove
-chip equivalence. Structural comparison and matched-ELF measurements are still
-required before timing transfer.

@@ -125,8 +125,6 @@ _SHARED_SOURCE_FILES = (
     "compiler/quantization/contraction/constants.py",
     "compiler/quantization/contraction/transform.py",
     "compiler/quantization/contraction/codegen.py",
-    "compiler/quantization/contraction/scalar.py",
-    "compiler/quantization/contraction/batched.py",
     "compiler/transforms/contraction_k.py",
     "compiler/transforms/contraction_mn.py",
     "compiler/transforms/contraction_mnk.py",

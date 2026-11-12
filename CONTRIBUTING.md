@@ -27,9 +27,8 @@ them via environment variables (copy `.env.example` → `.env` and edit). The re
 ## Where things go
 
 - **Code**: shared compiler machinery in `src/merlin`; test and backend generation engines in
-  `src/merlin/development`, workflow selection/tracking in `src/merlin/experiments`,
-  external-framework comparisons in `src/merlin/evaluation/frameworks`, and analysis
-  in `src/merlin/analysis`. There is one installed
+  `src/merlin/development`, workflow selection/tracking in `src/merlin/experiments`, and
+  analysis in `src/merlin/analysis`. There is one installed
   `merlin` namespace; do not create another root package or project-named façade.
   Experiment definitions live in
   `experiments/catalog.yaml`; the root experiments tree contains only nine authored

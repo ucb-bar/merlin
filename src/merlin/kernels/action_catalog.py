@@ -1007,11 +1007,20 @@ def achieved_residual(action: CompilerAction, achieved_cca) -> list[str]:
 
 
 def shape_regime_of(op: str, m: int, n: int, k: int) -> str:
-    """The shape regime (square_large/skinny/...) for an (op, M, N, K) — reuses the canonical
-    bench_ceiling classifier (regimes, never exact shapes)."""
-    from .bench_ceiling import shape_regime
-
-    return shape_regime(op, m, n, k)
+    """The shape regime for an (op, M, N, K): a stable string (``vector``, ``square_small``,
+    ``square_medium``, ``square_large``, ``skinny`` or ``rectangular``), never an exact shape."""
+    mn = min(m, n)
+    if mn <= 1:  # dot / elementwise: N=K=1, M=length
+        return "vector"
+    if m == n == k:
+        if m >= 256:
+            return "square_large"
+        if m >= 32:
+            return "square_medium"
+        return "square_small"
+    if mn <= 16:
+        return "skinny"
+    return "rectangular"
 
 
 def applies_to_shape(action: CompilerAction, regime: str) -> bool:

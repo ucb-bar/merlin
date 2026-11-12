@@ -17,7 +17,7 @@ runtime:
   backends: [linux_k1, spike]
   default_backend: linux_k1
   # The cross-toolchain this target is built with, declared as data so the code that locates it
-  # (merlin.baselines.toolchain_locator) names no vendor. `env` locates the install; a vendor release
+  # (merlin.common.toolchain_locator) names no vendor. `env` locates the install; a vendor release
   # extracts to a versioned directory matched by `release_dirs` one or two levels below it;
   # `default_install` (repo-relative) is used only when the variable is unset.
   toolchain:

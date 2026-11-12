@@ -115,5 +115,5 @@ and design notes. Earlier explanations remain available through Git history;
 use their recorded source revision when reproducing an older result. They do
 not describe the current API by default.
 
-Board measurement commands live in `tools/benchmarks/`; the reusable comparison
-implementations remain in `src/merlin/compare/` and `evaluation/frameworks/`.
+Board measurement commands live in `tools/benchmarks/`. Comparison baselines live in
+the separate merlin-baselines repository.

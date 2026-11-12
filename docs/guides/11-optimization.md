@@ -15,8 +15,6 @@ code_refs:
   - src/merlin/kernels/cca.py
   - src/merlin/kernels/cca_compare.py
   - src/merlin/kernels/action_catalog.py
-  - src/merlin/mining/fork_from_action.py
-  - src/merlin/kernels/search_step.py
   - src/merlin/development/backend/optimization_suggestions.py
   - src/merlin/development/backend/operation_optimizations.py
   - src/merlin/development/backend/authoring.py

@@ -53,8 +53,7 @@ else:
     # merlin-opt runs out of THIS checkout. The shared venv may have merlin installed from a
     # different worktree, so PYTHONPATH is pinned rather than inherited.
     #
-    # MERLIN_LIT_PYTHONPATH overrides that pin, and exists for exactly one caller: the historical
-    # replay (merlin.verify.replay) runs this suite against a SHADOW copy of the package with old
+    # MERLIN_LIT_PYTHONPATH overrides that pin, and exists for a historical replay, which runs this suite against a SHADOW copy of the package with old
     # files written over it, to find out whether these tests would have rejected a defect that
     # actually shipped. Without the override the suite would silently test the current tree and
     # report a clean pass for every historical defect -- a check that could not run reporting success,

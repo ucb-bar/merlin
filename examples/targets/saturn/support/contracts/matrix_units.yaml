@@ -18,7 +18,7 @@
 # The REVISION these paths are read at is declared separately, in hardware_pins.yaml, and named by `pin`.
 # This file says where to look; that one says which checkout.
 #
-# Consumed by `merlin.llvmlower.opu_shim` and `merlin.kernels.opu_cert`.
+# Consumed by `merlin.llvmlower.opu_shim`.
 version: 1
 
 units:

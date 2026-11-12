@@ -166,24 +166,6 @@ workspace may hold a subset or an edited copy: rerun the script on your own tree
 | 2 | row_fiber_schedule | row_source | row_candidates | * | True | host_tensor |
 | 4 | row_fiber_conformance | row_candidates | row_realization | - | False | host_tensor |
 
-### `merlin.kernels.reconstruction:make_dense_reconstruction_adapter.original`
-
-| stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
-|---|---|---|---|---|---|---|
-| 0 | dense-source | - | source_region | - | False | structured |
-
-### `merlin.kernels.reconstruction:make_dense_reconstruction_adapter.plan`
-
-| stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
-|---|---|---|---|---|---|---|
-| 1 | dense-decisions | source_region | schedule_plan | - | False | structured |
-
-### `merlin.kernels.reconstruction:make_dense_reconstruction_adapter.consume`
-
-| stage | pass | requires | produces | invalidates | mutates_ir | ir_level |
-|---|---|---|---|---|---|---|
-| 2 | dense-consumer | source_region, schedule_plan | program | - | False | structured |
-
 ### `merlin.llvmlower.automatic_destinations:prepare_automatic_destinations`
 
 | stage | pass | requires | produces | invalidates | mutates_ir | ir_level |

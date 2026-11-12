@@ -620,8 +620,8 @@ def main() -> None:
     ap.add_argument(
         "--kernel-backend",
         default=None,
-        help="route matmuls to a fast expert kernel (xnnpack/openblas/ours) so the "
-        "per-op breakdown isolates the NON-matmul 94%% when the GEMM is fast",
+        help="route int8 matmuls to the outlined GEMM body (outlined_int8) so the per-op "
+        "breakdown isolates the non-matmul work",
     )
     ap.add_argument(
         "--features",

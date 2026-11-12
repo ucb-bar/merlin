@@ -407,9 +407,6 @@ The `m[vd]...` column above describes the architectural intent. **On the elabora
 four are wider than that: `vli.all` and `vli.row` clear every `m` register, not only the one `vd` names.**
 Anything already staged in `m` is gone.
 
-Measured per instruction by injecting it into a passing kernel at a point where an operand is live
-(`merlin.targetgen.isa_side_effects`). Every row below was run on the elaborated Verilator RTL (L4) and
-reproduced identically on the arc cosim (L3):
 
 | instruction | declared destination | perturbs another live register? |
 |---|---|---|

@@ -184,27 +184,6 @@ python3 -m merlin.experiments.post_freeze.manager_result \
   --entrypoint "${MERLIN_FIRESIM_MANAGER_ENTRYPOINT:?set the selected manager wrapper}"
 ```
 
-For the selected runtime execution hook, the fixed FireSim integration invokes
-the following **on the runtime host, at the actual driver call**. The trailing
-argv is the concrete driver invocation supplied by the reviewed launch code,
-including its actual boot operand. `REMAINING_SECONDS` comes from the manager's
-remaining elapsed deadline, not a fresh budget after setup. Place the output in
-a unique directory and copy its three observation files back before teardown.
-
-```sh
-python3 -m merlin.experiments.post_freeze.runtime_driver \
-  --request "$REQUEST" --request-sha256 "$REQUEST_SHA256" --model "$MODEL" \
-  --download-record "$DOWNLOAD_RECORD" --driver-script "$SIM_RUN_SCRIPT" \
-  --cwd "$SIMULATOR_CWD" --output "$NEW_RUNTIME_OBSERVATIONS" \
-  --wall-seconds "$REMAINING_SECONDS" -- "$ACTUAL_DRIVER" "${ACTUAL_ARGS[@]}"
-```
-
-This records the arguments actually passed to the driver without parsing shell
-text. Pin the hook and driver bytes in the fixed installed contract, preserve
-the generated script, and collect `runtime-driver.json`, `elf-before.json` and
-`elf-after.json` alongside the other required records. Missing observations on
-a killed host remain missing evidence. The hook does not prove filesystem
-isolation or grant full-model numerical qualification.
 
 The publisher currently handles explicitly selected `all_element_comparison_v1`
 complete-chain images. Counts come from actual canonical UART records, not the

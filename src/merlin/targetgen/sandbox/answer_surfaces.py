@@ -18,7 +18,7 @@ The set has nine origins, all derived:
   * ``grader``        — the decoder/grader/golden-gen modules (the DECLARED registry below)
   * ``memory``        — the experimenter's ``~/.claude`` memory for THIS repo (derived from the repo path)
   * ``recovery_key``  — every minted known-answer recovery KEY, and every path a key DECLARES as the
-                        material it was minted from (:mod:`merlin.perf.recovery`)
+                        material it was minted from
   * ``backend``       — the target's own backend package, whose ``contracts/`` sub-paths a bundle may
                         grant back and whose derivations it may not
 

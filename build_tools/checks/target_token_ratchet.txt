@@ -15,8 +15,3 @@ build_tools/scripts/check_fact_provenance.py  # muon: MERLIN_MUON_CONFIG / _CYCL
 # (K1_CPU_HZ) and the probe/figure ids built on it; they leave when the clock comes from a
 # measurement provider / the board catalog.
 src/merlin/mining/k1.py  # k1_cpu: K1_CPU_HZ
-packages/merlin-analysis/src/merlin/baselines/buddy_harness.py  # k1_cpu: K1_CPU_HZ in the generated C
-packages/merlin-analysis/src/merlin/baselines/k1_exec.py  # k1_cpu: K1_CPU_HZ
-packages/merlin-analysis/src/merlin/compare/frozen_environment.py  # k1_cpu: k1_cpu_probe_version manifest key
-packages/merlin-analysis/src/merlin/plotting/cpu_host_beam_figures.py  # k1_cpu: k1-cpu-host-beam output dir
-packages/merlin-analysis/src/merlin/plotting/cpu_host_experiment_figures.py  # k1_cpu: k1-cpu-host output dir

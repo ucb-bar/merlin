@@ -90,21 +90,6 @@ SDK export, corpus seal or inert scaffold alone proves no runtime or compiler
 qualification. Preserve the public host projection/instruction selections needed
 by model-containing public capsules even though full-model workers are deferred.
 
-For prospective gSIM correspondence use the generic entry point with explicit
-target-owned selection data:
-
-```sh
-"$PYTHON" -m merlin.development.backend.gsim_alignment \
-  --selection "$REPO/examples/compiler-generation/gemmini/backend-generation/launch/gsim-alignment.yaml" \
-  --contract "$TARGET_CONTRACT" --rtl-facts "$RTL_FACTS" \
-  --chipyard-root "$CHIPYARD" --hardware-pins "$HARDWARE_PINS" \
-  --board-catalog "$BOARD_CATALOG" --gsim-dts "$GSIM_DTS"
-```
-
-This structurally parses DTS, joins the selected board and source pins, and
-retains independent elaboration/build/correspondence checks. Its result grants
-neither chip equivalence nor timing transfer. The archived no-selection API and
-its target-specific audit remain available unchanged.
 
 ## Bind and check the prospective launch
 

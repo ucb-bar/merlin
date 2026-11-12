@@ -9,8 +9,8 @@ and performance together through the native authoring engine.
   target/toolchain and verification primitives independent of research orchestration.
 - `src/merlin/evaluation/`: independent execution assessment and grading. Source
   relocation preserves withheld access roles and binds actual implementation bytes.
-- `src/merlin/development/`, `src/merlin/experiments/` and `src/merlin/analysis/dse/`: backend generation, experiment orchestration
-  and design-space analysis in the same namespace; optional dependencies stay lazy
+- `src/merlin/development/` and `src/merlin/experiments/`: backend generation and experiment orchestration
+  in the same namespace; optional dependencies stay lazy
   and compiler/research access boundaries remain explicit.
 - `src/merlin/resources/` and `src/merlin/runtime/native/`: installed public data
   and target-independent native runtime sources, respectively.

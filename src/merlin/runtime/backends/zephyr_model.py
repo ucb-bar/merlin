@@ -2862,7 +2862,7 @@ def _gate(prefix: np.ndarray, references, *, max_rel: float | None = None, min_c
     )
     # T3 fp32 REGRESSION tier: whole-model regression outputs (VLA policies) are cosine-tight but have
     # NO meaningful top-1 argmax and a global rel ~3e-3 (> the legacy 1e-3 bit-close bar), so t2/legacy
-    # reject them despite cos ~0.9999945. This tier is EXACTLY the k1_e2e_xnnpack four-way's accepted
+    # reject them despite cos ~0.9999945. This tier is the accepted
     # whole-model gate: cos >= 0.9999, COSINE-ONLY. Evidence forces this: a whole-model regression
     # output legitimately carries high PER-ELEMENT relative error on its many small (low-absolute)
     # elements -- bitvla's real seed measured per-element max-rel 1.1 (even RMS-masked) at cos

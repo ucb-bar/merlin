@@ -31,7 +31,6 @@ Prototypes the five core dialects (contract/schedule/interface/runtime/dse) in P
 
 - These are rapid prototypes — expect churn, but keep `module.verify()` green.
 - Stable dialects may later graduate to a future MLIR/C++ plane (see `docs/reference/architecture.md`); keep names aligned.
-- `dse` is a real (minimal) dialect by explicit decision — it mirrors the `interface_candidate`/`dse_result`/`exploitability_report` schemas and never participates in lowering. `kernel`/`search` stay schemas-first.
 - Local single-op checks live in `verify_`; cross-op checks (use-after-evict, placement legality, command-buffer consistency) live in `lowering/analyses.py`.
 
 ## Testing expectations

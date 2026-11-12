@@ -79,7 +79,6 @@ checkout directory. Repository inputs and generated results stay outside it.
 | `src/merlin/runtime/`, `src/merlin/verification/` | Artifact execution and independent verification, with separate contracts |
 | `src/merlin/development/` | Test generation and backend authoring engines |
 | `src/merlin/experiments/`, `src/merlin/analysis/` | Experiment selection, tracking and analysis |
-| `src/merlin/evaluation/frameworks/` | Independent external-framework comparisons |
 | `src/merlin/resources/` | Installed schemas, prompts, public contracts and benchmark definitions |
 | `examples/` | Small walkthroughs and target-owned public inputs |
 | `experiments/` | Nine authored catalog, definition, template and instruction files |

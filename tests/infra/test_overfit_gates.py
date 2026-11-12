@@ -23,7 +23,7 @@ def gate():
 def test_a_target_identifier_planted_in_a_clean_module_fails_the_gate(gate, tmp_path, monkeypatch, capsys):
     """MUTATION, at the VERDICT: the gate's own ``main`` passes the clean module and fails it once an
     identifier naming a target is planted -- the spelling the literal check let through."""
-    rel = "src/merlin/kernels/bench_ceiling.py"
+    rel = "src/merlin/common/jsonio.py"
     clean = (repo_root() / rel).read_text(encoding="utf-8")
     module = tmp_path / rel
     module.parent.mkdir(parents=True)

@@ -47,7 +47,7 @@ def extract_all(nk: NormalizedKernel) -> tuple[dict, dict[str, list[str]]]:
     """Return ``(features, fired_markers)`` for one kernel.
 
     ``features`` is the merged dict written to ``kernel_record.features``; ``fired_markers``
-    maps motif -> matched substrings, used by :mod:`merlin.kernels.evidence`.
+    maps motif -> matched substrings.
     """
     fired = fired_markers(nk.raw_text, nk.target)
     features: dict = {}

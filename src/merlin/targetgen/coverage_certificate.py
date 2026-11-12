@@ -419,7 +419,7 @@ def source_region_execution(regions: list[dict], execution: dict | None) -> dict
     )
     unexecuted = sorted(expected_symbols - completed_symbols)
 
-    host_lanes = frozenset(("native_cpu", "xnnpack_host", "scalar_rvv_lane", "host_fallback"))
+    host_lanes = frozenset(("native_cpu", "scalar_rvv_lane", "host_fallback"))
     observed: dict[str, list[str]] = defaultdict(list)
     auxiliary_host_symbols: set[str] = set()
     for entry in ledger:

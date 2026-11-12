@@ -225,18 +225,6 @@ could hurt contraction scheduling. Pair full outputs and actual host/accelerator
 cycle windows before selecting it for a workload. This changes the host lowering,
 not the numerical recipe or backend generation's accelerator corpus.
 
-For a retained-object chain diagnostic, set `group_profile: true` in the explicit
-`merlin.chain_image.selection.v1` input to `python -m merlin.model_check.chain_image`.
-The guest resets each program's trace before every invocation and dumps it after
-the measured window. `chain_image_readback` requires one framed profile per
-selected step and reconciles group plus gap cycles against that step's counter.
-Dropped calls make attribution incomplete; their remaining window is never
-reported as measured host-only work. Gaps include wrapper bookkeeping.
-The builder can add the reset hook to an old Merlin-generated profiling object
-using its pinned original source and ABI flags. This explicit host-support
-rebuild gets separate source/object and compiler-invocation receipts; graph,
-device and weight objects stay retained. Instrumented timings are diagnostic
-and must be compared with an uninstrumented full-chain observation.
 
 ### Exactness: which forms may differ from their reference
 

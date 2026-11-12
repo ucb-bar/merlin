@@ -58,7 +58,6 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 ## Interfaces
 
 - Input: `workloads/<model>/<model>.mlir` + `<model>.safetensors.manifest.json` from model2MLIR.
-- Output: `MatmulRecord`/`WeightReuseFact` inventories; `LoweringResult` via the existing pipeline; `dse` IR + `dse_result`-shaped dicts.
 
 ## Invariants
 

@@ -64,10 +64,9 @@ assert pd.is_dir(), f"prompts_dir missing in wheel: {pd}"
 from merlin.common.schemas import load_schema
 load_schema("kernel_record")                       # exercises the schema-resolve + parse path
 load_schema("instruction_semantics")              # selected instruction records also work from the wheel
-assert (pd / "rvv_mining_v1.md").is_file(), "bundled prompt missing"
+assert (pd / "pass_slot_v1.md").is_file(), "bundled prompt missing"
 # benchmarks: the LIGHT specs bundle (P1); the heavy recaptures* deliberately do NOT.
 bd = p.bench_dir()
-assert (bd / "dse_guidance" / "accuracy_gate.yaml").is_file(), f"bundled benchmark spec missing: {bd}"
 assert (bd / "semantic_memory" / "no_reuse_matmul.yaml").is_file(), "bundled workload spec missing"
 assert not (bd / "dse_guidance" / "recaptures").exists(), "heavy recaptures leaked into the wheel"
 # Shared contract (P2); target-specific contracts and rtl_facts come from selected OOT inputs.
@@ -86,8 +85,8 @@ console = tuple(entry_points(group="console_scripts"))
 assert not any(e.value.startswith(("merlin_dse.", "merlin_experiments.")) for e in console), \
     "retired namespace remains in console entry points"
 scripts = {e.name for e in console if e.value.startswith("merlin.")}
-assert {"merlin", "merlin-compile", "kernel-index"} <= scripts, f"core entry points missing: {scripts}"
-assert {"merlin-dse-guidance", "merlin-compare", "merlin-experiment", "merlin-recovery"} <= scripts, scripts
+assert {"merlin", "merlin-compile", "merlin-opt"} <= scripts, f"core entry points missing: {scripts}"
+assert {"merlin-experiment", "merlin-storage"} <= scripts, scripts
 from importlib.metadata import PackageNotFoundError, distribution
 main = distribution("merlin")
 assert {"experiments", "analysis", "dse", "mining"} <= set(main.metadata.get_all("Provides-Extra") or ())
@@ -104,17 +103,11 @@ retired = sorted(name for name in payload
                  if name.startswith(("merlin_dse/", "merlin_experiments/"))
                  or name in {"merlin_dse.py", "merlin_experiments.py"})
 assert not retired, "retired namespace payload remains installed: " + repr(retired)
-for module in ("merlin.agentreport", "merlin.development.backend.controller", "merlin.targetgen.aet_bridge",
+for module in ("merlin.targetgen.aet_bridge",
                "merlin.targetgen.experiment_tokens", "merlin.targetgen.heavy_oracles",
-               "merlin.mining.beam", "merlin.verify.plots", "merlin.perf.recovery",
-               "merlin.perf.source_program_pair_provider", "merlin.analysis.dse.search", "merlin.experiments",
-               "merlin.analysis.dse", "merlin.analysis.dse.pressure", "merlin.analysis.dse.guidance",
-               "merlin.verify.replay", "merlin.verify.replay_layers",
-               "merlin.kernels.ceiling_drivers.run_expert_gemm",
-               "merlin.kernels.ceiling_drivers.multishape_compare",
-               "merlin.targetgen.group_capsules", "merlin.targetgen.store_probe",
-               "merlin.targetgen.evaluation_cohort", "merlin.targetgen.numeric_falsifiability",
-               "merlin.targetgen.rtl.gen_rocc_replay"):
+               "merlin.perf.source_program_pair_provider", "merlin.experiments",
+               "merlin.targetgen.group_capsules", "merlin.targetgen.numeric_falsifiability",
+               ):
     path = module.replace(".", "/")
     if path + ".py" in payload or path + "/__init__.py" in payload:
         continue

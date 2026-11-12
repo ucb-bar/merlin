@@ -55,17 +55,12 @@ out_roots:
 # directory appears that this file does not name. Adding a concern is then a reviewed edit at the
 # time it is created rather than a cleanup fifty concerns later.
 concerns:
-  agentic-report: Anatomy and coverage reports for agent-driven capsule sessions.
   archive: Products kept because something still cites them, whose concern is no longer active.
   audits: Readiness and preflight studies -- what would block a campaign if it were launched now.
   cache: Regenerable working caches, purgeable by convention. See cache_dir().
   capsule-bench: Capsule-bench results, per target.
   ceiling: Cross-cutting performance-ceiling studies.
-  compare: Cross-backend comparisons, per workload.
   delivery: Bundles shipped outside the repo, and the evidence shipped with them.
-  design-pressure: Design-pressure DSE products, per workload.
-  dse: Design-space exploration products, per workload.
-  dse-guidance: Guidance derived from DSE, per workload.
   documentation: Generated CLI, module and schema references (build_tools/docs/).
   experiments: Experiment-tracking views drawn from a run's own records -- the self-contained HTML
     dashboard of a run or a target at experiments/<target>/dashboard/. Regenerable; never evidence.
@@ -115,8 +110,6 @@ product_roots:
   perf-roofline: perf-studies/roofline
   # One-group programs of both arms timed on the board in one batch with the reference control.
   perf-group-board: perf-studies/group-capsules
-  # One agentic campaign drawn as a single stitched run (merlin.agentreport.campaign); target axis below.
-  campaign-figure: agentic-report/campaign-figures
   # Destinations below that carry a target axis (<concern>/<target>/...); the leaf is not a
   # new_product() version directory, so these are resolved with declared_product_roots(), not
   # new_product().
@@ -183,6 +176,11 @@ cited_evidence:
 
 folds:
   # Concerns retired from the roster because nothing writes them any more.
+  - {from: artifacts/compare, into: artifacts/archive/compare}
+  - {from: artifacts/agentic-report, into: artifacts/archive/agentic-report}
+  - {from: artifacts/dse, into: artifacts/archive/dse}
+  - {from: artifacts/dse-guidance, into: artifacts/archive/dse-guidance}
+  - {from: artifacts/design-pressure, into: artifacts/archive/design-pressure}
   - {from: artifacts/applications, into: artifacts/archive/applications}
   - {from: artifacts/selfcheck, into: artifacts/archive/selfcheck}
   - {from: artifacts/targetgen-evals, into: artifacts/archive/targetgen-evals}
