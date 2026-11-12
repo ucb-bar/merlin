@@ -16,6 +16,13 @@ Pinned hard build/test dependencies that merlin itself cannot build or test with
 
 Comparison baselines live in the separate merlin-baselines repository; none is tracked here.
 
+## Submodules
+
+- `llvm-project/`: the pinned LLVM/MLIR source.
+- `model2mlir/`: model2MLIR, which captures PyTorch models (`torch.export`, quantization) into the
+  linalg MLIR bundles Merlin compiles. It runs in its own Python environment; Merlin reads its
+  bundles and calls it, and model2MLIR imports nothing from Merlin.
+
 ## Interfaces
 
 Consumed by the build system (`CMakeLists.txt`, `build_tools/`).
