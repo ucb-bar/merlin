@@ -100,6 +100,11 @@ restricted tensor import from a qualified private/readonly root may receive
 an explicit independent value copy before the loop. Construct the candidate
 detached and attach it only after the complete producer/capture proof succeeds;
 unknown roots, CFG phi tensors, unrestricted imports and effects grant no seed ownership.
+Padding over a checked readable tensor may supply the initial value only after
+the complete padding body passes the scalar/capture proof. A separate copy
+establishes the new destination; padding itself may alias its source when its
+extent is zero and grants no ownership. Unknown producers and hidden padding
+calls/writes/reads retain their refusal. Preserve every padding/guard position.
 Keep zero-trip values and every native alias/lifetime check unchanged.
 The readonly-capture extension still requires an independently synthesized seed
 and actual readonly entry storage; native bufferization and lifetime checks

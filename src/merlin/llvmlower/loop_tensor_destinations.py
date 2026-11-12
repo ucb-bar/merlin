@@ -106,6 +106,13 @@ def _ltd_tensor_read_root(value):
             # independently of the loop's fresh destination. Its recursively
             # closed body/init proof grants no ownership of its input buffers.
             return _ltd_fresh_seed(value)
+        if op.name == 'tensor.pad':
+            # Padding may forward its source when no padding is needed, so
+            # it supplies a readable value rather than an owned destination.
+            # Close the entire padding body before offering a separate copy.
+            return (op.operands and len(op.regions) == 1 and len(op.regions[0].blocks) == 1
+                    and _ltd_tensor_read_root(op.operands[0])
+                    and _ltd_scalar_body(op, fresh_seed=True))
         if op.name == 'bufferization.to_tensor':
             return (len(op.operands) == 1 and 'restrict' in op.attributes
                     and _ltd_separate_read_root(op.operands[0]))

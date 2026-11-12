@@ -126,6 +126,46 @@ def test_numeric_guards_stay_in_complete_producers_without_admitting_hidden_effe
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("effect", ["pure", "guard", "call", "read", "write", "unknown-root"])
+def test_padded_initial_values_need_complete_read_proofs_and_independent_copies(tmp_path, effect):
+    declaration = ""
+    prefix = ""
+    extra = {
+        "pure": "", "guard": 'cf.assert %pad_valid,"padding guard"',
+        "call": "%unused=func.call @unknown(%one):(f32)->f32",
+        "read": "%unused=memref.load %sink[%i]:memref<4xf32>",
+        "write": "memref.store %one,%sink[%i]:memref<4xf32>",
+        "unknown-root": "",
+    }[effect]
+    if effect == "call":
+        declaration = "func.func private @unknown(f32)->f32"
+    if effect == "unknown-root":
+        declaration = "func.func private @produce()->tensor<4xf32>"
+        prefix = "%external_tensor=func.call @produce():()->tensor<4xf32>"
+    root = "%external_tensor" if effect == "unknown-root" else "%x"
+    padding = f'''{prefix}
+      %padded=tensor.pad {root} low[0] high[0] {{
+      ^bb0(%i:index):
+        %pad_valid=arith.cmpi sge,%i,%c0:index
+        {extra}
+        tensor.yield %one:f32
+      }}:tensor<4xf32> to tensor<4xf32>
+    '''
+    original = source().replace("module {", "module { " + declaration, 1)
+    original = original.replace("%result=scf.for", padding + "%result=scf.for")
+    original = original.replace("iter_args(%old=%x)", "iter_args(%old=%padded)")
+    original = original.replace("%v=arith.addf %in,%one:f32", '''%valid=arith.cmpf oeq,%in,%in:f32
+      cf.assert %valid,"state guard"
+      %v=arith.addf %in,%one:f32''')
+    stdout, output = rewrite(tmp_path, original)
+    changed = effect in ("pure", "guard")
+    assert f"OK loop_tensor_destinations {2 if changed else 0}" in stdout
+    assert ('prov.op = "seed-private-carried-value"' in output) == changed
+    assert output.count("tensor.pad") == 1
+    assert output.count("cf.assert") == original.count("cf.assert")
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("control", ["for", "while"])
 @pytest.mark.parametrize("effect", ["pure", "call", "write", "read", "tensor"])
 def test_numeric_scalar_control_keeps_complete_bodies_before_destination_reuse(tmp_path, control, effect):
