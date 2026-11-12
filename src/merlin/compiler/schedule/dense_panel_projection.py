@@ -4,12 +4,23 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    add,
+    check_integer_domain,
+    check_structure,
+)
 from merlin.compiler.schedule.blocks import Compute, Load, Preload
 from merlin.compiler.schedule.dense_panel_ir import DRAIN as DRAIN
 from merlin.compiler.schedule.dense_panel_ir import _calls as _calls
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.expr import add
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 
 def _fission_noninterfering_epoch_loads(kernel, adapter):
@@ -68,9 +79,8 @@ def _collapse_compute_radices(kernel, adapter):
     supplies no commutation or target capability; actual epoch hazards must
     already have been proved before using this checking representation.
     """
+    from merlin.compiler.kernel_ir.ir import Expr, free_vars
     from merlin.compiler.schedule.tile_load_coalescing import _plain
-    from merlin.sched.ir import Expr
-    from merlin.sched.ir.expr import free_vars
 
     if type(kernel) is not Kernel or check_structure(kernel):
         raise ValueError("compute radix checking requires unshadowed complete counted scopes")

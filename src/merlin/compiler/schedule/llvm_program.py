@@ -7,7 +7,7 @@ annotations must never disappear during emission.
 
 from __future__ import annotations
 
-from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, check_structure
+from merlin.compiler.kernel_ir.ir import Const, Loop, Scaled, Select, Sum, Var, check_structure
 
 
 class FnBuilderIndexAdapter:

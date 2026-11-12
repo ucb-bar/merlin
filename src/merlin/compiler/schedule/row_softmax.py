@@ -15,9 +15,19 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import (
+    DTYPE_BYTES,
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Ptr,
+    TensorArg,
+    Var,
+    check_structure,
+)
 from merlin.compiler.schedule.compact_dense import DenseMemoryView
-from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr, TensorArg, Var
-from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.semantic_compiler.allocate import allocate, check_assignment
 from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
 from merlin.semantic_compiler.rules import AddressConstraint
@@ -386,7 +396,7 @@ class RowSoftmaxCompilation:
             raise ValueError("row checked kernel or shared library changed; replan before emission")
 
     def emit_c(self, instruction_set, *, symbol):
-        from merlin.sched.codegen import emit_c_function
+        from merlin.compiler.kernel_ir.codegen import emit_c_function
 
         self.revalidate()
         source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)

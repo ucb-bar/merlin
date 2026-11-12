@@ -1,5 +1,6 @@
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.compiler.schedule.copy_pipeline import (
     resolve_copy_pipeline_admission,
 )
@@ -10,7 +11,6 @@ from merlin.compiler.schedule.temporary_storage import (
     StorageEffects,
     TemporaryObject,
 )
-from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import Reservation, StorageBank
 
 AFFINE = b"module {func.func @source(%x:i8)->i8 {\n%three=arith.constant 3:i8\n%seven=arith.constant 7:i8\n%a=arith.muli %x,%three:i8\n%r=arith.addi %a,%seven:i8\nfunc.return %r:i8\n}}"

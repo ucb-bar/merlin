@@ -4,11 +4,11 @@ from dataclasses import replace
 import pytest
 from corefixtures.private_copy_elimination import SPACES, command
 
+from merlin.compiler.kernel_ir.ir import Const, Kernel, TensorArg, evaluate
 from merlin.compiler.schedule.copy_coalescing import coalesce_private_copies
 from merlin.compiler.schedule.copy_coalescing_check import CopyMergeLaw
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
-from merlin.sched.ir import Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 

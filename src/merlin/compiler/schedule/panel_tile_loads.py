@@ -12,6 +12,22 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from math import prod
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    add,
+    check_integer_domain,
+    check_structure,
+    free_vars,
+)
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.tile_load_coalescing import (
@@ -22,9 +38,6 @@ from merlin.compiler.schedule.tile_load_coalescing import (
     _substitute,
     expand_tile_load_mapping,
 )
-from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.expr import add, free_vars
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 
 def _offset_form(value):

@@ -40,8 +40,8 @@ def realize_adjacent(kernel, objects, banks, adapter, capabilities, **limits):
     The existing finite physical-fusion verifier remains the owner. Counted-loop
     regions must use their compact route; this helper never unrolls them.
     """
+    from merlin.compiler.kernel_ir.ir import Call
     from merlin.compiler.schedule.fusion import plan_fusion
-    from merlin.sched.ir import Call
 
     before = kernel.digest()
     if any(type(node) is not Call for node in kernel.body):

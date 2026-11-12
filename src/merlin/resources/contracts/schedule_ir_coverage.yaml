@@ -65,7 +65,7 @@
 #
 # WHO DECIDES BETWEEN EXERCISED AND UNMEASURED. `evidence.corpus` names a corpus declared in
 # src/merlin/resources/contracts/corpora.yaml (`sched_corpora`), which locates it through a hardware pin, and
-# `merlin.sched.expressiveness` measures the agreement: run
+# `merlin.compiler.kernel_ir.expressiveness` measures the agreement: run
 # `build_tools/checks/check_schedule_ir_coverage.py --measure --summary`. With `--measure` THE
 # MEASUREMENT decides each row and supplies its own `missing_input`, so neither has to be typed here.
 # Without it the gate falls back to reading `evidence.measured_on` off the row -- the one status in

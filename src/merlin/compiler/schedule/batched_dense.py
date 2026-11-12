@@ -122,7 +122,7 @@ def counted_batched_dense_products(problem, *, name, instruction):
     instruction implementation, element widths, accessible allocation/nonalias
     checks, physical storage, effects and actual completion behavior.
     """
-    from merlin.sched.ir import Call, Kernel, Loop, Var, add, check_structure, mul
+    from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, Var, add, check_structure, mul
 
     if type(problem) is not BatchedDenseProblem or any(
         type(value) is not str or not value or any(c.isspace() or c in "(),:" for c in value)
@@ -211,7 +211,7 @@ def partition_dense_phases(kernel, *, phases, classify, completion_instruction, 
     Original completion calls are counted in the receipt, not silently retained
     as a false claim that the resulting phases are independently executable.
     """
-    from merlin.sched.ir import Call, Kernel, Loop, check_structure
+    from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, check_structure
 
     if (
         type(kernel) is not Kernel

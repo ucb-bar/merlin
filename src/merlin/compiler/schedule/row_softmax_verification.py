@@ -12,14 +12,24 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from merlin.compiler.kernel_ir.ir import (
+    DTYPE_BYTES,
+    Call,
+    Const,
+    Loop,
+    Ptr,
+    Scaled,
+    Sum,
+    TensorArg,
+    Var,
+    check_structure,
+)
 from merlin.compiler.schedule.row_softmax import (
     PHASE_ROLES,
     RowSoftmaxStep,
     _admit,
     verify_row_softmax_storage,
 )
-from merlin.sched.ir import Call, Const, Loop, Ptr, Scaled, Sum, TensorArg, Var
-from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 
 
 def _affine(expression):
@@ -198,7 +208,7 @@ def verify_row_softmax(
     # The shared IR check bounds every emitted intermediate,
     # not just the final tensor byte extent. Exercise the same check before
     # publishing a scheduling receipt, including local addresses and loop ends.
-    from merlin.sched.ir.integer_domain import check_integer_domain
+    from merlin.compiler.kernel_ir.ir import check_integer_domain
 
     check_integer_domain(kernel, adapter.index_bits)
     return {

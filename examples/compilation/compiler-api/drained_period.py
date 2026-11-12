@@ -10,12 +10,21 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Expr,
+    InstrDef,
+    InstructionSet,
+    Kernel,
+    Loop,
+    Operand,
+    Var,
+    evaluate,
+)
 from merlin.compiler.schedule.periodic_effects import check_drained_period, resolve_drained_period_admission
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
-from merlin.sched.ir import Call, Const, Kernel, Loop, Var, evaluate
-from merlin.sched.ir.expr import Expr
-from merlin.sched.isa import InstrDef, InstructionSet, Operand
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 

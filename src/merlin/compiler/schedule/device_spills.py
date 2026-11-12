@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import Call
 from merlin.compiler.schedule.program_limits import EncodedAccess
 from merlin.compiler.schedule.spill_conformance import SpillClass, validate_spill_classes, verify_device_spills
 from merlin.compiler.schedule.temporary_storage import (
@@ -21,7 +22,6 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     allocate_temporary_storage,
 )
-from merlin.sched.ir import Call
 
 __all__ = ["SpillClass", "allocate_with_spills", "verify_device_spills"]
 

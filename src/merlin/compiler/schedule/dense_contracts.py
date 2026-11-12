@@ -14,10 +14,9 @@ import struct
 from dataclasses import asdict, dataclass, replace
 from types import MappingProxyType
 
+from merlin.compiler.kernel_ir.ir import DTYPE_BYTES, Ptr, as_expr
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.program_limits import AddressWindow
-from merlin.sched.ir import Ptr, as_expr
-from merlin.sched.ir.kernel import DTYPE_BYTES
 from merlin.targetgen.isa_spec import resolve_fact_integer
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
 

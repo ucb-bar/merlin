@@ -19,7 +19,7 @@ def build_periodic_staged_dense(problem, contract, *, prefetch=True):
     This target-neutral macro IR has an explicit paired descriptor/compute
     operation and full-drain operations. It creates no target qualification.
     """
-    from merlin.sched.ir import Call, Kernel, Loop, TensorArg, Var, as_expr, select
+    from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, TensorArg, Var, as_expr, select
 
     if (
         type(problem) is not StagedDenseProblem
@@ -104,7 +104,7 @@ def verify_periodic_staged_dense(
     """
     from itertools import product
 
-    from merlin.sched.ir import (
+    from merlin.compiler.kernel_ir.ir import (
         Call,
         Const,
         Kernel,
@@ -115,10 +115,10 @@ def verify_periodic_staged_dense(
         TensorArg,
         Var,
         as_expr,
+        check_structure,
         evaluate,
         select,
     )
-    from merlin.sched.ir.kernel import check_structure
 
     if (
         type(kernel) is not Kernel

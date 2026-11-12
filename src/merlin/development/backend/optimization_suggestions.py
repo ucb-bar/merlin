@@ -96,7 +96,11 @@ ABSTRACTIONS = [
     ),
     (
         "compact_instruction_schedule",
-        ["merlin.sched.ir.kernel", "merlin.compiler.schedule.compact_dense", "merlin.compiler.schedule.llvm_program"],
+        [
+            "merlin.compiler.kernel_ir.ir",
+            "merlin.compiler.schedule.compact_dense",
+            "merlin.compiler.schedule.llvm_program",
+        ],
         "Existing Kernel and counted-loop emission route; consume the transformed result, "
         "preserve dependencies and tails.",
     ),

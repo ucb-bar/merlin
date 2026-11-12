@@ -11,6 +11,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Var,
+    check_integer_domain,
+    check_structure,
+    select,
+)
+from merlin.compiler.kernel_ir.primitives import Cursor, _subst_call, divide_loop
 from merlin.compiler.schedule.temporary_storage import (
     StorageOptimizationUnavailable,
     TemporaryObject,
@@ -18,9 +30,6 @@ from merlin.compiler.schedule.temporary_storage import (
     allocate_temporary_storage,
     verify_temporary_storage,
 )
-from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Var, check_structure, select
-from merlin.sched.ir.integer_domain import check_integer_domain
-from merlin.sched.primitives import Cursor, _subst_call, divide_loop
 
 
 @dataclass(frozen=True)

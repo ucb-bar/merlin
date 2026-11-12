@@ -7,9 +7,9 @@ addressing/pooling semantics, and complete that readout before strip reuse.
 
 from dataclasses import dataclass
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, TensorArg, Var, select
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
 from merlin.compiler.schedule.spatial_gather import _axis_index, plan_gathered_spatial_max
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, select
 
 
 def _horizontal(width, stripe_width, left_padding):

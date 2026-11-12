@@ -8,11 +8,11 @@ does not commute quantization, saturation or activation with the addition.
 
 from dataclasses import asdict, dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, TensorArg, Var, check_structure
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, _calls, _loops, _remap
 from merlin.compiler.schedule.loaded_sum_epochs import LoadedSumEpochPlan, emit_loaded_sum_epochs
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, TensorArg, Var, check_structure
 
 
 def _window_end_bound(start, count, domains):

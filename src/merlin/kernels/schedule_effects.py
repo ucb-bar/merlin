@@ -1,10 +1,10 @@
-"""Top-down stream facts: a ``merlin.sched`` schedule replayed through its own lowering.
+"""Top-down stream facts: a ``merlin.compiler.kernel_ir`` schedule replayed through its own lowering.
 
 ONE VOCABULARY, TWO PRODUCERS. Bottom-up, the lifter steps an emitted binary and records every
 accelerator command it issues (``finite_control_counts(record_commands=True)``); the selected decoder
 turns that stream into classes, declared roles and fields (:func:`decoded_effects.decode_stream`) and
 :func:`decoded_effects.stream_facts` derives the stream facts. Top-down, this module walks a schedule
-kernel's dynamic instances (:func:`merlin.sched.ir.kernel.instances`) and hands each one to the
+kernel's dynamic instances (:func:`merlin.compiler.kernel_ir.ir.instances`) and hands each one to the
 lowering's OWN target callback -- the function that turns a schedule call into accelerator commands
 on the real emission path -- with a builder that evaluates integer arithmetic instead of building IR.
 The commands it submits are recorded in the lifter's stream shape and go through the SAME decoder and
@@ -19,7 +19,7 @@ and are never invented; facts that need them stay unknown. A lowering the replay
 refusal with its reason, never a partial stream presented as complete.
 
 ANNOTATIONS. ``unit``/``produces``/``awaits`` do not reach a target's operand list, so -- exactly as
-:func:`merlin.sched.codegen.emit_c_function` -- a call carrying one needs a speller hook
+:func:`merlin.compiler.kernel_ir.codegen.emit_c_function` -- a call carrying one needs a speller hook
 (``issue_on``/``on_await``/``on_produce``, each called with the call and the replay context, which may
 submit commands or a fence, or nothing to declare the annotation costs no command). Without one the
 replay refuses. ``stages``/``sets``/``assumes`` are declarations about operands the call already
@@ -116,8 +116,10 @@ def _result(word):
 def _exact(op, a, b):
     if type(a) is int and type(b) is int:
         return op(a, b)
-    return unknown(next((v.reason for v in (a, b) if isinstance(v, Word) and v.reason), None)
-                   or "arithmetic on a value the schedule does not determine")
+    return unknown(
+        next((v.reason for v in (a, b) if isinstance(v, Word) and v.reason), None)
+        or "arithmetic on a value the schedule does not determine"
+    )
 
 
 def _shift(value):
@@ -311,8 +313,7 @@ _HOOKS = (("awaits", "on_await"), ("unit", "issue_on"))
 
 
 def _operand(value, env, context):
-    from merlin.sched.ir.expr import Expr, evaluate
-    from merlin.sched.ir.kernel import NULL, Ptr
+    from merlin.compiler.kernel_ir.ir import NULL, Expr, Ptr, evaluate
 
     if isinstance(value, Ptr):  # a schedule pointer is a byte offset into one tensor argument
         return context.fb.add_i(context.buffer(value.tensor), evaluate(value.offset, env))
@@ -324,7 +325,7 @@ def _operand(value, env, context):
 
 
 def _annotations(kernel):
-    from merlin.sched.ir.kernel import instances
+    from merlin.compiler.kernel_ir.ir import instances
 
     stages, rotations, sets = 0, [], 0
     seen = set()
@@ -334,10 +335,17 @@ def _annotations(kernel):
         seen.add(id(call))
         stages += len(call.stages)
         sets += len(call.sets)
-        rotations += [dict(instr=call.instr, memory=s.memory, row=s.row, rows=s.rows, depth=s.depth)
-                      for s in call.stages if s.depth > 1]
-    return dict(stagings=stages, multi_buffered_stagings=rotations, configuration_sets=sets,
-                basis="declarations on the schedule's calls; summarized, never turned into commands")
+        rotations += [
+            dict(instr=call.instr, memory=s.memory, row=s.row, rows=s.rows, depth=s.depth)
+            for s in call.stages
+            if s.depth > 1
+        ]
+    return dict(
+        stagings=stages,
+        multi_buffered_stagings=rotations,
+        configuration_sets=sets,
+        basis="declarations on the schedule's calls; summarized, never turned into commands",
+    )
 
 
 def replay_kernel(kernel, lower_call, context, *, spell=None):
@@ -348,7 +356,7 @@ def replay_kernel(kernel, lower_call, context, *, spell=None):
     ``None`` for ``NULL``. ``lower_call`` submits commands through ``context``. Calls annotated with
     ``unit``/``produces``/``awaits`` need the matching ``spell`` hook (see the module docstring).
     """
-    from merlin.sched.ir.kernel import check_structure, instances
+    from merlin.compiler.kernel_ir.ir import check_structure, instances
 
     problems = check_structure(kernel)
     if problems:
@@ -380,11 +388,25 @@ def schedule_command_stream(lower, *, arguments, specs=None, limit=LIMIT):
     try:
         receipt = lower(context)
     except (ReplayRefusal, ArithmeticError, LookupError, TypeError, ValueError, AttributeError) as error:
-        return dict(schema=SCHEMA, status="unknown", basis=BASIS, arguments=list(arguments),
-                    reason=f"lowering not replayable: {type(error).__name__}: {error}", stream=None)
-    return dict(schema=SCHEMA, status="derived", basis=BASIS, arguments=list(arguments), stream=context.stream,
-                entries=len(context.stream), truncated=context.truncated, stream_sha256=_digest(context.stream),
-                annotations=receipt if isinstance(receipt, dict) and "stagings" in receipt else None)
+        return dict(
+            schema=SCHEMA,
+            status="unknown",
+            basis=BASIS,
+            arguments=list(arguments),
+            reason=f"lowering not replayable: {type(error).__name__}: {error}",
+            stream=None,
+        )
+    return dict(
+        schema=SCHEMA,
+        status="derived",
+        basis=BASIS,
+        arguments=list(arguments),
+        stream=context.stream,
+        entries=len(context.stream),
+        truncated=context.truncated,
+        stream_sha256=_digest(context.stream),
+        annotations=receipt if isinstance(receipt, dict) and "stagings" in receipt else None,
+    )
 
 
 def validate_stream_document(document, *, limit=LIMIT):
@@ -398,9 +420,13 @@ def validate_stream_document(document, *, limit=LIMIT):
         raise ValueError("schedule_stream_unbounded_or_malformed")
     for entry in stream:
         registers = [entry.get(slot) for slot in ("rs1", "rs2")] if isinstance(entry, dict) else []
-        if not isinstance(entry, dict) or (entry.get("kind") != "fence" and (
+        if not isinstance(entry, dict) or (
+            entry.get("kind") != "fence"
+            and (
                 type(entry.get("funct")) is not int
-                or any(not (type(r) is int or isinstance(r, dict)) for r in registers))):
+                or any(not (type(r) is int or isinstance(r, dict)) for r in registers)
+            )
+        ):
             raise ValueError("schedule_stream_entry_malformed")
     if document.get("stream_sha256") != _digest(stream):
         raise ValueError("schedule_stream_digest_mismatch")
@@ -425,20 +451,31 @@ def schedule_effects(document, *, decoder, structure, evidence_id="schedule"):
     else:
         decoded = decode_stream(document["stream"], decoder=decoder)
         if decoded is None:
-            facts = {name: _unknown("no selected decoder for the schedule stream", scope=STREAM_SCOPE)
-                     for name in _STREAM_FACTS}
+            facts = {
+                name: _unknown("no selected decoder for the schedule stream", scope=STREAM_SCOPE)
+                for name in _STREAM_FACTS
+            }
         else:
             facts = stream_facts(decoded, structure, evidence_id=evidence_id, truncated=bool(document.get("truncated")))
-    unknowns = [dict(fact=name, reason=fact.get("reason")) for name, fact in facts.items()
-                if fact.get("status") == "unknown"]
-    return dict(schema=EFFECTS_SCHEMA, evidence_id=evidence_id, basis=BASIS,
-                ordering="schedule program order of dynamic instances", facts=facts, unknowns=unknowns,
-                inputs=dict(stream_sha256=document.get("stream_sha256"), stream_entries=document.get("entries"),
-                            decoded_entries=None if decoded is None else len(decoded)),
-                annotations=document.get("annotations"),
-                ordered_stream=ordered_summary(decoded),
-                not_established=["host_instruction_counts", "dynamic_timing", "numerical_equivalence",
-                                 "performance"])
+    unknowns = [
+        dict(fact=name, reason=fact.get("reason")) for name, fact in facts.items() if fact.get("status") == "unknown"
+    ]
+    return dict(
+        schema=EFFECTS_SCHEMA,
+        evidence_id=evidence_id,
+        basis=BASIS,
+        ordering="schedule program order of dynamic instances",
+        facts=facts,
+        unknowns=unknowns,
+        inputs=dict(
+            stream_sha256=document.get("stream_sha256"),
+            stream_entries=document.get("entries"),
+            decoded_entries=None if decoded is None else len(decoded),
+        ),
+        annotations=document.get("annotations"),
+        ordered_stream=ordered_summary(decoded),
+        not_established=["host_instruction_counts", "dynamic_timing", "numerical_equivalence", "performance"],
+    )
 
 
 def effects_record(effects, *, evidence_id=None):
@@ -455,8 +492,14 @@ def stream_differences(reference, candidate):
 
 
 #: Order facts lead every comparison: matching transfer counts with no load/compute overlap still loses.
-ORDER_FACTS = ("issue_overlap", "prefetch_interleave", "prefetch_distance", "prefetch_compute_ahead",
-               "operand_buffering", "output_group_extent")
+ORDER_FACTS = (
+    "issue_overlap",
+    "prefetch_interleave",
+    "prefetch_distance",
+    "prefetch_compute_ahead",
+    "operand_buffering",
+    "output_group_extent",
+)
 
 
 def _order_first(rows):
@@ -483,9 +526,15 @@ def _realized(rows):
     when nothing is established; rows either side leaves unknown are listed, never counted as matches."""
     states = [row.get("difference") for row in rows]
     value = False if "differs" in states else True if "same" in states else None
-    return dict(value=value, compared=sum(s in ("same", "differs") for s in states),
-                not_established=[dict(effect=r.get("effect"), role=r.get("role"), reason=r.get("reason"))
-                                 for r in rows if r.get("difference") == "unknown"])
+    return dict(
+        value=value,
+        compared=sum(s in ("same", "differs") for s in states),
+        not_established=[
+            dict(effect=r.get("effect"), role=r.get("role"), reason=r.get("reason"))
+            for r in rows
+            if r.get("difference") == "unknown"
+        ],
+    )
 
 
 def attribute(*, schedule, emitted, expert):
@@ -498,8 +547,10 @@ def attribute(*, schedule, emitted, expert):
     ``introduced_by_emission`` when the schedule agrees with the expert and the binary does not,
     and ``unknown`` with the reason otherwise.
     """
-    a, b, c = (_order_first(stream_differences(ref, cand))
-               for ref, cand in ((expert, schedule), (schedule, emitted), (expert, emitted)))
+    a, b, c = (
+        _order_first(stream_differences(ref, cand))
+        for ref, cand in ((expert, schedule), (schedule, emitted), (expert, emitted))
+    )
     ka, kb = _keyed(a), _keyed(b)
     rows = []
     for key, row in _keyed(c).items():
@@ -517,24 +568,42 @@ def attribute(*, schedule, emitted, expert):
             why = "schedule and binary each compare as equal to their counterpart; the rows disagree"
         else:
             verdict = "unknown"
-            why = ((top or {}).get("reason") or "the schedule side of this effect is not established")
-        rows.append(dict(effect=key[0], role=key[1], kind=_kind(key[0]), attribution=verdict, reason=why,
-                         expert_vs_emitted=dict(reference=row.get("reference"), candidate=row.get("candidate"),
-                                                direction=row.get("direction")),
-                         expert_vs_schedule=None if top is None else dict(
-                             difference=top_state, candidate=top.get("candidate"), direction=top.get("direction")),
-                         schedule_vs_emitted=None if emission is None else dict(
-                             difference=emission_state, reference=emission.get("reference"),
-                             candidate=emission.get("candidate"))))
-    return dict(schema=ATTRIBUTION_SCHEMA,
-                comparisons=dict(schedule_vs_expert=a, emitted_vs_schedule=b, emitted_vs_expert=c),
-                emission_realized_schedule=_realized(b),
-                emission_changes=[dict(effect=r.get("effect"), role=r.get("role"), schedule=r.get("reference"),
-                                       emitted=r.get("candidate")) for r in b if r.get("difference") == "differs"],
-                attribution=rows,
-                basis="one stream-fact vocabulary: top-down from schedule instances through the target lowering, "
-                      "bottom-up from the lifted binary, both decoded and derived by the same functions",
-                performance="unknown", semantic_equivalence="unknown")
+            why = (top or {}).get("reason") or "the schedule side of this effect is not established"
+        rows.append(
+            dict(
+                effect=key[0],
+                role=key[1],
+                kind=_kind(key[0]),
+                attribution=verdict,
+                reason=why,
+                expert_vs_emitted=dict(
+                    reference=row.get("reference"), candidate=row.get("candidate"), direction=row.get("direction")
+                ),
+                expert_vs_schedule=None
+                if top is None
+                else dict(difference=top_state, candidate=top.get("candidate"), direction=top.get("direction")),
+                schedule_vs_emitted=None
+                if emission is None
+                else dict(
+                    difference=emission_state, reference=emission.get("reference"), candidate=emission.get("candidate")
+                ),
+            )
+        )
+    return dict(
+        schema=ATTRIBUTION_SCHEMA,
+        comparisons=dict(schedule_vs_expert=a, emitted_vs_schedule=b, emitted_vs_expert=c),
+        emission_realized_schedule=_realized(b),
+        emission_changes=[
+            dict(effect=r.get("effect"), role=r.get("role"), schedule=r.get("reference"), emitted=r.get("candidate"))
+            for r in b
+            if r.get("difference") == "differs"
+        ],
+        attribution=rows,
+        basis="one stream-fact vocabulary: top-down from schedule instances through the target lowering, "
+        "bottom-up from the lifted binary, both decoded and derived by the same functions",
+        performance="unknown",
+        semantic_equivalence="unknown",
+    )
 
 
 # ----------------------------------------------------------------------------- ordered summary, bounds, sweep
@@ -572,22 +641,32 @@ def ordered_summary(decoded, *, runs=_RUNS):
     for block in blocks:
         for role, count in block.items():
             per_role.setdefault(role, []).append(count)
-    return dict(status="observed", entries=len(decoded), barriers=len(blocks) - 1, runs_prefix=out,
-                runs_truncated=len(out) >= runs,
-                commands_per_block={role: dict(max=max(v), median=sorted(v)[len(v) // 2], blocks=len(v))
-                                    for role, v in sorted(per_role.items())},
-                timing="not_claimed: issue order only; no latency, occupancy or cycle is derived")
+    return dict(
+        status="observed",
+        entries=len(decoded),
+        barriers=len(blocks) - 1,
+        runs_prefix=out,
+        runs_truncated=len(out) >= runs,
+        commands_per_block={
+            role: dict(max=max(v), median=sorted(v)[len(v) // 2], blocks=len(v)) for role, v in sorted(per_role.items())
+        },
+        timing="not_claimed: issue order only; no latency, occupancy or cycle is derived",
+    )
 
 
 def command_class_depths(facts):
     """Per command-class dispatch entries the selected RTL facts derive, or a reason when absent."""
     body = (facts or {}).get("facts", facts or {})
     classes = (((body.get("timing_structure") or {}).get("command_classes") or {}).get("classes")) or {}
-    depths = {name: (row.get("entries") or {}).get("value") for name, row in classes.items()
-              if (row.get("entries") or {}).get("status") == "derived"}
+    depths = {
+        name: (row.get("entries") or {}).get("value")
+        for name, row in classes.items()
+        if (row.get("entries") or {}).get("status") == "derived"
+    }
     if not depths:
-        return dict(status="unknown", depths={},
-                    reason="the selected RTL facts derive no per-command-class dispatch entries")
+        return dict(
+            status="unknown", depths={}, reason="the selected RTL facts derive no per-command-class dispatch entries"
+        )
     return dict(status="derived", depths=depths, source="facts.timing_structure.command_classes.classes.*.entries")
 
 
@@ -609,15 +688,30 @@ def resource_bounds(summary, depths, *, routing=None):
             continue
         targets = {(routing or {}).get(k) for k in roles.get(role, ())}
         if not routing or None in targets or len(targets) != 1:
-            rows.append(dict(role=role, status="unknown", block_max=use["max"], bound=None,
-                             reason="the selected facts do not map this role's instruction classes to one RTL "
-                                    "command class; supply routing= from a declared source"))
+            rows.append(
+                dict(
+                    role=role,
+                    status="unknown",
+                    block_max=use["max"],
+                    bound=None,
+                    reason="the selected facts do not map this role's instruction classes to one RTL "
+                    "command class; supply routing= from a declared source",
+                )
+            )
             continue
         target = next(iter(targets))
         bound = depths["depths"].get(target)
-        rows.append(dict(role=role, command_class=target, status="observed" if bound else "unknown",
-                         block_max=use["max"], bound=bound, exceeds=None if not bound else use["max"] > bound,
-                         **({} if bound else dict(reason=f"no derived entries for command class {target}"))))
+        rows.append(
+            dict(
+                role=role,
+                command_class=target,
+                status="observed" if bound else "unknown",
+                block_max=use["max"],
+                bound=bound,
+                exceeds=None if not bound else use["max"] > bound,
+                **({} if bound else dict(reason=f"no derived entries for command class {target}")),
+            )
+        )
     return rows
 
 
@@ -638,13 +732,26 @@ def shape_sweep(instantiate, shapes, *, decoder, structure, facts=None, routing=
         effects = schedule_effects(document, decoder=decoder, structure=structure, evidence_id=f"schedule:{shape}")
         decoded = decode_stream(document["stream"], decoder=decoder) if document.get("stream") is not None else None
         summary = ordered_summary(decoded)
-        facts_in_order = {name: effects["facts"][name] for name in (*ORDER_FACTS, *effects["facts"])
-                          if name in effects["facts"]}
-        rows.append(dict(shape=shape, status=document["status"], reason=document.get("reason"),
-                         facts=facts_in_order, ordered_stream=summary,
-                         resource_bounds=resource_bounds(summary, depths, routing=routing)))
-    return dict(schema="merlin.schedule_shape_sweep.v1", command_class_depths=depths, shapes=rows,
-                performance="unknown", timing="not_claimed")
+        facts_in_order = {
+            name: effects["facts"][name] for name in (*ORDER_FACTS, *effects["facts"]) if name in effects["facts"]
+        }
+        rows.append(
+            dict(
+                shape=shape,
+                status=document["status"],
+                reason=document.get("reason"),
+                facts=facts_in_order,
+                ordered_stream=summary,
+                resource_bounds=resource_bounds(summary, depths, routing=routing),
+            )
+        )
+    return dict(
+        schema="merlin.schedule_shape_sweep.v1",
+        command_class_depths=depths,
+        shapes=rows,
+        performance="unknown",
+        timing="not_claimed",
+    )
 
 
 # ----------------------------------------------------------------------------- author tool
@@ -671,8 +778,9 @@ def main(argv=None):
         parser.error("entry must be MODULE:FUNCTION and the limit within the bound")
     lower = getattr(importlib.import_module(module), function)
     specs = json.loads(Path(args.specs).read_text()) if args.specs else None
-    document = schedule_command_stream(lower, arguments=[a for a in args.arguments.split(",") if a],
-                                       specs=specs, limit=args.limit)
+    document = schedule_command_stream(
+        lower, arguments=[a for a in args.arguments.split(",") if a], specs=specs, limit=args.limit
+    )
     Path(args.out).write_text(json.dumps(document, sort_keys=True, default=str) + "\n")
     print(json.dumps({k: document.get(k) for k in ("schema", "status", "reason", "entries", "truncated")}))
     return 0 if document["status"] == "derived" else 2

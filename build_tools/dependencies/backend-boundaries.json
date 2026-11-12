@@ -32,7 +32,7 @@
     {
       "id": "gemmini",
       "repository": "https://github.com/ucb-bar/gemmini-mlir.git",
-      "revision": "124264c86323d308ad66aac77a61fc3902d2e2cb",
+      "revision": "d3bfde32e421daa6b2c64d976b4b4939e29d612f",
       "xdsl": "0.68.0",
       "provider_module": "gemmini",
       "tests": [
@@ -89,7 +89,7 @@
     {
       "id": "mx-gemmini",
       "repository": "https://github.com/ucb-bar/mx-gemmini-mlir.git",
-      "revision": "e93772c55797f2163e4d19bb8f81c79527458a80",
+      "revision": "b048deff76d3df19c19aec2dde828d392773964b",
       "xdsl": "0.65.0",
       "provider_module": "mx_gemmini_support.backend",
       "tests": [

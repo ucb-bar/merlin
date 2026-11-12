@@ -10,6 +10,12 @@ build tools can load it by path.
 from __future__ import annotations
 
 _MOVED = {
+    "merlin.sched.check.placement": "merlin.compiler.kernel_ir.checks",
+    "merlin.sched.check.sync": "merlin.compiler.kernel_ir.checks",
+    "merlin.sched.cost": "merlin.compiler.kernel_ir.checks",
+    "merlin.sched.ir.expr": "merlin.compiler.kernel_ir.ir",
+    "merlin.sched.ir.kernel": "merlin.compiler.kernel_ir.ir",
+    "merlin.sched.reroll": "merlin.compiler.kernel_ir.codegen",
     "merlin.compile.scheduling.multioutput_fusion": "merlin.compiler.transforms.multioutput",
     "merlin.verify": "merlin.verification",
     "merlin.verify.epilogue_applicability": "merlin.verification.epilogue_applicability",

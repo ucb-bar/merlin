@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import Kernel
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.temporary_storage import (
     StorageAdapter,
@@ -19,7 +20,6 @@ from merlin.compiler.schedule.temporary_storage import (
     _overlap,
     _problem,
 )
-from merlin.sched.ir import Kernel
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 

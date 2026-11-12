@@ -27,7 +27,7 @@ def editable(member):
     roots = (
         "merlin.compiler",
         "merlin.transforms",
-        "merlin.sched",
+        "merlin.compiler.kernel_ir",
         "merlin.semantic_compiler",
         "merlin.llvmlower",
         "merlin.frontends",

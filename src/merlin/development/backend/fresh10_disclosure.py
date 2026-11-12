@@ -66,7 +66,9 @@ def _word_end(text, literal, *, start_boundary=False):
 
 
 def _library_text(text):
-    if any(_word_end(text, name) for name in ("merlin.transforms", "merlin.sched", "merlin.compiler.schedule")):
+    if any(
+        _word_end(text, name) for name in ("merlin.transforms", "merlin.compiler.kernel_ir", "merlin.compiler.schedule")
+    ):
         return True
     if any(
         name in text

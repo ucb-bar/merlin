@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, TensorArg, Var, select
 from merlin.compiler.schedule.blocks import SpatialMaxReadout
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, select
 
 
 @dataclass(frozen=True)

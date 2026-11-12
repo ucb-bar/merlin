@@ -135,7 +135,7 @@ entries:
       decision that silently stopped being recorded would look identical to one still being made.
     removal_condition: >-
       Either a consumer reads each back -- the natural ones are the staging, layout and accumulator
-      primitives in `merlin.sched.primitives` -- or the lowering stops emitting them. Delete this row
+      primitives in `merlin.compiler.kernel_ir.primitives` -- or the lowering stops emitting them. Delete this row
       when every one of the three is on one side or the other.
 
   - id: schedule-dialect-interfaces-nothing-selects
@@ -167,7 +167,7 @@ entries:
       - merlin/python/merlin/sched/codegen/__init__.py
     why: >-
       The three rows above are about the xDSL scheduling DIALECT. This one is a different seam, in the
-      layer that actually emits: `merlin.sched.primitives` exports thirteen moves and the only emitter
+      layer that actually emits: `merlin.compiler.kernel_ir.primitives` exports thirteen moves and the only emitter
       below them, `emit_c_function`, renders `Call.args` through the target's `InstrDef.render_c` and
       nothing else. Measured 2026-09-20 by applying each primitive to a kernel and diffing the emitted
       C: nine change it -- the eight that rewrite the loop nest, the statement list or an operand, plus

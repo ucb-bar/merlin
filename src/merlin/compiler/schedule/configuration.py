@@ -12,8 +12,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
-from merlin.sched.ir import Call, Kernel
-from merlin.sched.ir.kernel import check_structure
+from merlin.compiler.kernel_ir.ir import Call, Kernel, check_structure
 
 
 class ConfigurationUnavailable(ValueError):

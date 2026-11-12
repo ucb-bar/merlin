@@ -18,10 +18,10 @@ from merlin.common.digest import sha256_file
 from merlin.transforms.certificates import ir_digest
 
 if TYPE_CHECKING:
+    from merlin.compiler.kernel_ir.ir import Kernel
     from merlin.compiler.schedule.multioutput_fusion_check import MultiOutputCompositionLaw
     from merlin.compiler.schedule.temporary_storage import TemporaryObject
     from merlin.compiler.transforms.multioutput import MultiOutputBindings, MultiOutputSource
-    from merlin.sched.ir import Kernel
 
 
 @dataclass(frozen=True)
@@ -33,9 +33,9 @@ class MultiOutputProgram:
     bindings: MultiOutputBindings
 
     def __post_init__(self):
+        from merlin.compiler.kernel_ir.ir import Kernel
         from merlin.compiler.schedule.temporary_storage import TemporaryObject
         from merlin.compiler.transforms.multioutput import MultiOutputBindings
-        from merlin.sched.ir import Kernel
 
         if (
             type(self.kernel) is not Kernel

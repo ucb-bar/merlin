@@ -12,6 +12,7 @@ import inspect
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, TensorArg, Var, check_structure
 from merlin.compiler.schedule.compact_dense import (
     DenseLoopAdapter,
     _dense_library_sources,
@@ -31,8 +32,6 @@ from merlin.compiler.schedule.compact_dense_group_check import (
 )
 from merlin.compiler.schedule.compact_verification import DenseVerificationUnavailable
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var
-from merlin.sched.ir.kernel import check_structure
 from merlin.transforms.dense_planning import DenseGroupChoice, DenseProblem, DenseResources, choose_dense_group
 from merlin.transforms.pipeline_state import AnalysisStamp, PassSpec, PipelineContext, PipelineSession
 
@@ -168,7 +167,7 @@ class CompactDenseGroupResult:
         return self._paths
 
     def emit_c(self, instruction_set, *, symbol):
-        from merlin.sched.codegen import emit_c_function
+        from merlin.compiler.kernel_ir.codegen import emit_c_function
 
         self.revalidate()
         result = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)

@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import Call
 from merlin.compiler.schedule.program_limits import EncodedAccess
 from merlin.compiler.schedule.temporary_storage import (
     StorageOptimizationUnavailable,
@@ -23,7 +24,6 @@ from merlin.compiler.schedule.temporary_storage import (
     _problem,
     _project,
 )
-from merlin.sched.ir import Call
 from merlin.semantic_compiler.allocate import _reservation_problem
 
 

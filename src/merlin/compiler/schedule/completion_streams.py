@@ -15,12 +15,19 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, Stage, Var, check_integer_domain, check_structure
+from merlin.compiler.kernel_ir.loops import _allocator, _clone
+from merlin.compiler.kernel_ir.primitives import (
+    Cursor,
+    NotApplicable,
+    _loop_at,
+    _map_calls,
+    _rebuild,
+    _resolve,
+    _subst_call,
+)
 from merlin.compiler.schedule.configuration import ConfigurationEffects
 from merlin.compiler.schedule.scf_commands import materialize_scf_commands
-from merlin.sched.ir import Call, Kernel, Loop, Stage, Var, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
-from merlin.sched.primitives import Cursor, NotApplicable, _loop_at, _map_calls, _rebuild, _resolve, _subst_call
-from merlin.sched.primitives.event_loops import _allocator, _clone
 
 
 @dataclass(frozen=True)

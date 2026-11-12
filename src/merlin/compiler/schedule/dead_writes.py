@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import Kernel
 from merlin.compiler.schedule.dead_write_check import (
     WriteDeletionLaw,
     _admitted,
@@ -16,7 +17,6 @@ from merlin.compiler.schedule.dead_write_check import (
     verify_dead_writes,
 )
 from merlin.compiler.schedule.temporary_storage import StorageOptimizationUnavailable
-from merlin.sched.ir import Kernel
 
 
 @dataclass(frozen=True)

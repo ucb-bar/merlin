@@ -18,6 +18,7 @@ from xdsl.dialects import arith, builtin, func
 from xdsl.dialects.linalg.ops import YieldOp
 from xdsl.ir import Block, Region
 
+from merlin.compiler.kernel_ir.ir import Kernel
 from merlin.compiler.schedule.configuration import (
     ConfigurationEffects,
     verify_configuration_rewrite,
@@ -37,7 +38,6 @@ from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, Schedule
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.compiler.schedule.spill_conformance import _Memory, _Piece
 from merlin.compiler.schedule.temporary_storage import TemporaryObject, _completion, _overlap, _problem, _project
-from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest, ir_text
 from merlin.transforms.dense_ir import checked_static_linalg_shell
 from merlin.transforms.pipeline_state import (

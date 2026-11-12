@@ -1,12 +1,12 @@
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
 from merlin.compiler.schedule.temporary_storage import (
     StorageAdapter,
     StorageEffects,
     TemporaryObject,
 )
-from merlin.sched.ir import Call, Const, Kernel, TensorArg, evaluate
 from merlin.semantic_compiler.allocation_types import StorageBank
 
 SPACES = ("bytes", "typed_view", "input", "output")

@@ -12,10 +12,9 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import Call, Kernel, check_structure
 from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics
 from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
-from merlin.sched.ir import Call, Kernel
-from merlin.sched.ir.kernel import check_structure
 from merlin.semantic_compiler.allocate import allocate, check_assignment
 from merlin.semantic_compiler.allocation_types import CandidateGraph, Reservation, StorageBank, Value
 from merlin.semantic_compiler.rules import AddressConstraint

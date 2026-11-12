@@ -37,7 +37,7 @@ argv.
 | linalg-on-tensors source | `public_sources/*.mlir`, model cases | `merlin.targetgen.contract.linalg_iface`: `is_linalg_on_tensors(text)`, `parse_linalg_mlir(text)` gives `{level, entry, args, results, returns, ops[]}`; `matmul_records(parsed)`; `make_linalg_context()` |
 | dense contraction IR | your planner | `merlin.transforms.dense_ir.DenseScheduleOp` (`schedule.block_contraction`) and `dense_schedule_op(...)`; `merlin.transforms.dense_planning` (`dense_blocks`, `choose_dense_block`, `verify_dense_emission`) |
 | schedule plan | your scheduler | `merlin.compiler.schedule.schedule_ir.dense_schedule_text(plan)` prints it; `parse_dense_schedule_plan(text)` parses it back |
-| loop-nest kernel | `merlin.sched.ir` | `Kernel.text()`, `Kernel.digest()`; `merlin.sched.ir.parse.parse_kernel(text)`; `merlin.sched.ir.kernel.check_structure(kernel)` gives the problems found |
+| loop-nest kernel | `merlin.compiler.kernel_ir.ir` | `Kernel.text()`, `Kernel.digest()`; `merlin.compiler.kernel_ir.parse.parse_kernel(text)`; `merlin.compiler.kernel_ir.ir.check_structure(kernel)` gives the problems found |
 | any xDSL module | your passes | `merlin.xdsl_dialects._common.make_context(*dialects)`, `text(module, generic=True)` (generic form keeps every attribute); `merlin.xdsl_dialects.ir_inspection.compact_text(module, elements_limit=64)` elides large constants |
 | target IR | stdout of `lower_interface_to_target` | parse with an xDSL `Context(allow_unregistered=True)` plus the upstream dialects, or with your own dialect loaded |
 | lowered artifact | stdout of the artifact command | see the `inspect-kernel` skill |

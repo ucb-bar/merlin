@@ -19,13 +19,13 @@ from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets
 from .borrowed_buffer_calls import BorrowedBufferEffects, validate_effects
 
 if TYPE_CHECKING:
+    from merlin.compiler.kernel_ir.ir import Kernel
     from merlin.compiler.schedule.pointwise_source import PointwiseBindings, PointwiseCompilation, PointwiseSource
     from merlin.compiler.schedule.program_limits import ProgramLimits
     from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
     from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
     from merlin.compiler.schedule.temporary_storage import StorageAdapter, TemporaryObject
     from merlin.runtime.host_provider import HostProviderBuild, HostProviderContext
-    from merlin.sched.ir import Kernel
 
     from .fresh_tensor_writer import FreshTensorWriterContract
     from .source_multioutput import SourceMultiOutputLowering
@@ -40,9 +40,9 @@ class PointwiseProgram:
     bindings: PointwiseBindings
 
     def __post_init__(self):
+        from merlin.compiler.kernel_ir.ir import Kernel
         from merlin.compiler.schedule.pointwise_source import PointwiseBindings
         from merlin.compiler.schedule.temporary_storage import TemporaryObject
-        from merlin.sched.ir import Kernel
 
         if (
             type(self.kernel) is not Kernel

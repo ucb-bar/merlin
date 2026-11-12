@@ -13,9 +13,7 @@ import json
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
-from merlin.sched.ir import Call, Const, Kernel, Loop, Var, select
-from merlin.sched.ir.expr import Expr
-from merlin.sched.ir.kernel import DTYPE_BYTES
+from merlin.compiler.kernel_ir.ir import DTYPE_BYTES, Call, Const, Expr, Kernel, Loop, Var, select
 
 
 def _identity(value):

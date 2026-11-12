@@ -10,10 +10,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import Call, evaluate
 from merlin.compiler.schedule.fusion import FusionCapability
 from merlin.compiler.schedule.fusion_semantics import ElementwiseSemantics, UnsupportedElementwise, scalar_graph
 from merlin.compiler.schedule.storage_contracts import binding_value, resolve_element_count
-from merlin.sched.ir import Call, evaluate
 from merlin.targetgen.isa_spec import resolve_fact_integer
 from merlin.verification.epilogue_applicability import ReadoutCapability
 

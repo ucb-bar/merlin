@@ -12,6 +12,7 @@ import json
 from dataclasses import dataclass, replace
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import DTYPE_BYTES, NULL, Call, Const
 from merlin.compiler.schedule.row_softmax import (
     PHASE_ROLES,
     ROLES,
@@ -23,8 +24,6 @@ from merlin.compiler.schedule.row_softmax import (
     RowSoftmaxStep,
     RowSoftmaxUnavailable,
 )
-from merlin.sched.ir import NULL, Call, Const
-from merlin.sched.ir.kernel import DTYPE_BYTES
 from merlin.targetgen.isa_spec import resolve_fact_integer
 
 READ_ROLES = ((), (0,), (0,), (), (1, 2), (2,), (1, 3))

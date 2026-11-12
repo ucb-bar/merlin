@@ -188,9 +188,7 @@ def source_projection_transfers(kernel, project, *, max_calls=100_000):
     bounded observer is useful for small complete final-code projection checks,
     not a replacement for compact proofs on huge schedules.
     """
-    from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr
-    from merlin.sched.ir.expr import evaluate
-    from merlin.sched.ir.kernel import check_structure
+    from merlin.compiler.kernel_ir.ir import Call, Const, Expr, Kernel, Loop, Ptr, check_structure, evaluate
 
     if (
         type(kernel) is not Kernel

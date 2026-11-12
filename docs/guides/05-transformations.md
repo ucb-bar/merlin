@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [04-planning, 06-lowering, 11-optimization]
-code_refs: [src/merlin/transforms/pipeline.py, src/merlin/transforms/pipeline_state.py, src/merlin/transforms/validation.py, src/merlin/compiler/passes, src/merlin/compiler/schedule, src/merlin/compiler/optimizations, src/merlin/xdsl_dialects/schedule.py, src/merlin/sched/ir]
+code_refs: [src/merlin/transforms/pipeline.py, src/merlin/transforms/pipeline_state.py, src/merlin/transforms/validation.py, src/merlin/compiler/passes, src/merlin/compiler/schedule, src/merlin/compiler/optimizations, src/merlin/xdsl_dialects/schedule.py, src/merlin/compiler/kernel_ir/ir.py]
 ---
 
 # 5. Transform and schedule the program
@@ -53,7 +53,7 @@ than a separately maintained list of intended passes.
 | Representation | What it expresses | Source to open |
 | --- | --- | --- |
 | xDSL `schedule` dialect | Selected compiler decisions and bindings | [`xdsl_dialects/schedule.py`](../../src/merlin/xdsl_dialects/schedule.py) |
-| Python `Kernel`, `Loop`, `Call` records with `mk` text | Counted loops, calls and effects | [`sched/ir/kernel.py`](../../src/merlin/sched/ir/kernel.py) |
+| Python `Kernel`, `Loop`, `Call` records with `mk` text | Counted loops, calls and effects | [`compiler/kernel_ir/ir.py`](../../src/merlin/compiler/kernel_ir/ir.py) |
 | Shared counted block schedules | Explicit loads, compute, storage and completion | [`compiler/schedule/blocks.py`](../../src/merlin/compiler/schedule/blocks.py) |
 
 These are not automatically converted into one another or into the upstream

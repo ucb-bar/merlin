@@ -11,8 +11,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from merlin.compiler.kernel_ir.ir import Call
 from merlin.compiler.schedule.spill_conformance import SpillClass, validate_spill_classes
-from merlin.sched.ir import Call
 from merlin.targetgen.isa_spec import resolve_fact_integer
 
 

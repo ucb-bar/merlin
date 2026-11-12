@@ -11,10 +11,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from merlin.sched.ir import Const, Kernel, Loop, Ptr, Var, check_structure
-from merlin.sched.ir.expr import Expr, free_vars
-from merlin.sched.ir.integer_domain import check_integer_domain
-from merlin.sched.primitives import (
+from merlin.compiler.kernel_ir.ir import (
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Ptr,
+    Var,
+    check_integer_domain,
+    check_structure,
+    free_vars,
+)
+from merlin.compiler.kernel_ir.primitives import (
     Cursor,
     NotApplicable,
     _bound_vars,
@@ -92,10 +100,10 @@ def _size(body):
 
 def _split(kernel, path, factor, names=()):
     target = _loop_at(kernel.body, path)
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     if has_carried_events((target,)):
-        from merlin.sched.primitives.event_loops import split_event_loop
+        from merlin.compiler.kernel_ir.loops import split_event_loop
 
         return split_event_loop(kernel, path, factor, names or (target.var + "o", target.var + "i"))
     full, remainder = divmod(target.extent, factor)
@@ -185,7 +193,7 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
     actual = kernel
     for request in transforms:
         target = _loop_at(actual.body, request.path)
-        from merlin.sched.ir.events import has_carried_events
+        from merlin.compiler.kernel_ir.ir import has_carried_events
 
         if request.action in ("reorder", "fuse", "fission", "hoist") and has_carried_events((target,)):
             raise NotApplicable(
@@ -218,7 +226,7 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
                 names = tuple(fresh)
             boundaries = (0, *request.cuts, target.extent)
             if has_carried_events((target,)):
-                from merlin.sched.primitives.event_loops import partition_event_loop
+                from merlin.compiler.kernel_ir.loops import partition_event_loop
 
                 actual = partition_event_loop(actual, request.path, boundaries, names)
                 check_integer_domain(actual, index_bits)
@@ -309,7 +317,7 @@ def propose_loop_transforms(kernel, transforms, *, index_bits=64, max_static_ope
             if target.extent != second.extent:
                 raise NotApplicable("fuse requires identical iteration extents")
             renamed = _map_calls(second.body, lambda call: _subst_call(call, second.var, Var(target.var)))
-            from merlin.sched.primitives import _rebuild
+            from merlin.compiler.kernel_ir.primitives import _rebuild
 
             merged = replace(target, body=(*target.body, *renamed))
             body = (*siblings[:position], merged, *siblings[position + 2 :])

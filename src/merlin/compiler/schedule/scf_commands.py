@@ -16,9 +16,20 @@ from dataclasses import asdict
 from xdsl.dialects import arith, builtin, func, scf
 from xdsl.ir import Block, Region
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    Scaled,
+    Select,
+    Stage,
+    Sum,
+    Var,
+    check_integer_domain,
+    check_structure,
+)
 from merlin.compiler.schedule.scf_carried_events import CARRIED_EVENTS
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Stage, Sum, Var, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 SCHEMA = "merlin.scf_commands.v1"
 ISSUE_GROUP = "merlin.scf_commands.issue_group.v1"
@@ -201,7 +212,7 @@ def materialize_scf_commands(kernel, *, allow_persistent_state=False):
         raise ValueError("persistent state opt-in must be an explicit Boolean")
     if type(kernel) is not Kernel or check_structure(kernel) or kernel.attrs:
         raise ValueError("SCF command bridge requires a checked closed counted schedule")
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     carried_mode = has_carried_events(kernel.body)
     check_integer_domain(kernel, 64)

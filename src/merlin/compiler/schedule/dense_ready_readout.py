@@ -11,6 +11,8 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, check_integer_domain, check_structure, free_vars
+from merlin.compiler.kernel_ir.primitives import _loop_at, _splice
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
@@ -27,10 +29,6 @@ from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedPipe
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 from merlin.compiler.schedule.tile_load_coalescing import _linear, _plain
-from merlin.sched.ir import Call, Kernel, Loop, check_structure
-from merlin.sched.ir.expr import free_vars
-from merlin.sched.ir.integer_domain import check_integer_domain
-from merlin.sched.primitives import _loop_at, _splice
 
 
 def _chain(statement, count):

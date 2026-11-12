@@ -13,6 +13,7 @@ from pathlib import Path
 from weakref import WeakKeyDictionary, ref
 
 from merlin.common.digest import sha256_file
+from merlin.compiler.kernel_ir.ir import Kernel
 from merlin.compiler.schedule.compact_dense_group import _callback, _same_callback
 from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise, term
 from merlin.compiler.schedule.library_sources import shared_library_sources
@@ -31,7 +32,6 @@ from merlin.compiler.schedule.schedule_pipeline import (
 )
 from merlin.compiler.schedule.selected_contracts import SelectedSchedulingContracts
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, TemporaryObject
-from merlin.sched.ir import Kernel
 from merlin.transforms.certificates import ir_digest
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 

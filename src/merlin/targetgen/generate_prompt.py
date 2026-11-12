@@ -1137,7 +1137,7 @@ def _enforced_workflow(
 
 SHARED_PASS_PROMPT_APIS = (
     "merlin.transforms.pipeline_state",
-    "merlin.sched.ir.kernel",
+    "merlin.compiler.kernel_ir.ir",
     "merlin.compiler.schedule.schedule_pipeline",
 )
 
@@ -1145,7 +1145,7 @@ SHARED_PASS_PROMPT_APIS = (
 # legacy cohort; exact selected public membership chooses the spelling.
 SHARED_PASS_CANONICAL_PROMPT_APIS = (
     "merlin.transforms.pipeline_state",
-    "merlin.sched.ir.kernel",
+    "merlin.compiler.kernel_ir.ir",
     "merlin.compiler.schedule.schedule_pipeline",
 )
 

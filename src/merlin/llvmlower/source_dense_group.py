@@ -430,7 +430,7 @@ def schedule_source_dense_group(module, operations, selection, validate):
     source_stamp = session.stamp()
     lowered_stamp = compiled.checked_emission
     ordinal = {operation: index for index, operation in enumerate(module.walk())}
-    from merlin.sched.ir import TensorArg
+    from merlin.compiler.kernel_ir.ir import TensorArg
 
     problems = session.analysis("independent_dense_sources")
     dtypes = contracts.dense.dtypes

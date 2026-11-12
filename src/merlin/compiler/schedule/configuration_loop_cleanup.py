@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import Call, Loop
 from merlin.compiler.schedule.configuration import ConfigurationResult, _advance
 from merlin.compiler.schedule.configuration_loops import _effects, _preserves, _same_call
-from merlin.sched.ir import Call, Loop
 
 
 def _invariants(body, live, effects):

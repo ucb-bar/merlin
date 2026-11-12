@@ -7,9 +7,9 @@ are never crossed. No instruction is deleted and no target law is supplied.
 
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import Call, Loop
 from merlin.compiler.schedule.configuration import ConfigurationResult
 from merlin.compiler.schedule.configuration_loops import _effects, _pure, _same_call
-from merlin.sched.ir import Call, Loop
 
 
 def _crosses(setter, earlier, effects):

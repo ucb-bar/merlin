@@ -1,12 +1,12 @@
 from dataclasses import replace
 
+from merlin.compiler.kernel_ir.ir import Call, Loop, as_expr
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import (
     DenseLoopAdapter,
     DenseLoopStorage,
     DenseMemoryView,
 )
-from merlin.sched.ir import Call, Loop, as_expr
 from merlin.transforms.dense_planning import DenseProblem, DenseResources
 
 

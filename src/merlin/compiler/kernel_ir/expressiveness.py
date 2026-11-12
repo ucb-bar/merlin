@@ -53,23 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-__all__ = [
-    "AGREE",
-    "DISAGREE",
-    "UNDECIDABLE",
-    "STATUSES",
-    "AxisMeasurement",
-    "CorpusStatus",
-    "FieldVerdict",
-    "Triple",
-    "corpus_status",
-    "field_verdicts",
-    "measure_axis",
-    "measure_register",
-    "report_triple",
-    "totals",
-    "triple_of",
-]
+# ---- expressiveness ----------------------------------------------------------------------------
 
 #: What became of one field the axis names.
 AGREE = "AGREE"
@@ -514,3 +498,22 @@ def totals(measurements: Iterable[AxisMeasurement]) -> Triple:
     for m in seq:
         out = out + m.triple
     return out
+
+
+__all__ = [
+    "AGREE",
+    "AxisMeasurement",
+    "CorpusStatus",
+    "DISAGREE",
+    "FieldVerdict",
+    "STATUSES",
+    "Triple",
+    "UNDECIDABLE",
+    "corpus_status",
+    "field_verdicts",
+    "measure_axis",
+    "measure_register",
+    "report_triple",
+    "totals",
+    "triple_of",
+]

@@ -102,11 +102,11 @@ inputs:
   # Exact additional generic leaves relative to the pinned previous_library.
   # Listing these explicitly keeps SDK expansion reviewable; no package-wide grant.
   reviewed_modules:
-  - merlin.sched.ir.events
+  - merlin.compiler.kernel_ir.ir
   - merlin.compiler.schedule.scf_carried_events
-  - merlin.sched.primitives.event_loops
+  - merlin.compiler.kernel_ir.loops
   - merlin.common.stat_memo
-  - merlin.sched.primitives.loop_handles
+  - merlin.compiler.kernel_ir.loops
   - merlin.compiler.schedule.completion_streams
   - merlin.compiler.schedule.configuration_motion
   - merlin.compiler.schedule.spatial_max_stripes

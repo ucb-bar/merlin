@@ -30,7 +30,7 @@ _ACTIVE_LIBRARY = contextvars.ContextVar("selected_additional_compiler_library",
 _LIBRARY_VERIFICATION = contextvars.ContextVar("guarded_compiler_library_verification", default=None)
 _ISSUED_LIBRARY_VERIFICATIONS = weakref.WeakSet()
 # Exact, target-neutral re-export API. This does not authorize a package prefix.
-_PUBLIC_REEXPORTS = {"merlin.sched.ir": frozenset({"expr", "kernel", "parse"})}
+_PUBLIC_REEXPORTS: dict[str, frozenset[str]] = {}
 
 
 def _verify_public_reexports(payload: bytes, module: str, public_modules: tuple[str, ...]) -> None:

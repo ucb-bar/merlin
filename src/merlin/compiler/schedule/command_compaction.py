@@ -10,10 +10,22 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, fields, replace
 
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, Var, evaluate
-from merlin.sched.ir.expr import Expr, Scaled, Select, Sum
-from merlin.sched.ir.integer_domain import IntegerDomainError, check_integer_domain
-from merlin.sched.ir.kernel import check_structure
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Expr,
+    IntegerDomainError,
+    Kernel,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    check_integer_domain,
+    check_structure,
+    evaluate,
+)
 
 
 @dataclass(frozen=True)

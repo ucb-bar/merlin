@@ -1,6 +1,6 @@
 """The scheduling language: semantics-preserving rewrites of a kernel, each with a proof obligation.
 
-:mod:`merlin.sched.ir` says what a kernel does and :mod:`merlin.sched.mach` says what the hardware is.
+:mod:`merlin.compiler.kernel_ir.ir` says what a kernel does and :mod:`merlin.compiler.kernel_ir.machine` says what the hardware is.
 This is the vocabulary a schedule is WRITTEN in -- the set of moves a search, or an agent, composes.
 
 THREE THINGS MAKE THIS SEARCHABLE RATHER THAN MERELY CORRECT.
@@ -34,30 +34,29 @@ from dataclasses import dataclass
 from dataclasses import replace as _replace
 from typing import Any
 
-from merlin.sched.ir import Call, Kernel, Loop, Ptr, Stage
-from merlin.sched.ir.expr import Expr, Scaled, Sum, Var, add, as_expr, evaluate, free_vars, mul, render, select
-from merlin.sched.ir.kernel import KernelError, _print_body, instances
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Expr,
+    Kernel,
+    KernelError,
+    Loop,
+    Ptr,
+    Scaled,
+    Stage,
+    Sum,
+    Var,
+    _print_body,
+    add,
+    as_expr,
+    evaluate,
+    free_vars,
+    instances,
+    mul,
+    render,
+    select,
+)
 
-__all__ = [
-    "Cursor",
-    "NotApplicable",
-    "PrimitiveError",
-    "PROOFS",
-    "divide_loop",
-    "fuse",
-    "hoist_config",
-    "multi_buffer",
-    "bind_bank",
-    "pipeline",
-    "peel",
-    "place",
-    "specialize",
-    "stage_mem",
-    "proof_of",
-    "reorder",
-    "replace",
-    "unroll",
-]
+# ---- primitives --------------------------------------------------------------------------------
 
 PROOFS = ("by_construction", "bounded_check", "rtl_gate")
 
@@ -178,7 +177,7 @@ def _loop_at(body: tuple, path: tuple[str, ...]) -> Loop:
 
 def _substitute(value: Any, var: str, expr: Expr) -> Any:
     """``value`` with every occurrence of loop variable ``var`` replaced by ``expr``."""
-    from merlin.sched.ir.kernel import Ptr
+    from merlin.compiler.kernel_ir.ir import Ptr
 
     if isinstance(value, Ptr):
         return Ptr(value.tensor, _substitute(value.offset, var, expr))
@@ -196,7 +195,7 @@ def _affine_shift(expr: Expr, var: str) -> int | None:
     the subject a bare variable can be absorbed into the test; anything else has to refuse rather than
     produce a select this expression language cannot write down.
     """
-    from merlin.sched.ir.expr import Const, Sum
+    from merlin.compiler.kernel_ir.ir import Const, Sum
 
     if isinstance(expr, Var):
         return 0 if expr.name == var else None
@@ -214,7 +213,7 @@ def _affine_shift(expr: Expr, var: str) -> int | None:
 
 
 def _rewrite_expr(e: Expr, var: str, expr: Expr) -> Expr:
-    from merlin.sched.ir.expr import Const, Scaled, Select, Sum, select
+    from merlin.compiler.kernel_ir.ir import Const, Scaled, Select, Sum, select
 
     if isinstance(e, Const):
         return e
@@ -294,7 +293,7 @@ def _divide_value(value, var, outer, inner, factor):
     to become outer == c//factor AND inner == c%factor without reassociation
     or extending the expression language.
     """
-    from merlin.sched.ir.expr import Const, Select
+    from merlin.compiler.kernel_ir.ir import Const, Select
 
     if isinstance(value, Ptr):
         return _replace(value, offset=_divide_value(value.offset, var, outer, inner, factor))
@@ -320,6 +319,7 @@ def _divide_value(value, var, outer, inner, factor):
 def _divide_call(call, var, outer, inner, factor):
     def rewrite(values):
         return tuple((key, _divide_value(value, var, outer, inner, factor)) for key, value in values)
+
     return _replace(call, args=rewrite(call.args), sets=rewrite(call.sets), assumes=rewrite(call.assumes))
 
 
@@ -345,10 +345,10 @@ def divide_loop(kernel: Kernel, cursor: Cursor, factor: int, *, names: tuple[str
     for name in (outer_name, inner_name):
         if name in _bound_vars(kernel.body):
             raise PrimitiveError(f"{name!r} is already a loop variable of this kernel")
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     if has_carried_events((target,)):
-        from .event_loops import split_event_loop
+        from merlin.compiler.kernel_ir.loops import split_event_loop
 
         return split_event_loop(kernel, cursor.loops, factor, (outer_name, inner_name))
     inner_body = _map_calls(
@@ -376,10 +376,10 @@ def unroll(kernel: Kernel, cursor: Cursor) -> Kernel:
             f"unrolling {target.var!r} would emit {target.extent} copies; a bound this large is a "
             "tiling decision, not an unroll"
         )
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     if has_carried_events(kernel.body):
-        from .event_loops import unroll_event_loop
+        from merlin.compiler.kernel_ir.loops import unroll_event_loop
 
         return unroll_event_loop(kernel, cursor.loops)
     flat: list[Any] = []
@@ -409,7 +409,7 @@ def reorder(kernel: Kernel, cursor: Cursor) -> Kernel:
     ``hazard_resolution`` and why a reordering there is graded on measured occupancy instead.
     """
     outer = _loop_at(kernel.body, cursor.loops)
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     if has_carried_events((outer,)):
         raise NotApplicable("completion-carrying loop reorder needs a separate dependency transport proof")
@@ -443,7 +443,7 @@ def fuse(kernel: Kernel, cursor: Cursor) -> Kernel:
     first, second = body[index], body[index + 1]
     if not isinstance(first, Loop) or not isinstance(second, Loop):
         raise NotApplicable("fuse applies to two adjacent loops")
-    from merlin.sched.ir.events import has_carried_events
+    from merlin.compiler.kernel_ir.ir import has_carried_events
 
     if has_carried_events((first, second)):
         raise NotApplicable("completion-carrying fusion needs a separate dependency transport proof")
@@ -569,7 +569,7 @@ def bind_bank(
 
     What this does NOT check is whether the placement collides with another call's, or starves a
     contending engine: those are properties of the whole kernel, so they belong to
-    :func:`~merlin.sched.check.placement.check_placement` and are asked once of the finished schedule
+    :func:`~merlin.compiler.kernel_ir.checks.check_placement` and are asked once of the finished schedule
     rather than once per move.
     """
     body, index = _resolve(kernel.body, cursor)
@@ -664,7 +664,7 @@ def _require_well_formed(out: Kernel, what: str) -> None:
     and operand values only, by design, since order is what a transformation changes. Measured on both
     `unroll` and `peel`: each returned a kernel whose own structural check rejected it, without a word.
     """
-    from merlin.sched.ir.kernel import check_structure
+    from merlin.compiler.kernel_ir.ir import check_structure
 
     errors = check_structure(out)
     if errors:
@@ -694,7 +694,7 @@ def _require_same_instances(before: Kernel, after: Kernel, *, what: str) -> None
 
 
 def _instance_keys(kernel: Kernel) -> list[tuple]:
-    from merlin.sched.ir.kernel import ConcretePtr, Ptr
+    from merlin.compiler.kernel_ir.ir import ConcretePtr, Ptr
 
     out = []
     for call, env in instances(kernel):
@@ -834,7 +834,7 @@ def _prune_unreachable_selects(body: tuple, var: str, extent: int) -> tuple:
     which is its identity. A schedule and the same schedule written directly must digest the same, so
     this is not cosmetic.
     """
-    from merlin.sched.ir.expr import Select
+    from merlin.compiler.kernel_ir.ir import Select
 
     def prune(value):
         if isinstance(value, Ptr):
@@ -921,7 +921,7 @@ def specialize(kernel: Kernel, cursor: Cursor, **operands) -> Kernel:
     target's own ISA semantics, asked by the instruction set's own check, and guessing at it here would
     put a per-target opinion inside a generic vocabulary.
     """
-    from merlin.sched.ir.kernel import _normalize, check_structure
+    from merlin.compiler.kernel_ir.ir import _normalize, check_structure
 
     body, index = _resolve(kernel.body, cursor)
     if index is None:
@@ -1045,7 +1045,7 @@ def replace(kernel: Kernel, cursor: Cursor, *, expansion, call: Call) -> Kernel:
         raise NotApplicable(
             f"the expansion is {len(expected)} statement(s) and only {len(found)} remain at this position"
         )
-    from merlin.sched.ir.kernel import check_structure
+    from merlin.compiler.kernel_ir.ir import check_structure
 
     why = _same_up_to_loop_names(found, expected, {})
     if why is not None:
@@ -1238,3 +1238,25 @@ def _rotate_operand(
         )
     rotated = add(current, mul(Var(over), advance))
     return _replace(target, args=tuple((k, rotated if k == rotate else v) for k, v in target.args))
+
+
+__all__ = [
+    "Cursor",
+    "NotApplicable",
+    "PROOFS",
+    "PrimitiveError",
+    "bind_bank",
+    "divide_loop",
+    "fuse",
+    "hoist_config",
+    "multi_buffer",
+    "peel",
+    "pipeline",
+    "place",
+    "proof_of",
+    "reorder",
+    "replace",
+    "specialize",
+    "stage_mem",
+    "unroll",
+]

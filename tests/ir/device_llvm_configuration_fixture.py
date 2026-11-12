@@ -15,6 +15,7 @@ from xdsl.dialects import llvm
 from xdsl.parser import Parser
 
 from merlin.common.dense_float_ir import DenseFloatPrinter
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel
 from merlin.compiler.schedule.configuration import (
     ConfigurationAdapter,
     ConfigurationEffects,
@@ -29,7 +30,6 @@ from merlin.llvmlower.host_transform_chain import (
     HostLLVMTransformChain,
     HostLLVMTransformStage,
 )
-from merlin.sched.ir import Call, Const, Kernel
 from merlin.targetgen.oot_starterkit.llvm_context import make_llvm_context
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
 

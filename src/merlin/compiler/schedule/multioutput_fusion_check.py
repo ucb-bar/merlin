@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field, replace
 from math import prod
 
 from merlin.common.digest import sha256_file
+from merlin.compiler.kernel_ir.ir import Kernel, TensorArg
 from merlin.compiler.schedule.compact_dense_group import _callback, _same_callback
 from merlin.compiler.schedule.configuration import verify_configuration_state
 from merlin.compiler.schedule.fusion import _elementwise
@@ -19,7 +20,6 @@ from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
 from merlin.compiler.schedule.program_limits import AddressWindow
 from merlin.compiler.schedule.spill_conformance import _Memory, _Piece
 from merlin.compiler.schedule.temporary_storage import StorageAdapter, _problem
-from merlin.sched.ir import Kernel, TensorArg
 
 
 @dataclass(frozen=True)

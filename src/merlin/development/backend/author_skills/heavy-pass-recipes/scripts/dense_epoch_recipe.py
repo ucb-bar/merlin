@@ -248,8 +248,8 @@ def schedule(p, s, r, a, block, admission, epoch_law, name):
 
 def counts(kernel, adapter):
     """Dynamic data commands by projected kind, and drains, without expanding the program."""
+    from merlin.compiler.kernel_ir.ir import Loop
     from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-    from merlin.sched.ir import Loop
 
     total = Counter()
 
@@ -269,9 +269,9 @@ def counts(kernel, adapter):
 # ------------------------------------------------------------------------------- execution
 def _effects(kernel, adapter):
     """(projected operation or None for a drain) per dynamic call, in issue order; preload/compute paired."""
+    from merlin.compiler.kernel_ir.ir import evaluate, instances
     from merlin.compiler.schedule.blocks import Compute, Preload
     from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-    from merlin.sched.ir import evaluate, instances
 
     preload = None
     for call, env in instances(kernel):

@@ -113,7 +113,7 @@ class TileLoadMapping:
     law: TileLoadAddressLaw
 
     def __post_init__(self):
-        from merlin.sched.ir import Expr
+        from merlin.compiler.kernel_ir.ir import Expr
 
         if (
             any(type(s) is not str or not s for s in (self.source, self.destination))
@@ -126,7 +126,7 @@ class TileLoadMapping:
 
 def _linear(expression):
     """Canonical affine coefficients; unsupported expressions keep their route."""
-    from merlin.sched.ir import Const, Scaled, Sum, Var
+    from merlin.compiler.kernel_ir.ir import Const, Scaled, Sum, Var
 
     if type(expression) is Const:
         return expression.value, {}
@@ -149,7 +149,7 @@ def _linear(expression):
 
 
 def _substitute(expression, variable, replacement):
-    from merlin.sched.ir import Const, Scaled, Select, Sum, Var, add, mul, select
+    from merlin.compiler.kernel_ir.ir import Const, Scaled, Select, Sum, Var, add, mul, select
 
     if type(expression) is Const:
         return expression
@@ -178,7 +178,7 @@ def _substitute(expression, variable, replacement):
 def _replace_call(call, variable, replacement):
     from dataclasses import replace
 
-    from merlin.sched.ir import Expr, Ptr
+    from merlin.compiler.kernel_ir.ir import Expr, Ptr
 
     def value(x):
         if isinstance(x, Expr):
@@ -260,9 +260,7 @@ def propose_tile_load_coalescing(kernel, *, project, encode, max_tiles, max_stat
 def _coalesce_tile_load_loops(kernel, *, project, encode, max_tiles, max_static_nodes, law_type, coalesce_tail):
     from dataclasses import replace
 
-    from merlin.sched.ir import Call, Const, Kernel, Loop, Var
-    from merlin.sched.ir.integer_domain import check_integer_domain
-    from merlin.sched.ir.kernel import check_structure
+    from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Var, check_integer_domain, check_structure
 
     if (
         type(kernel) is not Kernel
@@ -413,7 +411,7 @@ def expand_tile_load_mapping(mapping):
     """
     from dataclasses import replace
 
-    from merlin.sched.ir import Const
+    from merlin.compiler.kernel_ir.ir import Const
 
     if type(mapping) is not TileLoadMapping or type(mapping.columns) is not Const:
         raise ValueError("tile-band accesses need an actual typed constant-width mapping")
@@ -486,7 +484,7 @@ class TileStoreMapping:
     law: TileStoreAddressLaw
 
     def __post_init__(self):
-        from merlin.sched.ir import Expr
+        from merlin.compiler.kernel_ir.ir import Expr
 
         if (
             any(type(s) is not str or not s for s in (self.source, self.destination))

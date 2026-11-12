@@ -222,8 +222,8 @@ def composition_capabilities(*, selected_modules=None):
             row(
                 "stable_loop_occurrences",
                 (
-                    "merlin.sched.primitives.loop_handles.locate_loop",
-                    "merlin.sched.primitives.loop_handles.transform_loop",
+                    "merlin.compiler.kernel_ir.loops.locate_loop",
+                    "merlin.compiler.kernel_ir.loops.transform_loop",
                 ),
                 consumer="digest-bound structural occurrence and explicit transformed descendant handles",
                 access="additional_compiler_sources",
@@ -416,7 +416,7 @@ def composition_capabilities(*, selected_modules=None):
                     "merlin.compiler.schedule.loop_schedule.partition_counted_loop",
                     "merlin.compiler.schedule.scf_commands.materialize_scf_commands",
                     "merlin.compiler.schedule.scf_commands.emit_scf_commands",
-                    "merlin.sched.ir.Loop",
+                    "merlin.compiler.kernel_ir.ir.Loop",
                 ),
                 consumer="registered real transforms, actual checked Kernel/SCF and target callbacks",
                 stage="transforms_consumed_by_emission",

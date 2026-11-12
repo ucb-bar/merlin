@@ -83,7 +83,7 @@ These roles do not imply that every compile route materializes each dialect in
 that order. Some routes use typed Python records and call a selected OOT service.
 Target dialects are supplied by their backends.
 
-`merlin.sched.ir` uses Python records and counted `mk` text. Shared block
+`merlin.compiler.kernel_ir.ir` uses Python records and counted `mk` text. Shared block
 scheduling uses explicit load/compute/store records in `compiler/schedule/`.
 These are different representations from xDSL `schedule` operations and the
 upstream MLIR Transform dialect; adapters must be explicit.

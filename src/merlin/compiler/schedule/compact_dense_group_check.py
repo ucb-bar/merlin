@@ -11,6 +11,22 @@ from __future__ import annotations
 import time
 from dataclasses import asdict, dataclass, field, replace
 
+from merlin.compiler.kernel_ir.ir import (
+    DTYPE_BYTES,
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Sum,
+    TensorArg,
+    Var,
+    as_expr,
+    check_structure,
+)
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, _static_calls
 from merlin.compiler.schedule.compact_verification import (
@@ -19,8 +35,6 @@ from merlin.compiler.schedule.compact_verification import (
     _requested_elements,
     verify_compact_dense,
 )
-from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, Ptr, Scaled, Select, Sum, TensorArg, Var, as_expr
-from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 
 
 @dataclass(frozen=True)

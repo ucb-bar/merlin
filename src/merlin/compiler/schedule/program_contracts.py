@@ -12,6 +12,7 @@ import json
 from dataclasses import asdict, dataclass
 from math import lcm
 
+from merlin.compiler.kernel_ir.ir import Call, Const
 from merlin.compiler.schedule.program_limits import (
     AddressWindow,
     BranchRule,
@@ -23,7 +24,6 @@ from merlin.compiler.schedule.program_limits import (
     ProgramLimits,
 )
 from merlin.compiler.schedule.storage_contracts import _space, binding_value
-from merlin.sched.ir import Call, Const
 from merlin.targetgen.isa_dialect_gen import decode_instruction
 from merlin.targetgen.isa_spec import resolve_fact_integer
 

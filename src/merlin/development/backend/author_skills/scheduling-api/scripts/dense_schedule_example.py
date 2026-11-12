@@ -98,9 +98,9 @@ def contract(symbol: str) -> dict:
 
 def neutral_adapter():
     """The library tests' instruction boundary: generic block ops <-> calls, and the exact inverse."""
+    from merlin.compiler.kernel_ir.ir import Call, as_expr
     from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
     from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-    from merlin.sched.ir import Call, as_expr
 
     def encode(op):
         if isinstance(op, Load):
@@ -183,8 +183,8 @@ def execute(kernel, adapter, p) -> tuple[list[list[int]], dict]:
     """Run every projected actual call on host integers; the pass's own oracle, independent of the pass."""
     from dataclasses import replace
 
+    from merlin.compiler.kernel_ir.ir import evaluate, instances
     from merlin.compiler.schedule.blocks import Compute, Load, Preload
-    from merlin.sched.ir import evaluate, instances
 
     lhs = [[(i * p.k + j) % 7 - 3 for j in range(p.k)] for i in range(p.m)]
     rhs = [[(i * p.n + j) % 5 - 2 for j in range(p.n)] for i in range(p.k)]

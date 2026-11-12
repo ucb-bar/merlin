@@ -5,15 +5,28 @@ from __future__ import annotations
 from dataclasses import replace
 from itertools import product
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    add,
+    check_integer_domain,
+    check_structure,
+    mul,
+    select,
+)
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseLoopStorage, emit_compact_dense
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_ir import DRAIN as DRAIN
 from merlin.compiler.schedule.dense_panel_ir import _calls as _calls
 from merlin.compiler.schedule.dense_panel_ir import _loops as _loops
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.expr import add, mul, select
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 ISSUE_ORDERS = ("compute_then_prefetch", "prefetch_rhs_between_columns")
 

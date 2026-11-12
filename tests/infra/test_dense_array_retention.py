@@ -5,6 +5,7 @@ from corefixtures.compact_dense import encode as fresh_encode
 from corefixtures.compact_dense import project as fresh_project
 from corefixtures.dense_retained_reduction import chosen, inputs
 
+from merlin.compiler.kernel_ir.ir import Call, concretize, instances
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.dense_array_retention import (
     DenseArrayRetentionAdmission,
@@ -12,8 +13,6 @@ from merlin.compiler.schedule.dense_array_retention import (
     verify_dense_array_retention,
 )
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
-from merlin.sched.ir import Call, instances
-from merlin.sched.ir.kernel import concretize
 
 
 def encode(op):

@@ -20,7 +20,7 @@ So ``parse_kernel`` re-renders what it built and refuses if the text differs. A 
 REFUSAL, never a kernel with a different digest, and ``digest(parse(text(k))) == digest(k)`` holds by
 construction rather than by testing -- the test then only has to show the refusal can fire.
 
-This module imports nothing outside ``merlin.sched.ir``, so it travels with the vendorable core.
+This module imports nothing outside ``merlin.compiler.kernel_ir.ir``, so it travels with the vendorable core.
 Parsing is structural (a bracket-depth scanner and ``str.split``), never by pattern match: the repo's
 no-regex rule exists because a too-narrow pattern silently drops valid-but-differently-spelled input,
 and silently dropping a statement is exactly the failure the self-check above is written against.
@@ -28,10 +28,24 @@ and silently dropping a statement is exactly the failure the self-check above is
 
 from __future__ import annotations
 
-from .expr import Const, Expr, Scaled, Select, Sum, Var
-from .kernel import NULL, Call, Kernel, KernelError, Loop, Ptr, Stage, TensorArg
+from merlin.compiler.kernel_ir.ir import (
+    NULL,
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    KernelError,
+    Loop,
+    Ptr,
+    Scaled,
+    Select,
+    Stage,
+    Sum,
+    TensorArg,
+    Var,
+)
 
-__all__ = ["ParseError", "parse_kernel", "parse_expr"]
+# ---- parse -------------------------------------------------------------------------------------
 
 #: The clause keywords a call line may carry after its operand list, in the order ``Kernel.text``
 #: emits them. Peeled from the right, so each one's value is whatever sits between it and the next.
@@ -112,7 +126,7 @@ def _is_ident(s: str) -> bool:
 
 
 def parse_expr(s: str) -> Expr:
-    """One index expression, in the form ``merlin.sched.ir.expr.render`` prints.
+    """One index expression, in the form ``merlin.compiler.kernel_ir.ir.render`` prints.
 
     Built directly rather than through ``add``/``mul``, which simplify: a parser whose job is to
     recover what was written must not fold ``(i * 1)`` away, because the text it would then print is
@@ -264,16 +278,20 @@ def _parse_for(content: str, lineno: int):
             raise ParseError(f"line {lineno}: malformed completion loop bindings")
         start = len(prefix) - 1
         end = _match(rest, start)
-        values.append(rest[start + 1:end])
-        rest = rest[end + 1:]
+        values.append(rest[start + 1 : end])
+        rest = rest[end + 1 :]
     if rest:
         raise ParseError(f"line {lineno}: unexpected completion loop suffix")
     inputs = tuple(tuple(pair.split("=")) for pair in values[0].split(",") if pair)
     if any(len(pair) != 2 for pair in inputs):
         raise ParseError(f"line {lineno}: completion input is local=initial")
-    return (parts[0].strip(), _int(carried[0]), inputs,
-            tuple(values[1].split(",")) if values[1] else (),
-            tuple(values[2].split(",")) if values[2] else ())
+    return (
+        parts[0].strip(),
+        _int(carried[0]),
+        inputs,
+        tuple(values[1].split(",")) if values[1] else (),
+        tuple(values[2].split(",")) if values[2] else (),
+    )
 
 
 def _parse_body(lines: list[tuple[int, str, int]], i: int, depth: int) -> tuple[tuple, int]:
@@ -382,3 +400,10 @@ def parse_kernel(text: str) -> Kernel:
             f"different digest than the one it was written with -- {_first_difference(text, printed)}"
         )
     return kernel
+
+
+__all__ = [
+    "ParseError",
+    "parse_expr",
+    "parse_kernel",
+]

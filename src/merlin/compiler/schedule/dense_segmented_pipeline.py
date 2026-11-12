@@ -11,6 +11,17 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from math import gcd
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    TensorArg,
+    Var,
+    check_integer_domain,
+    check_structure,
+    select,
+)
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseBiasSource, _digest, _edge, _emit_lhs_panel, _Group, _groups
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
@@ -24,8 +35,6 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     _verify_dense_epochs,
 )
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.sched.ir import Call, Const, Kernel, Loop, TensorArg, Var, check_structure, select
-from merlin.sched.ir.integer_domain import check_integer_domain
 from merlin.transforms.dense_planning import dense_blocks
 
 OUTPUT_GROUP_PREFETCH = "prefetch_rhs_between_output_groups"
@@ -201,7 +210,7 @@ def build_dense_segmented_pipeline(
         bias_source.validate(problem, dtypes)
     if type(output_readout) is DenseTiledIntegerReadout:
         output_readout.validate_problem(problem)
-    from merlin.sched.ir.kernel import DTYPE_BYTES
+    from merlin.compiler.kernel_ir.ir import DTYPE_BYTES
 
     if (
         tuple(DTYPE_BYTES.get(t) for t in dtypes) != (problem.lhs_bytes, problem.rhs_bytes, problem.accumulator_bytes)
@@ -480,10 +489,10 @@ def interleave_dense_segmented_frontier(kernel, adapter, *, issue_order="prefetc
     The explicit full-K output-group choice requires equal K coordinates and
     the exact following N panel, retaining a shorter final N load domain.
     """
+    from merlin.compiler.kernel_ir.ir import free_vars
+    from merlin.compiler.kernel_ir.primitives import _bound_vars, _loop_at, _splice
     from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
     from merlin.compiler.schedule.tile_load_coalescing import _linear, _plain
-    from merlin.sched.ir.expr import free_vars
-    from merlin.sched.primitives import _bound_vars, _loop_at, _splice
 
     if type(kernel) is not Kernel or check_structure(kernel) or issue_order not in SEGMENTED_ISSUE_ORDERS[1:]:
         raise ValueError("frontier interleaving requires actual closed commands and an explicit interleaving order")

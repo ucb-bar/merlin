@@ -8,6 +8,7 @@ hardware capability, cycle score or physical qualification.
 
 from dataclasses import asdict, replace
 
+from merlin.compiler.kernel_ir.ir import Call, Loop
 from merlin.compiler.schedule.blocks import InitializeAccumulator, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
@@ -19,7 +20,6 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     verify_dense_panel_pipeline,
     verify_dense_retained_reduction,
 )
-from merlin.sched.ir import Call, Loop
 
 
 def batch_dense_panel_readouts(

@@ -16,7 +16,7 @@ __all__ = ["geometry_from_address_space", "geometry_from_machine"]
 
 
 def geometry_from_machine(machine: Any) -> Geometry:
-    """Project a :class:`~merlin.sched.mach.Machine` onto the vendorable :class:`Geometry`, or refuse.
+    """Project a :class:`~merlin.compiler.kernel_ir.machine.Machine` onto the vendorable :class:`Geometry`, or refuse.
 
     The projection runs ONE WAY, and deliberately. The standalone scheduling artifact imports no Merlin
     modules; a ``Geometry`` that reached back into the machine

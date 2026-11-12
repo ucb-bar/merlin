@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Ptr, TensorArg, Var, check_structure
 from merlin.compiler.schedule.blocks import Load, Preload
 from merlin.compiler.schedule.compact_dense import (
     _digest,
@@ -27,7 +28,6 @@ from merlin.compiler.schedule.dense_shared_rhs_check import DenseRHSReuseLaw, sh
 from merlin.compiler.schedule.library_sources import admission_point
 from merlin.compiler.schedule.schedule_ir import dense_schedule_text
 from merlin.compiler.schedule.shared_rhs_schedule_ir import make_shared_rhs_schedule_plan, read_shared_rhs_schedule_plan
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, TensorArg, Var, check_structure
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
 from merlin.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
 

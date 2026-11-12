@@ -155,7 +155,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
         negative += ["merlin", "xdsl.ir"]
     elif not profile.fresh10:
         negative += [
-            "merlin.sched.ir",
+            "merlin.compiler.kernel_ir.ir",
             "merlin.transforms.dense_planning",
             "merlin.compiler.schedule.schedule_ir",
             "merlin.targetgen.oot_starterkit.transforms",
@@ -176,13 +176,13 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
     if profile.fresh10:
         negative += ["merlin.mining", "merlin.kernels", "merlin.xdsl_dialects.cca"]
         if not profile.allows("scheduling_semantics"):
-            negative += ["merlin.sched.ir.kernel", "merlin.xdsl_dialects.schedule"]
+            negative += ["merlin.compiler.kernel_ir.ir", "merlin.xdsl_dialects.schedule"]
         if not profile.allows("transform_library"):
             negative += [
                 "merlin.transforms.tensor_views",
                 "merlin.transforms.pipeline",
                 "merlin.compiler.schedule.dense_panel_epochs",
-                "merlin.sched.primitives",
+                "merlin.compiler.kernel_ir.primitives",
             ]
     for name in negative:
         lines += [

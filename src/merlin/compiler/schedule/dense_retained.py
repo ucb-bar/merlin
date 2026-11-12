@@ -5,11 +5,20 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, replace
 from math import prod
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Loop,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    check_integer_domain,
+    check_structure,
+)
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_ir import DRAIN, _calls, _loops, _serial_projection
-from merlin.sched.ir import Call, Const, Loop, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 
 @dataclass(frozen=True)
@@ -274,7 +283,7 @@ def dense_retained_operand_hoists(kernel, adapter, *, role):
 
 def _dense_retained_compute_nests(kernel, adapter):
     """Read independent M/K/N axes from original projected command operands."""
-    from merlin.sched.ir.expr import free_vars
+    from merlin.compiler.kernel_ir.ir import free_vars
 
     streams = []
 

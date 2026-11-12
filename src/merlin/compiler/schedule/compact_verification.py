@@ -16,8 +16,8 @@ from itertools import product
 from math import prod
 from threading import Lock
 
+from merlin.compiler.kernel_ir.ir import Const, Loop, Scaled, Select, Sum, Var, evaluate
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
-from merlin.sched.ir import Const, Loop, Scaled, Select, Sum, Var, evaluate
 
 
 class DenseVerificationUnavailable(ValueError):
@@ -240,7 +240,7 @@ def _project(kernel, adapter, *, fold_singleton_loops=True):
                 value, then=fold_singletons(value.then, constants), other=fold_singletons(value.other, constants)
             )
         if isinstance(value, Sum):
-            from merlin.sched.ir.expr import add
+            from merlin.compiler.kernel_ir.ir import add
 
             return add(*(fold_singletons(term, constants) for term in value.terms))
         if isinstance(value, Scaled):
@@ -307,7 +307,7 @@ def verify_compact_dense(
     except ImportError as exc:
         raise DenseVerificationUnavailable("symbolic compact dense checking requires z3-solver") from exc
 
-    from merlin.sched.ir.kernel import check_structure
+    from merlin.compiler.kernel_ir.ir import check_structure
 
     if type(timeout_ms) is not int or timeout_ms <= 0 or type(static_budget) is not int or static_budget < 0:
         raise ValueError("dense verification requires explicit checking and static command budgets")
@@ -326,12 +326,12 @@ def verify_compact_dense(
     structure = check_structure(kernel)
     if structure:
         raise ValueError("invalid dense kernel: " + "; ".join(structure))
+    from merlin.compiler.kernel_ir.ir import DTYPE_BYTES
     from merlin.compiler.schedule.dense_contracts import (
         DenseIntegerReadout,
         DenseTiledIntegerReadout,
         TiledIntegerStore,
     )
-    from merlin.sched.ir.kernel import DTYPE_BYTES
 
     if output_readout is not None and type(output_readout) not in (DenseIntegerReadout, DenseTiledIntegerReadout):
         raise ValueError("dense output verification requires a selected typed readout")
@@ -345,7 +345,7 @@ def verify_compact_dense(
         *((((problem.n,), problem.accumulator_bytes, "read"),) if bias_source is not None else ()),
         ((problem.m, problem.n), output_bytes, "write"),
     )
-    from merlin.sched.ir.kernel import DTYPE_BYTES
+    from merlin.compiler.kernel_ir.ir import DTYPE_BYTES
 
     if (
         kernel.attrs

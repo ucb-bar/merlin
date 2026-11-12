@@ -5,6 +5,7 @@ from dataclasses import replace
 from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Var, as_expr
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
 from merlin.compiler.schedule.dense_panel_pipeline import (
@@ -27,7 +28,6 @@ from merlin.compiler.schedule.scf_commands import (
 )
 from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
 from merlin.llvmlower.host_builder import FnBuilder
-from merlin.sched.ir import Call, Const, Kernel, Loop, Var, as_expr
 from merlin.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
 
 

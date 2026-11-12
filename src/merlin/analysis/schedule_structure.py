@@ -506,7 +506,7 @@ def analyze_counted_kernel(kernel, *, effect_projector: Callable | None = None, 
     selected projector may add external accesses and roles, which this analysis
     cannot reconstruct from instruction names alone.
     """
-    from merlin.sched.ir import Call, Kernel, Loop, check_structure
+    from merlin.compiler.kernel_ir.ir import Call, Kernel, Loop, check_structure
 
     if type(kernel) is not Kernel or check_structure(kernel):
         raise ValueError("counted schedule analysis needs a structurally valid kernel")

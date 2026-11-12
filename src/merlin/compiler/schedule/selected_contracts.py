@@ -14,6 +14,7 @@ from pathlib import Path
 
 import yaml
 
+from merlin.compiler.kernel_ir.ir import Call, evaluate
 from merlin.compiler.schedule.configuration import ConfigurationAdapter, ConfigurationEffects
 from merlin.compiler.schedule.dense_contracts import DenseSchedulingContract, resolve_dense_contract
 from merlin.compiler.schedule.fusion_contracts import SelectedFusionContract, resolve_fusion_contract
@@ -21,7 +22,6 @@ from merlin.compiler.schedule.program_contracts import SelectedProgramContract, 
 from merlin.compiler.schedule.row_contracts import SelectedRowContract, resolve_row_contract
 from merlin.compiler.schedule.spill_contracts import SelectedSpillContract, resolve_spill_contract
 from merlin.compiler.schedule.storage_contracts import TemporaryStorageContract, resolve_storage_contract
-from merlin.sched.ir import Call, evaluate
 from merlin.targetgen.isa_dialect_gen import decode_instruction, encode_instruction
 from merlin.targetgen.isa_spec import ResolvedISA, resolve_isa
 

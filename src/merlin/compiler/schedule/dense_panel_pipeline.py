@@ -14,6 +14,20 @@ from dataclasses import replace as replace
 from itertools import product as product
 from math import prod as prod
 
+from merlin.compiler.kernel_ir.ir import Call as Call
+from merlin.compiler.kernel_ir.ir import Const as Const
+from merlin.compiler.kernel_ir.ir import Kernel as Kernel
+from merlin.compiler.kernel_ir.ir import Loop as Loop
+from merlin.compiler.kernel_ir.ir import Ptr as Ptr
+from merlin.compiler.kernel_ir.ir import Scaled as Scaled
+from merlin.compiler.kernel_ir.ir import Select as Select
+from merlin.compiler.kernel_ir.ir import Sum as Sum
+from merlin.compiler.kernel_ir.ir import Var as Var
+from merlin.compiler.kernel_ir.ir import add as add
+from merlin.compiler.kernel_ir.ir import check_integer_domain as check_integer_domain
+from merlin.compiler.kernel_ir.ir import check_structure as check_structure
+from merlin.compiler.kernel_ir.ir import mul as mul
+from merlin.compiler.kernel_ir.ir import select as select
 from merlin.compiler.schedule.blocks import Compute as Compute
 from merlin.compiler.schedule.blocks import InitializeAccumulator as InitializeAccumulator
 from merlin.compiler.schedule.blocks import Load as Load
@@ -50,20 +64,6 @@ from merlin.compiler.schedule.dense_retained import dense_retained_compute_unrol
 from merlin.compiler.schedule.dense_retained import dense_retained_operand_hoists as dense_retained_operand_hoists
 from merlin.compiler.schedule.dense_retained import verify_dense_retained_reduction as verify_dense_retained_reduction
 from merlin.compiler.schedule.library_sources import admission_point as admission_point
-from merlin.sched.ir import Call as Call
-from merlin.sched.ir import Const as Const
-from merlin.sched.ir import Kernel as Kernel
-from merlin.sched.ir import Loop as Loop
-from merlin.sched.ir import Ptr as Ptr
-from merlin.sched.ir import Scaled as Scaled
-from merlin.sched.ir import Select as Select
-from merlin.sched.ir import Sum as Sum
-from merlin.sched.ir import Var as Var
-from merlin.sched.ir import check_structure as check_structure
-from merlin.sched.ir.expr import add as add
-from merlin.sched.ir.expr import mul as mul
-from merlin.sched.ir.expr import select as select
-from merlin.sched.ir.integer_domain import check_integer_domain as check_integer_domain
 
 from .dense_panel_build import (
     ISSUE_ORDERS as ISSUE_ORDERS,

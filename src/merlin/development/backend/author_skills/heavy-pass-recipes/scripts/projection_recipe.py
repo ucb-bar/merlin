@@ -59,10 +59,10 @@ linalg.yield %v:i32
 def recipe(facts=None, shape=None):
     from dataclasses import replace
 
+    from merlin.compiler.kernel_ir.ir import Loop
     from merlin.compiler.schedule.projection_dense import bind_dense_projection
     from merlin.compiler.schedule.projection_views import plan_shared_projection_views
     from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups
-    from merlin.sched.ir import Loop
     from merlin.transforms.certificates import ir_digest
 
     S = _support()

@@ -120,7 +120,7 @@ AUTHOR_WITHHELD_PREFIXES = (
     "merlin.verification.scalar_host",
     "merlin.verification.scalar_host",
     "merlin.llvmlower.host_policy",
-    "merlin.sched.expressiveness",
+    "merlin.compiler.kernel_ir.expressiveness",
 )
 
 

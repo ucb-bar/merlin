@@ -15,9 +15,19 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from merlin.transforms.pipeline_state import AnalysisStamp
 
+from merlin.compiler.kernel_ir.ir import (
+    DTYPE_BYTES,
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    TensorArg,
+    Var,
+    check_structure,
+    select,
+)
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
-from merlin.sched.ir import Call, Const, Expr, Kernel, Loop, TensorArg, Var, select
-from merlin.sched.ir.kernel import DTYPE_BYTES, check_structure
 from merlin.transforms.dense_planning import DenseBlock, DenseChoice, DenseProblem, DenseResources, choose_dense_block
 
 DenseOperation = Load | Preload | Compute | Store | InitializeAccumulator
@@ -218,7 +228,7 @@ class CompactDenseResult:
         Target instruction implementations still own their argument widths and
         address windows. This emits C, not a machine conformance receipt.
         """
-        from merlin.sched.codegen import emit_c_function
+        from merlin.compiler.kernel_ir.codegen import emit_c_function
 
         self.revalidate()
         source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self.index_bits)

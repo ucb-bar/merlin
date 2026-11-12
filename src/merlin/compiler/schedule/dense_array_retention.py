@@ -15,13 +15,20 @@ from hashlib import sha256
 from math import prod
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    Var,
+    check_integer_domain,
+    check_structure,
+    free_vars,
+)
+from merlin.compiler.kernel_ir.primitives import _bound_vars, _loop_at, _splice, _subst_call
 from merlin.compiler.schedule.blocks import Compute, Preload
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, dense_retained_compute_nests
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.sched.ir import Call, Const, Kernel, Loop, Var, check_structure
-from merlin.sched.ir.expr import free_vars
-from merlin.sched.ir.integer_domain import check_integer_domain
-from merlin.sched.primitives import _bound_vars, _loop_at, _splice, _subst_call
 
 
 @dataclass(frozen=True)

@@ -12,15 +12,23 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Expr,
+    Kernel,
+    Loop,
+    Ptr,
+    check_integer_domain,
+    check_structure,
+    evaluate,
+)
 from merlin.compiler.schedule.temporary_storage import (
     StorageAdapter,
     StorageOptimizationUnavailable,
     _project,
     verify_temporary_storage,
 )
-from merlin.sched.ir import Call, Const, Kernel, Loop, Ptr, check_structure, evaluate
-from merlin.sched.ir.expr import Expr
-from merlin.sched.ir.integer_domain import check_integer_domain
 from merlin.targetgen.isa_spec import resolve_fact_integer
 
 
@@ -220,7 +228,7 @@ class CheckedDrainedPeriod:
 
     def emit_c(self, instruction_set, *, symbol):
         """Consume unchanged counted IR; target rendering still needs execution checks."""
-        from merlin.sched.codegen import emit_c_function
+        from merlin.compiler.kernel_ir.codegen import emit_c_function
 
         self.revalidate()
         source = emit_c_function(self.kernel, instruction_set, symbol=symbol, index_bits=self._options["index_bits"])

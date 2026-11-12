@@ -262,7 +262,7 @@ model-name dispatch.
 ## Scheduling integration and shared-pass development
 
 Try the exported scheduling IR where useful in the production compiler:
-`merlin.sched.ir.kernel` provides Kernel, Call, Loop and explicit dependency/stage
+`merlin.compiler.kernel_ir.ir` provides Kernel, Call, Loop and explicit dependency/stage
 fields; `ir.expr` supplies symbolic indices and `ir.parse.parse_kernel` reopens
 retained schedules. These are useful abstractions, not a dialect-use score or a
 requirement to run every pass. Honor the selected shared-pass contract; an unused

@@ -61,7 +61,7 @@ separates a readout defect from a contraction defect.
 - Walk the regions in program order; the first group whose replay fails is the first diverging
   tensor. Check its chain stages against the pipeline in `semantics.md`.
 - Integer index arithmetic in emitted C can overflow on large shapes even when values are right:
-  `merlin/sched/ir/integer_domain.py` checks every emitted index expression for 32 or 64 bits.
+  `merlin/compiler/kernel_ir/ir.py` checks every emitted index expression for 32 or 64 bits.
 
 ## 5. Performance
 

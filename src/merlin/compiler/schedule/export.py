@@ -48,11 +48,8 @@ PUBLIC_MODULES = (
     "merlin.compiler.schedule.temporary_storage",
     "merlin.compiler.schedule.window_transfer",
     "merlin.llvmlower.cpu_softmax",
-    "merlin.sched.ir.expr",
-    "merlin.sched.ir.integer_domain",
-    "merlin.sched.ir.kernel",
-    "merlin.sched.ir.parse",
-    "merlin.sched.isa.types",
+    "merlin.compiler.kernel_ir.ir",
+    "merlin.compiler.kernel_ir.parse",
     "merlin.semantic_compiler.allocation_types",
     "merlin.targetgen.isa_dialect_gen",
     "merlin.targetgen.isa_spec",
@@ -94,12 +91,10 @@ PUBLIC_MODULES = (
     "merlin.llvmlower.source_region_host",
     "merlin.compiler.passes.composition",
     "merlin.compiler.schedule.dense_ready_readout",
-    "merlin.sched.ir.events",
     "merlin.compiler.schedule.scf_carried_events",
-    "merlin.sched.primitives.event_loops",
+    "merlin.compiler.kernel_ir.loops",
     "merlin.compiler.frontend.preprocess",
     "merlin.xdsl_dialects.lowering.outline",
-    "merlin.sched.primitives.loop_handles",
     "merlin.compiler.schedule.completion_streams",
     "merlin.compiler.schedule.configuration_motion",
     "merlin.compiler.schedule.spatial_max_stripes",
@@ -161,10 +156,6 @@ _PREPROCESSING_NAMESPACE = '"""Selected shared preprocessing leaves; no driver o
 NAMESPACES = {
     "merlin.compiler.schedule": '"""Shared scheduling namespace; public APIs are explicit leaf modules."""\n',
     "merlin.transforms": '"""Shared transform namespace; host proof orchestration is not exported."""\n',
-    "merlin.sched.isa": (
-        '"""Shared instruction declarations; backend discovery is not exported."""\n\n'
-        "from .types import OPERAND_KINDS, InstrDef, InstructionSet, IsaError, Operand\n"
-    ),
     "merlin.xdsl_dialects": '"""Shared xDSL helpers; dialect modules are explicitly selected."""\n',
     "merlin.runtime": '"""Selected host arithmetic helpers; execution and oracle modules are not exported."""\n',
     "merlin.xdsl_dialects.lowering": '"""Selected graph lowering leaves; other pipeline owners are not exported."""\n',

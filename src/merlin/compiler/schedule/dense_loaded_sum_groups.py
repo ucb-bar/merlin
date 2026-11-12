@@ -9,12 +9,11 @@ from dataclasses import replace
 from itertools import product
 from math import prod
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Loop, free_vars
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
 from merlin.compiler.schedule.dense_readout_overlap import _affine_window_bounds
 from merlin.compiler.schedule.panel_tile_loads import _offset_form
-from merlin.sched.ir import Call, Const, Loop
-from merlin.sched.ir.expr import free_vars
 
 
 def compose_completed_groups(kernel, project, *, rows, columns, row_span, column_span, rewrite, end_bound):

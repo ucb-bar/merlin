@@ -1269,7 +1269,7 @@ def cca_agree(a: CCA, b: CCA) -> AgreementReport:
 
 
 def lift_schedule(kernel, *, machine=None, op: str, source: str = "schedule", backend: str) -> CCA:
-    """OUR side of an expressiveness measurement: a CCA lifted from a :mod:`merlin.sched` schedule.
+    """OUR side of an expressiveness measurement: a CCA lifted from a :mod:`merlin.compiler.kernel_ir` schedule.
 
     Every other lifter reads a BUILT artifact -- assembly, an object file, a graph record. That left
     the schedule itself, which is the thing the scheduling-IR coverage register makes its claims
@@ -1277,7 +1277,7 @@ def lift_schedule(kernel, *, machine=None, op: str, source: str = "schedule", ba
     on this axis" could not be asked at all.
 
     What it reads is the PAYLOAD, never statement order: dispatch counts come from
-    :func:`~merlin.sched.ir.kernel.instances` (the dynamic instances the loop nest denotes, not the
+    :func:`~merlin.compiler.kernel_ir.ir.instances` (the dynamic instances the loop nest denotes, not the
     source sites), asynchrony from ``Call.produces``/``Call.awaits``, placement from ``Call.stages``
     and configuration from ``Call.sets``. Nothing here knows what a target's instructions are called:
     an instruction is a synchronisation instruction exactly when the MACHINE says so, and a machine is
@@ -1290,7 +1290,7 @@ def lift_schedule(kernel, *, machine=None, op: str, source: str = "schedule", ba
     because "this schedule has no fences" and "nobody wrote down what a fence is here" are different
     statements and only the first is a measurement.
     """
-    from merlin.sched.ir.kernel import instances
+    from merlin.compiler.kernel_ir.ir import instances
 
     seq = [c for c, _ in instances(kernel)]
     n = len(seq)

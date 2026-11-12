@@ -38,6 +38,7 @@ from itertools import product
 from math import prod
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
@@ -49,7 +50,6 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
     _serial_projection,
 )
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
 
 COMPLETION = Call(DRAIN, ())
 #: Premises every merged K stream needs; the readout flag additionally merges the readout epoch.

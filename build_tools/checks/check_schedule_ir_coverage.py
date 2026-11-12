@@ -264,7 +264,7 @@ def status_of(row: dict, live_primitives: set[str], measured: dict | None = None
     Not read from the row: a status a human can write is a status a human can be wrong about, and the
     one thing worth knowing is whether the tree still supports it.
 
-    ``measured`` maps a row id to a :class:`merlin.sched.expressiveness.AxisMeasurement`. When one is
+    ``measured`` maps a row id to a :class:`merlin.compiler.kernel_ir.expressiveness.AxisMeasurement`. When one is
     supplied IT decides, because ``evidence.measured_on`` is otherwise a field a human can type -- the
     one status in this register that could be asserted rather than computed, in a file whose whole
     premise is that a claim cannot outrun the code. Without a measurement the row is read as before,
@@ -446,7 +446,7 @@ def live_primitives() -> set[str]:
     primitives exist, and every row then reads UNEXPRESSED, which is the truth.
     """
     try:
-        import merlin.sched.primitives as prims  # noqa: PLC0415
+        import merlin.compiler.kernel_ir.primitives as prims  # noqa: PLC0415
     except ImportError:
         return set()
     return {n for n in (getattr(prims, "__all__", ()) or ()) if getattr(getattr(prims, n, None), "PROOF", None)}
@@ -455,7 +455,7 @@ def live_primitives() -> set[str]:
 def primitive_proofs() -> dict[str, str]:
     """``{primitive: its declared obligation}``, read from the code that carries it."""
     try:
-        import merlin.sched.primitives as prims  # noqa: PLC0415
+        import merlin.compiler.kernel_ir.primitives as prims  # noqa: PLC0415
     except ImportError:
         return {}
     out = {}
@@ -543,7 +543,7 @@ def main(argv: list[str] | None = None) -> int:
     measured = None
     if args.measure:
         try:
-            from merlin.sched.expressiveness import measure_register, totals  # noqa: PLC0415
+            from merlin.compiler.kernel_ir.expressiveness import measure_register, totals  # noqa: PLC0415
 
             measured = {m.axis_id: m for m in measure_register(rows)}
         except Exception as exc:  # noqa: BLE001

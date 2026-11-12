@@ -7,14 +7,13 @@ uses the existing dense source/lifetime and retained-epoch verifiers.
 
 from dataclasses import asdict, dataclass, field, replace
 
+from merlin.compiler.kernel_ir.ir import DTYPE_BYTES, Call, Expr, Kernel, Loop, Ptr, TensorArg, as_expr, check_structure
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import DenseLoopStorage, _static_calls
 from merlin.compiler.schedule.compact_dense_group_check import _group_output_contracts, _range, _span
 from merlin.compiler.schedule.compact_verification import _project, _requested_elements, verify_compact_dense
 from merlin.compiler.schedule.dense_contracts import TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN, _serial_projection, verify_dense_retained_reduction
-from merlin.sched.ir import Call, Expr, Kernel, Loop, Ptr, TensorArg, as_expr, check_structure
-from merlin.sched.ir.kernel import DTYPE_BYTES
 
 
 @dataclass(frozen=True)

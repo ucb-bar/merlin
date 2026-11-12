@@ -8,6 +8,17 @@ and completion; this adapter supplies no target encoder or execution grant.
 
 from dataclasses import dataclass, replace
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Kernel,
+    Loop,
+    Scaled,
+    Select,
+    Sum,
+    check_integer_domain,
+    check_structure,
+)
 from merlin.compiler.schedule.blocks import Load, Store
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
@@ -15,8 +26,6 @@ from merlin.compiler.schedule.dense_readout_overlap import _affine_window_bounds
 from merlin.compiler.schedule.loop_schedule import LoopTransform, propose_loop_transforms
 from merlin.compiler.schedule.projection_provenance import projection_compute_member
 from merlin.compiler.schedule.projection_views import SharedProjectionViews
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 _MEMBER = "projection_member"
 _COLUMN = "projection_local_column"

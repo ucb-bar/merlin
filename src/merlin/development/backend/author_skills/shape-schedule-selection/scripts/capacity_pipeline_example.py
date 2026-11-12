@@ -144,9 +144,9 @@ def shared_upstream(shape, caps):
 
 def adapter():
     """Neutral instruction boundary, with the fresh-capture/STAY pair array retention emits."""
+    from merlin.compiler.kernel_ir.ir import Call, as_expr
     from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
     from merlin.compiler.schedule.compact_dense import DenseLoopAdapter
-    from merlin.sched.ir import Call, as_expr
 
     def call(name, names, values):
         return Call(name, tuple(zip(names, map(as_expr, values))))
@@ -212,8 +212,8 @@ def adapter():
 
 def execute(kernel, a, p) -> dict:
     """Run the projected calls on host integers and compare with the source product; returns call counts."""
+    from merlin.compiler.kernel_ir.ir import evaluate, instances
     from merlin.compiler.schedule.blocks import Compute, Load, Preload
-    from merlin.sched.ir import evaluate, instances
 
     lhs = [[(i * p.k + j) % 7 - 3 for j in range(p.k)] for i in range(p.m)]
     rhs = [[(i * p.n + j) % 5 - 2 for j in range(p.n)] for i in range(p.k)]

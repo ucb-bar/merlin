@@ -18,11 +18,11 @@ inputs:
   # V23's reviewed leaves (as in fresh-campaign-next.yaml) plus the three V24 shared-RHS leaves
   # absent from the pinned previous library (reviewed 2026-10-27).
   reviewed_modules:
-  - merlin.sched.ir.events
+  - merlin.compiler.kernel_ir.ir
   - merlin.compiler.schedule.scf_carried_events
-  - merlin.sched.primitives.event_loops
+  - merlin.compiler.kernel_ir.loops
   - merlin.common.stat_memo
-  - merlin.sched.primitives.loop_handles
+  - merlin.compiler.kernel_ir.loops
   - merlin.compiler.schedule.completion_streams
   - merlin.compiler.schedule.configuration_motion
   - merlin.compiler.schedule.spatial_max_stripes

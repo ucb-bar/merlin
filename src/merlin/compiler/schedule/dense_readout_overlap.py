@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, replace
 from hashlib import sha256
 from pathlib import Path
 
+from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
 from merlin.compiler.schedule.compact_dense import _digest
 from merlin.compiler.schedule.dense_panel_pipeline import (
@@ -21,7 +22,6 @@ from merlin.compiler.schedule.dense_panel_pipeline import (
 )
 from merlin.compiler.schedule.dense_segmented_pipeline import DenseSegmentedPipelineResult, _assignment
 from merlin.compiler.schedule.library_sources import admission_point
-from merlin.sched.ir import Call, Const, Kernel, Loop, Scaled, Select, Sum, Var, check_structure
 
 
 def propose_dense_readout_overlap(kernel, adapter, storage, *, group_path, accumulator_rows):

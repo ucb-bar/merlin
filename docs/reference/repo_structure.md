@@ -43,7 +43,7 @@ authority under `tools/timing/`. They are not separate copies of Merlin.
 | Discovery and selection | [`compiler/system.py`](../../src/merlin/compiler/system.py), [`compiler/planning/`](../../src/merlin/compiler/planning) | Backend offers, fusion alternatives and placement |
 | Partitioning | [`compiler/ir/boundary.py`](../../src/merlin/compiler/ir/boundary.py), [`compiler/partition/`](../../src/merlin/compiler/partition) | Live values, effects and materialized regions |
 | Transformations | [`transforms/`](../../src/merlin/transforms), [`compiler/transforms/`](../../src/merlin/compiler/transforms) | Shared rewrite algorithms |
-| Scheduling | [`compiler/schedule/`](../../src/merlin/compiler/schedule), [`sched/`](../../src/merlin/sched) | Command schedules and counted kernel records |
+| Scheduling | [`compiler/schedule/`](../../src/merlin/compiler/schedule), [`compiler/kernel_ir/`](../../src/merlin/compiler/kernel_ir) | Command schedules and counted kernel records |
 | Pass invocation | [`compiler/passes/`](../../src/merlin/compiler/passes) | Native MLIR and xDSL invocation |
 | Scalar lowering | [`compiler/lower/scalar/`](../../src/merlin/compiler/lower/scalar), [`compiler/lower/llvm/`](../../src/merlin/compiler/lower/llvm) | Base scalar pipeline and reusable LLVM finalization |
 | OOT lowering | [`compiler/backend/selected.py`](../../src/merlin/compiler/backend/selected.py), [`compiler/lower/regions.py`](../../src/merlin/compiler/lower/regions.py) | Selected recipe and backend emission boundary |

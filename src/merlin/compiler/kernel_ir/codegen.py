@@ -1,48 +1,191 @@
-"""Reroll periodic runs of encoded accelerator commands into counted loops.
-
-WHY THIS EXISTS. A scheduler that materialises a tile nest as one command per tile hands codegen a
-flat list thousands of entries long, and emitting one host instruction sequence per entry makes the
-kernel's own code the bottleneck: it overruns the host's instruction cache, and every line is then a
-compulsory miss with no reuse and no prefetcher. The cost is not the commands -- the device sees the
-same ones either way -- it is the *encoding* of the commands. An expert writes the same work as a small
-loop, and this pass recovers that spelling from the flat list.
-
-Measured on the first target to hit it, an accelerator whose host has a 16 KiB L1 instruction cache: a
-matmul emitted flat was 755 KB - 1.30 MB of ``.text``, 46x to 79x over, against ~1.3 KB for the expert
-kernel. Those numbers are one instance, not a constant -- nothing in this module is fitted to them.
-
-WHAT THIS IS, AND WHAT IT IS NOT. This is an ENCODING decision, not a scheduling one. The scheduler
-chooses which commands to issue, in which order, against which buffers; this pass does not change that
-sequence, its order, or its operands by even one bit. It only chooses whether a stretch is spelled as
-N copies or as a counted loop -- exactly what a backend loop-reroller does. The emitted command stream
-is identical either way, which is what makes the transform safe to apply unconditionally and what keeps
-it out of the schedule's decision space.
-
-WHY PERIODIC AND NOT MERELY CONSECUTIVE. The first version of this pass merged runs of the SAME
-command and recovered 11% of a real stream, because an inner nest typically ALTERNATES: a scheduler
-emits a small fixed group per tile -- stage an operand, then consume it -- so no two neighbours share
-a funct and a same-command reroller finds nothing. The repeating unit is the GROUP, not the command. A
-run here is therefore ``trips`` iterations of a body of ``period`` commands, where each SLOT of the
-body is separately affine across iterations, which turns ``A B A B A B ...`` into one loop of two
-statements rather than into nothing at all.
-
-HOW IT STAYS TARGET-AGNOSTIC. Nothing here knows a field layout, an opcode, or a bit position. A
-command is reduced to the triple its encoder already produces -- ``(funct, rs1, rs2)`` -- and the pass
-asks one question of the numbers themselves: do they advance in an exact arithmetic progression? The
-ENCODER is the oracle. If a field packs non-linearly, or a carry crosses a field boundary, the
-progression simply is not exact and the run is refused. There is no encoding assumption to get wrong,
-because there is no encoding knowledge here at all.
-
-FAIL CLOSED. A run is accepted only when every member is reproduced EXACTLY by the affine form, over
-the whole run rather than a sampled prefix. Anything else is left unrolled. A wrong reroll would be
-silent -- the kernel stays well-formed and only the digest changes -- so the check is exhaustive and
-the default is to decline.
-"""
+"""Emit a kernel as one C function, and reroll periodic runs of encoded commands into counted loops."""
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+import numpy as np
+
+from merlin.compiler.kernel_ir.ir import NULL, Call, Expr, InstructionSet, IsaError, Kernel, Loop, Ptr, render
+
+# ---- codegen -----------------------------------------------------------------------------------
+
+#: Bumped whenever the emitted text for an unchanged kernel changes.
+EMITTER_VERSION = "mk_c_v1"
+
+#: Per-call annotations that ``InstrDef.render_c`` cannot carry, and the speller hook for each.
+#:
+#: ``(field, hook, how to describe it)``. Kept as data rather than as three branches so that a field
+#: added to ``Call`` later shows up as a missing row here instead of as a silent omission: the
+#: completeness test walks ``Call``'s own fields against this table.
+UNRENDERABLE = (
+    ("unit", "issue_on", lambda c: f"is placed on unit {c.unit!r}"),
+    ("produces", "on_produce", lambda c: f"produces completion token {c.produces!r}"),
+    ("awaits", "on_await", lambda c: f"awaits {list(c.awaits)}"),
+)
+
+
+def _c_value(v, *, index_bits=None) -> str:
+    if isinstance(v, Ptr):
+        return f"((uint8_t *){v.tensor} + {render(v.offset, c=True, index_bits=index_bits)})"
+    if v is NULL:
+        return "NULL"
+    if isinstance(v, Expr):
+        return render(v, c=True, index_bits=index_bits)
+    if isinstance(v, float):
+        return float(np.float32(v)).hex() + "f"
+    raise IsaError(f"cannot render operand value {v!r}")
+
+
+def _carried(call: Call) -> list[tuple[str, str, str]]:
+    """The annotations this call carries that are not operands, as ``(field, hook, description)``."""
+    out = []
+    for field, hook, describe in UNRENDERABLE:
+        value = getattr(call, field)
+        if value:  # None, and the empty token tuple, both mean "not annotated"
+            out.append((field, hook, describe(call)))
+    return out
+
+
+def _spelled(call: Call, field: str, hook: str, description: str, spell, target: str) -> str | None:
+    """The C statement the target spells for one annotation, or ``None`` when it costs no code.
+
+    Raises when there is no speller for it. The message says what the silence would have looked like,
+    because that is the thing a reader has to be able to rule out: without a speller the emitted bytes
+    for this kernel are identical to the bytes for the same kernel with the annotation removed, and
+    nothing downstream can tell those apart.
+    """
+    fn = getattr(spell, hook, None) if spell is not None else None
+    if fn is None:
+        raise IsaError(
+            f"{target}: {call.instr} {description}, and nothing can render that. The operand list is the "
+            f"emitter's only channel to a target's C, so this annotation would reach no emitted code -- "
+            f"the C for this kernel would be byte-identical to the C for the same kernel without it. "
+            f"Pass spell= with a {hook}() that renders it, or that returns '' to declare that on this "
+            f"target the annotation costs no code."
+        )
+    text = fn(call)
+    if text is None or text == "":
+        return None
+    if not isinstance(text, str):
+        raise IsaError(f"{target}: {hook}() returned {type(text).__name__}, not a C statement")
+    return text
+
+
+def _check_integer_domain(kernel, bits):
+    """Compatibility entry: shared IR validation retains the emitter diagnostic."""
+    from merlin.compiler.kernel_ir.ir import IntegerDomainError, check_integer_domain
+
+    try:
+        check_integer_domain(kernel, bits)
+    except IntegerDomainError as error:
+        raise IsaError(str(error)) from error
+
+
+def emit_c_function(
+    kernel: Kernel, iset: InstructionSet, *, symbol: str, spell=None, index_bits: int | None = None
+) -> str:
+    """The kernel as one C function.
+
+    ``spell``, when given, is the target's speller for the annotations the operand list cannot carry.
+    It is duck-typed on purpose -- ``merlin.compiler.kernel_ir.ir`` describes an instruction, not an agent, and
+    putting these hooks there would make every target declare three methods to say "not applicable".
+    Each hook takes the :class:`~merlin.compiler.kernel_ir.ir.Call` and returns a C statement, or ``''``/
+    ``None`` to say the annotation needs none on this target:
+
+    ``issue_on(call)``   the call is placed on ``call.unit``.
+    ``on_await(call)``   the call waits for ``call.awaits`` before it issues; emitted BEFORE the call.
+    ``on_produce(call)`` the call starts asynchronously under ``call.produces``; emitted AFTER it.
+
+    A kernel carrying an annotation with no hook for it is refused rather than emitted without it.
+    """
+    if not symbol.isidentifier():
+        raise IsaError(f"symbol {symbol!r} is not a C identifier")
+    from merlin.compiler.kernel_ir.ir import has_carried_events
+
+    if has_carried_events(kernel.body):
+        raise IsaError("loop-carried completion requires the checked SCF input/yield/result emitter")
+    if index_bits is not None and (type(index_bits) is not int or index_bits not in (32, 64)):
+        raise IsaError("C index width must be an explicitly selected 32 or 64 bits")
+    if index_bits is not None:
+        _check_integer_domain(kernel, index_bits)
+    index_type = "int" if index_bits is None else f"int{index_bits}_t"
+    params = []
+    for t in kernel.args:
+        if t.dtype not in iset.c_types:
+            raise IsaError(f"{iset.target}: no C type for {t.dtype}")
+        params.append(f"{iset.c_types[t.dtype]} *{t.name}")
+    lines = [f"static void {symbol}({', '.join(params)}) {{"]
+
+    def body(stmts, depth):
+        pad = "    " * depth
+        for s in stmts:
+            if isinstance(s, Loop):
+                lines.append(f"{pad}for ({index_type} {s.var} = 0; {s.var} < {s.extent}; {s.var}++) {{")
+                body(s.body, depth + 1)
+                lines.append(f"{pad}}}")
+                continue
+            d = iset.instr(s.instr)
+            names = tuple(k for k, _ in s.args)
+            if names != d.operand_names():
+                raise IsaError(f"{s.instr}: operands {names} != {d.operand_names()}")
+            # Resolved BEFORE anything is appended, so a kernel the target cannot spell produces no
+            # half-written function: the refusal is about the schedule, not about how far we got.
+            spelled = {field: _spelled(s, field, hook, why, spell, iset.target) for field, hook, why in _carried(s)}
+            for field in ("awaits", "unit"):
+                if spelled.get(field):
+                    lines.append(pad + spelled[field])
+            lines.append(pad + d.render_c([_c_value(v, index_bits=index_bits) for _, v in s.args]))
+            if spelled.get("produces"):
+                lines.append(pad + spelled["produces"])
+
+    body(kernel.body, 1)
+    lines.append("    " + iset.drain_c)
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+# ---- reroll ------------------------------------------------------------------------------------
+# Reroll periodic runs of encoded accelerator commands into counted loops.
+#
+# WHY THIS EXISTS. A scheduler that materialises a tile nest as one command per tile hands codegen a
+# flat list thousands of entries long, and emitting one host instruction sequence per entry makes the
+# kernel's own code the bottleneck: it overruns the host's instruction cache, and every line is then a
+# compulsory miss with no reuse and no prefetcher. The cost is not the commands -- the device sees the
+# same ones either way -- it is the *encoding* of the commands. An expert writes the same work as a small
+# loop, and this pass recovers that spelling from the flat list.
+#
+# Measured on the first target to hit it, an accelerator whose host has a 16 KiB L1 instruction cache: a
+# matmul emitted flat was 755 KB - 1.30 MB of ``.text``, 46x to 79x over, against ~1.3 KB for the expert
+# kernel. Those numbers are one instance, not a constant -- nothing in this module is fitted to them.
+#
+# WHAT THIS IS, AND WHAT IT IS NOT. This is an ENCODING decision, not a scheduling one. The scheduler
+# chooses which commands to issue, in which order, against which buffers; this pass does not change that
+# sequence, its order, or its operands by even one bit. It only chooses whether a stretch is spelled as
+# N copies or as a counted loop -- exactly what a backend loop-reroller does. The emitted command stream
+# is identical either way, which is what makes the transform safe to apply unconditionally and what keeps
+# it out of the schedule's decision space.
+#
+# WHY PERIODIC AND NOT MERELY CONSECUTIVE. The first version of this pass merged runs of the SAME
+# command and recovered 11% of a real stream, because an inner nest typically ALTERNATES: a scheduler
+# emits a small fixed group per tile -- stage an operand, then consume it -- so no two neighbours share
+# a funct and a same-command reroller finds nothing. The repeating unit is the GROUP, not the command. A
+# run here is therefore ``trips`` iterations of a body of ``period`` commands, where each SLOT of the
+# body is separately affine across iterations, which turns ``A B A B A B ...`` into one loop of two
+# statements rather than into nothing at all.
+#
+# HOW IT STAYS TARGET-AGNOSTIC. Nothing here knows a field layout, an opcode, or a bit position. A
+# command is reduced to the triple its encoder already produces -- ``(funct, rs1, rs2)`` -- and the pass
+# asks one question of the numbers themselves: do they advance in an exact arithmetic progression? The
+# ENCODER is the oracle. If a field packs non-linearly, or a carry crosses a field boundary, the
+# progression simply is not exact and the run is refused. There is no encoding assumption to get wrong,
+# because there is no encoding knowledge here at all.
+#
+# FAIL CLOSED. A run is accepted only when every member is reproduced EXACTLY by the affine form, over
+# the whole run rather than a sampled prefix. Anything else is left unrolled. A wrong reroll would be
+# silent -- the kernel stays well-formed and only the digest changes -- so the check is exhaustive and
+# the default is to decline.
 
 #: Shortest body worth a loop, in iterations. Below this the loop's own bookkeeping (index, compare,
 #: branch, the operand arithmetic) costs more instructions than the copies it replaces, so rerolling

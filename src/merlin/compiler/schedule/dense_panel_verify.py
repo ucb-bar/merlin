@@ -5,6 +5,17 @@ from __future__ import annotations
 from dataclasses import asdict
 from math import prod
 
+from merlin.compiler.kernel_ir.ir import (
+    Call,
+    Const,
+    Loop,
+    Scaled,
+    Select,
+    Sum,
+    Var,
+    check_integer_domain,
+    check_structure,
+)
 from merlin.compiler.schedule.blocks import Compute, InitializeAccumulator, Load, Preload, Store
 from merlin.compiler.schedule.dense_contracts import DenseTiledIntegerReadout, TiledIntegerStore
 from merlin.compiler.schedule.dense_panel_contracts import DensePanelOverlapAdmission as DensePanelOverlapAdmission
@@ -16,8 +27,6 @@ from merlin.compiler.schedule.dense_panel_contracts import DenseReadyReadoutAdmi
 from merlin.compiler.schedule.dense_panel_ir import DRAIN as DRAIN
 from merlin.compiler.schedule.dense_panel_ir import _calls as _calls
 from merlin.compiler.schedule.dense_panel_ir import _serial_projection as _serial_projection
-from merlin.sched.ir import Call, Const, Loop, Scaled, Select, Sum, Var, check_structure
-from merlin.sched.ir.integer_domain import check_integer_domain
 
 from .dense_panel_build import _windows
 from .dense_panel_projection import _collapse_compute_radices, _fission_noninterfering_epoch_loads

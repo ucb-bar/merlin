@@ -152,7 +152,7 @@ def records(prefix):
         {
             "name": "loop_carried_completion_events",
             "symbols": [
-                "merlin.sched.ir.kernel.Loop",
+                "merlin.compiler.kernel_ir.ir.Loop",
                 prefix + "scf_commands.materialize_scf_commands",
                 prefix + "scf_commands.verify_scf_commands",
                 prefix + "scf_commands.emit_scf_commands",
