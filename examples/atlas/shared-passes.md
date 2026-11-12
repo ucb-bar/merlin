@@ -14,6 +14,13 @@ launched by the commands below.
   their recognizer with the original single-matmul path. BF16 ReLU, explicit
   FP32-to-BF16 chop add/subtract, BF16 product rounding, and declared FP8 casts reuse
   the source recognizers from `atlas-model-compilation`.
+- `merlin.frontends.linalg_tensor_graph` reads ordinary f16/bf16/f32/f64 graphs:
+  matmul, transpose, literal splats, one-axis maximum/sum reductions, trailing
+  singleton expansion, pointwise add/subtract/multiply/divide/exp and ReLU.
+  It checks scalar bodies, actual SSA operands, static shapes and broadcast maps.
+  It preserves source precision and unspecified reduction order; target precision
+  changes are separate, explicit OOT choices. Tests include non-tile dimensions,
+  rectangular matrices, both reduction axes and rank-three broadcasts/reductions.
 - Existing checked dense planning and counted loops retain reduction order and
   accumulator state. FP16/f16 storage now has its correct two-byte width.
 - `schedule.time_annotation` and `schedule.overlap` are consumed in actual Atlas
@@ -32,8 +39,8 @@ two operations with matching shapes can be numerically fused.
 
 ## Isolated compiler library
 
-[shared-library.json](shared-library.json) explicitly selects 40 source/namespace
-members and 15 public leaf modules. Pure parsing and instruction contract types
+[shared-library.json](shared-library.json) explicitly selects 41 source/namespace
+members and 16 public leaf modules. Pure parsing and instruction contract types
 are separated from capture, backend discovery and reference evaluation. The
 export uses the existing `CompilerLibraryContract` hash, namespace and import
 closure checks. It includes no Atlas compiler, reference output, model or grader.
@@ -91,6 +98,39 @@ comparators. It requires the full Merlin source tree for its test-fixture builde
 Each compilation records source, checked schedules, virtual/machine IR, final
 words, tool hashes, issue constraints and consumed schedule annotations.
 
+## Attention and MLP with explicit precision selection
+
+The companion `atlas_mlir_native.shared_tensor_graph.compile_tensor_graph` API
+uses the shared source reader and existing checked dense scheduling. It requires
+`precision="atlas-f32-to-bf16-e4m3-diagnostic-v1"`. Atlas owns the E4M3 inputs,
+BF16 accumulation, VPU rounding, exponential/reciprocal approximations, PACK,
+32-lane reduction geometry and physical instructions. The manifest records each
+source operation's replacement and unresolved numeric/quality obligations.
+This is a diagnostic precision change, not an equivalence proof for f32.
+
+```sh
+PYTHONPATH="$MERLIN_LIBRARY:$PWD/python:$PWD" python tools/check_shared_attention.py \
+  --output-dir out/build/shared-attention-preflight \
+  --atlas-bin-dir "$ATLAS_BIN" --model-root "$MODEL_ROOT" \
+  --model-python "$MODEL_PYTHON"
+```
+
+The driver starts from the captured linalg attention+MLP graph: Q/K/V projection,
+QK transpose product, scaled stable softmax, attention/value product, and two
+linear layers separated by ReLU. It also structurally varies projection input
+width from 32 to 64 and retains all 12 matrix/pointwise intermediate outputs in
+separate diagnostic programs. Two independent input sets in both scheduling
+modes make 16 model executions. An independent high-level numerical reference
+checks exact target-arithmetic output bytes; it does not interpret the compiler's
+emitted IR. A separate f32 calculation reports max absolute error and RMSE without
+claiming an application quality threshold. Test inputs are BF16-representable;
+boundary tests separately cover FP8 rounding ties, flush and saturation.
+
+The reductions cover complete 32-element rows. Wider softmax rows, partial tiles,
+arbitrary intermediate domains and BF16 physical transpose remain unsupported.
+The reader itself has no hardware tile restriction. The old exact-policy graph
+path and its seven-code PACK premise remain separate from this diagnostic path.
+
 ## Measured scope and remaining launch requirements
 
 Observed model results on November 10, 2026:
@@ -110,7 +150,8 @@ authored independently and evaluated before making that comparison.
 Initial authoring scope is full 32×32 tiles, at most 64 dense tile products, ordered
 E4M3/BF16 matmul and the qualified ReLU/PACK forms above. Tails, arbitrary BF16
 truncation, reductions/softmax and hardware FP4/FP6 lowering remain outside this
-scope and refuse. Source domain declarations remain premises, especially the
+exact-policy scope and refuse. The explicit diagnostic path above additionally
+covers attention/softmax. Source domain declarations remain premises, especially the
 seven-code PACK domain; the diagnostic adapter does not establish them for
 arbitrary runtime graphs. The old whole-model native binding is a separate API
 and still requires the `atlas-model-compilation` stack.
