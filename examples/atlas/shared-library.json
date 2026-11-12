@@ -3,6 +3,7 @@
   "review_id": "shared-floating-passes-v1",
   "public_modules": [
     "merlin.frontends.linalg_float_graph",
+    "merlin.frontends.linalg_tensor_graph",
     "merlin.frontends.linalg_text",
     "merlin.transforms.ordered_float_dense",
     "merlin.transforms.dense_planning",
@@ -70,6 +71,10 @@
     {
       "module": "merlin.frontends.linalg_fp8_cast",
       "path": "src/merlin/frontends/linalg_fp8_cast.py"
+    },
+    {
+      "module": "merlin.frontends.linalg_tensor_graph",
+      "path": "src/merlin/frontends/linalg_tensor_graph.py"
     },
     {
       "module": "merlin.frontends.linalg_text",
