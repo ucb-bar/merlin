@@ -8,7 +8,6 @@
 # They are split during the src/merlin folder review; this is debt the stricter rule discovered, not
 # debt added by a change.
 merlin/python/merlin/common/storage_cli.py  # 1099
-merlin/python/merlin/compiler/schedule/dense_ready_readout.py  # 1002
 merlin/python/merlin/compiler/schedule/schedule_pipeline.py  # 1354
 merlin/python/merlin/kernels/decoded_effects.py  # 1074
 merlin/python/merlin/llvmlower/device_build.py  # 1105

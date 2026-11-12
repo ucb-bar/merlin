@@ -108,5 +108,4 @@ for epilogue in (op for op in module.walk() if mq.op_name(op) == "linalg.generic
 `decision.cut` is `pool`, `requant`, `accumulator` or `bare` (contraction only); every refusal
 carries its reason. In a compiler, `OF.decisions(groups, module, path, values)` applies the same
 rule to every accelerator group (skill `fusion`). `match` refuses anything but one canonical
-pointwise region; `merlin.llvmlower.captured_requant.inspect_chain(root)` reads the multi-op
-captured form (two scales, a channel bias, optional ReLU, then quantize).
+pointwise region.

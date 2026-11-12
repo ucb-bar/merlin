@@ -67,8 +67,6 @@ scales (`merlin/llvmlower/integer_readout.py:183 def partition_column_scales`).
 9. **Quantize / dequantize in captured IR.**
    `clamp(roundeven(x * f32(1/scale)) + zp, qmin, qmax)`, reciprocal first
    (`merlin/llvmlower/passes_xdsl.py:140 clamp(roundeven(x * float32(1 / scale)) + zp, qmin, qmax)`).
-   The library's strict chain reader accepts zero point 0 and [-128, 127] only
-   (`merlin/llvmlower/captured_requant.py:46 nonzero output zero point`).
 10. **Dynamic activations.** Where an activation has no captured scale, the integer pass uses
     `s = max(max|x|/127, 1e-5)` per row, zero point 0
     (`merlin/llvmlower/passes_quant_int.py:9 s = max(max|x|/127, 1e-5)`).
