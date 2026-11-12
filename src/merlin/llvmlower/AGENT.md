@@ -81,6 +81,10 @@ scalar transport is ready. Those markers supply no expected outcome.
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
 in position and type. Computed/permuted condition state grants no seed facts.
+Pure nested `scf.for` tensor updates from scalar contraction may supply complete
+values for a later identity copy. Check all nested operations, including unused
+results and void effects, plus numeric bounds/state, captures and yields.
+Retain the original computation, zero-trip semantics and every lifetime gate.
 An initial restricted tensor import from actual private allocation may receive
 an explicit independent value copy before the loop. Construct the candidate
 detached and attach it only after the complete producer/capture proof succeeds;

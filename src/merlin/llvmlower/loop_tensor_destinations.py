@@ -12,7 +12,7 @@ import ast
 FEATURE = "reuse_loop_tensor_destinations"
 MARKER = "__merlin_loop_tensor_destinations__"
 
-PRELUDE = r'''
+PRELUDE = r"""
 def _ltd_walk(op):
     for region in op.regions:
         for block in region.blocks:
@@ -341,6 +341,37 @@ def _ltd_copy_safe(value, incoming, inside, seen):
     if op.name == 'bufferization.to_tensor':
         return (len(op.operands) == 1 and len(op.results) == 1 and 'restrict' in op.attributes
                 and _ltd_fresh_seed(incoming) and _ltd_separate_read_root(op.operands[0]))
+    if op.name == 'scf.for':
+        # Source-exact scalar contraction may introduce nested tensor-update
+        # loops before this seam. Keep their complete computation, then copy
+        # its finished value into the carried destination. Check dead effects
+        # too: following only the yielded SSA dependency is insufficient.
+        if (len(op.regions) != 1 or len(op.regions[0].blocks) != 1
+                or len(op.operands) != len(op.results) + 3
+                or any(not isinstance(v.type, ir.IndexType) for v in tuple(op.operands)[:3])):
+            return False
+        body = op.regions[0].blocks[0]
+        operations = tuple(body.operations)
+        if (not operations or operations[-1].operation.name != 'scf.yield'
+                or tuple(v.type for v in operations[-1].operands) != tuple(v.type for v in op.results)
+                or len(body.arguments) != len(op.operands) - 2
+                or not isinstance(body.arguments[0].type, ir.IndexType)
+                or tuple(v.type for v in tuple(body.arguments)[1:])
+                != tuple(v.type for v in tuple(op.operands)[3:])
+                or any(not _ltd_numeric(ir.RankedTensorType(v.type).element_type
+                        if isinstance(v.type, ir.RankedTensorType) else v.type)
+                       for v in (*op.operands, *op.results))):
+            return False
+        for child in _ltd_walk(op):
+            if child.name in ('scf.yield', 'linalg.yield', 'tensor.yield'):
+                if child.results or child.regions:
+                    return False
+                continue
+            if child.name == 'linalg.index' and not child.operands and not child.regions:
+                continue
+            if not child.results or any(not _ltd_copy_safe(v, incoming, inside, seen) for v in child.results):
+                return False
+        return all(_ltd_copy_safe(v, incoming, inside, seen) for v in (*op.operands, *_ltd_captured_values(op)))
     if op.name == 'scf.if':
         if (len(op.operands) != 1 or str(op.operands[0].type) != 'i1' or len(op.regions) != 2
                 or not _ltd_copy_safe(op.operands[0], incoming, inside, seen)):
@@ -570,15 +601,20 @@ def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(), p
         _LTD_ORIGINAL_RUN_STAGES(ctx, module, head, 0, (), (), (), pre_generalize)
     _ltd_reuse(ctx, module)
     return _LTD_ORIGINAL_RUN_STAGES(ctx, module, tail, erase, mid, late, post_openmp, ())
-'''
+"""
 
 
 def bind_runner(source, *, selected):
     if not selected:
         return source
-    calls = [node for node in ast.parse(source).body if isinstance(node, ast.Expr)
-             and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)
-             and node.value.func.id == "_run_stages"]
+    calls = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_run_stages"
+    ]
     if len(calls) != 1:
         raise ValueError("loop tensor destinations require one native stage runner call")
     lines = source.splitlines(keepends=True)
@@ -608,8 +644,17 @@ def edit_pipeline(passes):
 
 def ensure_registered():
     from .impr_features import ImprFeature, known, register
+
     if FEATURE not in known():
-        register(ImprFeature(name=FEATURE, action_class="PASS", edit_pipeline=edit_pipeline,
-            description=("Reuse completely overwritten parallel tensor loop destinations "
-                         "before native alias analysis; default off.")))
+        register(
+            ImprFeature(
+                name=FEATURE,
+                action_class="PASS",
+                edit_pipeline=edit_pipeline,
+                description=(
+                    "Reuse completely overwritten parallel tensor loop destinations "
+                    "before native alias analysis; default off."
+                ),
+            )
+        )
     return FEATURE

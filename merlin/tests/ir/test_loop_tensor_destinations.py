@@ -19,7 +19,11 @@ def source(*, shape="4", init_read=False, opaque=False, later_use=False, reverse
         payload = "%v=func.call @unknown(%in):(f32)->f32"
     type_ = f"tensor<{shape}xf32>"
     input_map = "affine_map<(i)->(3-i)>" if reverse else "affine_map<(i)->(i)>"
-    after = f"%observed=tensor.extract %old[%c0]:{type_}\nmemref.store %observed,%sink[%c0]:memref<4xf32>" if later_use else ""
+    after = (
+        f"%observed=tensor.extract %old[%c0]:{type_}\nmemref.store %observed,%sink[%c0]:memref<4xf32>"
+        if later_use
+        else ""
+    )
     return f"""module {{ {declaration}
       func.func @forward(%x:{type_},%bound:index,%sink:memref<4xf32>) -> {type_} {{
         %c0=arith.constant 0:index
@@ -49,17 +53,67 @@ def rewrite(tmp_path, text, *, atomic_support=False):
 
     original, output, script = (tmp_path / name for name in ("original.mlir", "rewritten.mlir", "rewrite.py"))
     original.write_text(text)
-    script.write_text("from torch_mlir import ir\nimport sys\n_run_stages = None\n" + (SUPPORT if atomic_support else "") + PRELUDE + """
+    script.write_text(
+        "from torch_mlir import ir\nimport sys\n_run_stages = None\n"
+        + (SUPPORT if atomic_support else "")
+        + PRELUDE
+        + """
 with ir.Context() as ctx:
     module = ir.Module.parse(open(sys.argv[1]).read())
     module.operation.verify()
     _ltd_reuse(ctx, module)
     open(sys.argv[2], 'w').write(str(module))
-""")
-    result = subprocess.run([str(compiler_python()), str(script), str(original), str(output)],
-        check=True, capture_output=True, text=True, timeout=20,
-        env=dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", TMPDIR=str(tmp_path)))
+"""
+    )
+    result = subprocess.run(
+        [str(compiler_python()), str(script), str(original), str(output)],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=20,
+        env=dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", TMPDIR=str(tmp_path)),
+    )
     return result.stdout, output.read_text()
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("effect", ["pure", "unused-call", "void-call", "write"])
+def test_nested_scalar_contraction_loops_require_complete_effect_closure(tmp_path, effect):
+    declaration = ""
+    extra = ""
+    if effect in ("unused-call", "void-call"):
+        returns = "f32" if effect == "unused-call" else "()"
+        declaration = f"func.func private @opaque(f32)->{returns}"
+        extra = ("%unused=" if effect == "unused-call" else "") + f"func.call @opaque(%s):(f32)->{returns}"
+    elif effect == "write":
+        extra = "memref.store %s,%sink[%c0]:memref<4xf32>"
+    original = f"""module {{ {declaration}
+      func.func @forward(%x:tensor<4xf32>,%bound:index,%sink:memref<4xf32>)->tensor<4xf32> {{
+        %c0=arith.constant 0:index
+        %c1=arith.constant 1:index
+        %c4=arith.constant 4:index
+        %one=arith.constant 1.0:f32
+        %result=scf.for %outer=%c0 to %bound step %c1 iter_args(%old=%x)->tensor<4xf32> {{
+          %next=scf.for %i=%c0 to %c4 step %c1 iter_args(%tile=%old)->tensor<4xf32> {{
+            %initial=tensor.extract %tile[%i]:tensor<4xf32>
+            %sum=scf.for %k=%c0 to %bound step %c1 iter_args(%s=%initial)->f32 {{
+              {extra}
+              %v=arith.addf %s,%one:f32
+              scf.yield %v:f32
+            }}
+            %updated=tensor.insert %sum into %tile[%i]:tensor<4xf32>
+            scf.yield %updated:tensor<4xf32>
+          }}
+          scf.yield %next:tensor<4xf32>
+        }}
+        return %result:tensor<4xf32>
+      }}
+    }}"""
+    stdout, output = rewrite(tmp_path, original)
+    assert f"OK loop_tensor_destinations {2 if effect == 'pure' else 0}" in stdout
+    assert output.count('prov.op = "copy-selected-state"') == (2 if effect == "pure" else 0)
+    if effect != "pure":
+        assert "func.call" in output if "call" in effect else "memref.store" in output
 
 
 def atomic_source(*, private=True, fresh=True, no_inline=True, unknown=False, init_read=False, extra=False):
@@ -68,11 +122,14 @@ def atomic_source(*, private=True, fresh=True, no_inline=True, unknown=False, in
     seed = "%seed" if fresh else "%input"
     boundary = "no_inline" if no_inline else ""
     effect = "memref.store %one,%external[%zero]:memref<4xi32>" if extra else ""
-    payload = ("%v=func.call @unknown(%x):(i32)->i32" if unknown else
-               f"%v=memref.atomic_rmw addi %one,{target}[%j]:(i32,memref<4xi32>)->i32")
+    payload = (
+        "%v=func.call @unknown(%x):(i32)->i32"
+        if unknown
+        else f"%v=memref.atomic_rmw addi %one,{target}[%j]:(i32,memref<4xi32>)->i32"
+    )
     value = "%unused" if init_read else "%v"
     declaration = "func.func private @unknown(i32)->i32" if unknown else ""
-    return f'''module {{ {declaration}
+    return f"""module {{ {declaration}
       func.func @forward(%input:tensor<4xi32>,%external:memref<4xi32>,%bound:index)->tensor<4xi32> {{
         %zero=arith.constant 0:index
         %step=arith.constant 1:index
@@ -102,12 +159,22 @@ def atomic_source(*, private=True, fresh=True, no_inline=True, unknown=False, in
         }}
         return %result:tensor<4xi32>
       }}
-    }}'''
+    }}"""
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [({}, 1), ({"private": False}, 0), ({"fresh": False}, 0),
-    ({"no_inline": False}, 0), ({"unknown": True}, 0), ({"init_read": True}, 0), ({"extra": True}, 0)])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({}, 1),
+        ({"private": False}, 0),
+        ({"fresh": False}, 0),
+        ({"no_inline": False}, 0),
+        ({"unknown": True}, 0),
+        ({"init_read": True}, 0),
+        ({"extra": True}, 0),
+    ],
+)
 def test_atomic_result_reuse_requires_closed_private_exactly_once_snapshot(tmp_path, options, changed):
     source = atomic_source(**options)
     report, rewritten = rewrite(tmp_path, source)
@@ -122,7 +189,11 @@ def test_atomic_result_reuse_requires_closed_private_exactly_once_snapshot(tmp_p
 @pytest.mark.parametrize("dtype,kind", [("f32", "assign"), ("f64", "assign"), ("f64", "addf")])
 @pytest.mark.parametrize("private,changed", [(True, 1), (False, 0)])
 def test_floating_atomic_snapshot_keeps_private_effect_and_old_value(tmp_path, dtype, kind, private, changed):
-    text = atomic_source(private=private).replace("i32", dtype).replace("memref.atomic_rmw addi", f"memref.atomic_rmw {kind}")
+    text = (
+        atomic_source(private=private)
+        .replace("i32", dtype)
+        .replace("memref.atomic_rmw addi", f"memref.atomic_rmw {kind}")
+    )
     text = text.replace(f"arith.constant 1:{dtype}", f"arith.constant 1.0:{dtype}")
     text = text.replace(f"arith.addi", "arith.addf")
     report, rewritten = rewrite(tmp_path, text)
@@ -132,11 +203,17 @@ def test_floating_atomic_snapshot_keeps_private_effect_and_old_value(tmp_path, d
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("shape,init_read,opaque,changed", [
-    ("4", False, False, 1), ("17", False, False, 1),
-    ("4", True, False, 1), ("0", False, False, 0),
-    ("?", False, False, 0), ("4", False, True, 0),
-])
+@pytest.mark.parametrize(
+    "shape,init_read,opaque,changed",
+    [
+        ("4", False, False, 1),
+        ("17", False, False, 1),
+        ("4", True, False, 1),
+        ("0", False, False, 0),
+        ("?", False, False, 0),
+        ("4", False, True, 0),
+    ],
+)
 def test_complete_destinations_or_value_copies_preserve_original_producers(tmp_path, shape, init_read, opaque, changed):
     stdout, text = rewrite(tmp_path, source(shape=shape, init_read=init_read, opaque=opaque))
     assert f"OK loop_tensor_destinations {changed}" in stdout
@@ -164,7 +241,25 @@ def test_old_state_reads_and_permutations_finish_before_destination_updates(tmp_
         assert output.index("memref.store") < output.index('prov.op = "copy-selected-state"')
 
 
-def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True, write=False, opaque=False, constant=False, while_state=None, outside_read=False, private=False, unknown_owner=False, tensor_read=False, tensor_view=False, read_seed=False, seed_init_read=False, computed=None):
+def read_source(
+    *,
+    fresh=True,
+    readonly=True,
+    generalize=False,
+    conditional=True,
+    write=False,
+    opaque=False,
+    constant=False,
+    while_state=None,
+    outside_read=False,
+    private=False,
+    unknown_owner=False,
+    tensor_read=False,
+    tensor_view=False,
+    read_seed=False,
+    seed_init_read=False,
+    computed=None,
+):
     marker = "read_only" if readonly else ""
     seed = "%seed" if fresh else "%x"
     declaration = "func.func private @observe()" if opaque else ""
@@ -197,29 +292,34 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
             elif computed == "fill":
                 tensor_import += "\n%computed_empty=tensor.empty():tensor<4xf32>\n%computed=linalg.fill ins(%zero:f32) outs(%computed_empty:tensor<4xf32>)->tensor<4xf32>"
             else:
-                body = {"init": "%v=arith.addf %a,%init:f32", "unknown": "%v=func.call @compute(%a):(f32)->f32",
-                        "effect": "%v=arith.addf %a,%zero:f32\nmemref.store %v,%mutable[%c0]:memref<4xf32>"}.get(computed, "%v=arith.addf %a,%zero:f32")
+                body = {
+                    "init": "%v=arith.addf %a,%init:f32",
+                    "unknown": "%v=func.call @compute(%a):(f32)->f32",
+                    "effect": "%v=arith.addf %a,%zero:f32\nmemref.store %v,%mutable[%c0]:memref<4xf32>",
+                }.get(computed, "%v=arith.addf %a,%zero:f32")
                 library = 'library_call="unknown",' if computed == "library" else ""
-                tensor_import += f'''\n%computed_empty=tensor.empty():tensor<4xf32>
+                tensor_import += f"""\n%computed_empty=tensor.empty():tensor<4xf32>
                   %computed=linalg.generic {{{library}indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
                     ins({tensor_source}:tensor<4xf32>) outs(%computed_empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
                       {body}
                       linalg.yield %v:f32
-                    }}->tensor<4xf32>'''
+                    }}->tensor<4xf32>"""
                 if computed == "nested":
-                    tensor_import += '''\n%nested=linalg.generic {indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
+                    tensor_import += """\n%nested=linalg.generic {indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
                       ins(%x:tensor<4xf32>) outs(%computed_empty:tensor<4xf32>) {^bb0(%a:f32,%init:f32):
                         %i=linalg.index 0:index
                         %prior=tensor.extract %computed[%i]:tensor<4xf32>
                         %v=arith.addf %a,%prior:f32
                         linalg.yield %v:f32
-                      }->tensor<4xf32>'''
+                      }->tensor<4xf32>"""
             tensor_source = "%nested" if computed == "nested" else "%computed"
             seed_read = f"%loaded=tensor.extract {tensor_source}[%i]:tensor<4xf32>"
         if tensor_view:
             tensor_import += f"\n%tensor_view=tensor.cast {tensor_source}:{tensor_type} to tensor<?xf32>"
             tensor_source, tensor_type = "%tensor_view", "tensor<?xf32>"
-        read = read.replace("memref.load %view[%i] : memref<?xf32>", f"tensor.extract {tensor_source}[%i] : {tensor_type}")
+        read = read.replace(
+            "memref.load %view[%i] : memref<?xf32>", f"tensor.extract {tensor_source}[%i] : {tensor_type}"
+        )
         read = read.replace("memref.load %view[%i]:memref<?xf32>", f"tensor.extract {tensor_source}[%i]:{tensor_type}")
     fill = "%seed=linalg.fill ins(%zero:f32) outs(%empty:tensor<4xf32>)->tensor<4xf32>"
     if generalize:
@@ -232,14 +332,14 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
         read_init = ""
         if seed_init_read:
             read_init, yielded = "%with_init=arith.addf %value,%init:f32", "%with_init"
-        fill = f'''%seed=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+        fill = f"""%seed=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
           ins(%x:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
             %i=linalg.index 0:index
             {seed_read}
             %value=arith.addf %a,%loaded:f32
             {read_init}
             linalg.yield {yielded}:f32
-          }}->tensor<4xf32>'''
+          }}->tensor<4xf32>"""
     imported = f"%base=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>"
     if private:
         imported = f"""%source=bufferization.to_buffer %x {marker}:tensor<4xf32> to memref<4xf32>
@@ -251,8 +351,11 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
     tail = "scf.yield %next:tensor<4xf32>"
     returned = "%result"
     if while_state is not None:
-        forwarded = {"identity": "%before,%other_before", "computed": "%x,%other_before",
-                     "permuted": "%other_before,%before"}[while_state]
+        forwarded = {
+            "identity": "%before,%other_before",
+            "computed": "%x,%other_before",
+            "permuted": "%other_before,%before",
+        }[while_state]
         header = f"""%other_seed=arith.constant dense<9.0>:tensor<4xf32>
         %result:3=scf.while (%before={seed},%other_before=%other_seed,%iv_before=%c0)
           :(tensor<4xf32>,tensor<4xf32>,index)->(tensor<4xf32>,tensor<4xf32>,index) {{
@@ -290,11 +393,24 @@ def read_source(*, fresh=True, readonly=True, generalize=False, conditional=True
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("computed,changed", [("pure", 1), ("nested", 1), ("constant", 1), ("fill", 1),
-                                            ("init", 0), ("unknown", 0), ("effect", 0), ("library", 0)])
+@pytest.mark.parametrize(
+    "computed,changed",
+    [
+        ("pure", 1),
+        ("nested", 1),
+        ("constant", 1),
+        ("fill", 1),
+        ("init", 0),
+        ("unknown", 0),
+        ("effect", 0),
+        ("library", 0),
+    ],
+)
 @pytest.mark.parametrize("while_state", [None, "identity"], ids=["for", "while"])
 def test_computed_tensor_reads_require_complete_closed_value_producers(tmp_path, computed, changed, while_state):
-    original = read_source(tensor_read=True, tensor_view=True, computed=computed, read_seed=True, while_state=while_state)
+    original = read_source(
+        tensor_read=True, tensor_view=True, computed=computed, read_seed=True, while_state=while_state
+    )
     stdout, output = rewrite(tmp_path, original)
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert output.count("tensor.extract") == original.count("tensor.extract")
@@ -306,8 +422,19 @@ def test_computed_tensor_reads_require_complete_closed_value_producers(tmp_path,
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [({}, 1), ({"generalize": True}, 1), ({"constant": True}, 1), ({"conditional": False}, 1),
-    ({"fresh": False}, 0), ({"readonly": False}, 0), ({"write": True}, 0), ({"opaque": True}, 0)])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({}, 1),
+        ({"generalize": True}, 1),
+        ({"constant": True}, 1),
+        ({"conditional": False}, 1),
+        ({"fresh": False}, 0),
+        ({"readonly": False}, 0),
+        ({"write": True}, 0),
+        ({"opaque": True}, 0),
+    ],
+)
 def test_read_capture_requires_fresh_seed_and_closed_readonly_entry_origin(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, read_source(**options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
@@ -325,8 +452,17 @@ def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, op
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [({}, 1), ({"private": True}, 1), ({"fresh": False}, 0),
-    ({"readonly": False}, 0), ({"unknown_owner": True}, 0), ({"seed_init_read": True}, 0)])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({}, 1),
+        ({"private": True}, 1),
+        ({"fresh": False}, 0),
+        ({"readonly": False}, 0),
+        ({"unknown_owner": True}, 0),
+        ({"seed_init_read": True}, 0),
+    ],
+)
 def test_read_computed_seeds_require_independent_unused_output_storage(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, read_source(read_seed=True, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
@@ -334,20 +470,32 @@ def test_read_computed_seeds_require_independent_unused_output_storage(tmp_path,
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [
-    ({"private": True}, 1), ({"private": True, "readonly": False}, 1),
-    ({"private": True, "fresh": False}, 0), ({"unknown_owner": True}, 0),
-])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({"private": True}, 1),
+        ({"private": True, "readonly": False}, 1),
+        ({"private": True, "fresh": False}, 0),
+        ({"unknown_owner": True}, 0),
+    ],
+)
 def test_private_read_roots_require_actual_allocations_and_independent_seeds(tmp_path, options, changed):
     stdout, _ = rewrite(tmp_path, read_source(**options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [
-    ({}, 1), ({"tensor_view": True}, 1), ({"conditional": False}, 1),
-    ({"private": True}, 1), ({"fresh": False}, 0), ({"unknown_owner": True}, 0),
-])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({}, 1),
+        ({"tensor_view": True}, 1),
+        ({"conditional": False}, 1),
+        ({"private": True}, 1),
+        ({"fresh": False}, 0),
+        ({"unknown_owner": True}, 0),
+    ],
+)
 def test_tensor_reads_require_entry_values_or_separate_private_snapshots(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, read_source(tensor_read=True, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
@@ -355,22 +503,34 @@ def test_tensor_reads_require_entry_values_or_separate_private_snapshots(tmp_pat
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,restricted,mixed,changed", [
-    ({}, True, False, 2), ({}, True, True, 2), ({}, False, False, 0),
-    ({"unknown_owner": True}, True, False, 0), ({"opaque": True}, True, False, 0),
-    ({"write": True}, True, False, 0),
-])
-def test_private_imported_carried_seed_is_copied_only_after_complete_proof(tmp_path, options, restricted, mixed, changed):
+@pytest.mark.parametrize(
+    "options,restricted,mixed,changed",
+    [
+        ({}, True, False, 2),
+        ({}, True, True, 2),
+        ({}, False, False, 0),
+        ({"unknown_owner": True}, True, False, 0),
+        ({"opaque": True}, True, False, 0),
+        ({"write": True}, True, False, 0),
+    ],
+)
+def test_private_imported_carried_seed_is_copied_only_after_complete_proof(
+    tmp_path, options, restricted, mixed, changed
+):
     program = read_source(private=True, tensor_read=True, fresh=False, **options)
     program = program.replace("iter_args(%old=%x)", "iter_args(%old=%snapshot)")
     if not restricted:
-        program = program.replace("%snapshot=bufferization.to_tensor %base restrict:",
-                                  "%snapshot=bufferization.to_tensor %base:")
+        program = program.replace(
+            "%snapshot=bufferization.to_tensor %base restrict:", "%snapshot=bufferization.to_tensor %base:"
+        )
     if mixed:
-        program = program.replace("%sum=arith.addf %in,%v:f32", """%wide=arith.extf %in:f32 to f64
+        program = program.replace(
+            "%sum=arith.addf %in,%v:f32",
+            """%wide=arith.extf %in:f32 to f64
               %other=arith.extf %v:f32 to f64
               %wide_sum=arith.addf %wide,%other:f64
-              %sum=arith.truncf %wide_sum:f64 to f32""")
+              %sum=arith.truncf %wide_sum:f64 to f32""",
+        )
     stdout, output = rewrite(tmp_path, program)
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert ('prov.op = "seed-private-carried-value"' in output) == bool(changed)
@@ -388,19 +548,37 @@ def test_private_imported_while_seed_requires_unchanged_condition_state(tmp_path
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("state,options,changed", [
-    ("identity", {}, 1), ("identity", {"generalize": True}, 1),
-    ("identity", {"constant": True}, 1), ("identity", {"fresh": False}, 0),
-    ("identity", {"readonly": False}, 0), ("identity", {"write": True}, 0),
-    ("identity", {"opaque": True}, 0), ("computed", {}, 0), ("permuted", {}, 0),
-])
+@pytest.mark.parametrize(
+    "state,options,changed",
+    [
+        ("identity", {}, 1),
+        ("identity", {"generalize": True}, 1),
+        ("identity", {"constant": True}, 1),
+        ("identity", {"fresh": False}, 0),
+        ("identity", {"readonly": False}, 0),
+        ("identity", {"write": True}, 0),
+        ("identity", {"opaque": True}, 0),
+        ("computed", {}, 0),
+        ("permuted", {}, 0),
+    ],
+)
 def test_while_destinations_require_unmodified_condition_state(tmp_path, state, options, changed):
     stdout, output = rewrite(tmp_path, read_source(while_state=state, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
 
 
-def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=False, multiple=False, inside=False, reduction=False, later_use=False):
+def branch_source(
+    *,
+    while_loop=True,
+    nested=False,
+    passthrough=False,
+    opaque=False,
+    multiple=False,
+    inside=False,
+    reduction=False,
+    later_use=False,
+):
     type_ = "tensor<4xf32>"
     returned = "%result#0" if while_loop else "%result"
     header = f"""%result:2=scf.while (%before=%seed,%step_before=%zero_index)
@@ -416,7 +594,11 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
     arithmetic = "%v=func.call @unknown(%in):(f32)->f32" if opaque else "%v=arith.addf %in,%one:f32"
     value = "%old" if passthrough else "%inside" if inside else "%capture"
     extra = f"%inside=arith.constant dense<2.0>:{type_}" if inside else ""
-    after = f"%observed=tensor.extract %old[%zero_index]:{type_}\nmemref.store %observed,%sink[%zero_index]:memref<4xf32>" if later_use else ""
+    after = (
+        f"%observed=tensor.extract %old[%zero_index]:{type_}\nmemref.store %observed,%sink[%zero_index]:memref<4xf32>"
+        if later_use
+        else ""
+    )
     computed = f"""%next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
       ins(%old:{type_}) outs(%empty:{type_}) {{^bb0(%in:f32,%init:f32):
       {arithmetic}
@@ -461,17 +643,28 @@ def branch_source(*, while_loop=True, nested=False, passthrough=False, opaque=Fa
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [
-    ({}, 2), ({"while_loop": False}, 2), ({"nested": True}, 2),
-    ({"passthrough": True}, 1), ({"multiple": True}, 2),
-    ({"opaque": True}, 0), ({"inside": True}, 2), ({"reduction": True}, 2),
-    ({"later_use": True}, 1), ({"later_use": True, "opaque": True}, 0),
-])
+@pytest.mark.parametrize(
+    "options,changed",
+    [
+        ({}, 2),
+        ({"while_loop": False}, 2),
+        ({"nested": True}, 2),
+        ({"passthrough": True}, 1),
+        ({"multiple": True}, 2),
+        ({"opaque": True}, 0),
+        ({"inside": True}, 2),
+        ({"reduction": True}, 2),
+        ({"later_use": True}, 1),
+        ({"later_use": True, "opaque": True}, 0),
+    ],
+)
 def test_branch_state_qualifies_every_path_before_reusing_destinations(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, branch_source(**options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
     assert "scf.if" in output and ("scf.for" if options.get("while_loop") is False else "scf.while") in output
-    assert ('prov.op = "copy-selected-state"' in output) == (changed == 2 or changed == 1 and options.get("later_use", False))
+    assert ('prov.op = "copy-selected-state"' in output) == (
+        changed == 2 or changed == 1 and options.get("later_use", False)
+    )
     if options.get("multiple"):
         assert "index, tensor<4xf32>" in output
 
@@ -479,7 +672,7 @@ def test_branch_state_qualifies_every_path_before_reusing_destinations(tmp_path,
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("tensor_read", [False, True])
 def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path, tensor_read):
-    source = '''module {
+    source = """module {
       func.func @forward(%bound:index)->tensor<4xf32> {
         %zero=arith.constant 0.0:f32
         %c0=arith.constant 0:index
@@ -501,7 +694,7 @@ def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path, tensor_re
         }
         return %result:tensor<4xf32>
       }
-    }'''
+    }"""
     if tensor_read:
         source = source.replace("memref.load %base[%i]:memref<4xf32>", "tensor.extract %alias[%i]:tensor<4xf32>")
     stdout, _ = rewrite(tmp_path, source)
@@ -509,7 +702,12 @@ def test_function_cfg_phi_is_not_an_independent_entry_tensor(tmp_path, tensor_re
 
 
 def test_explicit_feature_places_rewrite_after_fusion_before_bufferization():
-    passes = ["canonicalize", "func.func(linalg-fuse-elementwise-ops)", "one-shot-bufferize{bufferize-function-boundaries}", "canonicalize"]
+    passes = [
+        "canonicalize",
+        "func.func(linalg-fuse-elementwise-ops)",
+        "one-shot-bufferize{bufferize-function-boundaries}",
+        "canonicalize",
+    ]
     edited = edit_pipeline(passes)
     assert edited[2:4] == [MARKER, passes[2]]
     original = "def _run_stages(*args): pass\n_run_stages(ctx, module, pipeline, 0)\n"
@@ -520,16 +718,22 @@ def test_explicit_feature_places_rewrite_after_fusion_before_bufferization():
     with pytest.raises(ValueError, match="one unmodified bufferization seam"):
         edit_pipeline([*passes, passes[2]])
     from merlin.llvmlower.impr_features import known
+
     assert FEATURE in known()
     from merlin.llvmlower.pipeline import _upstream_pipeline
+
     assert MARKER in _upstream_pipeline(frozenset({FEATURE}))
 
 
-@pytest.mark.parametrize("pipeline", [
-    "one-shot-bufferize{}", MARKER + ",canonicalize,one-shot-bufferize{}",
-    MARKER + "," + MARKER + ",one-shot-bufferize{}",
-    "one-shot-bufferize{}," + MARKER + ",one-shot-bufferize{}",
-])
+@pytest.mark.parametrize(
+    "pipeline",
+    [
+        "one-shot-bufferize{}",
+        MARKER + ",canonicalize,one-shot-bufferize{}",
+        MARKER + "," + MARKER + ",one-shot-bufferize{}",
+        "one-shot-bufferize{}," + MARKER + ",one-shot-bufferize{}",
+    ],
+)
 def test_missing_duplicate_or_moved_rewrite_seam_refuses(pipeline):
     scope = {"_run_stages": lambda *args: pytest.fail("unsafe pipeline reached native lowering")}
     exec(PRELUDE, scope)

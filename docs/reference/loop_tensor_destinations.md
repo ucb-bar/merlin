@@ -85,6 +85,12 @@ runs after destination reuse and retains a complete checked borrowing boundary
 through ownership analysis, with every helper body restored before liveness.
 
 Original payload operations, inputs, attributes and arithmetic order remain.
+Pure nested `scf.for` tensor updates also admit a copy of their finished value.
+This covers loops introduced by the source-exact scalar contraction pass before
+bufferization. Check every nested operation, including unused results and dead
+calls, as well as bounds, carried types, captures and yields. Unknown calls,
+void effects and writes retain their refusal. The original loops and scalar
+accumulation order stay executable; the copy changes no zero-trip behavior.
 Direct retargeting changes only an unused destination. New copies use identity
 maps and an unused init, preserve source IDs/location on the selected edge, and
 introduce no arithmetic, predicate change or branch speculation. Native bufferization decides
