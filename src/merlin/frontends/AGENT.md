@@ -46,6 +46,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   consume the protected source, and an unnormalized generic stage must consume
   that same protected source. Both v1 and v2 keep exact compiler rosters and
   exclude evaluator fields; v2 supplies no arithmetic or wrapper ABI permission.
+  `kernel_cfg_evidence.py` independently validates optional original CFG custody:
+  typed function input, native structured output, restored TTIR, complete original
+  block/successor graph, fixed-pass stage and diagnostics. Bind all six compiler
+  artifacts to the original source and trace in standalone and derived staging.
+  Check the actual optimizer fingerprint and reject changed links or authority
+  grants. This imports no producer/evaluator and grants no source equivalence,
+  numeric, effect or target permission.
   `kernel_typed_storage.py` independently derives private byte-plane shapes and
   per-public-result guard costs for explicit typed storage transport. Public
   dtypes/shapes stay unchanged. Check the exact profile/function marker and

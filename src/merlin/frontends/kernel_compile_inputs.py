@@ -16,6 +16,7 @@ from xdsl.dialects.func import FuncOp
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
+from merlin.frontends.kernel_cfg_evidence import checked_control_flow_sources
 from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.frontends.kernel_typed_storage import checked_guard_costs, storage_spec
 from merlin.xdsl_dialects._common import text
@@ -154,6 +155,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         raise ValueError("kernel receipt and memory provenance profiles differ")
     memory_members = _checked_memory_members(checked, provenance)
     memory_members.update(checked_allocation_sources(checked, provenance, ttir))
+    memory_members.update(checked_control_flow_sources(checked, provenance, ttir))
     if spec.get("schema") not in tuple("t2m.shared-tensor-abi.v" + str(i) for i in range(1, 7)):
         raise ValueError("unsupported standalone tensor ABI")
     effect_only = spec["schema"] == "t2m.shared-tensor-abi.v6"
