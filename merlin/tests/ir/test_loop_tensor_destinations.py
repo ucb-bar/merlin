@@ -77,6 +77,49 @@ with ir.Context() as ctx:
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("control", ["for", "while"])
+@pytest.mark.parametrize("effect", ["pure", "call", "write", "read", "tensor"])
+def test_numeric_scalar_control_keeps_complete_bodies_before_destination_reuse(tmp_path, control, effect):
+    declaration = "func.func private @unknown(f32)->f32" if effect == "call" else ""
+    extra = {
+        "pure": "",
+        "call": "%unused=func.call @unknown(%in):(f32)->f32",
+        "write": "memref.store %in,%sink[%c0]:memref<4xf32>",
+        "read": "%unused=memref.load %sink[%c0]:memref<4xf32>",
+        "tensor": "%unused=tensor.empty():tensor<1xf32>",
+    }[effect]
+    if control == "for":
+        scalar = f"""%v=scf.for %i=%c0 to %bound step %c1 iter_args(%carry=%in)->f32 {{
+          {extra}
+          %next=arith.addf %carry,%one:f32
+          scf.yield %next:f32
+        }}"""
+    else:
+        scalar = f"""%v:2=scf.while (%carry=%in,%i=%c0):(f32,index)->(f32,index) {{
+          {extra}
+          %continue=arith.cmpi slt,%i,%bound:index
+          scf.condition(%continue) %carry,%i:f32,index
+        }} do {{
+        ^bb0(%carry:f32,%i:index):
+          %next=arith.addf %carry,%one:f32
+          %j=arith.addi %i,%c1:index
+          scf.yield %next,%j:f32,index
+        }}"""
+    original = source().replace("module {", "module { " + declaration, 1)
+    original = original.replace("%v=arith.addf %in,%one:f32", scalar)
+    if control == "while":
+        original = original.replace("linalg.yield %v:f32", "linalg.yield %v#0:f32")
+    stdout, output = rewrite(tmp_path, original)
+    changed = int(effect == "pure")
+    assert f"OK loop_tensor_destinations {changed}" in stdout
+    assert output.count("scf." + control) == (2 if control == "for" else 1)
+    if effect == "call":
+        assert "func.call" in output
+    elif effect in ("read", "write"):
+        assert "memref." + ("load" if effect == "read" else "store") in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("effect", ["pure", "unused-call", "void-call", "write"])
 def test_nested_scalar_contraction_loops_require_complete_effect_closure(tmp_path, effect):
     declaration = ""
@@ -195,7 +238,7 @@ def test_floating_atomic_snapshot_keeps_private_effect_and_old_value(tmp_path, d
         .replace("memref.atomic_rmw addi", f"memref.atomic_rmw {kind}")
     )
     text = text.replace(f"arith.constant 1:{dtype}", f"arith.constant 1.0:{dtype}")
-    text = text.replace(f"arith.addi", "arith.addf")
+    text = text.replace("arith.addi", "arith.addf")
     report, rewritten = rewrite(tmp_path, text)
     assert f"OK loop_tensor_destinations {changed}" in report
     assert rewritten.count("memref.atomic_rmw") == 1

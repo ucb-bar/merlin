@@ -114,12 +114,29 @@ def _ltd_tensor_read_root(value):
             and value.owner == value.owner.owner.operation.regions[0].blocks[0])
 
 
+def _ltd_scalar_control(op):
+    # A numeric control container carries values, not buffer ownership. Keep
+    # its full execution and validate every descendant separately below,
+    # including unused effects and captured reads. This grants no speculation,
+    # termination, fresh storage, or permission to move the scalar body.
+    if (op.name not in ('scf.if', 'scf.for', 'scf.while')
+            or any(not _ltd_numeric(v.type) for v in (*op.operands, *op.results))
+            or any(len(region.blocks) != 1 or any(not _ltd_numeric(v.type)
+                   for v in region.blocks[0].arguments) for region in op.regions)):
+        return False
+    return bool(op.verify())
+
+
 def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
     # Readonly entry storage or an actual private allocation is disjoint from
     # a newly synthesized loop seed. This changes no capture or memory effect;
     # native bufferization still decides whether physical reuse is legal.
     for inner in _ltd_walk(op):
         name = inner.name
+        if name in ('scf.if', 'scf.for', 'scf.while'):
+            if not _ltd_scalar_control(inner):
+                return False
+            continue
         if name == 'memref.generic_atomic_rmw':
             if (not private_atomics or not fresh_seed or not inner.operands
                     or not _ltd_private_root(inner.operands[0])):
@@ -195,33 +212,8 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
             if not private_atomics or not fresh_seed or not _ltd_nested_snapshot(inner.block.owner.operation):
                 return False
             continue
-        if name == 'scf.for':
-            # Guard byte loops have no carried state. Keep their conditions,
-            # effects and assertions; this recognizes values, not event motion.
-            if (not private_atomics or not fresh_seed or len(inner.operands) != 3 or inner.results
-                    or any(not isinstance(v.type, ir.IndexType) for v in inner.operands)
-                    or len(inner.regions) != 1 or len(inner.regions[0].blocks) != 1):
-                return False
-            body = inner.regions[0].blocks[0]
-            terminal = tuple(body.operations)[-1].operation
-            if (len(body.arguments) != 1 or not isinstance(body.arguments[0].type, ir.IndexType)
-                    or terminal.name != 'scf.yield' or terminal.operands):
-                return False
-            continue
-        if name == 'scf.if':
-            if (not fresh_seed or len(inner.operands) != 1 or str(inner.operands[0].type) != 'i1'
-                    or len(inner.regions) != 2 or any(not _ltd_numeric(v.type) for v in inner.results)):
-                return False
-            for region in inner.regions:
-                if len(region.blocks) != 1 or region.blocks[0].arguments:
-                    return False
-                terminal = tuple(region.blocks[0].operations)[-1].operation
-                if (terminal.name != 'scf.yield'
-                        or tuple(v.type for v in terminal.operands) != tuple(v.type for v in inner.results)):
-                    return False
-            continue
         if name.split('.')[0] not in ('arith', 'math') and name not in (
-                'linalg.yield', 'linalg.index', 'scf.yield', 'tensor.yield', 'memref.atomic_yield'):
+                'linalg.yield', 'linalg.index', 'scf.yield', 'scf.condition', 'tensor.yield', 'memref.atomic_yield'):
             return False
         if inner.regions or any(not _ltd_numeric(v.type) for v in (*inner.operands, *inner.results)):
             return False
