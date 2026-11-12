@@ -10,12 +10,14 @@ operand cannot cross a BF16 midpoint. Transport stays a separate feature.
 
 import ast
 
+from .bfloat_integer_casts import SUPPORT as INTEGER_CAST_SUPPORT
+
 FEATURE = "emulate_bfloat_elementwise"
 MARKER = "__merlin_bfloat_elementwise__"
 OPERATIONS = frozenset({"arith.maxnumf","arith.minnumf","arith.maximumf","arith.minimumf","arith.divf","math.sqrt",
-                        "arith.addf", "arith.subf", "arith.mulf"})
+                        "arith.addf", "arith.subf", "arith.mulf", "arith.sitofp", "arith.uitofp"})
 
-SUPPORT = r'''
+SUPPORT = INTEGER_CAST_SUPPORT + r'''
 def _bfe_walk(op):
     yield op
     for region in op.regions:
@@ -31,7 +33,7 @@ def _bf_elementwise(module):
         bf16,f32 = ir.BF16Type.get(),ir.F32Type.get()
         operations = tuple(_bfe_walk(module.operation))
         supported = {'arith.maxnumf','arith.minnumf','arith.maximumf','arith.minimumf','arith.divf','math.sqrt',
-                     'arith.addf','arith.subf','arith.mulf'}
+                     'arith.addf','arith.subf','arith.mulf','arith.sitofp','arith.uitofp'}
         transport = {'arith.constant','arith.bitcast','arith.extf','arith.truncf','arith.select',
             'memref.load','memref.store','tensor.extract','tensor.insert','tensor.yield','linalg.yield','linalg.fill',
             'func.return','scf.if','scf.for','scf.while','scf.yield','scf.condition','cf.br','cf.cond_br'}
@@ -49,6 +51,14 @@ def _bf_elementwise(module):
                 continue
             if op.name not in supported:
                 raise ValueError('unqualified BF16 scalar operation: '+op.name)
+            if op.name in ('arith.sitofp','arith.uitofp'):
+                if (len(op.operands) != 1 or len(op.results) != 1 or op.regions or op.results[0].type != bf16
+                        or str(op.operands[0].type) not in ('i1','i8','i16','i32','i64')
+                        or any(name != 'fastmath' and not name.startswith('prov.') for name in op.attributes)
+                        or 'fastmath' in op.attributes and op.attributes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>')):
+                    raise ValueError('BF16 integer conversion requires a scalar i1/i8/i16/i32/i64 source and neutral RTNE')
+                plans.append(op)
+                continue
             arity = 1 if op.name == 'math.sqrt' else 2
             if (len(op.operands) != arity or len(op.results) != 1 or op.regions
                     or any(value.type != bf16 for value in values)):
@@ -59,6 +69,9 @@ def _bf_elementwise(module):
             plans.append(op)
         # Validate the entire module before changing any source operation.
         for op in plans:
+            if op.name in ('arith.sitofp','arith.uitofp'):
+                _bf_integer_cast(op)
+                continue
             if op.name not in ('math.sqrt','arith.addf','arith.subf','arith.mulf'):
                 continue
             with ir.InsertionPoint(op):
@@ -120,5 +133,5 @@ def ensure_registered():
     from .impr_features import ImprFeature,known,register
     if FEATURE not in known():
         register(ImprFeature(name=FEATURE,action_class="PASS",edit_pipeline=edit_pipeline,
-            description="Explicit scalar BF16 add/sub/mul/min/max/div/sqrt via f32 arithmetic and RNE casts; storage ABI unchanged."))
+            description="Scalar BF16 math via f32 and RNE; exact integer-to-BF16 casts; storage ABI unchanged."))
     return FEATURE

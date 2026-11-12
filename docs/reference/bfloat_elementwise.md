@@ -7,6 +7,7 @@ last_verified: 2026-11-11
 related: [architecture, triton_frontend]
 code_refs:
   - src/merlin/llvmlower/bfloat_elementwise.py
+  - src/merlin/llvmlower/bfloat_integer_casts.py
   - src/merlin/llvmlower/bfloat_transport.py
   - src/merlin/llvmlower/pipeline.py
 ---
@@ -15,7 +16,8 @@ code_refs:
 
 The explicit, default-off `emulate_bfloat_elementwise` feature legalizes
 scalar BF16 `arith.maxnumf`, `arith.minnumf`, `arith.maximumf`,
-`arith.minimumf`, `arith.divf` and `math.sqrt`. The source program retains
+`arith.minimumf`, `arith.divf`, `arith.addf`, `arith.subf`, `arith.mulf`,
+`math.sqrt` and scalar integer-to-BF16 casts. The source program retains
 its BF16 tensor/storage types and source dataflow. This is a selected compiler
 implementation, not permission from a provenance tag.
 
@@ -61,6 +63,19 @@ expanded pipeline met this prerequisite; the ordinary route reached the strict
 transport checker with an unexpanded `llvm.fpext`. Actual default lowering and
 whole-model RISC-V execution now exercise this composition. This supplies no
 additional arithmetic, by-value/vector ABI or unsupported cast permission.
+
+Signed and unsigned integer conversion (`arith.sitofp` / `arith.uitofp`) accepts
+scalar i1/i8/i16/i32/i64 with neutral flags and default nearest-even rounding.
+`bfloat_integer_casts` computes the magnitude, exponent and eight-bit significand
+using standard integer arithmetic, then rounds once with explicit remainder,
+tie and carry handling. The final i16-to-BF16 bitcast retains exact words. No
+floating intermediate is used: the upstream emulator's integer-to-f32-to-BF16
+route can double-round wide integers. INT64_MIN, UINT64_MAX and zero retain
+their actual conversion semantics. Source annotations and locations survive;
+unknown attributes, shaped casts and unsupported widths refuse before edits.
+Native execution checks every i1/i8/i16 word, all retained-significand rounding
+boundaries and adjacent integers for i32/i64, against an independent integer
+oracle. Invalid neighboring operations must leave the entire module unchanged.
 
 Native tests exercise positive scalar division/sqrt, idempotence, unchanged
 refusals and the explicit runner seam, alongside the existing transport

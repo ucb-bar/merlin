@@ -143,6 +143,14 @@ arithmetic conversion, retaining one existing valid expansion and refusing
 duplicate/late copies. The final transport checker stays strict; this grants no
 floating-point emulation, fast-math, other cast or hardware mapping policy.
 
+`emulate_bfloat_elementwise` also admits signed/unsigned scalar i1/i8/i16/i32/i64
+to BF16 conversions under neutral RTNE. `bfloat_integer_casts` rounds the actual
+integer magnitude/significand once using standard integer operations; f32/f64
+intermediates can double-round and are forbidden here. Validate all candidates
+before edits, retain source annotations/locations, and keep shaped/unknown
+width/flag/attribute refusals. Exact integer-oracle native tests cover small
+word domains, wide rounding boundaries and extrema.
+
 `emulate_bfloat_elementwise` is a separate, explicit scalar add/sub/mul/min/max/div/sqrt
 implementation. Reuse upstream arith emulation and rounding casts while
 preserving BF16 storage and raw transport. Inspect actual operations and types;
