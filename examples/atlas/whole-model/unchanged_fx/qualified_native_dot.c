@@ -47,6 +47,7 @@ static uint16_t seeded_dot(const uint32_t *table,const uint8_t *a,const uint8_t 
   unsigned lead=leading_bit(magnitude);
   const unsigned discard=lead>7u?lead-7u:0u;
   uint32_t significand=magnitude>>discard;
+  if (lead<7u) significand<<=7u-lead;  /* the RTL normalizes sums shorter than eight bits */
   if (discard) {
     const uint32_t residue=magnitude&((UINT32_C(1)<<discard)-1u);
     const uint32_t half=UINT32_C(1)<<(discard-1u);

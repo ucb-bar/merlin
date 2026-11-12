@@ -176,7 +176,7 @@ def _inner_chunk(a, b, accumulator):
     # Every positive 32-bit magnitude has an exact double representation.
     lead = np.frexp(mag.astype(np.float64))[1].astype(np.int64) - 1
     shift = np.maximum(0, lead - 7)
-    sig = mag >> shift
+    sig = (mag >> shift) << np.maximum(0, 7 - lead)  # the RTL normalizes sums shorter than eight bits
     remainder = mag & ((1 << shift) - 1)
     half = 1 << np.maximum(0, shift - 1)
     sig += (shift != 0) & ((remainder > half) | ((remainder == half) & ((sig & 1) != 0)))

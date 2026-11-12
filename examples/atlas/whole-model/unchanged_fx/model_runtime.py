@@ -16,7 +16,7 @@ import torch
 READ = ct.CFUNCTYPE(ct.c_uint32, ct.c_void_p, ct.c_size_t)
 WRITE = ct.CFUNCTYPE(None, ct.c_void_p, ct.c_size_t, ct.c_uint32)
 MEMORY = ct.CFUNCTYPE(ct.c_int, ct.c_void_p, ct.c_size_t, ct.c_void_p, ct.c_size_t)
-MODEL_PIN = "47b8599d8ffbe5ddd96059ffe2b5be2427a410f5"
+MODEL_PIN = "b97b2f5a97e432141c4ef8504bec396651d77a8f"
 
 
 def authenticate_model(root):

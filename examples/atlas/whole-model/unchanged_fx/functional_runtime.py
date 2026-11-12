@@ -205,7 +205,7 @@ class FunctionalModelRuntime(_CycleModelRuntime):
         if any(after.get(key) != value for key,value in self.before.items()):
             self.errors.append("instruction-model source changed during execution")
         record = dict(backend="npu_model.functional.physical",numerics="rtl",model_source_sha256=after,
-            model_revision="47b8599d8ffbe5ddd96059ffe2b5be2427a410f5",physical_register_adapter="hardwired scalar x0",
+            model_revision="b97b2f5a97e432141c4ef8504bec396651d77a8f",physical_register_adapter="hardwired scalar x0",
             arithmetic="unchanged original decoded instruction.exec and RTL numerics",
             timing="not modeled; stream, timing, allocation, and emission checks remain separate",
             errors=self.errors,launches=self.launches,transfers=self.transfers,trace_payloads=self.trace_payloads,

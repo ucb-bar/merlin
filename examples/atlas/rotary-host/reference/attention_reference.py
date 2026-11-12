@@ -15,7 +15,7 @@ import sys
 
 import numpy as np
 
-MODEL_PIN = "47b8599d8ffbe5ddd96059ffe2b5be2427a410f5"
+MODEL_PIN = "b97b2f5a97e432141c4ef8504bec396651d77a8f"
 POLICY = "bf16-masked-normalized-softmax-tree32-fp32-rne-bf16-rne-tile-ltr-chop-rcplut-v1"
 
 
