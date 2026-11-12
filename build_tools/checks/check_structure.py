@@ -20,6 +20,7 @@ import ast
 import os
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _source_layout  # noqa: E402
@@ -168,7 +169,12 @@ def check_agent_md(errors):
 
 TARGET_MARKER_RATCHET = os.path.join(ROOT, "build_tools", "checks", "test_target_marker_ratchet.txt")
 MODULE_SIZE_RATCHET = os.path.join(ROOT, "build_tools", "checks", "module_size_ratchet.txt")
-MODULE_SIZE_LIMIT = 1500
+#: Size policy for source modules, in PHYSICAL SLOC (lines that carry code; blank or whitespace-only
+#: lines, comments and docstrings do not count): aim for 200-800 per module, warn above
+#: MODULE_SIZE_WARN, fail above MODULE_SIZE_LIMIT. Logical SLOC (statements) is reported alongside.
+MODULE_SIZE_LIMIT = 1000
+MODULE_SIZE_WARN = 800
+MODULE_SIZE_FLOOR = 200
 TARGET_HEAVY_LITERALS = 5
 
 
@@ -216,6 +222,58 @@ def check_test_target_marker(errors):
             errors.append(f"target-heavy test without `pytestmark = pytest.mark.target(...)`: {rel}")
 
 
+class Sloc(NamedTuple):
+    """Source lines of code. ``physical``: lines that carry code; ``logical``: statements."""
+
+    physical: int
+    logical: int
+
+
+def sloc(text: str) -> Sloc:
+    """Physical and logical SLOC of a Python source, measured structurally (tokenize + ast).
+
+    Physical SLOC counts lines that carry a code token: blank or whitespace-only lines, comments and
+    docstrings do not count, and a multi-line string that is data does. Logical SLOC counts statements
+    (docstrings excluded), so a call wrapped over five lines is five physical lines but one logical one.
+    """
+    import ast
+    import io
+    import tokenize
+
+    docstring_lines: set[int] = set()
+    docstrings: set[int] = set()
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        n = sum(1 for line in text.splitlines() if line.strip() and not line.lstrip().startswith("#"))
+        return Sloc(n, n)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                docstrings.add(id(first))
+                docstring_lines.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    logical = sum(1 for node in ast.walk(tree) if isinstance(node, ast.stmt) and id(node) not in docstrings)
+    skip = {
+        tokenize.COMMENT,
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+    lines: set[int] = set()
+    for tok in tokenize.generate_tokens(io.StringIO(text).readline):
+        if tok.type not in skip:
+            lines.update(range(tok.start[0], tok.end[0] + 1))
+    return Sloc(len(lines - docstring_lines), logical)
+
+
 def _module_size_ceilings(errors) -> dict[str, int]:
     """``module_size_ratchet.txt`` as ``{debt identity: line ceiling}``.
 
@@ -242,28 +300,47 @@ def _module_size_ceilings(errors) -> dict[str, int]:
 
 
 def check_module_size(errors):
-    """No library module may grow past MODULE_SIZE_LIMIT lines, nor a recorded one past its ceiling.
+    """No source module may grow past MODULE_SIZE_LIMIT physical SLOC, nor a recorded one past its ceiling.
 
-    Existing offenders are listed in module_size_ratchet.txt with the line count each may not exceed;
-    the ledger may only shrink (check_ratchets_shrink.py holds both the entries and the ceilings). A
-    listed module may shrink but not grow, and leaves the ledger by being split under the limit. A NEW
-    module over the limit fails here. Counts physical lines of the file as committed-shape source, i.e.
-    after ruff format, so a formatter pass cannot push a module over.
+    Sizes are physical SLOC (:func:`sloc`): blank lines, comments and docstrings do not count. Existing
+    offenders are listed in module_size_ratchet.txt with the physical SLOC each may not exceed; the
+    ledger may only shrink (check_ratchets_shrink.py holds both the entries and the ceilings). A listed
+    module may shrink but not grow, and leaves the ledger by being split under the limit. A NEW module
+    over the limit fails here. Modules above MODULE_SIZE_WARN are reported as a warning, and the number
+    of non-package modules under MODULE_SIZE_FLOOR is reported so over-splitting stays visible.
     """
     ceilings = _module_size_ceilings(errors)
+    warned, small = [], 0
     for relative in _source_layout.python_files(Path(ROOT), _source_layout.SOURCE_SCAN_ROOTS):
         rel = relative.as_posix()
         with open(Path(ROOT) / relative, encoding="utf-8", errors="replace") as fh:
-            n = sum(1 for _ in fh)
+            size = sloc(fh.read())
+        n = size.physical
         key = rel if rel in ceilings else _source_layout.policy_path(rel)
         ceiling = ceilings.get(key)
         if ceiling is None:
             if n > MODULE_SIZE_LIMIT:
-                errors.append(f"module over {MODULE_SIZE_LIMIT} lines ({n}); split it: {rel}")
+                errors.append(f"module over {MODULE_SIZE_LIMIT} physical SLOC ({n}); split it: {rel}")
+            elif n > MODULE_SIZE_WARN:
+                warned.append((n, size.logical, rel))
         elif n > ceiling:
-            errors.append(f"module grew past its recorded ceiling ({n} > {ceiling} lines); shrink or split it: {rel}")
+            errors.append(
+                f"module grew past its recorded ceiling ({n} > {ceiling} physical SLOC); shrink or split it: {rel}"
+            )
         elif n <= MODULE_SIZE_LIMIT:
-            errors.append(f"module is now within {MODULE_SIZE_LIMIT} lines ({n}); delete its ratchet entry: {rel}")
+            errors.append(
+                f"module is now within {MODULE_SIZE_LIMIT} physical SLOC ({n}); delete its ratchet entry: {rel}"
+            )
+        if n < MODULE_SIZE_FLOOR and relative.name != "__init__.py":
+            small += 1
+    if warned:
+        print(f"[warn] {len(warned)} module(s) above {MODULE_SIZE_WARN} physical SLOC (limit {MODULE_SIZE_LIMIT}):")
+        print("         phys  logical  module")
+        for n, logical, rel in sorted(warned, reverse=True):
+            print(f"         {n:5}  {logical:7}  {rel}")
+    print(
+        f"[info] {small} module(s) under {MODULE_SIZE_FLOOR} physical SLOC; merge over-split modules into cohesive ones."
+    )
 
 
 def check_schemas(errors):
