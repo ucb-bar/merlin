@@ -174,8 +174,13 @@ def bind_runner(source, *, selected):
 
 
 def edit_pipeline(passes):
+    from .fp8_narrowing import MARKER as NARROWING
     if MARKER in passes:
         raise ValueError("FP8 widening requires an unmodified source pipeline")
+    if NARROWING in passes:
+        if passes.count(NARROWING) != 1 or passes[0] != NARROWING:
+            raise ValueError("FP8 narrowing must precede widening at the initial source seam")
+        return [NARROWING, MARKER, *passes[1:]]
     return [MARKER, *passes]
 
 

@@ -3,7 +3,7 @@ title: "FP8 reader and constant bindings"
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-11-10
+last_verified: 2026-11-11
 related: [core_dialects, triton_frontend]
 code_refs:
   - src/merlin/xdsl_dialects/fp8.py
@@ -14,6 +14,8 @@ code_refs:
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/common/mlir_query.py
   - src/merlin/llvmlower/fp8_widening.py
+  - src/merlin/llvmlower/fp8_narrowing.py
+  - merlin/tests/ir/test_fp8_feature_composition.py
   - src/merlin/llvmlower/pipeline.py
 ---
 
@@ -104,6 +106,19 @@ the feature is not an FP8 arithmetic policy. Its source wrapper consumes one
 marker and forwards every ownership/runner callback. BF16 arithmetic emulation
 may follow it at its own source marker; BF16 word transport remains late.
 The ordinary native conversion, allocation, alias and lifetime gates still run.
+
+When narrowing and widening are both selected, their pipeline edits now retain
+one initial narrowing marker followed by one widening marker regardless of
+feature application order. Narrowing must implement the standard truncations
+before the widening checker inspects remaining FP8 operations. The ordinary
+sorted feature application previously put widening first and the native
+runner rejected this valid composition. Duplicate or moved source markers
+still refuse; loop destination planning can split subsequent stages while
+consuming the cast markers only once and preserving every runner callback.
+This fixes feature composition without changing cast arithmetic, source
+numeric contracts, buffer ownership or lifetime admission. Native cast and
+runner tests cover the complete 67-case selection; actual triton2MLIR target
+execution additionally exercises mixed-policy loop kernels through this seam.
 
 Twenty-five native feature/seam/refusal cases and the existing BF16 regressions
 pass (48 combined cases). triton2MLIR additionally qualifies all 48

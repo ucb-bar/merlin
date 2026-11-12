@@ -31,6 +31,11 @@ candidate validation. Recollect casts after generalization; never edit a named
 operation's canonical scalar body. Portable named contractions remain intact.
 Generalized fills retain scalar FP8 transport through `linalg.generic`; the
 complete recursive body still rejects unqualified FP8 arithmetic and calls.
+When both FP8 features are selected, the pipeline edit order must retain
+narrowing before widening at the sole initial source seam. Widening inserts
+after an existing initial narrowing marker; duplicates or moved markers refuse.
+Loop destination planning may split later native stages, but must consume each
+source marker exactly once and forward all ownership/runner callbacks.
 
 `lower_scalar_diagnostics` materializes standard scalar/string `vector.print`
 after ownership checks and includes length-aware assertions. Keep fixed scalar
