@@ -62,6 +62,14 @@ with ir.Context() as ctx:
     module = ir.Module.parse(open(sys.argv[1]).read())
     module.operation.verify()
     _ltd_reuse(ctx, module)
+    # Borrowed initial values gain a newly allocated destination, never an
+    # ownership premise for their original input or captured storage.
+    for op in _ltd_walk(module.operation):
+        if ('prov.op' in op.attributes and
+                ir.StringAttr(op.attributes['prov.op']).value == 'seed-private-carried-value'):
+            assert len(op.operands) == 2
+            assert op.operands[1].owner.operation.name == 'tensor.empty'
+            assert op.results[0] != op.operands[0]
     open(sys.argv[2], 'w').write(str(module))
 """
     )
@@ -74,6 +82,47 @@ with ir.Context() as ctx:
         env=dict(os.environ, OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1", TMPDIR=str(tmp_path)),
     )
     return result.stdout, output.read_text()
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("control", ["for", "while"])
+@pytest.mark.parametrize("effect", ["guard", "call", "write", "read"])
+def test_numeric_guards_stay_in_complete_producers_without_admitting_hidden_effects(tmp_path, control, effect):
+    declaration = "func.func private @unknown(f32)->f32" if effect == "call" else ""
+    extra = {
+        "guard": "",
+        "call": "%unused=func.call @unknown(%in):(f32)->f32",
+        "write": "memref.store %in,%sink[%c0]:memref<4xf32>",
+        "read": "%unused=memref.load %sink[%c0]:memref<4xf32>",
+    }[effect]
+    guarded = f'''%valid=arith.cmpf oeq,%in,%in:f32
+      cf.assert %valid,"tensor state guard"
+      {extra}
+      %v=arith.addf %in,%one:f32'''
+    if control == "for":
+        payload = f'''scf.for %s=%c0 to %bound step %c1 {{
+          {guarded.replace("%v=", "%inner=")}
+        }}
+        %v=arith.addf %in,%one:f32'''
+    else:
+        payload = f'''%v:2=scf.while (%carry=%in,%i=%c0):(f32,index)->(f32,index) {{
+          {guarded.replace("%v=", "%inner=")}
+          %continue=arith.cmpi slt,%i,%bound:index
+          scf.condition(%continue) %carry,%i:f32,index
+        }} do {{
+        ^bb0(%carry:f32,%i:index):
+          %next=arith.addf %carry,%one:f32
+          %j=arith.addi %i,%c1:index
+          scf.yield %next,%j:f32,index
+        }}'''
+    original = source().replace("module {", "module { " + declaration, 1)
+    original = original.replace("%v=arith.addf %in,%one:f32", payload)
+    if control == "while":
+        original = original.replace("linalg.yield %v:f32", "linalg.yield %v#0:f32")
+    stdout, output = rewrite(tmp_path, original)
+    assert f"OK loop_tensor_destinations {2 if effect == 'guard' else 0}" in stdout
+    assert output.count("cf.assert") == 1 and '"tensor state guard"' in output
+    assert "scf." + control in output
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
@@ -211,7 +260,7 @@ def atomic_source(*, private=True, fresh=True, no_inline=True, unknown=False, in
     [
         ({}, 1),
         ({"private": False}, 0),
-        ({"fresh": False}, 0),
+        ({"fresh": False}, 2),
         ({"no_inline": False}, 0),
         ({"unknown": True}, 0),
         ({"init_read": True}, 0),
@@ -472,7 +521,7 @@ def test_computed_tensor_reads_require_complete_closed_value_producers(tmp_path,
         ({"generalize": True}, 1),
         ({"constant": True}, 1),
         ({"conditional": False}, 1),
-        ({"fresh": False}, 0),
+        ({"fresh": False}, 2),
         ({"readonly": False}, 0),
         ({"write": True}, 0),
         ({"opaque": True}, 0),
@@ -487,7 +536,7 @@ def test_read_capture_requires_fresh_seed_and_closed_readonly_entry_origin(tmp_p
 
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
-@pytest.mark.parametrize("options,changed", [({}, 1), ({"fresh": False}, 0), ({"readonly": False}, 0)])
+@pytest.mark.parametrize("options,changed", [({}, 1), ({"fresh": False}, 2), ({"readonly": False}, 0)])
 def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, options, changed):
     stdout, output = rewrite(tmp_path, read_source(conditional=False, outside_read=True, **options))
     assert f"OK loop_tensor_destinations {changed}" in stdout
@@ -500,7 +549,7 @@ def test_scalar_read_captures_close_their_loop_local_producer_graph(tmp_path, op
     [
         ({}, 1),
         ({"private": True}, 1),
-        ({"fresh": False}, 0),
+        ({"fresh": False}, 2),
         ({"readonly": False}, 0),
         ({"unknown_owner": True}, 0),
         ({"seed_init_read": True}, 0),
@@ -518,7 +567,7 @@ def test_read_computed_seeds_require_independent_unused_output_storage(tmp_path,
     [
         ({"private": True}, 1),
         ({"private": True, "readonly": False}, 1),
-        ({"private": True, "fresh": False}, 0),
+        ({"private": True, "fresh": False}, 2),
         ({"unknown_owner": True}, 0),
     ],
 )
@@ -535,7 +584,7 @@ def test_private_read_roots_require_actual_allocations_and_independent_seeds(tmp
         ({"tensor_view": True}, 1),
         ({"conditional": False}, 1),
         ({"private": True}, 1),
-        ({"fresh": False}, 0),
+        ({"fresh": False}, 2),
         ({"unknown_owner": True}, 0),
     ],
 )
@@ -597,7 +646,7 @@ def test_private_imported_while_seed_requires_unchanged_condition_state(tmp_path
         ("identity", {}, 1),
         ("identity", {"generalize": True}, 1),
         ("identity", {"constant": True}, 1),
-        ("identity", {"fresh": False}, 0),
+        ("identity", {"fresh": False}, 2),
         ("identity", {"readonly": False}, 0),
         ("identity", {"write": True}, 0),
         ("identity", {"opaque": True}, 0),

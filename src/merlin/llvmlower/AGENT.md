@@ -86,14 +86,20 @@ iteration state after actual native control verification. Keep the complete
 body in place and inspect every descendant, including unused calls, mutable
 reads and writes. Numeric control grants no fresh destination, capture alias,
 speculation or termination facts. Existing read/effect and lifetime gates remain.
+Typed `cf.assert` guards may remain in a complete producer under the same
+independent fresh-seed proof. The transform retains every guard and condition
+at its original control position and only copies/reuses the completed value.
+Failure publishes no private destination. This grants no speculation, hidden
+call/write/read admission, new capture fact or ownership/lifetime exception.
 Pure nested `scf.for` tensor updates from scalar contraction may supply complete
 values for a later identity copy. Check all nested operations, including unused
 results and void effects, plus numeric bounds/state, captures and yields.
 Retain the original computation, zero-trip semantics and every lifetime gate.
-An initial restricted tensor import from actual private allocation may receive
+An initial checked immutable entry tensor/view, complete value producer, or
+restricted tensor import from a qualified private/readonly root may receive
 an explicit independent value copy before the loop. Construct the candidate
 detached and attach it only after the complete producer/capture proof succeeds;
-unknown roots, unrestricted imports and effects grant no seed ownership.
+unknown roots, CFG phi tensors, unrestricted imports and effects grant no seed ownership.
 Keep zero-trip values and every native alias/lifetime check unchanged.
 The readonly-capture extension still requires an independently synthesized seed
 and actual readonly entry storage; native bufferization and lifetime checks

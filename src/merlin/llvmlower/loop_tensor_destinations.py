@@ -177,7 +177,10 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
                 return False
             continue
         if name == 'cf.assert':
-            if (not private_atomics or not fresh_seed or len(inner.operands) != 1
+            # A fail-stop guard remains in its original producer. Only its
+            # completed value is copied/reused; no guard or condition moves,
+            # and failure cannot publish the private fresh destination.
+            if (not fresh_seed or len(inner.operands) != 1
                     or str(inner.operands[0].type) != 'i1' or inner.results or inner.regions):
                 return False
             continue
@@ -515,16 +518,14 @@ def _ltd_copy_state(ctx, terminal, position, source, destination):
 
 
 def _ltd_private_seed(ctx, loop, incoming):
-    # A restricted import from actual private storage supplies values, not a
-    # fresh carried destination. Offer an explicit independent copy, then run
-    # the complete producer/capture proof against it before attaching anything.
-    # Entry/unknown/escaping roots gain no ownership premise from this helper.
-    if (not isinstance(incoming, ir.OpResult) or not isinstance(incoming.type, ir.RankedTensorType)
+    # A checked immutable tensor value supplies no owned carried destination.
+    # Offer an explicit independent copy, then run the complete producer and
+    # capture proof against it before attaching anything. Entry views and
+    # restricted imports gain no ownership of their original storage.
+    if (not isinstance(incoming, (ir.OpResult, ir.BlockArgument)) or not isinstance(incoming.type, ir.RankedTensorType)
             or any(n <= 0 for n in ir.RankedTensorType(incoming.type).shape)):
         return None
-    owner = incoming.owner.operation
-    if (owner.name != 'bufferization.to_tensor' or len(owner.operands) != 1
-            or 'restrict' not in owner.attributes or not _ltd_private_root(owner.operands[0])):
+    if not _ltd_tensor_read_root(incoming):
         return None
     with ctx, loop.location:
         empty = ir.Operation.create('tensor.empty', results=[incoming.type], ip=False)
