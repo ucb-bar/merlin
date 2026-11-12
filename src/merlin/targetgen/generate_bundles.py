@@ -234,9 +234,7 @@ def _arm_manifest(
             ]
             + deny
         )
-    elif arm in ("merlin_assisted", "merlin_eqsat"):
-        # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
-        # would differ in TWO ways and its result would not attribute to the seam.
+    elif arm == "merlin_assisted":
         deny = (
             [
                 {"path": f"{_PY}targetgen/rtl/", "reason": "CIRCT RTL generators (CIRCT arm only)"},
@@ -325,19 +323,16 @@ _ARMS = {
     "cpp_merlininfra": "cpp_merlininfra",
     "merlin_assisted": "merlin_assisted",
     "merlin_rtlchecks": "merlin_assisted_rtlchecks",
-    # The EL3-E stem CONTAINS "merlin_assisted" on purpose: generate_prompt._is_assisted_arm is a
-    # substring test, so the arm inherits the assisted seam menu with no prompt edit.
-    "merlin_eqsat": "merlin_assisted_eqsat",
 }
 
 # Arms that EXIST but are not part of the default ladder: emitted only when named through ``arms=`` /
-# ``--arms``. The five stems above are the ids every committed bundle directory, every run path under
+# ``--arms``. The four stems above are the ids every committed bundle directory, every run path under
 # out/runs and every A/B report resolves against, and campaigns are launched against that set. Putting a
-# sixth arm in the default would materialize a sixth bundle into every target's tracked input_bundles
+# fifth arm in the default would materialize a fifth bundle into every target's tracked input_bundles
 # the next time anyone regenerated -- changing the arm set underneath runs already in flight, which is a
 # measurement change disguised as a codegen change. An arm graduates into ``_ARMS`` when a campaign
-# declares it, not when it is written. The stem still CONTAINS "merlin_assisted" for the same reason
-# EL3-E's does: generate_prompt._is_assisted_arm is a substring test.
+# declares it, not when it is written. The stem still CONTAINS "merlin_assisted" on purpose:
+# generate_prompt._is_assisted_arm is a substring test, so the arm inherits the assisted seam menu.
 #
 # GRADUATING AN ARM IS TWO EDITS, NOT ONE. The launcher resolves a bundle id back to its rung by
 # LONGEST MATCHING STEM over ``_ARMS`` (``run_baseline_qa_loop._arm_from_bundle_id``). An opt-in stem
@@ -715,7 +710,6 @@ not correctness-qualified implementations and must not be promoted without an in
     if manifest.get("arm") in {
         "merlin_assisted",
         "merlin_rtlchecks",
-        "merlin_eqsat",
         "merlin_verify",
         "merlin_isa",
         "merlin_lean",

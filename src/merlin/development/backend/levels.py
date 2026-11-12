@@ -1,8 +1,7 @@
 """Human-readable Phase 1 experiment levels over stable, frozen arm identities.
 
 Levels name comparisons, not compiler capability or an ordering of quality.  In
-particular, the optional EGraph arm branches from EL3 and the verification arm
-branches from EL4.  Existing bundle ids, treatment keys and frozen runs retain
+particular, the optional verification arm branches from EL4.  Existing bundle ids, treatment keys and frozen runs retain
 their original machine-readable names.
 """
 
@@ -41,14 +40,6 @@ LEVELS = (
         "bundle_arm": "merlin_rtlchecks",
         "runner_arm": "merlin_assisted",
         "treatment": "rtlchecks",
-        "parent": "EL3",
-    },
-    {
-        "id": "EL3-E",
-        "name": "EGraph variant",
-        "bundle_arm": "merlin_eqsat",
-        "runner_arm": "merlin_assisted",
-        "treatment": "baseline",
         "parent": "EL3",
     },
     {
@@ -132,14 +123,14 @@ def level_for_phase1(config: Mapping[str, object]) -> str | None:
             if selected in {"merlin_rtlchecks", "merlin_isa", "merlin_lean"}:
                 inferred = _BY_ARM[selected] if arm == "merlin_assisted" and treatment == "rtlchecks" else None
                 return inferred if declared in (None, inferred) else None
-            if selected in {"merlin_assisted", "merlin_eqsat", "merlin_verify"}:
+            if selected in {"merlin_assisted", "merlin_verify"}:
                 inferred = _BY_ARM[selected] if arm == "merlin_assisted" and treatment == "baseline" else None
                 return inferred if declared in (None, inferred) else None
             inferred = _BY_ARM[selected] if arm == selected and treatment == "baseline" else None
             return inferred if declared in (None, inferred) else None
     if arm == "merlin_assisted":
         inferred = "EL4" if treatment == "rtlchecks" else "EL3" if treatment == "baseline" else None
-        if declared in ("EL3-E", "EL4-V") and treatment == "baseline":
+        if declared == "EL4-V" and treatment == "baseline":
             inferred = declared
         if declared in ("EL5", "EL6") and treatment == "rtlchecks":
             inferred = declared

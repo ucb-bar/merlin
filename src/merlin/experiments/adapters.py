@@ -459,7 +459,7 @@ ADAPTERS = {
             "schedule": Option(choices=("continuous", "rounds"), flag=""),
             "corpus_seal": Option("input", flag=""),
             "require_reviewed_corpus": Option("bool", flag=""),
-            "level": Option(choices=("EL1", "EL2", "EL3", "EL4", "EL3-E", "EL4-V", "EL5", "EL6"), flag=""),
+            "level": Option(choices=("EL1", "EL2", "EL3", "EL4", "EL4-V", "EL5", "EL6"), flag=""),
             "arm": Option(required=True, choices=("raw_baseline", "cpp_merlininfra", "merlin_assisted")),
             "treatment": Option(choices=("baseline", "rtlchecks")),
             "model": _REQUIRED_TEXT,

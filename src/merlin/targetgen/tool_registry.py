@@ -329,20 +329,10 @@ TOOLS: dict[str, ToolSpec] = {
         note="ALLOWED (CIRCT arm): RTL-extracted facts",
         deny_reason="RTL facts (CIRCT arm only)",
     ),
-    # The treatment under test is the SEAM itself — the agent registers its own implementation as an
-    # alternative in an e-class and the extractor chooses — so the arm carrying it must differ from the
-    # arm it is compared against in exactly this one declared way.
-    "eqsat_seam": ToolSpec(
-        "eqsat_seam",
-        "The equivalence seam: an e-graph over real IR plus the persistent equivalence store.",
-        bundle_paths=(f"{_PY}targetgen/contraction_egraph.py", f"{_PY}targetgen/persistent_equivalence.py"),
-        note="ALLOWED (eqsat arm): the equivalence seam",
-        deny_reason="equivalence seam (eqsat arm only)",
-    ),
     # The treatment is the VERIFICATION SEAM: the agent can run one pass on one module and check what it
     # did (structurally, and against an SMT encoding of the pass pair) instead of only learning from a
-    # capsule verdict. Like the eqsat seam it is oracle-free — it compares the compiler's own before/after
-    # IR, never a golden — and like the eqsat seam it is granted to exactly one arm, for the same reason.
+    # capsule verdict. It is oracle-free — it compares the compiler's own before/after IR, never a
+    # golden — and it is granted to exactly one arm, so that arm differs from its parent in one declared way.
     "verify_seam": ToolSpec(
         "verify_seam",
         "The compiler-verification seam. `python -m merlin.verification.cli compile --interface <f.mlir> "
@@ -410,15 +400,12 @@ ARM_TOOLS: dict[str, tuple[str, ...]] = {
     "cpp_merlininfra": ("cpp_oot_generators",),
     "merlin_assisted": _ASSISTED,
     "merlin_rtlchecks": _ASSISTED + ("rtl_generators", "rtl_facts"),
-    # The eqsat arm shares the xDSL arm's denials on purpose: an arm that also gained the RTL facts
-    # would differ in TWO ways and its result would not attribute to the seam.
-    "merlin_eqsat": _ASSISTED + ("eqsat_seam",),
     # A NEW arm, not a wider arm-4. The verification seam could have been folded into merlin_rtlchecks,
     # and that would have been the cheaper edit — but arm-4 exists to carry exactly one addition over
     # arm-3 (the RTL generators + the facts they extract), and every arm-3-vs-arm-4 number already
     # reported rests on that. An arm-4 that also gained the verification seam would differ from arm-3 in
     # two ways at once, so its delta would attribute to neither, and the earlier contrast would silently
-    # stop being comparable to the later one. Same reasoning as the eqsat arm above; same resolution.
+    # stop being comparable to the later one.
     "merlin_verify": _ASSISTED + ("rtl_generators", "rtl_facts", "verify_seam"),
     "merlin_isa": _ASSISTED + ("rtl_generators", "rtl_facts", "isa_dialect_generation"),
     "merlin_lean": _ASSISTED + ("rtl_generators", "rtl_facts", "isa_dialect_generation", "lean_proof_authoring"),
