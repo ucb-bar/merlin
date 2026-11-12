@@ -3,9 +3,9 @@ title: 6. Lower through scalar and OOT implementations
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-09
+last_verified: 2026-11-11
 related: [05-transformations, 07-building]
-code_refs: [src/merlin/compiler/pipeline.py, src/merlin/compiler/backend/selected.py, src/merlin/compiler/backend/cabi.py, src/merlin/compiler/lower/regions.py, src/merlin/compiler/lower/scalar, src/merlin/compiler/lower/llvm, src/merlin/compiler/artifact.py]
+code_refs: [src/merlin/compiler/pipeline.py, src/merlin/compiler/backend/selected.py, src/merlin/compiler/backend/provided.py, src/merlin/compiler/backend/cabi.py, src/merlin/compiler/lower/regions.py, src/merlin/compiler/lower/scalar, src/merlin/compiler/lower/llvm, src/merlin/compiler/artifact.py]
 ---
 
 # 6. Lower through scalar and OOT implementations
@@ -50,6 +50,13 @@ RVV implementation code belongs in `rvv-mlir`. A CPU with scalar and RVV
 implementations can still be one shared hardware resource. Scalar fallback
 must not be reported as evidence that vector or accelerator code executed.
 
+Shared lowering reaches provider-implemented components through
+`backend/provided.py`: the selected vector provider's `<component>_api()`
+accessors (register-block tables, weight panels, fused requantization) and its
+accumulator runner hooks. The optimization registry resolves the features those
+components implement from the provider's `feature_definitions()`. With no
+provider selected, requesting one of them fails with that reason.
+
 ## Outputs do not have to be LLVM
 
 A backend may return compatible IR, an object file, a device binary, a command
@@ -83,6 +90,7 @@ must remain visible in the plan and cost accounting.
 | --- | --- |
 | Compile selected regions | [`pipeline.py`](../../src/merlin/compiler/pipeline.py) |
 | Invoke the exact chosen lowering | [`backend/selected.py`](../../src/merlin/compiler/backend/selected.py) |
+| Provider-implemented components and features | [`backend/provided.py`](../../src/merlin/compiler/backend/provided.py) |
 | Scalar provider | [`backend/scalar.py`](../../src/merlin/compiler/backend/scalar.py) |
 | Scalar pass sequence | [`lower/scalar/pipeline.py`](../../src/merlin/compiler/lower/scalar/pipeline.py) |
 | C wrapper contract | [`backend/cabi.py`](../../src/merlin/compiler/backend/cabi.py) |

@@ -144,16 +144,17 @@ def blocking_risks(pkg: HostPackage, model_dir: str | Path) -> list[str]:
     Empty when the package has an adaptable feature, when nothing is masked, or when the schedule is
     unreadable.
     """
+    from merlin.compiler.backend import provided
     from merlin.compiler.ir.contraction_shapes import contraction_shapes
 
-    from ..llvmlower.frozen_blocks import is_frozen_block
     from .from_strategy import _rvv_blocking_lowers
 
-    if any(is_frozen_block(f) for f in pkg.compiler_features):
-        return []  # the resolver handles this one
     blocks = _schedule_pinned_blocks(pkg.schedule_text)
     if not blocks:
         return []
+    is_frozen_block = provided.component("frozen_blocks").is_frozen_block
+    if any(is_frozen_block(f) for f in pkg.compiler_features):
+        return []  # the resolver handles this one
     shapes = contraction_shapes(Path(model_dir) / "model.mlir")
     out: list[str] = []
     for op, (mt, nt) in blocks.items():
@@ -186,9 +187,12 @@ def _adapt_frozen_points(feats: list[str], shapes, *, target: str) -> list[str]:
     Emits a per-op-class feature when anything changed, and returns the list unchanged otherwise,
     so a workload the frozen point already fits compiles byte-identically.
     """
-    from ..llvmlower.frozen_blocks import frozen_block_caps, frozen_block_per_class
+    from merlin.compiler.backend import provided
+
     from .from_strategy import _rvv_best_block, _rvv_blocking_lowers
 
+    frozen_blocks = provided.component("frozen_blocks")
+    frozen_block_caps, frozen_block_per_class = frozen_blocks.frozen_block_caps, frozen_blocks.frozen_block_per_class
     out: list[str] = []
     for name in feats:
         caps, frozen = frozen_block_caps(name), frozen_block_per_class(name)

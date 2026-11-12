@@ -172,9 +172,10 @@ def ensure_perop_block(table, kc: int, pairs: "list | tuple" = (), vec_epilogue:
     """
     import hashlib
 
+    from merlin.compiler.backend import provided
     from merlin.compiler.optimizations.registry import known, register
-    from merlin.llvmlower import perop_blocks as _pb
 
+    _pb = provided.component("perop_blocks")
     blocks = _pb.distinct_blocks(table)
     # The PAIR TABLE is part of the key, not just of the text. Two builds of the same model that
     # differ only in whether the requant epilogue was fused are two different schedules; keying on

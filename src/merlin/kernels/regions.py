@@ -72,6 +72,8 @@ _PQI = "src/merlin/llvmlower/passes_quant_int.py"
 _PIPE = "src/merlin/compiler/lower/native/pipeline.py"
 _IF = "src/merlin/compiler/optimizations/registry.py"
 _FS = "src/merlin/mining/from_strategy.py"
+#: The seam to the selected vector provider, which owns the accumulator micro-kernel runner.
+_PROVIDED = "src/merlin/compiler/backend/provided.py"
 
 REGIONS: dict[str, Region] = {
     r.key: r
@@ -280,7 +282,7 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Inner-loop computation",
             "The micro-kernel body (e.g. vectorized transcendental activation polynomial).",
-            ("src/merlin/llvmlower/accum_microkernel.py", _IF),
+            (_IF, _PROVIDED),
             [
                 _ep(
                     "PASS",
@@ -314,7 +316,7 @@ REGIONS: dict[str, Region] = {
             "kernel-codegen",
             "Accumulation / accumulator residency",
             "Keep the accumulator register-resident across the reduction; reduction form (tree/vredsum).",
-            (_IF, "src/merlin/llvmlower/accum_microkernel.py"),
+            (_IF, _PROVIDED),
             [
                 _ep(
                     "PASS",

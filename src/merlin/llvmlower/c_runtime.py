@@ -281,10 +281,11 @@ def generate(
     # the compiled object follows the prepared module, so the stock bundle here would produce an
     # object indexing [N/NR][K][NR] weights against [K][N] bytes -- it links, it runs, and it computes
     # nonsense. The preparation step leaves its plan beside this call's work directory precisely so
-    # the mistake is detectable here rather than in a wrong result hours later.
-    from .weight_panel import guard_planned_pack
+    # the mistake is detectable here rather than in a wrong result hours later. The packer, and so
+    # its plan, belong to the selected vector support provider; with none selected nothing was packed.
+    from merlin.compiler.backend.provided import guard_abi_bundle
 
-    guard_planned_pack(model_dir, out_dir)
+    guard_abi_bundle(model_dir, out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     readonly_sources = []
     if readonly_input_indices:

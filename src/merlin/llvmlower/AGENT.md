@@ -913,12 +913,11 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
   defines its own edit and registers itself; the empty feature set must leave the pipeline
   byte-identical. `epilogue_fusion.py` fuses a per-output epilogue (the int8 requant) into the loop
   nest of the reduction that produced it, via affine producer-consumer fusion at zero compute
-  tolerance. `requant_fuse.py` does the same job for a contraction the per-op schedule has already
-  tiled and vectorized (where the affine fusion is inert): it tiles the epilogue on TENSORS and fuses
-  the contraction and its accumulator fill into that tile loop, so the model-sized i32 accumulator is
-  never built. Two registered points, because they differ in kind — the plain one only removes the
-  traversal, the `_vec` one also reshapes the epilogue tile — and the emitted-code evidence separates
-  them.
+  tolerance. The selected vector support provider's `requant_fuse` does the same job for a
+  contraction its per-op schedule has already tiled and vectorized. Provider-implemented features
+  (register-block tables, weight panels, fused requantization, register-group widths, the
+  accumulator micro-kernel runner) are not modules here: `compiler.backend.provided` reaches them
+  through the selected provider and resolves their names from its `feature_definitions()`.
 - `optional_passes.py` — the one list of optional, target-agnostic transforms (`merlin-compile
   --list-passes`): stage, exactness, default, and the existing switch each maps to (a feature, a
   `MERLIN_*` variable, an integer-datapath pass, a capture key). A selection (`--pass`/`--no-pass`,

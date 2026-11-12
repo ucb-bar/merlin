@@ -297,7 +297,7 @@ print("OK act_poly rewrote", _n)
 def _accum_microkernel_v3_features() -> frozenset[str]:
     """Names of the accumulator-resident micro-kernel v3 features (the ones whose pipeline splices the
     SCALARIZE_MARKER and need the two-stage A-scalarization runner). Imported lazily so importing
-    pipeline never pulls accum_microkernel / impr_features at module load."""
+    pipeline never pulls the provider's micro-kernel runner or impr_features at module load."""
     from merlin.compiler.optimizations.registry import ACCUM_RESIDENT_V3_NAMES
 
     return frozenset(ACCUM_RESIDENT_V3_NAMES)
@@ -311,10 +311,15 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
     points are registered on demand for arbitrary (MR,NR,KC); a static-name check silently missed them,
     the plain runner was used, and SCALARIZE_MARKER leaked into the pipeline as if it were a pass
     ("'__merlin_scalarize_a__' does not refer to a registered pass") — every non-grid MR failed at K2.
-    Keying on the marker makes this correct for any registration mechanism."""
-    from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+    Keying on the marker makes this correct for any registration mechanism.
 
-    if SCALARIZE_MARKER in pipeline:
+    The marker and the runner belong to the selected vector support provider. With none selected no
+    feature edit can have spliced the marker, and a v3 feature still selects this runner, whose
+    provider lookup then refuses with the reason."""
+    from merlin.compiler.backend import provided
+
+    selected = provided.optional_provider()
+    if selected is not None and selected.accum_microkernel_marker() in pipeline:
         return True
     return any(f in feats for f in _accum_microkernel_v3_features())
 
@@ -350,10 +355,13 @@ def _select_runner(
     if {"approximate_transcendental_activation", "vectorized_transcendental_activation"} & feats:
         source = _activation_poly_runner(emit, fused="fuse_activation_polynomial_fma" in feats)
     elif _needs_scalarize_runner(pipeline, feats):
-        from merlin.llvmlower.accum_microkernel import run_source
-        from merlin.llvmlower.bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+        from merlin.compiler.backend import provided
+        from merlin.compiler.optimizations.resident import WHOLEMODEL_VF_BMMPAD_NAME
 
-        source = run_source(tag_bmm_tails=_BMM_TAIL_PAD_FEATURE in feats).replace("__MERLIN_EMIT__", emit)
+        selected = provided.provider(purpose="the accumulator micro-kernel runner")
+        source = selected.accum_microkernel_runner_source(tag_bmm_tails=WHOLEMODEL_VF_BMMPAD_NAME in feats).replace(
+            "__MERLIN_EMIT__", emit
+        )
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
     from merlin.llvmlower.automatic_host_features import bind_runner as bind_automatic_host_runner

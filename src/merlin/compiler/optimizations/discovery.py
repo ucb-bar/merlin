@@ -173,4 +173,20 @@ def _try_lazy_register(name: str) -> bool:
         except ValueError:
             return False
         return name in _REGISTRY
-    return False
+    # A feature IMPLEMENTED by the selected vector support provider resolves from that provider's own
+    # declaration, in every process that selects it (the lowering subprocess inherits the selection).
+    # With none selected the name cannot be honoured, and the refusal says why rather than only that
+    # the name is unknown.
+    from merlin.compiler.backend import provided
+
+    try:
+        feature = provided.feature_definition(name)
+    except provided.ProviderUnavailable as exc:
+        raise KeyError(
+            f"unknown impr feature {name!r}: Merlin declares no such feature, and no vector support provider "
+            "is selected to declare it (name one on MERLIN_TARGET_PATH, or install its backend package)"
+        ) from exc
+    except KeyError:
+        return False
+    register(feature)
+    return True

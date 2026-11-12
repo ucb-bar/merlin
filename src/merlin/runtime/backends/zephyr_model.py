@@ -28,6 +28,7 @@ import numpy as np
 from merlin.common import proc as _proc
 from merlin.common.mlir_query import parse_scope
 from merlin.common.paths import runtime_dir
+from merlin.compiler.backend import provided
 from merlin.compiler.backend.proposal import MatrixExtension
 from merlin.compiler.backend.proposal import MatrixRouting as MatrixRouting
 from merlin.compiler.build.zephyr.config import (
@@ -786,9 +787,7 @@ def _write_parallel_arms(work: Path, harts: int, table: dict, par_table: dict) -
     """Record the derived split next to the build. Written on EVERY per-op-blocked prepare."""
     import json
 
-    from ...llvmlower.perop_blocks import distinct_parallel_arms
-
-    arms = distinct_parallel_arms(par_table)
+    arms = provided.component("perop_blocks").distinct_parallel_arms(par_table)
     (Path(work) / PARALLEL_ARMS_FILE).write_text(
         json.dumps(
             {
@@ -1043,9 +1042,8 @@ def prepare_for_lowering(
     # packing or per-op scheduling rewrites them. The 155 TinyLlama weight matmuls become calls to
     # one descriptor-driven RVV body; rank-3 attention contractions remain in the normal pipeline.
     if outline_int8:
-        from ...llvmlower import weight_panel as _outline_wpan
-
-        if _outline_wpan.FEATURE in features:
+        _outline_wpan = provided.optional_component("weight_panel")
+        if _outline_wpan is not None and _outline_wpan.FEATURE in features:
             raise ValueError(
                 f"outline_int8 and {_outline_wpan.FEATURE!r} both claim the same rank-2 weight "
                 "contractions; remove the panel-pack feature for an outlined-kernel build"
@@ -1112,28 +1110,30 @@ def prepare_for_lowering(
     # INNERMOST parallel extent it will be pointed at. Resolved ABOVE the `blocking` gate, because it is not a
     # blocking decision and a sentinel that survives to `normalize` raises. Failing to derive a width
     # DROPS the request (the build keeps the compiler's own default) rather than pinning a guess.
-    from merlin.compiler.optimizations.registers import LMUL_GROUP_SENTINEL, lmul_group_feature
-
-    if LMUL_GROUP_SENTINEL in features:
+    # The request and the derivation belong to the selected vector support provider; with none
+    # selected the sentinel is left for `normalize` to refuse.
+    _vector = provided.optional_provider()
+    if _vector is not None and _vector.LMUL_GROUP_SENTINEL in features:
         from merlin.compiler.ir.contraction_shapes import contraction_shapes as _cshapes0
 
-        from ...llvmlower.lmul_group import LmulDerivationError, group_lmul_for_shapes
-
-        features = features - {LMUL_GROUP_SENTINEL}
+        _lmul = _vector.lmul_group_api()
+        features = features - {_vector.LMUL_GROUP_SENTINEL}
         try:
-            features = features | {lmul_group_feature(group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen))}
-        except LmulDerivationError as exc:
+            _width = _lmul.group_lmul_for_shapes(_cshapes0(prepared), vlen=vlen)
+            features = features | {_vector.lmul_group_feature(_width)}
+        except _lmul.LmulDerivationError as exc:
             print(f"[zephyr_model] register-group width not derivable ({exc}); leaving the compiler's default in place")
 
+    # The fused-epilogue request belongs to the selected vector support provider; with none selected
+    # no name can request it.
+    _rf = provided.optional_component("requant_fuse")
+    _rf_names = frozenset() if _rf is None else frozenset({_rf.FEATURE, _rf.VEC_FEATURE})
     if not blocking:
         # The fused-epilogue request cannot be honoured on a path that does no tagging at all, and
         # an inert lever that still reports as applied is the failure this file keeps re-finding.
-        from ...llvmlower.requant_fuse import FEATURE as _RF_NAME
-        from ...llvmlower.requant_fuse import VEC_FEATURE as _RF_VEC_NAME
-
-        if features & {_RF_NAME, _RF_VEC_NAME}:
+        if features & _rf_names:
             raise ValueError(
-                f"{sorted(features & {_RF_NAME, _RF_VEC_NAME})} was requested but this preparation "
+                f"{sorted(features & _rf_names)} was requested but this preparation "
                 f"runs with blocking disabled, so "
                 f"no contraction is tagged and no pair can be formed; the lever would build the "
                 f"baseline and report as applied"
@@ -1161,7 +1161,6 @@ def prepare_for_lowering(
 
     from ...llvmlower import im2col_identity_view as _iv
     from ...llvmlower import im2col_pack as _ip
-    from ...llvmlower import perop_blocks as _pb
 
     _mr_named = sorted({n for f in features if (n := parse_perop_mr_sentinel(f)) is not None})
     _nr_named = sorted({n for f in features if (n := parse_perop_nr_sentinel(f)) is not None})
@@ -1173,9 +1172,7 @@ def prepare_for_lowering(
     # instead. It is not expressed as an `implies` because `perop_register_block` is a sentinel THIS
     # function consumes, and re-materializing it at `normalize` time inside the lowering trips the
     # unresolved-sentinel guard.
-    from ...llvmlower import requant_fuse as _rf
-
-    _rf_named = sorted(features & {_rf.FEATURE, _rf.VEC_FEATURE})
+    _rf_named = sorted(features & _rf_names)
     if _rf_named and not _has_block_request:
         raise ValueError(
             f"{_rf_named} requires {PEROP_BLOCK_NAME!r} in the same feature set: the "
@@ -1183,9 +1180,9 @@ def prepare_for_lowering(
             f"and only its schedule carries the fused arms. Named alone it would tag nothing, build "
             f"the baseline, and report as applied. Name both."
         )
-    from ...llvmlower import weight_panel as _wpan
-
-    if _wpan.FEATURE in features and not _has_block_request:
+    # The weight-panel packer, like the fused epilogue, is the selected provider's.
+    _wpan = provided.optional_component("weight_panel")
+    if _wpan is not None and _wpan.FEATURE in features and not _has_block_request:
         raise ValueError(
             f"{_wpan.FEATURE!r} requires {PEROP_BLOCK_NAME!r} in the same feature set: the panel "
             f"width IS the N tile that request's block table derives, and only its schedule arm can "
@@ -1219,16 +1216,16 @@ def prepare_for_lowering(
     # Two points, one pairing. The plain one only REMOVES A TRAVERSAL (the epilogue keeps its loop
     # form and clang vectorizes it); the `_vec` one additionally reshapes that loop into a fixed
     # MR x NR vector tile. They are separate names because the reshape is the half this repo has
-    # measured going the wrong way -- see llvmlower/requant_fuse.VEC_FEATURE.
-    _rf_requested = bool(features & {_rf.FEATURE, _rf.VEC_FEATURE})
-    _rf_vec = _rf.VEC_FEATURE in features
+    # measured going the wrong way -- see the provider's requant_fuse.VEC_FEATURE.
+    _rf_requested = bool(features & _rf_names)
+    _rf_vec = _rf is not None and _rf.VEC_FEATURE in features
     if _rf_vec and _rf.FEATURE in features:
         raise ValueError(
             f"{_rf.FEATURE!r} and {_rf.VEC_FEATURE!r} are two spellings of the same fusion that "
             f"differ only in whether the epilogue tile is pre-vectorized; naming both describes two "
             f"builds and there is no correct way to pick one. Name exactly one."
         )
-    features = features - {_rf.FEATURE, _rf.VEC_FEATURE}
+    features = features - _rf_names
     # A `perop_register_block_mr<N>` sentinel is the same REQUEST with the MR cap named, so the beam
     # can search a cap that was otherwise reachable only through MERLIN_PEROP_MR_CAP -- and no fork can
     # vary an environment variable. Resolve it to the plain sentinel plus an explicit cap; the named
@@ -1276,6 +1273,9 @@ def prepare_for_lowering(
         } | {PEROP_BLOCK_NAME}
     if PEROP_BLOCK_NAME in features:
         from merlin.compiler.ir.contraction_shapes import contraction_shapes as _cshapes
+
+        # The register-block policy, tagger and schedule arms are the selected provider's.
+        _pb = provided.component("perop_blocks")
 
         # The N-tile cap follows the board's vector length: a fixed element count on a wider unit
         # is spent as a smaller LMUL rather than as more work per instruction (measured: the same
@@ -1329,7 +1329,7 @@ def prepare_for_lowering(
         # `weight_panel.abi_bundle` from the plan left here; a caller that lowers this module and
         # hands `c_runtime.generate` the STOCK bundle would build an object indexing a packed weight
         # against unpacked bytes, which is why the plan is written where that caller must look.
-        if _wpan.FEATURE in features:
+        if _wpan is not None and _wpan.FEATURE in features:
             prepared, _wpk = _wpan.rewrite_prepared_file(
                 prepared,
                 _pb.block_table(_cshapes(prepared), **_blk),

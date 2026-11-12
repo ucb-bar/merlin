@@ -140,9 +140,9 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     """v2 pipeline (PRE-bufferize subset hoist + contract lower) PLUS the SCALARIZE_MARKER sentinel
     spliced immediately AFTER the contract-lowering transform-interpreter (still on tensors, before
     one-shot-bufferize). The two-stage runner splits the pipeline at the marker and runs the
-    A-scalarization rewrite there. Only runs when a v3 feature is enabled; baseline untouched."""
-    from merlin.llvmlower.accum_microkernel import SCALARIZE_MARKER
+    A-scalarization rewrite there. Only runs when a v3 feature is enabled; baseline untouched.
 
+    The marker and the rewrite it schedules belong to the selected vector support provider."""
     out = _accumulator_resident_v2_pipeline(passes)
     # The v2 edit spliced: loop-invariant-subset-hoisting, transform-preload-library{...v2_lower},
     # transform-interpreter{entry-point=__transform_accum_v2_lower}, canonicalize, cse. Put the
@@ -158,6 +158,9 @@ def _accumulator_resident_v3_pipeline(passes: list[str]) -> list[str]:
     insert_at = idx + 1
     while insert_at < len(out) and out[insert_at] in ("canonicalize", "cse"):
         insert_at += 1
-    if SCALARIZE_MARKER not in out:
-        out = out[:insert_at] + [SCALARIZE_MARKER] + out[insert_at:]
+    from merlin.compiler.backend import provided
+
+    marker = provided.provider(purpose="the accumulator micro-kernel split").accum_microkernel_marker()
+    if marker not in out:
+        out = out[:insert_at] + [marker] + out[insert_at:]
     return out

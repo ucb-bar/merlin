@@ -238,9 +238,9 @@ def lower_to_llvm_ir(
             _tile_aligned_parallel = False
             if parallel_harts is not None:
                 par_sched = work / "rvv_parallel_schedule.mlir"
-                from merlin.llvmlower.bmm_tail_pad import FEATURE as _BMM_TAIL_PAD_FEATURE
+                from merlin.compiler.optimizations.resident import WHOLEMODEL_VF_BMMPAD_NAME
 
-                _tile_aligned_parallel = _BMM_TAIL_PAD_FEATURE in feats
+                _tile_aligned_parallel = WHOLEMODEL_VF_BMMPAD_NAME in feats
                 par_sched.write_text(
                     parallel_transform_schedule(
                         parallel_harts, chunks=parallel_chunks, tile_aligned=_tile_aligned_parallel
@@ -258,7 +258,7 @@ def lower_to_llvm_ir(
                     print(
                         "[parallel_harts] WARNING: no contraction could be split without changing "
                         "its register block, so this image carries NO scf.forall and will run on "
-                        "one core. See perop_blocks.parallel_chunk_table.",
+                        "one core. See the provider's perop_blocks.parallel_chunk_table.",
                         file=_sys.stderr,
                         flush=True,
                     )

@@ -1351,10 +1351,11 @@ def build_binary(
     # packed `@forward` arguments in the module that became `model.ll`; this materializes the bundle
     # whose weights.safetensors and manifest were packed to match and checks the two signatures agree
     # argument by argument before the ABI table is built from it. Returns `model_dir` unchanged when
-    # the build packed nothing, so a run naming no feature is byte-identical.
-    from ..llvmlower import weight_panel as _wpan
+    # the build packed nothing, so a run naming no feature is byte-identical. The packer belongs to the
+    # selected vector support provider; with none selected nothing was packed.
+    from merlin.compiler.backend.provided import abi_bundle
 
-    model_dir, _panel = _wpan.abi_bundle(model_dir, work, prepared)
+    model_dir, _panel = abi_bundle(model_dir, work, prepared)
     if _panel is not None:
         (work / "PANEL_PACKED_BUNDLE").write_text(str(model_dir))
         print(

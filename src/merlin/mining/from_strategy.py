@@ -46,6 +46,22 @@ def _codegen(codegen_provider=None, *, support_target: str | None = None):
     return codegen_provider
 
 
+def _codegen_selected() -> bool:
+    """Whether :func:`_codegen` has a provider to load, by the same rule, without loading it.
+
+    True says only that one is selected; loading it may still fail, and :func:`_codegen` then raises.
+    """
+    from merlin.common.paths import env
+
+    if env("MERLIN_TARGET_PATH"):
+        from merlin.targetgen.target_registry import explicit_targets
+
+        return _LEGACY_SUPPORT in explicit_targets()
+    from importlib.metadata import entry_points
+
+    return any(True for _ in entry_points(group="merlin.backends", name=_LEGACY_SUPPORT))
+
+
 def render_schedule(knobs: dict[str, Any], *, codegen_provider=None, support_target=None) -> str:
     """Render through the selected OOT implementation, retaining historical text."""
     provider = _codegen(codegen_provider, support_target=support_target)

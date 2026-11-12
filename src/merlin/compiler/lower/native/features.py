@@ -33,14 +33,9 @@ def select_features(
     from merlin.llvmlower.concat_dps import ensure_registered as _register_concat_dps
 
     _register_concat_dps()
-    # The direct-conv arm's REQUEST feature. Registered here for the same reason as the four above:
-    # this module is imported by the lowering child processes, and a name registered only in the
-    # parent fails `normalize` in the child. It edits nothing here -- the arm is realized by the
-    # per-op block table (llvmlower.perop_blocks), which the preparation step derives -- so a build
-    # that carries the name lowers identically and the name records that the arm was asked for.
-    from merlin.llvmlower.perop_blocks import ensure_registered as _register_conv_arm
-
-    _register_conv_arm()
+    # Features the selected vector support provider implements (its direct-conv block request among
+    # them) need no registration here: `normalize` resolves each from that provider's declarations,
+    # and the lowering child processes inherit the same selection.
     # The panel-packed im2col REQUEST, registered for the same reason: the rewrite happens in the
     # preparation step, and by lowering time the name only records that the arm was asked for.
     from merlin.llvmlower.im2col_pack import ensure_registered as _register_im2col_panel_pack

@@ -106,27 +106,6 @@ register(
     )
 )
 
-from merlin.compiler.optimizations.registers import (
-    LMUL_GROUP_PREFIX as LMUL_GROUP_PREFIX,
-)
-from merlin.compiler.optimizations.registers import (
-    LMUL_GROUP_SENTINEL as LMUL_GROUP_SENTINEL,
-)
-from merlin.compiler.optimizations.registers import (
-    _register_lmul_groups as _register_lmul_groups,
-)
-from merlin.compiler.optimizations.registers import (
-    ensure_lmul_group as ensure_lmul_group,
-)
-from merlin.compiler.optimizations.registers import (
-    ensure_lmul_group_for_elem_types as ensure_lmul_group_for_elem_types,
-)
-from merlin.compiler.optimizations.registers import (
-    lmul_group_feature as lmul_group_feature,
-)
-
-LMUL_GROUP_NAMES: tuple[str, ...] = tuple(_register_lmul_groups())
-
 register(
     ImprFeature(
         name="fused_vfmacc_tiled",

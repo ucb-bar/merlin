@@ -19,7 +19,7 @@
     {
       "id": "rvv",
       "repository": "https://github.com/ucb-bar/rvv-mlir.git",
-      "revision": "695888852159432c23106f6436b4c727b62872e9",
+      "revision": "1960c773f3462edee08233193ec58c28bc27310b",
       "xdsl": "0.68.0",
       "provider_module": "merlin_rvv.service",
       "tests": [

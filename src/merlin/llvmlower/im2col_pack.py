@@ -714,9 +714,11 @@ def rewrite_module(module, table: "dict[str, tuple[int, int]]", *, parallel_pane
     (``perop_blocks.block_table``); the NR it assigned to a contraction's geometry is the panel width
     used for that contraction. A geometry the table did not price is refused.
     """
-    from ..common import mlir_query as mq
-    from .perop_blocks import shape_key
+    from merlin.compiler.backend import provided
 
+    from ..common import mlir_query as mq
+
+    shape_key = provided.component("perop_blocks").shape_key
     report = PackReport()
     candidates: list[tuple[Any, _Match]] = []
     for op in mq.walk(module, "linalg.generic"):

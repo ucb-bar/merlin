@@ -228,11 +228,10 @@ docstring-code-format = true
 # `# derived-ok:`, `# regex-ok:`, `# fact-source-ok:`). Formatting these files splits a marked line
 # inside a multi-line construct -- or, in check_no_target_name.py, inside the string literals that
 # define the markers -- so the marker lands beside a closing paren and the gate fails. A
-# single-line statement is pinned with `# fmt: skip` instead; these three have no such line to pin.
+# single-line statement is pinned with `# fmt: skip` instead; these two have no such line to pin.
 exclude = [
     "build_tools/checks/check_no_target_name.py",
     "examples/compiler-generation/saturn_opu_rvv/develop.py",
-    "src/merlin/llvmlower/requant_fuse.py",
     # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
     "tests/infra/test_overfit_gate_regression.py",
     # GSIM engine build scripts a sealed certificate was built with; kept byte-identical to that build.

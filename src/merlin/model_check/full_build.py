@@ -326,10 +326,13 @@ def _cached_admission(record, admission, target, directory):
 @I.timed_event("phase", "relink artifact verification")
 def _relink_artifacts(build_dir: Path, elf: Path, recipe_sha256: str) -> tuple[dict, dict]:
     """Reopen the existing complete recipe and the driver's shared preparation inputs."""
-    from merlin.llvmlower import blob_weights, quant_hoist, weight_panel
+    from merlin.compiler.backend import provided
+    from merlin.llvmlower import blob_weights, quant_hoist
     from merlin.llvmlower.compilation_recipe import FILENAME, verify_completed_recipe
 
     recipe = verify_completed_recipe(build_dir / FILENAME, executable=elf, expected_recipe_sha256=recipe_sha256)
+    # The weight-panel plan is the selected vector support provider's preparation input.
+    weight_panel = provided.optional_component("weight_panel")
     files = [
         *sorted((build_dir / "cgen").glob("*.h")),
         *(
@@ -339,7 +342,7 @@ def _relink_artifacts(build_dir: Path, elf: Path, recipe_sha256: str) -> tuple[d
                 blob_weights.VALUES_FILE,
                 quant_hoist.PLAN_FILE,
                 quant_hoist.VALUES_FILE,
-                weight_panel.PLAN_FILE,
+                *((weight_panel.PLAN_FILE,) if weight_panel is not None else ()),
             )
         ),
     ]

@@ -21,7 +21,6 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.optimizations.passes",
         "merlin.compiler.optimizations.perop",
         "merlin.compiler.optimizations.pointwise",
-        "merlin.compiler.optimizations.registers",
         "merlin.compiler.optimizations.resident",
         "merlin.compiler.optimizations.variants",
     )

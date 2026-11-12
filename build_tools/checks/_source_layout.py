@@ -223,7 +223,6 @@ def policy_path(path: str) -> str:
         "src/merlin/compiler/optimizations/passes.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/perop.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/pointwise.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/registers.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/resident.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/variants.py": "merlin/python/merlin/llvmlower/impr_features.py",
         "src/merlin/compiler/optimizations/registry.py": "merlin/python/merlin/llvmlower/impr_features.py",

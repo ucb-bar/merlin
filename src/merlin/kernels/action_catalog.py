@@ -432,7 +432,7 @@ _RVV_ROUTES: list[_Route] = [
         # 5,180,908 ns -> 20,450,661 ns with `_mlir_ciface_forward` on a scalar fallback, because the
         # wider tail transfer becomes a masked `vector.mask` LLVM 23 rejects and a transform-
         # interpreter failure IS a whole-model scalar fallback (identical numerics, 4x the wall).
-        # `llvmlower.lmul_group` sets the register-group width directly and leaves every tile alone.
+        # The vector provider's `lmul_group` sets the register-group width directly and leaves every tile alone.
         axis="vector.lmul",
         when=lambda d: _is_higher(d) or _is_lower(d),
         action_class="KNOB",
@@ -644,7 +644,7 @@ _RVV_ROUTES: list[_Route] = [
         "transform.structured.match attributes{...} form the elementwise arms already use). "
         "Today one degenerate extent in a class forces the whole class off the vector path.",
         # WAS forkable_now=False as a deferred work-item; that is stale documentation, not a blocker.
-        # The machinery is wired end to end: `llvmlower/perop_blocks.block_table` derives the table from
+        # The machinery is wired end to end: the vector provider's `perop_blocks.block_table` derives the table from
         # the PREPARED IR, `tag_prepared_mlir` tags it, and `zephyr_model.prepare_for_lowering` swaps
         # the sentinel for the concrete `ensure_perop_block` feature. What was actually broken
         # was this line's SEAM NAME: it read `per_op_register_block`, and the sentinel is

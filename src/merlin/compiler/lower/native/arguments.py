@@ -94,23 +94,20 @@ def build_command(
     # Packed panels carry their own outer worksharing boundary.  It is enabled only on a multicore
     # lowering that actually requested either packer; the runner then proves bufferization removed
     # the tensor carrier before changing the marked loop to ``scf.parallel``.
-    from merlin.llvmlower.im2col_pack import FEATURE as _IM2COL_PANEL_FEATURE
-
     # A pack feature can legitimately produce only single-panel carriers. Their loops have one
     # trip and ``marker_ops`` intentionally emits no marker: requiring the parallel rewrite in
     # that case made a correctly packed serial carrier fail with ``regions=0``. Gate on an actual
     # marker CALL in the prepared module (not the declaration kept for uniformity).
+    from merlin.compiler.backend import provided
+    from merlin.llvmlower.im2col_pack import FEATURE as _IM2COL_PANEL_FEATURE
     from merlin.llvmlower.panel_parallel import has_marker_call_text as _has_panel_marker_call
-    from merlin.llvmlower.weight_panel import FEATURE as _WEIGHT_PANEL_FEATURE
 
+    # The weight-panel packer belongs to the selected vector support provider; with none selected
+    # its feature cannot be in `feats` (normalization would have refused it).
+    _weight_panel = provided.optional_component("weight_panel")
+    _panel_features = {_IM2COL_PANEL_FEATURE} | ({_weight_panel.FEATURE} if _weight_panel is not None else set())
     _panel_parallel_gate = (
-        "1"
-        if (
-            omp
-            and ({_IM2COL_PANEL_FEATURE, _WEIGHT_PANEL_FEATURE} & feats)
-            and _has_panel_marker_call(src.read_text(encoding="utf-8"))
-        )
-        else "0"
+        "1" if (omp and (_panel_features & feats) and _has_panel_marker_call(src.read_text(encoding="utf-8"))) else "0"
     )
     # argv[11:13] carry the ModelBlaster-style per-dispatch team policy.  The cost unit comes from
     # the feature name; the cap is the target-independent worker count already passed into this
