@@ -244,6 +244,18 @@ the same native boundary. Derive exponent/fraction masks, integer types and
 helper byte strides from actual float widths. F64 FTZ is unqualified. Legacy
 standard f64 addf remains readable without a result-quieting guarantee.
 
+The same checked seam also admits closed nearest-even f16/BF16 addition and
+quieting identities. Derive each format's exponent/fraction masks separately;
+both formats retain two-byte storage, gradual underflow and exact old words.
+BF16 arithmetic extends operands exactly to f32 and narrows once per event.
+Half helper captures and returned old values cross the internal call as i16,
+avoiding floating ABI conversions; actual typed memrefs retain their original
+storage. Check neutral flags and default/explicit nearest-even rounding before
+edits. Reconstruct every helper operation, byte stride, atomic order and return
+for borrowing. The generic C runtime supplies pinned compiler-rt f16 narrowing
+where LLVM emits that ABI. This grants no alternate rounding, shared external
+participants, target floating atomic or accelerator qualification.
+
 Mixed borrowed composition retains distinct live ordinary descriptor and plural
 writer owners for one exact source epoch. Disjoint ABI rows, original effect
 objects/callbacks and every native observer remain required; either owner's

@@ -137,6 +137,9 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   scope/order/old-value inventory. Staging checks those declarations and costs;
   CAS additionally retains i16/i32/i64 comparison/old-value facts, its unmasked
   source access, and exact source versus memory opcode correspondence.
+  Half/BF16 addition additionally binds format-specific nearest-even/quiet-NaN
+  contracts to exact integer word widths, original storage and the full payload
+  declaration. Equal bit widths do not permit swapping f16 and BF16 semantics.
   it grants no atomic linearizability, race/initialization or target proof.
   It shares the guarded public ABI without granting source or numeric proof.
   `kernel_shape_abi.py` validates ABI v5's named runtime dimensions and logical

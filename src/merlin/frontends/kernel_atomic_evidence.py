@@ -7,11 +7,15 @@ _KINDS = {"and": 2, "or": 14, "xor": 15, "add": 1, "max": 6, "min": 10, "umax": 
 _FLOAT_CONTRACTS = {("exch", "f32"): ("bitwise-exchange",), ("exch", "f64"): ("bitwise-exchange",),
                     ("fadd", "f64"): ("ieee-f64-rne-add", "ieee-f64-rne-add-quiet-nans"),
                     ("fadd", "f32"): ("ieee-f32-rne-add", "f32-rne-sign-preserving-ftz-add")}
+_FLOAT_CONTRACTS.update({("fadd", dtype): (f"ieee-{dtype}-rne-add-quiet-nans",) for dtype in ("f16", "bf16")})
+_FLOAT_WIDTHS = {"f16": 16, "bf16": 16, "f32": 32, "f64": 64}
 
 
 def _payload(info):
     if "byte_view" in info:
         return "standard-byte-backed-word-atomic-with-original-returned-old-value"
+    if info.get("numeric_contract") in ("ieee-f16-rne-add-quiet-nans", "ieee-bf16-rne-add-quiet-nans"):
+        return f"standard-memref-generic-{info['value_dtype']}-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f64-rne-add-quiet-nans":
         return "standard-memref-generic-f64-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f32-rne-add":
@@ -43,7 +47,7 @@ def checked_atomic_effects(admission, memory, records, buffers):
         info = access.get("atomic")
         buffer = buffers[access["buffer"]]
         candidates = [source[s] for s in access["source_ids"] if s in source]
-        floating = isinstance(info, dict) and info.get("value_dtype") in ("f32", "f64")
+        floating = isinstance(info, dict) and info.get("value_dtype") in _FLOAT_WIDTHS
         dtype = info.get("value_dtype") if floating else "i" + str(info.get("word_bits")) if isinstance(info, dict) else None
         word = isinstance(info, dict) and "word_view" in info
         # Accept the original primitive or the exact legacy enriched record.
@@ -70,20 +74,21 @@ def checked_atomic_effects(admission, memory, records, buffers):
                     or access.get("guard_tile") != [*access.get("tile", []), expected_byte["alignment_bytes"]]):
                 raise ValueError("byte atomic evidence differs from its complete word/byte ownership contract")
             dtype = "i8"
-        if (not isinstance(info, dict) or not candidates or any(c != info and c != primitive for c in candidates)
+        if (not isinstance(info, dict) or type(info.get("word_bits")) is not int
+                or not candidates or any(c != info and c != primitive for c in candidates)
                 or buffer.get("dtype") != dtype
                 or word and (profile != TYPED_EFFECT_PROFILE or floating
                     or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64)) or info["word_view"] != expected_view)
                 or floating and (profile != TYPED_EFFECT_PROFILE
                     or (info.get("operation"), dtype) not in _FLOAT_CONTRACTS
-                    or dtype != "f" + str(info.get("word_bits"))
+                    or info.get("word_bits") != _FLOAT_WIDTHS[dtype]
                     or info.get("numeric_contract") not in _FLOAT_CONTRACTS.get((info.get("operation"), dtype), ()))
                 or not floating and info.get("operation") == "fadd"
                 or floating and info.get("operation") == "fadd" and dtype == "f32"
                     and (admission.get("f32_atomic_add") != memory.get("f32_atomic_add")
                          or info.get("numeric_contract") != {"ieee": "ieee-f32-rne-add", "ftz": "f32-rne-sign-preserving-ftz-add"}.get(admission.get("f32_atomic_add")))
                 or not floating and ("value_dtype" in info or "numeric_contract" in info)
-                or info.get("word_bits") not in ((16, 32, 64) if info.get("operation") == "cas" else (32, 64))
+                or info.get("word_bits") not in ((16, 32, 64) if floating or info.get("operation") == "cas" else (32, 64))
                 or info.get("operation") not in _KINDS or info.get("standard_kind") != _KINDS[info["operation"]]
                 or access.get("opcode") != ("tt.atomic_cas" if info["operation"] == "cas" else "tts.unstructured_atomic_rmw")
                 or any(opcodes[s] != ("tt.atomic_cas" if info["operation"] == "cas" else "tt.atomic_rmw") for s in access["source_ids"] if s in source)

@@ -36,7 +36,8 @@ def _bf_elementwise(module):
                      'arith.addf','arith.subf','arith.mulf','arith.sitofp','arith.uitofp'}
         transport = {'arith.constant','arith.bitcast','arith.extf','arith.truncf','arith.select',
             'memref.load','memref.store','tensor.extract','tensor.insert','tensor.yield','linalg.yield','linalg.fill',
-            'func.return','scf.if','scf.for','scf.while','scf.yield','scf.condition','cf.br','cf.cond_br'}
+            'func.return','scf.if','scf.for','scf.while','scf.yield','scf.condition','cf.br','cf.cond_br',
+            'memref.generic_atomic_rmw','memref.atomic_yield'}
         plans = []
         for op in operations:
             values = tuple(op.operands)+tuple(op.results)

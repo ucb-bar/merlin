@@ -96,7 +96,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
     plans = []
     for op in operations:
         if (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
-                and str(op.results[0].type) in ('f16', 'f32', 'f64')):
+                and str(op.results[0].type) in ('f16', 'bf16', 'f32', 'f64')):
             memory, index, value, width, kind = _word_match(op)
             values = value if kind == 'cas-word' else () if value is None else (value,)
             plans.append((op, memory, index, values, width, 'word', kind))
@@ -119,6 +119,11 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
     symbols = {ir.StringAttr(op.attributes['sym_name']).value for op in module.body.operations if 'sym_name' in op.attributes}
     helpers = {}
     for op, memory, index, values, width, family, kind in plans:
+        half_add = family == 'word' and width == 16 and kind in ('fadd-ieee-f16', 'fadd-ieee-bf16', 'ieee-quiet-identity-f16', 'ieee-quiet-identity-bf16')
+        if half_add:
+            with ctx, ir.Location.unknown(), ir.InsertionPoint(op):
+                values = tuple(ir.Operation.create('arith.bitcast', operands=[value],
+                    results=[ir.IntegerType.get_signless(16)]).results[0] for value in values)
         if family == 'word' and kind == 'cas-word':
             captured = []
             for value in values:
@@ -162,7 +167,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
                 name = item if isinstance(item, str) else item.name
                 if name.startswith('prov.'):
                     attributes[name] = op.attributes[name]
-            integer_result = family == 'word' and (kind == 'cas-word' or width == 16 and kind == 'identity')
+            integer_result = family == 'word' and (kind == 'cas-word' or width == 16 and kind == 'identity' or half_add)
             result_type = ir.IntegerType.get_signless(width) if integer_result else op.results[0].type
             call = ir.Operation.create('func.call', operands=[memory, index, *values],
                 results=[result_type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),

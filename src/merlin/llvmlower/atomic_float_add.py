@@ -1,4 +1,4 @@
-"""Closed IEEE f32/f64 and FTZ f32 arithmetic with exact native CAS loops.
+"""Closed IEEE f16/BF16/f32/f64 and FTZ f32 arithmetic with native CAS loops.
 
 This support extends the existing atomic-word feature. It recognizes actual
 scalar bit arithmetic, not source names or provenance, and retains the typed
@@ -8,15 +8,16 @@ borrowing boundary through ownership before restoring its complete native body.
 SUPPORT = r'''
 def _float_add_match(op):
     if (op.name != 'memref.generic_atomic_rmw' or len(op.results) != 1
-            or str(op.results[0].type) not in ('f32', 'f64') or len(op.operands) != 2
+            or str(op.results[0].type) not in ('f16', 'bf16', 'f32', 'f64') or len(op.operands) != 2
             or str(op.operands[0].type) != 'memref<?x' + str(op.results[0].type) + '>' or len(op.regions) != 1
             or len(op.regions[0].blocks) != 1):
         return None
     block = op.regions[0].blocks[0]
     floating_type = str(op.results[0].type)
-    width = int(floating_type[1:])
+    width = 16 if floating_type == 'bf16' else int(floating_type[1:])
     integer_type = 'i' + str(width)
-    exponent_mask, fraction_bits = (0x7f800000, 23) if width == 32 else (0x7ff0000000000000, 52)
+    exponent_mask, fraction_bits = {'f16': (0x7c00, 10), 'bf16': (0x7f80, 7),
+        'f32': (0x7f800000, 23), 'f64': (0x7ff0000000000000, 52)}[floating_type]
     if len(block.arguments) != 1 or str(block.arguments[0].type) != floating_type:
         return None
     used = set()
@@ -93,6 +94,14 @@ def _float_add_match(op):
         used.update(checkpoint)
         result_word = quieted
     updated = floating(result_word) if result_word is not None else None
+    if floating_type == 'bf16' and updated is not None:
+        narrowed = owner(updated, 'arith.truncf', 1)
+        if narrowed is not None and (str(narrowed.operands[0].type) != 'f32'
+                or 'roundingmode' in narrowed.attributes and ir.IntegerAttr(narrowed.attributes['roundingmode']).value != 0
+                or 'fastmath' in narrowed.attributes and narrowed.attributes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>', context=op.context)):
+            return None
+        if narrowed is not None:
+            updated = narrowed.operands[0]
     add = owner(updated, 'arith.addf', 2) if updated is not None else None
     if add is None and result_word is not None:
         original = result_word
@@ -101,7 +110,8 @@ def _float_add_match(op):
             if current is not None and current == block.arguments[0]:
                 if used | {terminal} == {item.operation for item in block.operations}:
                     op.verify()
-                    return (*op.operands, None, width, 'ftz-identity' if ftz else 'ieee-quiet-identity')
+                    kind = 'ieee-quiet-identity-' + floating_type if width == 16 else 'ftz-identity' if ftz else 'ieee-quiet-identity'
+                    return (*op.operands, None, width, kind)
                 break
             if current is not None:
                 inverse = owner(current, 'arith.bitcast', 1)
@@ -111,15 +121,25 @@ def _float_add_match(op):
             original = flush_word(original)
             if original is None:
                 break
-    if (add is None or add.block != block or 'fastmath' in add.attributes
+    if (add is None or add.block != block
+            or 'roundingmode' in add.attributes and ir.IntegerAttr(add.attributes['roundingmode']).value != 0
+            or 'fastmath' in add.attributes
             and add.attributes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>', context=op.context)):
         return None
     value = None
+    def operand(value):
+        if floating_type != 'bf16':
+            return value
+        extended = owner(value, 'arith.extf', 1)
+        if (extended is None or str(value.type) != 'f32' or str(extended.operands[0].type) != 'bf16'
+                or 'fastmath' in extended.attributes and extended.attributes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>', context=op.context)):
+            return None
+        return extended.operands[0]
     for i in (0, 1):
         checkpoint = set(used)
-        flushed = flush(add.operands[i]) if ftz else add.operands[i]
+        flushed = flush(add.operands[i]) if ftz else operand(add.operands[i])
         if flushed is not None and flushed == block.arguments[0]:
-            value = add.operands[1-i]
+            value = operand(add.operands[1-i])
             break
         used.clear()
         used.update(checkpoint)
@@ -128,7 +148,8 @@ def _float_add_match(op):
             or used | {terminal} != {item.operation for item in block.operations}):
         return None
     op.verify()
-    return (*op.operands, value, width, 'fadd-ftz' if ftz else 'fadd-ieee-quiet')
+    kind = 'fadd-ieee-' + floating_type if width == 16 else 'fadd-ftz' if ftz else 'fadd-ieee-quiet'
+    return (*op.operands, value, width, kind)
 
 
 def _float_add_source(symbol, identity=False, ieee=False, width=32):
@@ -202,6 +223,47 @@ def _float_add_helper_equal(op, symbol, module, identity=False, ieee=False, widt
     with module.context:
         expected = ir.Module.parse(_float_add_source(symbol, identity, ieee, width))
         _ftz_pm.PassManager.parse('builtin.module(canonicalize,cse)').run(expected.operation)
+    reference = tuple(expected.body.operations)[0].operation
+    return op.get_asm(print_generic_op_form=True, use_local_scope=True) == reference.get_asm(print_generic_op_form=True, use_local_scope=True)
+
+
+def _half_add_source(symbol, floating_type, identity=False):
+    if floating_type not in ('f16', 'bf16'):
+        raise ValueError('half atomic addition requires f16 or bf16 storage')
+    source = _float_add_source(symbol, identity=identity, ieee=True)
+    source = source.replace('f32', floating_type).replace('i32', 'i16')
+    exponent, fraction, quiet = (31744, 1023, 512) if floating_type == 'f16' else (32640, 127, 64)
+    for old, new in (('2139095040', str(exponent)), ('-2147483648', '-32768'),
+                     ('8388607', str(fraction)), ('4194304', str(quiet)),
+                     ('arith.constant 4 : index', 'arith.constant 2 : index'), ('alignment = 4', 'alignment = 2')):
+        source = source.replace(old, new)
+    source = source.replace(') -> ' + floating_type + ' attributes', ') -> i16 attributes')
+    source = source.replace('%result = arith.bitcast %old : i16 to ' + floating_type, '')
+    source = source.replace('func.return %result : ' + floating_type, 'func.return %old : i16')
+    if not identity:
+        source = source.replace('%value: ' + floating_type, '%valueword: i16')
+        source = source.replace('%bytes =', '%value = arith.bitcast %valueword : i16 to ' + floating_type + '\n        %bytes =')
+        if floating_type == 'bf16':
+            source = source.replace('%sum = arith.addf %floating, %value : bf16', """%wide_old = arith.extf %floating : bf16 to f32
+          %wide_value = arith.extf %value : bf16 to f32
+          %wide_sum = arith.addf %wide_old, %wide_value : f32
+          %sum = arith.truncf %wide_sum : f32 to bf16""")
+    return source
+
+
+def _half_add_helper_equal(op, symbol, module):
+    signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
+    if (len(signature.results) != 1 or str(signature.results[0]) != 'i16'
+            or len(signature.inputs) not in (2, 3)
+            or str(signature.inputs[0]) not in ('memref<?xf16>', 'memref<?xbf16>')
+            or str(signature.inputs[1]) != 'index'
+            or len(signature.inputs) == 3 and str(signature.inputs[2]) != 'i16'):
+        return False
+    from torch_mlir import passmanager as _half_pm
+    floating_type = 'bf16' if str(signature.inputs[0]) == 'memref<?xbf16>' else 'f16'
+    with module.context:
+        expected = ir.Module.parse(_half_add_source(symbol, floating_type, identity=len(signature.inputs) == 2))
+        _half_pm.PassManager.parse('builtin.module(canonicalize,cse)').run(expected.operation)
     reference = tuple(expected.body.operations)[0].operation
     return op.get_asm(print_generic_op_form=True, use_local_scope=True) == reference.get_asm(print_generic_op_form=True, use_local_scope=True)
 '''

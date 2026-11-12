@@ -103,6 +103,8 @@ def _word_match(op):
 
 
 def _word_source(symbol, width, kind):
+    if width == 16 and kind in ('fadd-ieee-f16', 'fadd-ieee-bf16', 'ieee-quiet-identity-f16', 'ieee-quiet-identity-bf16'):
+        return _half_add_source(symbol, kind.rsplit('-', 1)[-1], identity=kind.startswith('ieee-quiet-identity'))
     import json
     if kind == 'cas-word' or width == 16 and kind == 'identity':
         return _word_cas_source(symbol, width, identity=kind == 'identity')
@@ -143,6 +145,8 @@ def _word_helper_equal(op, symbol, module):
     # This grants synchronous borrowing only. Reconstruct from the actual
     # primitive/type, never the symbol spelling, source tag or saved plan.
     if _word_cas_helper_equal(op, symbol, module):
+        return True
+    if _half_add_helper_equal(op, symbol, module):
         return True
     block = op.regions[0].blocks[0]
     signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
