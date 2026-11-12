@@ -1281,6 +1281,10 @@ def main(argv=None) -> int:
     if a.vlen:
         overrides["vlen"] = a.vlen
     brd = boards.board(a.board, **overrides)
+    if brd.flow == boards.FLOW_LINUX:
+        raise SystemExit(
+            f"[make_delivery] {brd.name} is a `flow: linux` board; a delivery builds Zephyr/bare-metal images"
+        )
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     # label -> bundle directory, resolved ONCE. Everything downstream keys off the label.
     bundles = dict(_bundle_spec(m, a.dtype) for m in models)

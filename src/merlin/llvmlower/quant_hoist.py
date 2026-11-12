@@ -54,7 +54,7 @@ from typing import Any
 
 #: The impr-feature name. Registered EAGERLY by :func:`ensure_registered` and additionally reachable
 #: through `impr_features._try_lazy_register`, because a package that names it in `compiler_features`
-#: arrives via `k1.build_k1_binary -> normalize` (which imports no proposer) and again inside the
+#: arrives via `remote_linux.build_binary -> normalize` (which imports no proposer) and again inside the
 #: lowering SUBPROCESS, which re-imports `impr_features` fresh and sees no run-time registration the
 #: parent made. Both raise "unknown impr feature" without that hook.
 FEATURE = "hoist_weight_invariant_quantize"

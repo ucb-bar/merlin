@@ -2762,7 +2762,7 @@ _GATE_QUANT_EXCESS = float(os.environ.get("MERLIN_GATE_QUANT_EXCESS", "4.0") or 
 
 # HOW MUCH OF THE OUTPUT THE VERDICT ACTUALLY COVERS. The run's output reaches this function as a
 # CONSOLE PREFIX -- the bare-metal/Linux harness dumps at most ``MERLIN_DUMP_CAP`` (4096) elements
-# (`merlin.mining.k1.main_linux_c`) -- while the reference is the whole tensor, and the loop below
+# (`merlin.runtime.remote_linux.main_linux_c`) -- while the reference is the whole tensor, and the loop below
 # truncates the reference to the prefix's length. For every model whose output fits under the cap
 # that is the whole tensor and the distinction is empty; for the ones that do not it is not:
 # tiny_llama compares 4096 of 256000 (1.6%), gemma2_2b 4096 of 2048000 (0.2%) or of 32768000

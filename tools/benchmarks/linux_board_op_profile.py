@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-"""K1 WHOLE-MODEL PER-OP PROFILE: attribute model wall time to the ops the model executes.
+"""LINUX BOARD WHOLE-MODEL PER-OP PROFILE: attribute model wall time to the ops the model executes.
+
+The board is a ``flow: linux`` entry of the board catalog (``--board``, ``--board-catalog`` or
+``MERLIN_BOARD_CATALOG``); its timebase, vector length, substrate label and binary name are read from
+that entry through ``merlin.runtime.remote_linux``.
 
 WHY. The only whole-model instrumentation this repo had was a TWO-WAY split — a matmul bucket
-(``-DMERLIN_DISPATCH_TIMING`` inside the routed GEMM shim) vs "everything else". Measured on the
-K1, matmul is 1.3-6 % of a model once the kernel is fast (dispatch_breakdown_measured.json), so
+(``-DMERLIN_DISPATCH_TIMING`` inside the routed GEMM shim) vs "everything else". Measured on
+silicon, matmul is 1.3-6 % of a model once the kernel is fast (dispatch_breakdown_measured.json), so
 94-97 % of model time had never been attributed to anything. This driver produces the missing
 attribution and ranks what is left on the table by MEASURED milliseconds.
 
@@ -11,9 +15,9 @@ METHOD (default-OFF; the un-instrumented build is byte-identical).
 ``merlin.llvmlower.op_profile`` interleaves a one-instruction-cost ``@merlin_prof_mark(id)`` call
 between the top-level ops of ``func.func @forward`` (plus a sentinel before ``func.return``); the
 shim ``runtime/c/merlin_op_prof.c`` samples ``rdtime`` at each mark and credits the elapsed ticks
-to the previous op's id. ``build_k1_binary(..., op_profile=True)`` splices this in AFTER any
-kernel-backend rewrite and links the shim; the harness prints ``PROF <id> <ticks> <hits>``.
-``run_on_k1`` joins those against the id->op table (``prov.*`` provenance) it emitted at build.
+to the previous op's id. ``remote_linux.build_binary(..., op_profile=True)`` splices this in AFTER
+any kernel-backend rewrite and links the shim; the harness prints ``PROF <id> <ticks> <hits>``.
+``remote_linux.run`` joins those against the id->op table (``prov.*`` provenance) it emitted at build.
 
 Each op record carries the cross-compiler JOIN KEY (:func:`op_profile.join_key`): ``prov.fqn`` when
 present (the deepest ``nn.Module`` path that aligns a Merlin region with the SAME layer in an
@@ -58,8 +62,8 @@ fork/join (below one op) and anything intra-op are outside its resolution; the a
 ``breakdown.categories_not_attributable`` naming each and how to measure it instead.
 
 Run (board serialized internally — do NOT wrap in board_lock):
-  MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python tools/benchmarks/k1_op_profile.py \
-      --model out/artifacts/recaptures/bitvla_fp32_consistent -n 3
+  MERLIN_COMPILE_TIMEOUT_S=3600 .venv/bin/python tools/benchmarks/linux_board_op_profile.py \
+      --board <name> --model out/artifacts/recaptures/bitvla_fp32_consistent -n 3
 """
 
 from __future__ import annotations
@@ -75,23 +79,21 @@ import numpy as np
 from merlin.common.paths import artifacts_dir
 from merlin.compiler.backend.host import load_host_package as load_rvv_package
 from merlin.llvmlower import op_profile as opf
-from merlin.mining import k1
+from merlin.runtime import remote_linux
 from merlin.runtime.backends import zephyr_model as zm
 
-TIMEBASE_HZ = k1.K1_TIMEBASE_HZ  # rdtime tick rate (24 MHz)
-NS_PER_TICK = 1e9 / TIMEBASE_HZ
-
 # "is this op vectorized?" is answered by its RESOLVED family (op_profile.resolve_family): the
-# default K1 RVV pipeline (llvmlower.pipeline.build_rvv_pipeline) vectorizes only the contraction
+# default RVV pipeline (llvmlower.pipeline.build_rvv_pipeline) vectorizes only the contraction
 # family; every other family goes through convert-linalg-to-loops -> scalar. So the sum of the
 # non-contraction ticks IS the scalar work left on the table.
 
 
-def _ticks_to_ms(ticks: float) -> float:
-    return ticks * NS_PER_TICK / 1e6
+def _ticks_to_ms(ticks: float, timebase_hz: int) -> float:
+    """Ticks of the board's ``time`` CSR (``timebase_hz``, from its catalog entry) in milliseconds."""
+    return ticks * (1e9 / timebase_hz) / 1e6
 
 
-def _rvv_coverage(binary: Path) -> dict | None:
+def _rvv_coverage(binary: Path, board) -> dict | None:
     """Disassemble the built binary and report the STATIC vector coverage of the compiler-emitted
     ``forward`` symbol (cross-check for the family-based ``vectorized`` intent flag). This is a
     static instruction count, not a dynamic one — but a low coverage on ``forward`` proves the
@@ -100,7 +102,7 @@ def _rvv_coverage(binary: Path) -> dict | None:
     try:
         from merlin.runtime.rvv_audit import audit_binary
 
-        rep = audit_binary(binary)
+        rep = audit_binary(binary, toolchain_root=remote_linux.toolchain_root(board))
         fwd = rep.by_symbol.get("forward")
         if fwd is None:
             return None
@@ -129,7 +131,7 @@ def gate_run(
     per-element blow-up) and ``fp32`` by fp32 rules (T2: cos > 0.99 + argmax + no blow-up). Handing a
     W8A8 golden over under the ``fp32`` key — which this driver did — grades int8 output by fp32
     rules AND hides that the w8a8 tier was never in play. That is the failure that cost a multi-hour
-    hunt for a TinyLlama int8 "board bug" that did not exist (see ``k1_int8_fair_compare``), and it
+    hunt for a TinyLlama int8 "board bug" that did not exist (see the int8 fair-compare arm), and it
     is why a correct W8A8 build could not get past this tool's own gate. The tiers here are built by
     the same rule the fair-compare arm uses, so a model that passes the study's gate passes this one.
 
@@ -171,6 +173,7 @@ def _median(xs: list[int]) -> float | None:
 
 
 def run_profiled(
+    board,
     model_dir: Path,
     pkg,
     golden_refs: dict,
@@ -185,13 +188,14 @@ def run_profiled(
     max_session_steps: int | None = None,
     dump_cap: int | None = 4096,
 ) -> dict:
-    """Build+run the instrumented binary n times; gate cos; accumulate per-op ticks.
+    """Build+run the instrumented binary n times on ``board``; gate cos; accumulate per-op ticks.
 
     The per-op ticks are SUMMED across the gated runs then divided by the number of executions the
-    shim COUNTED (`hits`), so a single op faster than one rdtime tick (~41.7 ns) still accumulates
-    signal across runs. Returns the per-op table with per-execution ticks/ms plus the run-level
-    walls and profiler-coverage metrics.
+    shim COUNTED (`hits`), so a single op faster than one rdtime tick still accumulates signal
+    across runs. Returns the per-op table with per-execution ticks/ms plus the run-level walls and
+    profiler-coverage metrics.
     """
+    first_binary: Path | None = None
     walls: list[int] = []
     time_ticks: list[int] = []
     prof_totals: list[int] = []
@@ -205,7 +209,8 @@ def run_profiled(
     for i in range(n):
         work = work_root / f"on_{i}"
         try:
-            res = k1.run_on_k1(
+            res = remote_linux.run(
+                board,
                 model_dir,
                 work,
                 pkg,
@@ -224,6 +229,8 @@ def run_profiled(
                 blocker = why
                 continue
             m = res["metrics"]
+            if first_binary is None and res.get("local_binary"):
+                first_binary = Path(res["local_binary"])
             walls.append(m["wall_ns"])
             time_ticks.append(m.get("time_ticks", 0))
             tbl = res.get("op_profile") or []
@@ -271,7 +278,7 @@ def run_profiled(
         rec["hits"] = per_op_hits[rec["id"]]
     # Per-execution ticks/ms, resolved family, join key. The divisor is the op's own measured hit
     # count -- see op_profile.per_execution_ticks and the module comment above it.
-    opf.annotate_table(table, timebase_hz=TIMEBASE_HZ)
+    opf.annotate_table(table, timebase_hz=board.timebase_hz)
     execs_per_launch = int(_median(launch_execs)) if launch_execs else None
     return {
         "ok": True,
@@ -290,12 +297,14 @@ def run_profiled(
         # merlin_run once per step inside a single timed iteration. Derived from the shim's own
         # count, never assumed -- see op_profile.executions_per_iteration.
         "executions_per_timed_iteration": opf.executions_per_iteration(execs_per_launch, max(1, iters), warmup),
-        "rvv_coverage": _rvv_coverage(work_root / "on_0" / "v" / "merlin_k1"),
+        # The binary the first gated launch actually ran (``run`` reports it), not a guessed path.
+        "rvv_coverage": _rvv_coverage(first_binary, board) if first_binary is not None else None,
         "blocker": None,
     }
 
 
 def run_unprofiled(
+    board,
     model_dir: Path,
     pkg,
     golden_refs: dict,
@@ -318,7 +327,8 @@ def run_unprofiled(
     for i in range(n):
         work = work_root / f"off_{i}"
         try:
-            res = k1.run_on_k1(
+            res = remote_linux.run(
+                board,
                 model_dir,
                 work,
                 pkg,
@@ -353,7 +363,7 @@ def run_unprofiled(
     }
 
 
-def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float) -> dict:
+def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float, timebase_hz: int) -> dict:
     """Roll the per-op table up, and REFUSE to express it as runtime percentages when it cannot be.
 
     Two rules this function exists to enforce, both of which it once broke:
@@ -369,7 +379,7 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
     """
     table = prof["table"]
     attributed_ticks = opf.sum_attributed_ticks(table)
-    total_ms = _ticks_to_ms(attributed_ticks)
+    total_ms = _ticks_to_ms(attributed_ticks, timebase_hz)
     wall_ticks = prof.get("median_time_ticks")
     per_iter = prof.get("executions_per_timed_iteration")
     coverage = opf.coverage_report(
@@ -386,7 +396,9 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
     # the same division, and both must use the same one or the shares and the gate disagree).
     wall_ticks_per_exec = coverage.get("wall_ticks_per_execution")
     wall_ms = (
-        _ticks_to_ms(wall_ticks_per_exec) if wall_ticks_per_exec and coverage["runtime_shares_reportable"] else None
+        _ticks_to_ms(wall_ticks_per_exec, timebase_hz)
+        if wall_ticks_per_exec and coverage["runtime_shares_reportable"]
+        else None
     )
     cov_scalar = coverage["profiler_coverage"]
 
@@ -501,11 +513,13 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
     return {
         "quantize_vs_contraction": quantize_vs_contraction,
         "total_attributed_ms": round(total_ms, 3),
-        "measured_wall_ms": round(_ticks_to_ms(wall_ticks), 3) if wall_ticks else None,
+        "measured_wall_ms": round(_ticks_to_ms(wall_ticks, timebase_hz), 3) if wall_ticks else None,
         # The denominator every `share_of_runtime` below is a share OF: the wall of one @forward
         # execution. Recorded separately from `measured_wall_ms` (one TIMED ITERATION) because for a
         # session bundle they differ by the step count, and conflating them is the window mismatch.
-        "wall_ms_per_execution": (round(_ticks_to_ms(wall_ticks_per_exec), 6) if wall_ticks_per_exec else None),
+        "wall_ms_per_execution": (
+            round(_ticks_to_ms(wall_ticks_per_exec, timebase_hz), 6) if wall_ticks_per_exec else None
+        ),
         "executions_per_timed_iteration": per_iter,
         "coverage": coverage,
         # Back-compat scalar for existing readers; `coverage` is the authoritative block.
@@ -514,7 +528,7 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
         "share_denominator": coverage["share_denominator"],
         "vectorized_flag_meaning": (
             "`vectorized`/`contraction_intended_ms` reflect the pipeline's "
-            "INTENT: the K1 RVV schedule vectorizes only the contraction "
+            "INTENT: the board's RVV schedule vectorizes only the contraction "
             "family; every other family lowers to scalar loops. It is NOT "
             "proof the emitted asm is vector — see `rvv_coverage` for the "
             "measured static coverage of `forward`. The family is resolved "
@@ -548,6 +562,12 @@ def build_breakdown(model_dir: Path, prof: dict, unprof: dict, noise_pct: float)
 
 def main() -> None:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--board", required=True, help="a `flow: linux` board of the selected board catalog")
+    ap.add_argument(
+        "--board-catalog",
+        default=None,
+        help="board catalog holding --board (default: MERLIN_BOARD_CATALOG)",
+    )
     ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3, help="separate build+deploy launches; the min across them is reported")
@@ -571,10 +591,9 @@ def main() -> None:
     ap.add_argument(
         "--cores",
         type=int,
-        choices=(1, 2, 4, 8),
         default=1,
-        help="K1 cores used by BOTH the instrumented profile and its perturbation "
-        "control. Values above one build the RVV+OpenMP path and pin the same "
+        help="board cores (1..the board's harts) used by BOTH the instrumented profile and its "
+        "perturbation control. Values above one build the RVV+OpenMP path and pin the same "
         "ELF to that many CPUs; default 1 preserves prior behavior.",
     )
     ap.add_argument(
@@ -635,6 +654,11 @@ def main() -> None:
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     a.dump_cap = None if a.dump_cap == 0 else a.dump_cap
+    board = remote_linux.resolve_board(a.board, a.board_catalog)
+    if not 1 <= a.cores <= board.harts:
+        ap.error(f"--cores must be within 1..{board.harts} (the harts {board.name} declares)")
+    profile = remote_linux.profile(board)
+    substrate = remote_linux.substrate(board)
 
     md = Path(a.model)
     base = load_rvv_package(a.baseline)
@@ -700,6 +724,7 @@ def main() -> None:
     kb = a.kernel_backend
     print(f"=== {md.name}: profiled (instrumented, kernel_backend={kb}) x{a.n} ===")
     prof = run_profiled(
+        board,
         md,
         pkg_on,
         golden_refs,
@@ -716,6 +741,7 @@ def main() -> None:
     )
     print(f"=== {md.name}: unprofiled control x{a.n} ===")
     unprof = run_unprofiled(
+        board,
         md,
         pkg_off,
         golden_refs,
@@ -733,12 +759,13 @@ def main() -> None:
 
     summary: dict = {
         "model": str(md),
-        "board": "k1_spacemit",
-        "vlen": k1.VLEN,
+        "board": board.name,
+        "substrate": substrate,
+        "vlen": profile.vlen,
         "kernel_backend": kb,
         "compiler_features": feats,
         "timer": "rdtime per-op marks + CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
-        "timebase_hz": TIMEBASE_HZ,
+        "timebase_hz": board.timebase_hz,
         "n": a.n,
         "cos_threshold": a.cos,
         "rel_threshold": a.rel,
@@ -758,17 +785,13 @@ def main() -> None:
         "unprofiled": unprof,
     }
     if prof.get("ok"):
-        summary["breakdown"] = build_breakdown(md, prof, unprof, a.noise)
+        summary["breakdown"] = build_breakdown(md, prof, unprof, a.noise, board.timebase_hz)
         summary["op_table"] = prof["table"]
     else:
         summary["breakdown"] = None
         print(f"!! profiled run did not gate: {prof.get('blocker')}")
 
-    out = (
-        Path(a.out)
-        if a.out
-        else (artifacts_dir() / "measurements" / "k1_spacemit" / md.name / f"op_profile_{ftag}.json")
-    )
+    out = Path(a.out) if a.out else (artifacts_dir() / "measurements" / substrate / md.name / f"op_profile_{ftag}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(summary, indent=2))
     print(f"\nwrote -> {out}")

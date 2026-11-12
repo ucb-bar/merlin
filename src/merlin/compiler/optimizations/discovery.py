@@ -93,18 +93,18 @@ def _try_lazy_register(name: str) -> bool:
     # A SINGLE-NAME lever lives in its own module and resolves by importing that module, rather than
     # through the arity table below. It has to resolve HERE and not only where it is ranked:
     # `wholemodel_proposer` registers it for the PROPOSAL path, but a package that names it in
-    # `compiler_features` reaches `normalize` through `k1.build_k1_binary`, which imports no proposer
+    # `compiler_features` reaches `normalize` through `remote_linux.build_binary`, which imports no proposer
     # -- and through the lowering SUBPROCESS, which re-imports this module and sees no registration
     # the parent made at run time. Both raise "unknown impr feature" without this.
     #
     # This was a HAND-MAINTAINED list of per-module hooks, and it drifted exactly as such lists do:
     # it named two modules while THIRTEEN declared a lever. The other eleven resolved only by
     # ACCIDENT -- an unrelated module happening to import theirs (`pipeline` pulls in `prov_cse` and
-    # `im2col_pack`), or a call-time `ensure_registered()` buried in `k1.build_k1_binary` (that is
+    # `im2col_pack`), or a call-time `ensure_registered()` buried in `remote_linux.build_binary` (that is
     # what `prepack_weight_layout` relies on). Accidental resolution is not resolution: a fresh
     # process that imports only THIS module could not resolve seven of the thirteen, and the lowering
     # subprocess is exactly such a process. Removing an unrelated import, or reaching a lever by a
-    # path that skips `build_k1_binary`, silently turns a named lever into "unknown impr feature" --
+    # path that skips `remote_linux.build_binary`, silently turns a named lever into "unknown impr feature" --
     # or, where a caller swallows that, into a lever reported as applied and never applied.
     # The mapping is DERIVED from the modules themselves so that resolution does not depend on who
     # else happened to be imported first.

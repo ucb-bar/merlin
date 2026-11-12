@@ -43,7 +43,7 @@ libm call: upstream `MathToLibm.cpp` does map ``math::AbsFOp`` to ``fabsf``/``fa
 ``expf`` and ``erff``, and its vector arm does scalarize a ``vector<Nxf32>`` into N extracts + N
 calls + N inserts. That reasoning is correct about the MLIR pass and WRONG about the binary, and the
 difference was only visible in the LINKED ELF. MEASURED, resnet50_v1_5_int8_w8a8 built through
-`mining.k1.build_k1_binary` with the `rvv/hand_v0_int8` package, baseline features:
+`runtime.remote_linux.build_binary` with the `rvv/hand_v0_int8` package, baseline features:
 
     call sites in the linked ELF   roundevenf 109      fabsf 0
     instructions in `forward`      fabs.s 107, vfabs.v 414, vfredmax.vs 54, vfmax.vv 755
@@ -83,7 +83,7 @@ note the collateral finding below, which is what made the premise look plausible
 
 COLLATERAL FINDING -- the package cflags never reach the model object. `rvv/hand_v0_int8` declares
 ``cflags: [-march=rv64gcv, -fno-vectorize, -fno-slp-vectorize]`` and `mining.registry.RvvPackage`
-documents them as feeding ``build_app(cflags_override=...)``, but `mining.k1.build_k1_binary` builds
+documents them as feeding ``build_app(cflags_override=...)``, but `runtime.remote_linux.build_binary` builds
 the model object's flags from ``-march/-mabi/-O2`` plus the FEATURE cflags only and never reads
 ``pkg.cflags``. So on the K1 path clang's own loop and SLP vectorizers are ON for our emitted
 ``model.ll``, and an unknown share of the vector code in that binary is theirs rather than the
@@ -161,7 +161,7 @@ from __future__ import annotations
 
 #: Feature name. Registered EAGERLY from ``impr_features`` (see :func:`ensure_registered`, called at
 #: the bottom of that module) rather than on demand, so it resolves in the parent process, in
-#: ``mining.k1.build_k1_binary`` (which imports no proposer) and in the lowering SUBPROCESS (which
+#: ``runtime.remote_linux.build_binary`` (which imports no proposer) and in the lowering SUBPROCESS (which
 #: re-imports ``impr_features`` fresh and would not see a run-time registration the parent made).
 #: That is the trap ``impr_features._try_lazy_register`` exists for; eager registration sidesteps it
 #: entirely, which is why this module is imported from there instead of hooking into it.
@@ -442,7 +442,7 @@ def ensure_registered() -> str:
                 "`maximum` is associative and commutative on the whole domain, so unlike "
                 "`vectorize_reduction` this needs no `reassociate-fp-reductions` and edits no pipeline "
                 "pass. It is nonetheless a REGRESSION on the only build measured. MEASURED, "
-                "resnet50_v1_5_int8_w8a8 through `mining.k1.build_k1_binary` with `rvv/hand_v0_int8`, "
+                "resnet50_v1_5_int8_w8a8 through `runtime.remote_linux.build_binary` with `rvv/hand_v0_int8`, "
                 "LINKED ELF: the premise was that `math.absf` is a libm call, and in the binary it is "
                 "not -- `fabsf` has 0 call sites (LLVM lowers it to `fabs.s`/`vfabs`) while `roundevenf` "
                 "has 109, and clang's own loop vectorizer already claims these reduction loops (54 "

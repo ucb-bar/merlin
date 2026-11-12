@@ -3,7 +3,6 @@
 # holds it). A file leaves when its literal is derived from the BOARDS / SIM_TOOLCHAINS / RTL-facts
 # registry or the target contract. Consumed by: check_no_target_name.py
 build_tools/scripts/check_fact_provenance.py  # cyclotron
-build_tools/scripts/check_repro_env.py  # k1
 build_tools/scripts/harvest_xnnpack_fixtures.py  # k1
 build_tools/scripts/make_delivery.py  # kodiak
 build_tools/scripts/rvv_chia_beam.py  # k1
@@ -24,9 +23,7 @@ merlin/python/merlin/compare/paper_merlin_packages.py  # k1
 merlin/python/merlin/compare/paper_merlin_producers.py  # k1
 merlin/python/merlin/compare/paper_model_object_builder.py  # k1
 merlin/python/merlin/compare/study.py  # k1
-merlin/python/merlin/compile_cli.py  # k1
 merlin/python/merlin/llvmlower/opu_shim.py  # k1
-merlin/python/merlin/llvmlower/reduce_vec.py  # k1
 merlin/python/merlin/mining/wholemodel_proposer.py  # k1
 merlin/python/merlin/plotting/cpu_host_beam_figures.py  # k1
 merlin/python/merlin/plotting/cpu_host_experiment_figures.py  # k1

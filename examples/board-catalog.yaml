@@ -16,7 +16,13 @@
   #   * Zephyr entries state their port's default RAM region and linked-region limit;
   #     an external-weights layout also states its low region and reserved DRAM tail;
 #   * bare-metal entries state `code_reserve`;
-#   * `console` is htif | uart, `flow` is zephyr | baremetal, `loader` is uart_tsi | pyuartsi;
+#   * `flow: linux` entries (a glibc userspace board reached over SSH, runtime.remote_linux) state
+#     `console: ssh`, no loader, null `dram_base`/`dram_bytes` (the OS owns physical memory), and the
+#     userspace toolchain/timing/staging facts: `march`, `mabi`, `triple`, `vlen`, `timebase_hz`,
+#     `chip_freq_hz`, `stack_bytes`, `remote_dir`, `scratch_dir`, `scratch_limit_bytes`,
+#     `mmap_weights_threshold_bytes`. SSH access and the toolchain install are per host, read from
+#     MERLIN_<BOARD>_{HOST,SSH_KEY,SSH_PORT,TOOLCHAIN};
+#   * `console` is htif | uart | ssh, `flow` is zephyr | baremetal | linux, `loader` is uart_tsi | pyuartsi;
 #   * `vector_hart_ids` is a list of hart ids;
 #   * `target` names the merlin target whose RTL the board elaborates. Per-target environment names
 #     derive from it (the Verilator binary override is MERLIN_<TARGET>_VERILATOR);

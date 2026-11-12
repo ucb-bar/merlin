@@ -363,37 +363,47 @@ def classify_disasm(text: str, *, source: str = "<text>") -> AuditReport:
     return report
 
 
-def _objdump() -> str | None:
+def _objdump(toolchain_root: Path | None = None) -> str | None:
     """Find an objdump that decodes rv64gcv CORRECTLY, preferring ``llvm-objdump``.
 
-    Hard-won lesson (confirmed independently by the EXO and ExecuTorch arms): the SpacemiT / GNU
+    Hard-won lesson (confirmed independently by the EXO and ExecuTorch arms): a vendor / GNU
     ``riscv64-unknown-linux-gnu-objdump`` silently MIS-DECODES rv64gcv in bulk ``-d`` mode — it emits
     bare ``.insn`` words (or only a handful of vector mnemonics) for a vector-heavy binary, which
     would fabricate a false ~0% RVV coverage. ``llvm-objdump`` decodes the V extension correctly, so
-    we prefer it everywhere (toolchain bin first, then PATH). GNU objdump remains a last resort.
+    we prefer it everywhere: the caller's cross-toolchain ``bin`` first (``toolchain_root``, e.g.
+    ``runtime.remote_linux.toolchain_root(board)``), then the repo's LLVM, then PATH. GNU objdump
+    remains a last resort.
     """
-    from merlin.mining import k1
-
-    root = k1._toolchain_root()
     cands = ("llvm-objdump", "riscv64-unknown-linux-gnu-objdump", "objdump")
-    if root:
+    if toolchain_root:
         for cand in cands:
-            p = root / "bin" / cand
+            p = Path(toolchain_root) / "bin" / cand
             if p.is_file():
                 return str(p)
+    try:
+        from merlin.llvmlower import toolchain
+
+        repo_objdump = Path(toolchain.objdump())
+        if repo_objdump.is_file():
+            return str(repo_objdump)
+    except Exception:  # noqa: BLE001 -- no repo LLVM on this host: fall through to PATH
+        pass
     for cand in cands:
         if shutil.which(cand):
             return shutil.which(cand)
     return None
 
 
-def audit_binary(path: str | Path, *, objdump: str | None = None, timeout: int = 120) -> AuditReport:
+def audit_binary(
+    path: str | Path, *, objdump: str | None = None, toolchain_root: Path | None = None, timeout: int = 120
+) -> AuditReport:
     """Disassemble a rv64 ELF/object and classify RVV vs scalar coverage per symbol.
 
+    ``toolchain_root`` is a cross-toolchain prefix whose ``bin`` is searched first for the objdump.
     Raises ``RuntimeError`` if no objdump is available or disassembly fails — never returns a
     fabricated coverage (fail-closed, matching not_run_is_not_pass).
     """
-    tool = objdump or _objdump()
+    tool = objdump or _objdump(toolchain_root)
     if tool is None:
         raise RuntimeError("no objdump available to audit RVV coverage (install the riscv toolchain)")
     # llvm-objdump and GNU objdump both accept -d; GNU needs no extra flags for symbol headers.

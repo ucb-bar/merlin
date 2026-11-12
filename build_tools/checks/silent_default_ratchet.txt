@@ -42,7 +42,6 @@ build_tools/scripts/check_no_public_port_bindings.py::scan::swallowed-error::OSE
 build_tools/scripts/check_pass_obligations.py::findings::get-default::verify_measured
 build_tools/scripts/check_provenance.py::main::swallowed-error::OSError/JSONDecodeError
 build_tools/scripts/check_repro_env.py::_probe::get-default::MERLIN_LLM_MODEL
-build_tools/scripts/check_repro_env.py::_probe::get-default::MERLIN_K1_HOST
 build_tools/scripts/check_route_partition.py::report::get-default::ROUTE_ACCEPT
 build_tools/scripts/check_route_partition.py::report::get-default::ROUTE_DECLINE
 build_tools/scripts/check_route_partition.py::report::get-default::ROUTE_VIOLATION

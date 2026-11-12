@@ -686,7 +686,7 @@ def lower_model(
         if static_arena:
             # Bind the emitted heap allocations to one statically planned arena. Kept behind a flag, and
             # applied HERE rather than inside the pass pipeline, because this is the last point the
-            # measured whole-model path still passes through as text: `mining.k1.build_k1_binary` calls
+            # measured whole-model path still passes through as text: `runtime.remote_linux.build_binary` calls
             # `lower_model_file` and then compiles the `.ll` it gets back. With the flag off nothing runs
             # and the `.ll` is byte-identical to the frozen baseline.
             from .arena_bind import bind_arena

@@ -19,7 +19,7 @@
     {
       "id": "rvv",
       "repository": "https://github.com/ucb-bar/rvv-mlir.git",
-      "revision": "07f9ae466e6b7646e16a3677cf41b9e8987cff06",
+      "revision": "695888852159432c23106f6436b4c727b62872e9",
       "xdsl": "0.68.0",
       "provider_module": "merlin_rvv.service",
       "tests": [
@@ -47,7 +47,7 @@
     {
       "id": "kodiak",
       "repository": "https://github.com/ucb-bar/kodiak-mlir.git",
-      "revision": "47b68b7a00181e2f737594d22a24843119a88d96",
+      "revision": "1a28f2f56cee7462233d6b36fada5cc2cb079244",
       "xdsl": "0.68.0",
       "provider_module": "merlin_kodiak.service",
       "tests": [

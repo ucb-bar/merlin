@@ -92,27 +92,6 @@ entries:
       cap and this entry are deleted together. It is reported per run (`warps_used` vs `warps_declared`)
       so a capped run cannot be mistaken for a full-width one in the meantime.
 
-  # ---------------------------------------------------------------- surfaced by the derived roster
-  - id: names-surfaced-when-the-target-roster-was-derived
-    kind: target_coupling
-    status: triaged
-    owner: targetgen
-    items:
-      - merlin/python/merlin/mining/k1.py
-    why: >-
-      Invisible until 2026-09-14, when the no-target-name gate's name set was derived from the target
-      registries instead of listed. The buddy generated C still embeds one board's clock;
-      mining/k1.py's sustained-mode source uses the k1_cpu target's clock.
-      frozen_environment.py persists a `k1_cpu_probe_version` key in a frozen study manifest.
-    blocks: >-
-      A second CPU-host target reusing the buddy generated C harness would be timed against another
-      board's clock constant and report wrong estimated cycles with no error. The shared profile
-      parser now requires runner-supplied rates and no longer makes this assumption.
-    removal_condition: >-
-      The remaining generated timing harness reads its clock from a measurement provider,
-      mining/k1.py folds into a parameterized board bench, and the frozen manifest key is renamed
-      at its next schema version. Delete each path from this list as it lands.
-
   # ---------------------------------------------------------------- scheduling-decision dialect
   - id: schedule-dialect-ops-nothing-constructs
     kind: dead_seam

@@ -337,6 +337,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
     kw = {"dram_bytes": a.dram_mb * 1024 * 1024} if a.dram_mb else {}
     brd = _board(a.board, **kw)
+    if brd.dram_base is None or brd.dram_bytes is None:
+        ap.error(f"board {brd.name} ({brd.flow}) has no physical DRAM window to audit an image against")
     rep = audit(a.elf, brd, require_vector=not a.no_require_vector)
     print(rep.render())
     if a.json:

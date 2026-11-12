@@ -8,7 +8,7 @@ M = N*Oh*Ow is the parallel extent the schedule vectorizes. The per-op schedule 
 ``[MR, NR, 0]`` and tiles K by 1, so **K is the innermost loop and the B-operand load walks with row
 pitch M**.
 
-MEASURED off the LINKED ELF (``llvm-objdump -d`` of ``merlin_k1``, deepjscc int8, the shipping
+MEASURED off the LINKED ELF (``llvm-objdump -d`` of the linked board binary, deepjscc int8, the shipping
 feature set), five independent K-loops, each of the form::
 
     vsetvli zero, zero, e16, m1

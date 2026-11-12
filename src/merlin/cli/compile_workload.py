@@ -4,12 +4,13 @@ New explicit-source callers use ``merlin compile SOURCE --backend PROVIDER`` or
 ``merlin.api.compile``. This compatibility command preserves workload/target,
 build, execution and verification options used by existing operator workflows:
 
-  merlin-compile --workload bitvla --dtype int8 --target rvv --run k1 --verify
+  merlin-compile --workload bitvla --dtype int8 --target rvv --run board --board <name> --verify
 
 Target-appropriate semantics (they are genuinely different pipelines, not a false unification):
   * ``--target rvv``     — compile a whole captured MODEL: resolve/capture the model2MLIR bundle →
                            lower (native RVV) → cross-compile the runtime binary → optionally run on
-                           host/K1 → gate the output vs the captured ``golden.npy``.
+                           the host or a ``flow: linux`` board over SSH → gate the output vs the
+                           captured ``golden.npy``.
   * OOT targets         — compile a generated backend PACKAGE and run a capsule through it.
   * ``--model-build``   — compile an explicitly saved capture with a selected host package and
                            bare-metal board; optionally check its complete output on a simulator.
@@ -17,7 +18,7 @@ Target-appropriate semantics (they are genuinely different pipelines, not a fals
 
 Fail-closed + honest: a missing toolchain / board / sim yields a clear ``status`` (never a fake pass);
 correctness gates before any success is reported. This CLI only ORCHESTRATES the existing, tested API
-(``llvmlower.lower``, ``mining.k1``, ``compiler.backend.host``, ``runtime.backends.zephyr_model``,
+(``llvmlower.lower``, ``runtime.remote_linux``, ``compiler.backend.host``, ``runtime.backends.zephyr_model``,
 ``targetgen.oot_runner``) — it adds no new compile logic.
 """
 
@@ -98,8 +99,9 @@ from merlin.runtime.mesh_model import (
 )
 from merlin.verification.mesh_reference import _accum_rel_tolerance, _reference_on_datapath
 
-#: Where ``--run`` can put a compiled result.
-_RUNS = ("none", "host", "k1", "spike", "zephyr", "verilator", "gsim")
+#: Where ``--run`` can put a compiled result. ``board`` deploys to the ``flow: linux`` board ``--board``
+#: names (``runtime.remote_linux``); the board is data from the catalog, never a run name.
+_RUNS = ("none", "host", "board", "spike", "zephyr", "verilator", "gsim")
 
 from merlin.common import compile_trace as _trace  # noqa: E402
 
@@ -274,8 +276,12 @@ def compile_rvv(
     device: Any | None = None,
     selected_host_dts_required: bool = False,
     expected_board_target: str | None = None,
+    board_catalog: str | Path | None = None,
 ) -> dict:
     """RVV whole-model: resolve/capture → lower → build → (run) → (gate vs golden).
+
+    ``run='board'`` (and the compile-only ``run='none'``) cross-compile for the ``flow: linux`` board
+    ``board`` names, from ``board_catalog`` or the selected ``MERLIN_BOARD_CATALOG``.
 
     ``kernel_backend='mesh'`` + ``mesh_target`` runs the model's matmul LAYERS on that target's
     accelerator mesh (host dispatch runtime, each matmul injected onto the mesh oracle)."""
@@ -284,7 +290,7 @@ def compile_rvv(
     import numpy as np
 
     from merlin.compiler.backend.host import load_host_package
-    from merlin.mining import k1
+    from merlin.runtime import remote_linux
     from merlin.runtime.backends import zephyr_model as zm
 
     # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns
@@ -316,6 +322,26 @@ def compile_rvv(
                     f"{board}: {run} model route builds a Zephyr image; selected board flow "
                     f"{selected_board.flow!r} has no qualified compile_cli bare-metal execution path"
                 ),
+            }
+    linux_board = None
+    if run in ("board", "none"):
+        # Both cross-compile a Linux userspace binary, so both need the board's facts; resolve them
+        # before capture or work allocation, and refuse a board of another flow rather than guess.
+        reason = None
+        if board is None:
+            reason = f"--run {run} cross-compiles for a `flow: linux` board; pass --board and a board catalog"
+        else:
+            try:
+                linux_board = remote_linux.resolve_board(board, board_catalog)
+            except (ValueError, remote_linux.RemoteLinuxError) as exc:
+                reason = str(exc)
+        if reason is not None:
+            return {
+                "tool": "merlin-compile",
+                "target": "rvv",
+                "workload": workload,
+                "status": "not_run",
+                "reason": reason,
             }
 
     # TWO ways a caller pins the capture rather than letting the mutable registry resolve the workload
@@ -538,7 +564,7 @@ def compile_rvv(
         return out
 
     # The Zephyr/spike/verilator routes build a Zephyr image (and are the only ones that can be
-    # multicore or sustained); the K1 route builds a Linux binary for the board.
+    # multicore or sustained); the `board` route builds a Linux binary for a `flow: linux` board.
     if run in ("spike", "zephyr", "verilator"):
         out["board"] = board
         selected_dts = os.environ.get("MERLIN_HOST_DTS")
@@ -662,34 +688,46 @@ def compile_rvv(
             out["status"] = "verified" if res.get("ok") else "run_mismatch"
         return out
 
-    # K1 / compile-only. `run_on_k1` does its own build (into <work>/v), so building here too
-    # would compile the whole model TWICE — for TinyLlama int8 that is ~40 min of clang thrown
-    # away, enough to push the run past its own timeout. Build directly only when nothing else
-    # will.
+    # Linux board / compile-only. `remote_linux.run` does its own build (into <work>/<mode>), so
+    # building here too would compile the whole model TWICE — for TinyLlama int8 that is ~40 min of
+    # clang thrown away, enough to push the run past its own timeout. Build directly only when
+    # nothing else will.
+    if run in ("board", "none"):
+        out["board"] = board
+        out["substrate"] = remote_linux.substrate(linux_board)
     if package_backend == "scalar":
         out["status"] = "not_run"
-        out["reason"] = "scalar package has no K1 Linux build path; select a scalar board build"
+        out["reason"] = "scalar package has no Linux board build path; select a scalar board build"
         return out
-    if run != "k1":
+    if run == "none":
         # `--harts N` reaches THIS build too. It used not to: the flag was plumbed only to the
         # run-on-hardware routes, so `--run none --harts 8` produced a single-core binary and
         # reported success -- a compile-only multicore A/B silently compared two identical
-        # single-core images. Same expression as the `--run k1` call below, so the two agree.
-        binary = k1.build_k1_binary(
-            bundle, work, pkg, inputs_npz=bundle / "inputs.npz", parallel_harts=(harts if harts > 1 else None)
+        # single-core images. Same expression as the `--run board` call below, so the two agree.
+        binary = remote_linux.build_binary(
+            linux_board,
+            bundle,
+            work,
+            pkg,
+            inputs_npz=bundle / "inputs.npz",
+            parallel_harts=(harts if harts > 1 else None),
         )
         out["binary"] = str(binary)
         out["parallel_harts"] = harts if harts > 1 else None
-    out["status"] = "compiled"
-    if run == "none":
+        out["status"] = "compiled"
         return out
-    if run == "k1":
-        board_available = k1.available(deadline_ns=deadline_ns) if deadline_ns is not None else k1.available()
-        if not board_available:
+    if run == "board":
+        out["status"] = "compiled"
+        if not remote_linux.available(linux_board, deadline_ns=deadline_ns):
             out["status"] = "not_run"
-            out["reason"] = "K1 board unreachable (see MERLIN_K1_HOST/port 2222)"
+            out["reason"] = (
+                f"board {board} unreachable or its cross-toolchain is missing (see "
+                f"{remote_linux.env_name(linux_board, 'HOST')}, {remote_linux.env_name(linux_board, 'SSH_KEY')}, "
+                f"{remote_linux.env_name(linux_board, 'SSH_PORT')}, {remote_linux.env_name(linux_board, 'TOOLCHAIN')})"
+            )
             return out
-        res = k1.run_on_k1(
+        res = remote_linux.run(
+            linux_board,
             bundle,
             work,
             pkg,
@@ -755,7 +793,7 @@ def compile_rvv(
             out["status"] = "verified" if out["verify"]["gate_ok"] else "run_mismatch"
         return out
     out["status"] = "not_run"
-    out["reason"] = f"run mode {run!r} not supported for rvv (use none|k1|spike|zephyr|verilator)"
+    out["reason"] = f"run mode {run!r} not supported for rvv (use none|host|board|spike|zephyr|verilator)"
     return out
 
 
@@ -1152,7 +1190,7 @@ def compile_oot(
     if run == "none":
         return out
 
-    sim = "spike" if run in ("spike", "k1", "run") else run  # an accelerator runs on a sim, not the host SoC
+    sim = "spike" if run in ("spike", "board", "run") else run  # an accelerator runs on a sim, not the host SoC
     iface = cap_dir / "capsule.interface.mlir"
     res = oot_runner.certify(
         pkg_dir, iface, runs_root=str(rr), run_id=f"{workload}_{sim}", simulator=sim, timeout=timeout
@@ -1167,7 +1205,7 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.common.compile_trace import StopAfterStage
     from merlin.compiler import inspect as debug
 
-    ap = command.parser(_RVV_DTYPES, _RUNS, "k1", ("k1", "zephyr", "spike", "verilator"))
+    ap = command.parser(_RVV_DTYPES, _RUNS, "board", ("board", "zephyr", "spike", "verilator"))
     ap.description = "Retained workload/operator adapter; explicit-source compilation uses merlin compile."
     a = ap.parse_args(argv)
     if a.list_passes:
@@ -1177,7 +1215,7 @@ def main(argv: list[str] | None = None) -> int:
     selection = command.pass_selection(ap, a)
     command.validate(ap, a)
     trace = debug.request_from_args(ap, a, target=a.target, workload=str(a.workload))
-    run = a.run or ("none" if a.model_build else "k1" if a.target == "rvv" else "spike")
+    run = a.run or ("none" if a.model_build else "board" if a.target == "rvv" else "spike")
     try:
         with debug.opened(trace, ["merlin-compile", *(sys.argv[1:] if argv is None else argv)]) as opened:
             res = _dispatch(a, run, selection)
@@ -1247,6 +1285,7 @@ def _workflow(a, run: str) -> dict:
             iters=a.iters,
             warmup=a.warmup,
             board=a.board,
+            board_catalog=a.board_catalog,
         )
     else:
         return compile_oot(

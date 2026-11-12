@@ -70,7 +70,8 @@ def parser(
         "--run",
         choices=list(runs),
         default=None,
-        help=f"where to run after compiling (default: rvv→{rvv_run}, an OOT target→spike; 'none' = compile only)",
+        help=f"where to run after compiling (default: rvv→{rvv_run}, an OOT target→spike; 'none' = compile only; "
+        "'board' = deploy to the `flow: linux` board named by --board over SSH)",
     )
     ap.add_argument(
         "--verify",
@@ -90,7 +91,8 @@ def parser(
     ap.add_argument("--package", default=None, help="override the codegen/OOT package dir")
     ap.add_argument(
         "--board",
-        help="board name for RVV execution or an explicitly selected bare-metal --model-build",
+        help="board name for RVV execution (--run board needs a `flow: linux` board) or an explicitly "
+        "selected bare-metal --model-build",
     )
     ap.add_argument(
         "--corpus-descriptor",
@@ -104,7 +106,12 @@ def parser(
     )
     ap.add_argument("--model-build", action="store_true", help="build one saved capture as a bare-metal ELF")
     ap.add_argument("--capture-bundle", help="explicit saved capture for --model-preflight or --model-build")
-    ap.add_argument("--board-catalog", type=Path, help="explicit board catalog for --model-build")
+    ap.add_argument(
+        "--board-catalog",
+        type=Path,
+        help="explicit board catalog for --model-build or an RVV --run board/none build "
+        "(default for the latter: MERLIN_BOARD_CATALOG)",
+    )
     ap.add_argument("--host-dts", type=Path, help="byte-pinned elaborated host DTS for --model-build")
     ap.add_argument("--output", type=Path, help="fresh generated output directory for --model-build")
     ap.add_argument("--arena-mb", type=int, help="explicit model arena size for --model-build")
@@ -168,12 +175,15 @@ def validate(ap: argparse.ArgumentParser, a: argparse.Namespace) -> None:
     if a.corpus_descriptor is not None and (a.target == "rvv" or a.model_preflight or a.model_build):
         ap.error("--corpus-descriptor applies only to OOT capsule compilation")
     if a.board is not None and a.target != "rvv" and not a.model_build:
-        ap.error("--board applies only to RVV spike/Zephyr/Verilator execution")
+        ap.error("--board applies only to RVV board/spike/Zephyr/Verilator execution")
     if a.capture_bundle is not None and not (a.model_preflight or a.model_build):
         ap.error("--capture-bundle requires --model-preflight or --model-build")
-    build_only_inputs = (a.board_catalog, a.host_dts, a.output, a.arena_mb, a.reference_file, a.rtl_facts)
+    build_only_inputs = (a.host_dts, a.output, a.arena_mb, a.reference_file, a.rtl_facts)
     if any(value is not None for value in build_only_inputs) and not a.model_build:
         ap.error("bare-metal build inputs require --model-build")
+    linux_build = a.target == "rvv" and a.run in (None, "board", "none")
+    if a.board_catalog is not None and not (a.model_build or linux_build):
+        ap.error("--board-catalog applies to --model-build or an RVV --run board/none build")
     if a.model_build:
         if not all((a.capture_bundle, a.package, a.board_catalog, a.board, a.host_dts, a.output, a.arena_mb)):
             ap.error(

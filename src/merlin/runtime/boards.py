@@ -16,12 +16,24 @@ from typing import Any
 #: Console driver families we know how to configure.
 CONSOLE_HTIF = "htif"
 CONSOLE_UART = "uart"
+#: A Linux board's console is the remote process's stdout/stderr, read back over an SSH session.
+CONSOLE_SSH = "ssh"
 
 #: How an image for this board is produced. Not every RISC-V target runs an RTOS: `baremetal` targets
 #: are built by `runtime.backends.spike_model` (crt.S + our own linker script + an absolute memory map),
 #: which is the closer match for a Baremetal-IDE-style SDK than porting a Zephyr board would be.
+#: `linux` boards run a cross-compiled glibc userspace binary deployed over SSH
+#: (`runtime.remote_linux`); the operating system owns physical memory, so such an entry may leave
+#: `dram_base`/`dram_bytes` null.
 FLOW_ZEPHYR = "zephyr"
 FLOW_BAREMETAL = "baremetal"
+FLOW_LINUX = "linux"
+
+#: How a `flow: linux` board compiles the generated whole-model ciface (`model_call.c`): with the
+#: board's own cross-toolchain, or with the repository's LLVM clang against that toolchain's sysroot
+#: (for a vendor compiler that cannot handle the one very large generated function).
+MODEL_CALL_TOOLCHAIN = "toolchain"
+MODEL_CALL_LLVM = "llvm"
 
 #: How the operator loads an image, which decides how many bytes cross the serial link.
 #:
@@ -43,11 +55,11 @@ class Board:
     """Everything the generated app needs to know about a target."""
 
     name: str  # this descriptor's identity (appears in filenames, manifests)
-    dram_bytes: int  # usable physical DRAM at dram_base
+    dram_bytes: int | None  # usable physical DRAM at dram_base; null only for a `flow: linux` board
     harts: int  # harts the SoC has
-    dram_base: int  # physical DRAM origin
+    dram_base: int | None  # physical DRAM origin; null only for a `flow: linux` board
     console: str  # runtime console family
-    flow: str  # Zephyr or bare metal
+    flow: str  # Zephyr, bare metal or Linux userspace
     loader: str | None = None  # operator's ELF upload protocol; None until an upload path is qualified
     loader_baud: int | None = None  # baud of that link; None when no upload path is qualified
     #: How many of those harts can execute VECTOR code, when that differs from `harts`. A
@@ -79,7 +91,8 @@ class Board:
     #: the board's device tree, not of the chip -- unlike the address, which is derived.
     uart_label: str | None = None
     #: PLL target for a UART console, or None to stay on the chip's reset clock. Also the clock a
-    #: returned `METRIC cycles` should be divided by, which is why the image prints it.
+    #: returned `METRIC cycles` should be divided by, which is why the image prints it. For a
+    #: `flow: linux` board it is the core clock that converts `timebase_hz` ticks to estimated cycles.
     chip_freq_hz: int | None = None
     #: Minimum code/static-I/O/stack region before weights; large generated content raises this floor.
     code_reserve: int | None = None
@@ -115,6 +128,39 @@ class Board:
     matrix_support_target: str | None = None
     matrix_unit: str | None = None
     matrix_config: str | None = None
+    # ---- `flow: linux` facts, consumed by runtime.remote_linux. Access (SSH host/key/port and the
+    # cross-toolchain install) is per host, not a board fact: it comes from MERLIN_<BOARD>_* variables.
+    #: `-march` for the board's userspace objects. Must name every extension the cores have (half
+    #: precision included), or clang targets a weaker ISA and soft-compiles what the hardware does.
+    march: str | None = None
+    #: `-mabi` for the board's userspace objects.
+    mabi: str | None = None
+    #: clang `--target` triple; it also names the toolchain's `<triple>-ld` / `<triple>-gcc`.
+    triple: str | None = None
+    #: Tick rate of the user-readable `time` CSR. The harness times with `rdtime` because a kernel may
+    #: trap userspace `rdcycle`; estimated cycles are ticks * chip_freq_hz / timebase_hz.
+    timebase_hz: int | None = None
+    #: Stack of the thread that runs the model; lowered models alloca large intermediates.
+    stack_bytes: int | None = None
+    #: Remote directory on real storage for large binaries, mmap'd weights and full outputs.
+    remote_dir: str | None = None
+    #: Remote scratch directory for small binaries and probes (often a RAM-backed tmpfs).
+    scratch_dir: str | None = None
+    #: A binary larger than this is staged under `remote_dir` instead of `scratch_dir`.
+    scratch_limit_bytes: int | None = None
+    #: A weight blob at or above this size is mmap'd from a deployed file instead of linked in.
+    mmap_weights_threshold_bytes: int | None = None
+    #: OMP_PROC_BIND for multicore runs, or None to leave the runtime's default.
+    omp_proc_bind: str | None = None
+    #: Measurement-substrate label this board's numbers are recorded under; None = the board name.
+    substrate: str | None = None
+    #: Sysroot directory, relative to the cross-toolchain prefix, or None when it ships none.
+    toolchain_sysroot: str | None = None
+    #: Compiler for the generated `model_call.c` (MODEL_CALL_TOOLCHAIN or MODEL_CALL_LLVM).
+    model_call_compiler: str | None = None
+    #: Directory of the cross-built static OpenMP runtime (`libomp.a`), relative to the repository
+    #: build root; None when no multicore runtime is built for this board.
+    openmp_runtime_dir: str | None = None
 
     @property
     def loader_bytes_per_s(self) -> float:
@@ -198,10 +244,12 @@ _SCHEMA_VERSION = 1
 #: The closed vocabularies a registry entry may use, by field. An unknown value is refused at load: a
 #: console or loader nobody wrote a driver for would otherwise surface as a silent hang on the board.
 _ENUMS: dict[str, tuple[str, ...]] = {
-    "console": (CONSOLE_HTIF, CONSOLE_UART),
-    "flow": (FLOW_ZEPHYR, FLOW_BAREMETAL),
+    "console": (CONSOLE_HTIF, CONSOLE_UART, CONSOLE_SSH),
+    "flow": (FLOW_ZEPHYR, FLOW_BAREMETAL, FLOW_LINUX),
     "loader": (LOADER_UART_TSI, LOADER_PYUARTSI),
     "simulator": ("spike",),
+    "omp_proc_bind": ("true", "false", "primary", "master", "close", "spread"),
+    "model_call_compiler": (MODEL_CALL_TOOLCHAIN, MODEL_CALL_LLVM),
 }
 #: Fields written as byte sizes, which the registry may spell "<n> KiB|MiB|GiB" for legibility.
 _SIZE_FIELDS = frozenset(
@@ -212,7 +260,41 @@ _SIZE_FIELDS = frozenset(
         "zephyr_link_limit_bytes",
         "zephyr_external_ram_bytes",
         "zephyr_external_tail_reserve_bytes",
+        "stack_bytes",
+        "scratch_limit_bytes",
+        "mmap_weights_threshold_bytes",
     }
+)
+#: Facts a `flow: linux` board must state (runtime.remote_linux reads every one), and the fields only
+#: such a board may carry -- a Zephyr or bare-metal entry that states one is describing a board it is not.
+_LINUX_REQUIRED = (
+    "vlen",
+    "chip_freq_hz",
+    "march",
+    "mabi",
+    "triple",
+    "timebase_hz",
+    "stack_bytes",
+    "remote_dir",
+    "scratch_dir",
+    "scratch_limit_bytes",
+    "mmap_weights_threshold_bytes",
+)
+_LINUX_ONLY = (
+    "march",
+    "mabi",
+    "triple",
+    "timebase_hz",
+    "stack_bytes",
+    "remote_dir",
+    "scratch_dir",
+    "scratch_limit_bytes",
+    "mmap_weights_threshold_bytes",
+    "omp_proc_bind",
+    "substrate",
+    "toolchain_sysroot",
+    "model_call_compiler",
+    "openmp_runtime_dir",
 )
 _SIZE_UNITS = {"KiB": 1 << 10, "MiB": 1 << 20, "GiB": 1 << 30}
 
@@ -268,6 +350,26 @@ def _coerce(key: str, value: Any, ftype: str, where: str) -> Any:
             raise BoardRegistryError(f"{where}: {value!r} is not a list of integers")
         return tuple(value)
     raise BoardRegistryError(f"{where}: Board field type {ftype!r} has no registry spelling")
+
+
+def _check_linux(kwargs: dict[str, Any], where: str) -> None:
+    """The cross-field facts of a `flow: linux` board: an SSH console, no serial upload path, positive
+    clocks and sizes, and absolute remote directories (the harness deploys to them verbatim)."""
+    if kwargs["console"] != CONSOLE_SSH:
+        raise BoardRegistryError(f"{where}: a `flow: {FLOW_LINUX}` board has console {CONSOLE_SSH!r}")
+    if kwargs.get("loader") is not None:
+        raise BoardRegistryError(f"{where}: a `flow: {FLOW_LINUX}` board is deployed over SSH, not by a loader")
+    for key in ("vlen", "chip_freq_hz", "timebase_hz", "stack_bytes", "scratch_limit_bytes"):
+        if kwargs[key] <= 0:
+            raise BoardRegistryError(f"{where}: {key} must be positive")
+    if kwargs["mmap_weights_threshold_bytes"] < 0:
+        raise BoardRegistryError(f"{where}: mmap_weights_threshold_bytes must be nonnegative")
+    for key in ("remote_dir", "scratch_dir"):
+        if not kwargs[key].startswith("/"):
+            raise BoardRegistryError(f"{where}: {key} must be an absolute remote path")
+    for key in ("march", "mabi", "triple"):
+        if not kwargs[key].strip() or any(ch.isspace() for ch in kwargs[key]):
+            raise BoardRegistryError(f"{where}: {key} must be one non-empty token")
 
 
 def load_boards(path: str | Path | None = None) -> dict[str, Board]:
@@ -335,9 +437,24 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
             conditional.append("code_reserve")
         if kwargs["flow"] == FLOW_ZEPHYR:
             conditional.extend(("loader", "loader_baud"))
+        if kwargs["flow"] == FLOW_LINUX:
+            conditional.extend(_LINUX_REQUIRED)
         missing = [key for key in conditional if kwargs.get(key) is None or kwargs.get(key) == ""]
         if missing:
             raise BoardRegistryError(f"{where}: missing required fact(s) for {kwargs['flow']}: {missing}")
+        if kwargs["flow"] == FLOW_LINUX:
+            _check_linux(kwargs, where)
+        else:
+            stray = [key for key in _LINUX_ONLY if kwargs.get(key) is not None]
+            if stray:
+                raise BoardRegistryError(f"{where}: field(s) {stray} apply only to a `flow: {FLOW_LINUX}` board")
+            if kwargs["console"] == CONSOLE_SSH:
+                raise BoardRegistryError(
+                    f"{where}: console {CONSOLE_SSH!r} applies only to a `flow: {FLOW_LINUX}` board"
+                )
+            for key in ("dram_base", "dram_bytes"):
+                if kwargs[key] is None:
+                    raise BoardRegistryError(f"{where}: {key} may be null only for a `flow: {FLOW_LINUX}` board")
         if (
             kwargs["flow"] == FLOW_ZEPHYR
             and kwargs.get("vector_harts") is None
@@ -369,13 +486,13 @@ def load_boards(path: str | Path | None = None) -> dict[str, Board]:
         ):
             raise BoardRegistryError(f"{where}: host_dts_sha256 must be a lowercase SHA256 hex digest")
         for key in ("dram_bytes", "harts"):
-            if kwargs[key] <= 0:
+            if kwargs[key] is not None and kwargs[key] <= 0:
                 raise BoardRegistryError(f"{where}: {key} must be positive")
         if (kwargs.get("loader") is None) != (kwargs.get("loader_baud") is None):
             raise BoardRegistryError(f"{where}: loader and loader_baud must be declared together")
         if kwargs.get("loader_baud") is not None and kwargs["loader_baud"] <= 0:
             raise BoardRegistryError(f"{where}: loader_baud must be positive")
-        if kwargs["dram_base"] < 0:
+        if kwargs["dram_base"] is not None and kwargs["dram_base"] < 0:
             raise BoardRegistryError(f"{where}: dram_base must be nonnegative")
         if kwargs.get("code_reserve") is not None and kwargs["code_reserve"] <= 0:
             raise BoardRegistryError(f"{where}: code_reserve must be positive")

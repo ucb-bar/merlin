@@ -28,7 +28,7 @@ Why one marker per top-level op is safe here. The default K1 RVV pipeline
 interleaving side-effecting calls cannot inhibit a fusion that would otherwise have
 happened. The marks therefore cost a call + ``rdtime`` + two stores each, and change no
 codegen decision for the ops themselves. This is an assumption about the pipeline, not a
-proof — which is why the driver (``tools/benchmarks/k1_op_profile.py``) always measures
+proof — which is why the driver (``tools/benchmarks/linux_board_op_profile.py``) always measures
 the instrumented wall against the un-instrumented wall and refuses to report a breakdown
 whose total wall moved by more than the board noise floor.
 
@@ -403,7 +403,7 @@ def parse_prof_lines(console: str) -> dict[int, tuple[int, int]]:
 # below are unit-testable without a board.
 #
 # WHY THEY EXIST — a measured 144 % attribution.
-# `k1_op_profile.py` on `small_llama_int8_consistent` reported 6.0 ms of attributed op time against
+# `linux_board_op_profile.py` on `small_llama_int8_consistent` reported 6.0 ms of attributed op time against
 # a 4.2 ms wall (`profiler_cov=1.4407`) while the perturbation guard was CLEAN (profiled 4.21 ms vs
 # un-instrumented 4.20 ms, delta 0.11 %). Every share it printed was therefore inflated by an
 # unstated factor, and one of them ("transposes are 45.9 % of runtime") was quoted.

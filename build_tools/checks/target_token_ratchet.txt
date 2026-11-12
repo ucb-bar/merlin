@@ -9,9 +9,3 @@
 # overfit_register.yaml `fact-provenance-gate-names-the-sources-it-forbids`: the env vars a non-RTL
 # model is reached through ARE the subject of that gate.
 build_tools/scripts/check_fact_provenance.py  # muon: MERLIN_MUON_CONFIG / _CYCLOTRON / _GSIM_EMU, config_muon.toml
-
-# ---------------------------------------------------------------- one CPU-host board's clock and ids
-# overfit_register.yaml `names-surfaced-when-the-target-roster-was-derived`: the k1_cpu board clock
-# (K1_CPU_HZ) and the probe/figure ids built on it; they leave when the clock comes from a
-# measurement provider / the board catalog.
-src/merlin/mining/k1.py  # k1_cpu: K1_CPU_HZ

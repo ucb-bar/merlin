@@ -3,6 +3,7 @@
  "src/merlin/cli/compile_workload.py": "src/merlin/compile_cli.py",
  "src/merlin/cli/main.py": "src/merlin/cli.py",
  "src/merlin/cli/service.py": "src/merlin/service_cli.py",
+ "src/merlin/runtime/remote_linux.py": "src/merlin/mining/k1.py",
  "src/merlin/verification/ablation.py": "src/merlin/verify/ablation.py",
  "src/merlin/verification/cb_semantics.py": "src/merlin/verify/cb_semantics.py",
  "src/merlin/verification/cli.py": "src/merlin/verify/cli.py",

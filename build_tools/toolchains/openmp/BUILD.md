@@ -5,9 +5,9 @@
 **multicore lowering** emits (`merlin.compiler.lower.native.pipeline._parallel_pipeline`:
 `convert-linalg-to-parallel-loops` → `convert-scf-to-openmp` → `convert-openmp-to-llvm`).
 Linking it lets the model's parallel loops fan across the board's 8 cores
-(`OMP_NUM_THREADS=8`, set by `merlin.mining.k1.run_on_k1`).
+(`OMP_NUM_THREADS=8`, set by `merlin.runtime.remote_linux.run`).
 
-It is referenced **only** by the gated `parallel=True` build path in `merlin.mining.k1.build_k1_binary`;
+It is referenced **only** by the gated `parallel=True` build path in `merlin.runtime.remote_linux.build_binary` (a board whose catalog entry declares `openmp_runtime_dir: toolchains/openmp`);
 the default fp32/int8/RVV flows never link it.
 
 ## Symbols (proof the lowering needs exactly these)
@@ -41,4 +41,4 @@ cp out/build/toolchains/openmp-build/openmp/runtime/src/libomp.a out/build/toolc
 cp build_tools/toolchains/openmp/omp.h out/build/toolchains/openmp/
 ```
 
-Final link (handled by `k1.build_k1_binary`): `... libomp.a -lstdc++ -ldl -lm -lpthread`.
+Final link (handled by `remote_linux.build_binary`): `... libomp.a -lstdc++ -ldl -lm -lpthread`.

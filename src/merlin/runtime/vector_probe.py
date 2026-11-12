@@ -234,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     brd = _board(a.board)
+    if brd.dram_base is None or brd.dram_bytes is None:
+        ap.error(f"board {brd.name} ({brd.flow}) has no physical DRAM window for a bare-metal probe image")
     work = Path(tempfile.mkdtemp(prefix="vlen_probe_"))
     elf = build(work, dram_base=brd.dram_base, dram_bytes=brd.dram_bytes, vlen=a.build_vlen)
     print(f"probe: {elf} ({elf.stat().st_size} bytes)")

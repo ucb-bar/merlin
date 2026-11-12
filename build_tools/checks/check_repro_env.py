@@ -2,10 +2,10 @@
 """Reproduction-environment preflight: report which experiment capabilities are runnable here.
 
 The experiment-reproduction roadmap runs across several external toolchains (model2MLIR + clang-23,
-spike rv64gcv, the SpacemiT K1 board, Gemmini spike/verilator/VCS/FireSim, CIRCT/firtool, chia agentic
+spike rv64gcv, SSH-reached Linux boards, Gemmini spike/verilator/VCS/FireSim, CIRCT/firtool, chia agentic
 loops, and the Anthropic API). Each degrades fail-closed — its tests skip and its runner records
 ``not_run`` rather than faking a result. This script asks every capability's OWN availability guard
-(``toolchain.available()``, ``spike.available()``, ``k1.available()``, ``gem.available(sim)``,
+(``toolchain.available()``, ``spike.available()``, ``remote_linux.available(board)``, ``gem.available(sim)``,
 ``chia_available()``, ``vcs_available()``, ``firesim_queue_alive()``) so you can see, before kicking off
 real runs, exactly what will really execute vs. skip — and why (which env var to set).
 
@@ -15,7 +15,10 @@ per-capability so one missing dependency can't sink the whole report.
 Usage:
   check_repro_env.py                     # human-readable table (always exit 0)
   check_repro_env.py --json              # machine-readable
-  check_repro_env.py --require spike_rv64gcv,k1_board   # exit 1 unless all named caps are available
+  check_repro_env.py --require spike_rv64gcv,<board>_board   # exit 1 unless all named caps are available
+
+A ``<board>_board`` row exists for every ``flow: linux`` board of the selected board catalog
+(MERLIN_BOARD_CATALOG); its access variables derive from the board name (MERLIN_<BOARD>_HOST, ...).
 """
 
 from __future__ import annotations
@@ -43,11 +46,6 @@ _BASE_CAPABILITIES: dict[str, tuple[str, str, list[str]]] = {
         ["MERLIN_M2M_DIR", "MERLIN_M2M_VENV", "MERLIN_CLANG", "MERLIN_IREE_BIN"],
     ),
     "spike_rv64gcv": ("WS-A/D", "spike rv64gcv RVV oracle", ["MERLIN_CHIPYARD", "MERLIN_SPIKE", "MERLIN_RISCV_GCC"]),
-    "k1_board": (
-        "WS-A/D",
-        "SpacemiT K1 board (real cycles)",
-        ["MERLIN_K1_HOST", "MERLIN_K1_SSH_KEY", "MERLIN_K1_TOOLCHAIN"],
-    ),
     "firesim": ("WS-B", "FireSim job queue (L5)", ["MERLIN_EXT_FIRESIM_QUEUE", "FIRESIM_ROOT"]),
     "zephyr_spike": (
         "WS-A/C",
@@ -108,6 +106,22 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
     Registry/contract failures degrade to the base rows only (never fatal)."""
     caps: dict[str, tuple[str, str, list[str]]] = dict(_BASE_CAPABILITIES)
     derived: dict[str, tuple[str, str]] = {}
+    # One row per `flow: linux` board of the selected catalog, probed by remote_linux.available. The
+    # variable names derive from the board name, so a new board needs a catalog entry, not an edit here.
+    try:
+        from merlin.common.paths import target_env_name
+        from merlin.runtime import boards as board_catalog
+
+        for board_name, board in board_catalog.BOARDS.items():
+            if board.flow == board_catalog.FLOW_LINUX:
+                key = f"{board_name}_board"
+                hints = [target_env_name(board_name, what) for what in ("HOST", "SSH_KEY", "TOOLCHAIN")]
+                caps[key] = ("WS-A/D", f"{board_name}: Linux board over SSH (real silicon)", hints)
+                derived[key] = (board_name, _REMOTE_LINUX)
+    except Exception as exc:  # an unreadable catalog is reported as an error row, never dropped
+        detail = f"board catalog unreadable: {type(exc).__name__}: {exc}"
+        caps["linux_boards"] = ("WS-A/D", "flow: linux boards of the selected board catalog", ["MERLIN_BOARD_CATALOG"])
+        derived["linux_boards"] = (detail, _CATALOG_ERROR)
     try:
         from merlin.targetgen import target_registry as tr
 
@@ -126,13 +140,29 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
     return caps, derived
 
 
+#: The derived-row label of a `flow: linux` board; its first element is then the BOARD name.
+_REMOTE_LINUX = "remote_linux"
+#: The derived-row label of a board catalog that could not be read; its first element is the error.
+_CATALOG_ERROR = "board_catalog_error"
+
+
 def _backend_probe(target: str, backend: str) -> tuple[str, str]:
     """Probe a target's declared execution substrate. Dispatches on the DECLARED backend label (from the
     contract's ``runtime.backends``), never on the target name, so any target declaring the same substrate
     is probed identically. RTL kernel simulators (``verilator`` / ``spike_*``) resolve the target's own
     kernel backend from the runtime backend REGISTRY (``base.get_backend``) — registry-driven, no per-
     target branch."""
+    if backend == _CATALOG_ERROR:
+        return ("error", target)
     try:
+        if backend == _REMOTE_LINUX:
+            rl = importlib.import_module("merlin.runtime.remote_linux")
+            board = rl.resolve_board(target)
+            host = rl.profile(board).host
+            return (
+                "available" if rl.available(board) else "unavailable",
+                host or f"{rl.env_name(board, 'HOST')} unset",
+            )
         if backend == "simulator":
             return ("available", "pure-Python model (merlin.runtime.simulator)")
         if backend == "vcs":
@@ -172,12 +202,6 @@ def _probe(key: str) -> tuple[str, str]:
         if key == "spike_rv64gcv":
             sp = importlib.import_module("merlin.runtime.backends.spike")
             return ("available" if sp.available() else "unavailable", "")
-        if key == "k1_board":
-            k1 = importlib.import_module("merlin.mining.k1")
-            return (
-                "available" if k1.available() else "unavailable",
-                os.environ.get("MERLIN_K1_HOST", "MERLIN_K1_HOST unset"),
-            )
         if key == "firesim":
             ho = importlib.import_module("merlin.targetgen.heavy_oracles")
             return ("available" if ho.firesim_queue_alive() else "unavailable", "")

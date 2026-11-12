@@ -15,7 +15,7 @@ compiled model via its MLIR C-runtime interface. Hand-authored source (cannot be
 - Target-specific codegen (that's a target/backend concern). Compiled objects/ELFs → `build/`.
 
 ## Used by
-`merlin.runtime.backends.{spike_model,zephyr_model}`, `merlin.mining.k1`.
+`merlin.runtime.backends.{spike_model,zephyr_model}`, `merlin.runtime.remote_linux`.
 
 ## Notes
 `c/{merlin_hal.h,hal_linux.c,hal_baremetal_spike.c}` are **tracked** (`git ls-files src/merlin/runtime/native/c`)
