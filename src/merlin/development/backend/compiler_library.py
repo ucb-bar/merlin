@@ -115,35 +115,6 @@ def append_guidance(workspace, run_dir, record, selection, *, repo=None, descrip
     from merlin.development.backend.author_profiles import current
 
     profile = current()
-    if profile is not None and profile.fresh10:
-        from merlin.development.backend import fresh10_disclosure, fresh10_sources
-        from merlin.development.backend.full_compiler_workspace import selected as full_selection
-
-        full = full_selection()
-        if profile.current_library:
-            # Current reviewed sources and SDK, each already bound by its own sealed selection.
-            entries = tuple(module for _path, _digest, module in full.members)
-        else:
-            fresh10_sources.verify_sources(profile.name, full)
-            fresh10_sources.verify_library(profile.name, selection)
-            entries = fresh10_sources.entry_modules(profile.name)
-        details = json.dumps(full.record(), sort_keys=True, indent=2) + "\n"
-        library_details = json.dumps(selection.record(), sort_keys=True, indent=2) + "\n"
-        for directory in (workspace, run_dir):
-            (directory / "FULL_COMPILER_SOURCE_SELECTION.json").write_text(details)
-            (directory / "COMPILER_LIBRARY_API.json").write_text(library_details)
-        if profile.allows("transform_library"):
-            inventory = {
-                "public_modules": [{"module": module} for module in entries],
-                "contract_sha256": full.manifest_sha256,
-            }
-            guidance = _performance_guidance(workspace, run_dir, inventory, repo=repo, descriptor=descriptor)
-            guidance = fresh10_disclosure.filter_markdown(guidance, library=True, references=False)
-            for directory in (workspace, run_dir):
-                (directory / "SELECTED_LIBRARY_GUIDANCE.md").write_text(guidance)
-        # Common TASK assembly owns the objective and all correctness/runtime
-        # obligations; selected-library advice is an explicit separate surface.
-        return
     if profile is not None and not profile.modern:
         return
     from merlin.development.backend.full_compiler_workspace import selected as full_selection

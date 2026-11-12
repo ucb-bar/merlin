@@ -460,34 +460,6 @@ def stage_launch_references(manifest, destination, prefixes):
     return staged
 
 
-def require_bank_raw_references(ctx, manifest, profile):
-    """A bank arm's reviewed references are exactly its pinned bank's raw list, by bytes.
-
-    A raw-originals arm's are exactly the study's pinned originals (its bank, if any, holds them all).
-    """
-    originals = getattr(profile, "raw_originals", False)
-    if getattr(profile, "bank_sha256", None) is None and not originals:
-        return
-    from merlin.development.backend import fresh10_profiles as F10
-    from merlin.development.backend.author_profiles import bank_raw_sha256
-
-    document = json.loads(Path(manifest).read_text())
-    if document.get("schema") != "operator.allowed_reference_sources.v2":
-        raise SpecError("a CCA bank or raw-originals arm requires a v2 reviewed reference manifest")
-    listed = sorted(member["sha256"] for origin in document["origins"] for member in origin["files"])
-    if originals and listed != sorted(F10.COVERAGE_RAW_REFERENCE_SHA256):
-        raise SpecError("a raw-originals arm's public references must be exactly the pinned originals")
-    if getattr(profile, "bank_sha256", None) is None:
-        return
-    bank = cca_bank_selection(ctx, ctx.section("inputs"), profile)
-    try:
-        expected = bank_raw_sha256(bank[0])
-    except (OSError, ValueError, KeyError, TypeError) as error:
-        raise SpecError(f"inputs.cca_bank raw list is invalid: {error}") from error
-    if listed != expected:
-        raise SpecError("a CCA bank arm's public references must be exactly its bank's raw originals")
-
-
 def profile_reference_manifest(ctx, section, destination, profile):
     """Stage reviewed examples, or require an explicit profile-bound absence.
 
@@ -505,7 +477,6 @@ def profile_reference_manifest(ctx, section, destination, profile):
         return None
     if selected is None:
         raise SpecError("this author profile requires its reviewed public references")
-    require_bank_raw_references(ctx, ctx.path(selected) / "reference-manifest.json", profile)
     return stage_launch_references(
         ctx.path(selected) / "reference-manifest.json",
         destination,
@@ -528,7 +499,6 @@ def planned_reference_manifest(ctx, plan, profile):
     if selected is None:
         raise SpecError("this plan requires its reviewed public reference manifest")
     references = ctx.path(selected)
-    require_bank_raw_references(ctx, references, profile)
     prefixes = ctx.section("inputs").get("forbidden_reference_prefixes") or ()
     forbidden = forbidden_references(reference_members(json.loads(references.read_text())), prefixes)
     if forbidden:
@@ -585,22 +555,6 @@ def cca_bank_selection(ctx, section, profile):
     return (path, pin)
 
 
-def require_coverage_isolation(plan, environment, profile, guidance):
-    """Coverage and raw-originals arms receive no reference map, guidance or reference-experiment packet."""
-    if not (getattr(profile, "coverage", False) or getattr(profile, "raw_originals", False)):
-        return
-    if (
-        plan.get("reference_map") is not None
-        or plan.get("reference_experiments") is not None
-        or guidance != "off"
-        or any(key.startswith("MERLIN_REFERENCE") for key in environment)
-    ):
-        raise SpecError(
-            "coverage arms take no reference map, guidance, reference experiments or "
-            "MERLIN_REFERENCE* environment; a bank arm's bank is its only CCA input"
-        )
-
-
 def require_bank_dependencies(environment, profile):
     """Bank arms verify their bank in the broker: merlin-mining must be on its PYTHONPATH."""
     if getattr(profile, "bank_sha256", None) is None:
@@ -641,15 +595,6 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
         library_version=int(section["library_version"]),
         reviewed_module=tuple(section.get("reviewed_modules") or ()),
     )
-    if (
-        profile is not None
-        and profile.name.startswith("fresh10-tooling-v1/")
-        and not getattr(profile, "current_library", False)
-    ):
-        # Current-library arms keep the reviewed library just prepared, as the coverage arms do.
-        from merlin.development.backend.fresh10_sources import project_author_library
-
-        report = {**report, **project_author_library(out / "author-library", profile.name, repo=framework)}
     contract = report["contract_sha256"]
     print(json.dumps({"stage": "author_library", "contract": contract, "members": report["members"]}), flush=True)
 
@@ -833,8 +778,6 @@ def profile_omitted_flags(profile):
     """Keep argument construction and input admission on the same capability boundary."""
     if profile is None or profile.seeded:
         return set()
-    if profile.name.startswith("fresh10-tooling-v1/"):
-        return set() if profile.allows("transform_library") else {"--required-shared-pass"}
     removed = {
         "--compiler-library-root",
         "--compiler-library-contract",
@@ -856,12 +799,7 @@ def profile_campaign_argv(profile, argv):
         else:
             filtered.append(argv[cursor])
             cursor += 1
-    if (
-        profile is not None
-        and not profile.seeded
-        and not profile.name.startswith("fresh10-tooling-v1/")
-        and "--compiler-access" in filtered
-    ):
+    if profile is not None and not profile.seeded and "--compiler-access" in filtered:
         filtered[filtered.index("--compiler-access") + 1] = (
             "selected_library" if profile.level == 1 else "full_compiler"
         )
@@ -968,7 +906,6 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     if effort and "--author-helper-effort" not in argv:
         argv += ["--author-helper-effort", str(effort)]
     environment = {key: ctx.x(value) for key, value in plan["environment"].items()}
-    require_coverage_isolation(plan, environment, author_profile, ctx.reference_guidance)
     require_bank_dependencies(environment, author_profile)
     reference_map = pin_reference_map(ctx, plan, output, references)
     if reference_map is not None:

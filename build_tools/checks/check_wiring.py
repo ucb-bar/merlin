@@ -353,11 +353,7 @@ def unwired() -> list[str]:
             if name in imported_by and candidates[name] != path.resolve():
                 imported_by[name].add(path)
     prompt_candidates = {**candidates, **{old: candidates[new] for old, new in aliases.items()}}
-    scripts = (
-        _console_script_modules()
-        | _generated_prompt_module_commands(imported_by, prompt_candidates)
-        | wiring_sources.published_source_modules(ROOT)
-    )
+    scripts = _console_script_modules() | _generated_prompt_module_commands(imported_by, prompt_candidates)
     scripts = {aliases.get(name, name) for name in scripts}
     return sorted(
         str(candidates[name].relative_to(ROOT))

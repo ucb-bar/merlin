@@ -19,3 +19,8 @@ merlin/python/merlin/verify/proofs.py
 merlin/python/merlin/targetgen/oot_starterkit/passes.py
 merlin/python/merlin/targetgen/rtl/firrtl_scalar_cutpoints.py
 merlin/python/merlin/targetgen/rtl/gen_iface_irdl.py
+# growth-accepted: the retired fresh10 author profiles' published source inventory was the only
+# wiring for this module; with that inventory removed, no current code imports it (tooling
+# readiness names it only as a module the EL2/EL3 sandboxes must NOT import). Recorded until the
+# development/targetgen folder review decides to wire or delete it (2026-11-12).
+merlin/python/merlin/targetgen/oot_starterkit/transforms.py

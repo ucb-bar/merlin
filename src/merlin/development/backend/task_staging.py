@@ -619,16 +619,13 @@ def _build_task(
     never altered — the addendum only adds allowances, so grading stays apples-to-apples."""
     context = config.context
     bundle_dir, experiment = config.bundle_dir, config.experiment
-    profile = None
     if config.author_profile:
         from merlin.development.backend.author_profiles import resolve, task
 
-        profile = resolve(config.author_profile)
-        if not profile.fresh10:
-            body = task(profile)
-            for root in (ws, run_dir):
-                (root / "TASK.md").write_text(body)
-            return
+        body = task(resolve(config.author_profile))
+        for root in (ws, run_dir):
+            (root / "TASK.md").write_text(body)
+        return
     _te = partial(load_target_experiment, context.descriptor)
     _manifest = partial(load_capability_manifest, context.target)
     from merlin.development.backend.feedback import private_full_models as PFM
@@ -637,10 +634,7 @@ def _build_task(
         body = full_model_task(config, sandbox, task_scope)
         (ws / "TASK.md").write_text(body)
         shutil.copy(ws / "TASK.md", run_dir / "TASK.md")
-        # Fresh10 receives the generated full-model contract and its later
-        # capability-specific disclosure. Legacy bundle side documents can
-        # advertise services deliberately withheld by that selection.
-        for doc in () if profile is not None and profile.fresh10 else RI.MERLIN_WS_DOCS:
+        for doc in RI.MERLIN_WS_DOCS:
             src = bundle_dir / doc
             if src.exists():
                 shutil.copy(src, ws / doc)
@@ -781,11 +775,8 @@ def _build_task(
 def build_task(arm, ws, run_dir, sandbox="bwrap", *, config, task_scope=None, policy_root=None):
     _build_selected_task(arm, ws, run_dir, sandbox, config=config, task_scope=task_scope, policy_root=policy_root)
     if config.author_profile:
-        from merlin.development.backend.author_profiles import resolve
-
-        if not resolve(config.author_profile).fresh10:
-            verify_shared_pass_prompt(config, ws, run_dir)
-            return
+        verify_shared_pass_prompt(config, ws, run_dir)
+        return
     from merlin.experiments.corpus import public_program_suite as programs
 
     program_selection = programs.selected(load_target_experiment(config.context.descriptor))

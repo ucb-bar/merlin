@@ -11,16 +11,12 @@ import stat
 from pathlib import Path
 
 from merlin.development.backend.author_profiles import NO_EXPERT_NAMES, RAW_RTL_NAMES
-from merlin.development.backend.fresh10_profiles import NAMES as FRESH10_PROFILES
-from merlin.development.backend.fresh10_profiles import RAW_ORIGINALS_NAMES
 
 PROFILES = frozenset(
     (
         "xs-el-v1/el1",
         "xs-el-v1/el2",
         "xs-el-v1/el3",
-        *FRESH10_PROFILES,
-        *RAW_ORIGINALS_NAMES,
         *NO_EXPERT_NAMES,
         *RAW_RTL_NAMES,
     )

@@ -187,19 +187,14 @@ def selection(options) -> dict | None:
 
     profile = resolve(getattr(options, "author_profile", ""))
     enabled = True if option is None else parse_switch(option)
-    if profile is not None and not profile.modern and not profile.fresh10:
+    if profile is not None and not profile.modern:
         enabled = False
     record = {"schema": SCHEMA, "enabled": enabled, "source": "default" if option is None else "option"}
     if not enabled:
         return record
     skills = collect()
-    if profile is not None and profile.fresh10:
-        from merlin.development.backend.fresh10_disclosure import skill_sources
-
-        skills = skill_sources(skills, profile.name)
     return {
         **record,
-        **({"author_profile": profile.name} if profile is not None and profile.fresh10 else {}),
         "roots": {name: root.as_posix() for name, root in sorted(ROOTS.items())},
         "skills": sorted(skills),
         "n_files": sum(len(files) for files in skills.values()),
@@ -231,10 +226,6 @@ def stage(ws: Path, run_dir: Path, record: Mapping) -> dict:
     """Write every skill under every root and record the files; refuses to overwrite anything."""
     ws, run_dir = Path(ws), Path(run_dir)
     skills = collect()
-    if record.get("author_profile"):
-        from merlin.development.backend.fresh10_disclosure import skill_sources
-
-        skills = skill_sources(skills, record["author_profile"])
     if record.get("schema") != SCHEMA or not record.get("enabled"):
         raise RuntimeError("author skills staging requires an enabled selection record")
     if digest(skills) != record.get("sha256") or sorted(skills) != record.get("skills"):

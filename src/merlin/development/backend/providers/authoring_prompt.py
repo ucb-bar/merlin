@@ -81,7 +81,7 @@ def profile_authoring_prompt(*, continuation: bool = False) -> str | None:
     from merlin.development.backend.author_profiles import current
 
     profile = current()
-    if profile is None or profile.modern or profile.fresh10:
+    if profile is None or profile.modern:
         return None
     return ("Continue developing the same compiler. " if continuation else "Develop one general compiler. ") + (
         "Read TASK.md, AUTHOR_PROFILE.json, applicable workspace instructions and the current "
@@ -118,17 +118,7 @@ def authoring_prompt() -> str:
         return selected_profile_prompt
 
     from merlin.development.backend import joint_control
-    from merlin.development.backend.author_profiles import current
     from merlin.development.backend.full_compiler_workspace import selected as full_compiler_selected
-
-    profile = current()
-    if profile is not None and profile.fresh10:
-        from merlin.development.backend.fresh10_disclosure import author_prompt
-
-        return author_prompt(
-            _full_compiler_prompt(joint_control.selfcheck_routing_guidance() if joint_control.selected() else ""),
-            continuation=profile.seeded,
-        )
 
     if full_compiler_selected() is not None:
         return _full_compiler_prompt(joint_control.selfcheck_routing_guidance() if joint_control.selected() else "")

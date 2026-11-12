@@ -130,9 +130,6 @@ def selection(options) -> dict | None:
         return None
     limit = DEFAULT_COMPACT_LIMIT if limit_option is None else parse_limit(limit_option)
     prompt = compact_prompt() if limit is not None else None
-    from merlin.development.backend.author_profiles import resolve
-
-    profile = resolve(getattr(options, "author_profile", ""))
     return {
         "schema": SCHEMA,
         LIMIT_KEY: limit,
@@ -142,11 +139,6 @@ def selection(options) -> dict | None:
         "task_skills_source": "default" if skills_option is None else "option",
         # Staged author skills carry the feedback-file guide in place of the generated one.
         **({"feedback_skill": guide} if (guide := _feedback_guide(options)) is not None else {}),
-        **(
-            {"library_inventory_advice": profile.allows("catalog_advice")}
-            if profile is not None and profile.fresh10
-            else {}
-        ),
         "scope": (
             "frozen Codex home compaction keys and workspace skills; TASK.md bytes, tools, grants and sandbox unchanged"
         ),
@@ -183,8 +175,6 @@ def _validated(record) -> dict:
         raise ValueError("recorded compaction prompt has no compaction limit")
     if not isinstance(record.get("task_skills"), bool):
         raise ValueError("recorded author task skills selection is malformed")
-    if "library_inventory_advice" in record and not isinstance(record["library_inventory_advice"], bool):
-        raise ValueError("recorded library inventory advice selection is malformed")
     return record
 
 
@@ -239,11 +229,7 @@ def round_note(record: Mapping | None, capacity: int | None) -> str:
             f"need instead of the whole file. qa/{grade_summary.FILENAME} is a one-line-per-test-case view "
             f"of qa/{completed_grade.FILENAME}, regenerated with every completed grade."
         )
-    if (
-        record.get("task_skills")
-        and record.get("feedback_skill") is not None
-        and record.get("library_inventory_advice", True)
-    ):
+    if record.get("task_skills") and record.get("feedback_skill") is not None:
         parts.append(LIBRARY_INVENTORY_NOTE)
     if record.get(LIMIT_KEY) is not None:
         parts.append(

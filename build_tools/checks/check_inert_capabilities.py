@@ -1044,9 +1044,6 @@ def detect_dead_env_knob(corpus: _Corpus, prefix: str, mention_roots: list[Path]
 def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
     """A module-PRIVATE def/class nothing names. Restricted to ``_``-prefixed names on purpose:
     a public symbol may be someone's API, and calling it dead would be a guess."""
-    import wiring_sources
-
-    published = wiring_sources.published_source_modules(corpus.root)
     referenced: set[str] = set()
     defined: dict[str, list[tuple[str, int]]] = {}
     for path, tree in corpus.all_trees().items():
@@ -1065,13 +1062,6 @@ def detect_unreferenced_def(corpus: _Corpus) -> list[Finding]:
                     referenced.add(node.asname)
         if not in_scan:
             continue
-        module = (
-            ".".join(path.relative_to(corpus.root / "src").with_suffix("").parts)
-            if path.is_relative_to(corpus.root / "src")
-            else None
-        )
-        if module in published:
-            continue  # The exact body is actually copied into a selected source library.
         for node in tree.body:  # module level only
             if (
                 isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))

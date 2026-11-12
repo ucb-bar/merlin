@@ -125,11 +125,10 @@ def _public_object_build_budget(value: str) -> int:
 
 
 def author_profile_names():
-    """Every selectable versioned author profile, including the pinned CCA coverage bank arms."""
-    from merlin.development.backend import fresh10_profiles as F10
+    """Every selectable versioned author profile."""
     from merlin.development.backend.author_profiles import NAMES
 
-    return tuple(dict.fromkeys((*NAMES, *F10.coverage_names())))
+    return NAMES
 
 
 def build_parser(

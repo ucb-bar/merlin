@@ -41,8 +41,7 @@ def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
     """Source use through the existing arm-selected RTL tool staging flow.
 
     A registry path alone is inert. Require its selection by the live producer,
-    the original source enumeration and the actual byte-copy consumer. Frozen
-    fresh10 payload pins retain their separate exact-byte interpretation.
+    the original source enumeration and the actual byte-copy consumer.
     """
     loader = _function(tree, "_tool_sources")
     prepare = _function(tree, "prepare_shared_source_release")
@@ -287,79 +286,9 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
-def published_source_modules(root: Path) -> set[str]:
-    """Bodies actually handed to compiler authors are inputs, not host calls.
-
-    The pinned fresh10 producer verifies and copies every full member into a
-    selected compiler workspace. Counting this source use preserves the same
-    boundary as literal module_source_path reads. It grants no new source and
-    does not claim any exported function executed or any result was verified.
-    """
-    base = root / "src/merlin/development/backend"
-    producer, staging = base / "fresh10_sources.py", base / "full_compiler_workspace.py"
-    inventory = base / "fresh10_profile_data.json"
-    if not all(p.is_file() for p in (producer, staging, inventory)):
-        return set()
-    tree = ast.parse(producer.read_text(encoding="utf-8"))
-    prepare = _function(tree, "prepare_sources")
-    stage = _function(ast.parse(staging.read_text(encoding="utf-8")), "stage")
-    if (
-        prepare is None
-        or stage is None
-        or not all(_calls(prepare, name) for name in ("_rows", "_payload", "F.select", "verify_sources"))
-        or not all(_calls(stage, name) for name in ("path.open", "stream.write", "_read"))
-    ):
-        return set()
-    stage_forms = {ast.unparse(n) for n in ast.walk(stage)}
-    if not {"payload = _read(selection.root, relative)", "path.open('xb')", "stream.write(payload)"} <= stage_forms:
-        return set()
-    pinned = next(
-        (
-            n.value.value
-            for n in tree.body
-            if isinstance(n, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == "DATA_SHA256" for t in n.targets)
-            and isinstance(n.value, ast.Constant)
-        ),
-        None,
-    )
-    raw = inventory.read_bytes()
-    if hashlib.sha256(raw).hexdigest() != pinned:
-        raise ValueError("published compiler source inventory differs from its producer pin")
-    data = json.loads(raw)
-    if data.get("schema") != "merlin.fresh10_tooling_projection.v1":
-        raise ValueError("published compiler source inventory has an unsupported schema")
-    # Directories moved by a reorganization (current prefix -> former prefix in source_moves.json): a
-    # recorded member is found at its current place, and still admitted only on identical bytes.
-    moves = json.loads((Path(__file__).with_name("source_moves.json")).read_text(encoding="utf-8"))
-    moved_dirs = sorted(((old, new) for new, old in moves.items() if new.endswith("/")), key=lambda t: -len(t[0]))
-    admitted = set()
-    for profile in data["profiles"].values():
-        for row in profile["full_members"]:
-            module = row.get("module")
-            if type(module) is not str or not module.startswith("merlin."):
-                continue
-            relative = row.get("source_relative", "src/" + row["path"])
-            for old, new in moved_dirs:
-                if relative.startswith(old):
-                    relative = new + relative[len(old) :]
-                    module = ".".join(Path(relative[len("src/") :]).with_suffix("").parts)
-                    module = module[: -len(".__init__")] if module.endswith(".__init__") else module
-                    break
-            source = root / relative
-            if (
-                source.is_file()
-                and not any(p.is_symlink() for p in (source, *source.parents))
-                and source.resolve().is_relative_to(root.resolve())
-            ):
-                if hashlib.sha256(source.read_bytes()).hexdigest() == row["sha256"]:
-                    admitted.add(module)
-    return admitted
-
-
 def compiler_source_inputs(root: Path) -> set[str]:
-    """Current closed source-copy rosters plus admitted versioned sources."""
-    names = published_source_modules(root)
+    """Current closed source-copy rosters."""
+    names = set()
     for relative in (
         "src/merlin/development/targetgen/tool_profile_shared.py",
         "src/merlin/development/backend/full_compiler_workspace.py",

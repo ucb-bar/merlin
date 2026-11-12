@@ -158,7 +158,7 @@ merlin = [
 ]
 
 "merlin.experiments" = ["resources/*.json"]
-"merlin.development.backend" = ["fresh10_profile_data.json", "author_skills/*/SKILL.md", "author_skills/*/scripts/*.py", "author_skills/*/reference/*.md"]
+"merlin.development.backend" = ["author_skills/*/SKILL.md", "author_skills/*/scripts/*.py", "author_skills/*/reference/*.md"]
 "merlin.experiments.execution" = ["container_guardian.c"]
 
 [tool.pytest.ini_options]

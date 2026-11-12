@@ -676,16 +676,7 @@ def _prepare(
     _author_profile = AP.resolve(a.author_profile)
     if _author_profile is not None:
         AP.verify_bundle(_author_profile, bundle)
-        if _author_profile.fresh10 and not _author_profile.current_library:
-            from merlin.development.backend.fresh10_sources import verify_library
-
-            verify_library(_author_profile.name, request.compiler_library_selection)
-        elif (
-            request.compiler_library_selection is not None
-            and not _author_profile.seeded
-            and not _author_profile.current_library
-        ):
-            # A from-scratch current-library arm takes the current reviewed library like coverage.
+        if request.compiler_library_selection is not None and not _author_profile.seeded:
             raise ValueError("scratch author profiles cannot acquire a legacy additional SDK")
     elif bundle.get("author_profile") is not None:
         raise ValueError("versioned profile bundle requires its explicit author-profile option")

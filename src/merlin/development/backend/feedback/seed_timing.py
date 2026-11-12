@@ -50,11 +50,6 @@ def _sha256(path: Path) -> str:
 
 def carried(elf: Path, *, capsule: str, key: dict, root: Path | None = None) -> dict | None:
     """The seed's ``{performance, compiler_diagnostics, seed_run}`` for exactly these bytes, else ``None``."""
-    from merlin.development.backend.author_profiles import current
-
-    profile = current()
-    if profile is not None and profile.fresh10 and not profile.seeded:
-        return None
     if (os.environ.get(ENV, "") or "").strip() == "0":
         return None
     root = _run_dir() if root is None else Path(root)
@@ -93,11 +88,6 @@ def carried(elf: Path, *, capsule: str, key: dict, root: Path | None = None) -> 
 
 def baseline(root: Path | None = None) -> dict:
     """``{case: seed row}`` from the run's seed baseline, or ``{}`` (not seeded)."""
-    from merlin.development.backend.author_profiles import current
-
-    profile = current()
-    if profile is not None and profile.fresh10 and not profile.seeded:
-        return {}
     root = _run_dir() if root is None else Path(root)
     if root is None:
         return {}

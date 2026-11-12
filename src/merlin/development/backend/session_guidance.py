@@ -54,7 +54,7 @@ def stage(
             require_public_members(
                 resource_policy, (row.get("name") for row in public_members if row.get("name") not in excluded)
             )
-        if _author_profile is not None and not _author_profile.fresh10:
+        if _author_profile is not None:
             from merlin.development.backend.profile_guidance import append_profile_guidance
 
             append_profile_guidance(
@@ -94,9 +94,7 @@ def stage(
         from merlin.development.backend.capability_inventory import stage_selected as stage_capabilities
 
         capability_append = (
-            stage_capabilities
-            if _author_profile is None or _author_profile.modern or _author_profile.fresh10
-            else (lambda *args, **kwargs: None)
+            stage_capabilities if _author_profile is None or _author_profile.modern else (lambda *args, **kwargs: None)
         )
         capability_append(
             ws,
@@ -114,10 +112,6 @@ def stage(
         stage_reference_map(ws, run_dir)  # the same pinned map in every arm, before the selection's section
         stage_guidance(ws, run_dir)
         stage_study(ws, run_dir, a)
-        if _author_profile is not None and _author_profile.fresh10:
-            from merlin.development.backend import fresh10_disclosure
-
-            fresh10_disclosure.stage_task(ws, run_dir, _author_profile.name, a)
         _skills_record = skill_configuration(_run_config) or {}
         if (context_selection(a) or {}).get("task_skills"):
             from merlin.development.backend.task_disclosure import stage as stage_disclosure

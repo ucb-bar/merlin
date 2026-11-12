@@ -37,7 +37,7 @@ def _component_selection(bundle):
     if record is None:
         return None
     profile = A.resolve(record.get("name"))
-    if profile is None or (profile.seeded and not profile.coverage) or (profile.level > 3 and not profile.fresh10):
+    if profile is None or profile.seeded or profile.level > 3:
         return None
     A.verify_bundle(profile, bundle)
     source = bundle.get("author_profile_sources")
@@ -48,18 +48,6 @@ def _component_selection(bundle):
     )
     A.verify_sources(profile, selection, bundle=bundle)
     return profile, selection
-
-
-def _coverage_sources(bundle):
-    """The sealed current full-compiler manifest of a current-library profile, else ``None``."""
-    from merlin.development.backend import author_profiles as A
-
-    record = bundle.get("author_profile")
-    profile = None if record is None else A.resolve(record.get("name"))
-    if profile is None or not profile.current_library:
-        return None
-    A.verify_bundle(profile, bundle)
-    return (bundle.get("author_profile_sources") or {})["manifest_sha256"]
 
 
 def _component_schema_path(bundle, *, repo=None):
@@ -90,10 +78,6 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
     if component is None:
         return ""
     profile, selection = component
-    if profile.current_library:
-        # The current full public compiler is no projection inventory to replay; import it from the
-        # staged candidate tree, where the sandbox authoring probe exercises its selected tools.
-        return "import sys\nfrom pathlib import Path\nsys.path.insert(0, str(Path.cwd() / 'compiler_library'))\n"
     lines = [
         "import hashlib, importlib, shutil, subprocess, sys",
         "from pathlib import Path",
@@ -101,35 +85,20 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
         "sys.path.insert(0, str(_sdk))",
     ]
     if selection is not None:
-        if profile.fresh10:
+        members = tuple((path, digest) for path, digest, _ in selection.members)
+        lines += [
+            f"_members = {members!r}",
+            "for _relative, _digest in _members:",
+            "    assert hashlib.sha256((_sdk / _relative).read_bytes()).hexdigest() == _digest, _relative",
+        ]
+        modules = {module: (path, digest) for path, digest, module in selection.members}
+        for name in profile.entries:
+            relative, digest = modules[name]
             lines += [
-                "import json",
-                "_raw_manifest = Path('profile-source-manifest.json').read_bytes()",
-                f"assert hashlib.sha256(_raw_manifest).hexdigest() == {selection.manifest_sha256!r}",
-                "_inventory = json.loads(_raw_manifest)",
-                "_modules = {row['module']: row for row in _inventory['members'] if row['module']}",
-                "for _row in _inventory['members']:",
-                "    assert hashlib.sha256((_sdk / _row['path']).read_bytes()).hexdigest() == _row['sha256'], _row['path']",
-                "for _name in _inventory['entry_modules']:",
-                "    _row = _modules[_name]",
-                "    _module = importlib.import_module(_name)",
-                "    assert Path(_module.__file__).resolve() == (_sdk / _row['path']).resolve(), _module.__file__",
+                f"_module = importlib.import_module({name!r})",
+                f"assert Path(_module.__file__).resolve() == (_sdk / {relative!r}).resolve(), _module.__file__",
+                f"assert hashlib.sha256(Path(_module.__file__).read_bytes()).hexdigest() == {digest!r}",
             ]
-        else:
-            members = tuple((path, digest) for path, digest, _ in selection.members)
-            lines += [
-                f"_members = {members!r}",
-                "for _relative, _digest in _members:",
-                "    assert hashlib.sha256((_sdk / _relative).read_bytes()).hexdigest() == _digest, _relative",
-            ]
-            modules = {module: (path, digest) for path, digest, module in selection.members}
-            for name in profile.entries:
-                relative, digest = modules[name]
-                lines += [
-                    f"_module = importlib.import_module({name!r})",
-                    f"assert Path(_module.__file__).resolve() == (_sdk / {relative!r}).resolve(), _module.__file__",
-                    f"assert hashlib.sha256(Path(_module.__file__).read_bytes()).hexdigest() == {digest!r}",
-                ]
         if profile.raw_rtl_study and profile.level == 2:
             lines += [
                 "from merlin.development.targetgen.oot_starterkit import iface",
@@ -153,7 +122,7 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
     negative = ["merlin.development.backend.session", "merlin.runtime.reference"]
     if profile.level == 1:
         negative += ["merlin", "xdsl.ir"]
-    elif not profile.fresh10:
+    else:
         negative += [
             "merlin.compiler.kernel_ir.ir",
             "merlin.compiler.transforms.dense_planning",
@@ -173,17 +142,6 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
                 ]
             else:
                 negative += ["xdsl.ir"]
-    if profile.fresh10:
-        negative += ["merlin.analysis.mining", "merlin.analysis.kernels", "merlin.compiler.dialects.cca"]
-        if not profile.allows("scheduling_semantics"):
-            negative += ["merlin.compiler.kernel_ir.ir", "merlin.compiler.dialects.schedule"]
-        if not profile.allows("transform_library"):
-            negative += [
-                "merlin.compiler.transforms.tensor_views",
-                "merlin.compiler.transforms.pipeline",
-                "merlin.compiler.schedule.dense_panel_epochs",
-                "merlin.compiler.kernel_ir.primitives",
-            ]
     for name in negative:
         lines += [
             "try:",
@@ -231,41 +189,6 @@ def _component_probe(bundle, *, repo=None, schema_path=None):
             "_parsed = Parser(make_llvm_context(), 'builtin.module {}').parse_module()",
             "assert verify_module(_parsed) == []",
         ]
-    if profile.fresh10 and profile.allows("scheduling_semantics"):
-        from merlin.development.backend.fresh10_semantics_probe import command
-
-        lines.append(command())
-    if profile.fresh10:
-        # An explicit synthetic metadata provider exercises the original APIs
-        # without relying on denied automatic corpus/provider discovery. No
-        # target backend, lowering, benchmark inputs or claimed facts are used.
-        lines += [
-            "import json, os",
-            "_provider = Path.cwd() / '_readiness_support'",
-            "(_provider / 'contracts').mkdir(parents=True)",
-            "_contract = {'name':'profile_readiness','version':1,'features':[],",
-            "             'ops':[],'types':[],'runtime':{'backends':[]}}",
-            "(_provider / 'contracts/target_contract.yaml').write_text(json.dumps(_contract))",
-            "_old_target_path = os.environ.get('MERLIN_TARGET_PATH')",
-            "_old_target_contract = os.environ.get('MERLIN_TARGET_CONTRACT')",
-            "os.environ['MERLIN_TARGET_PATH'] = str(_provider)",
-            "os.environ['MERLIN_TARGET_CONTRACT'] = str(_provider / 'contracts/target_contract.yaml')",
-            "try:",
-            "    from merlin.development.targetgen.evidence.store import Evidence",
-            "    from merlin.development.targetgen import synthesize as _synthesis",
-            "    _evidence = Evidence(target='profile_readiness', sources={})",
-            "    _contract = _synthesis.synthesize_target_contract(_evidence, 'profile_readiness')",
-            "    assert isinstance(_contract, dict) and _contract",
-            "    for _synth in (_synthesis.synthesize_dialect_plan, _synthesis.synthesize_runtime_adapter_plan,",
-            "                   _synthesis.synthesize_zephyr_plan, _synthesis.synthesize_llvm_extension_plan):",
-            "        assert _synth(_evidence, _contract)",
-            "finally:",
-            "    if _old_target_path is None: os.environ.pop('MERLIN_TARGET_PATH', None)",
-            "    else: os.environ['MERLIN_TARGET_PATH'] = _old_target_path",
-            "    if _old_target_contract is None: os.environ.pop('MERLIN_TARGET_CONTRACT', None)",
-            "    else: os.environ['MERLIN_TARGET_CONTRACT'] = _old_target_contract",
-            "print('SELECTED_FIVE_SYNTHESIS_APIS_OK')",
-        ]
     lines.append("print('COMPONENT_PROFILE_BOUNDARY_AND_APIS_OK')")
     return "\n".join(lines) + "\n"
 
@@ -302,25 +225,12 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
                 "no Merlin sources" if selection is None else selection.manifest_sha256,
             )
         )
-    coverage = _coverage_sources(bundle)
     for name in tools:
         if name == "cpp_oot_generators" and component is not None:
             checks.append(_check("grant:cpp_oot_generators:component_closure", True, component[1].manifest_sha256))
             continue
         spec = TR.spec(name)
         for logical in (*spec.bundle_paths, *(str(getattr(te, attr)) for attr in spec.derived_paths)):
-            if coverage is not None and logical.startswith("merlin/python/merlin/"):
-                # A seeded coverage profile stages the current reviewed full compiler in the
-                # candidate tree; the original broad source grants stay withheld, as in fresh10.
-                checks.append(_check(f"grant:{name}:{logical}:current_full_source", True, coverage))
-                continue
-            if component is not None and component[0].fresh10 and logical.startswith("merlin/python/merlin/"):
-                # Fresh10 removal profiles replace every original source grant
-                # with one hash-pinned module projection. Its public API list,
-                # import origins and actual five-tool roundtrips are checked;
-                # regranting the old broad SDK here would undo the treatment.
-                checks.append(_check(f"grant:{name}:{logical}:projected_source", True, component[1].manifest_sha256))
-                continue
             candidates = {logical}
             prefix = "merlin/python/merlin/"
             selected_logical = logical
@@ -466,14 +376,13 @@ def _sandbox_probe(
     common_profile_sha256: str | None = None,
     common_modules: tuple[str, ...] | None = None,
     withheld_cca: bool = False,
-    projected_source: bool = False,
 ) -> str:
     from merlin.development.backend.feedback import snapshot_execution
 
     external = snapshot_execution.selected()
     has = set(tools)
     lines = ["import json, subprocess, sys"]
-    if not external and not projected_source:
+    if not external:
         lines += _selected_library_probe().splitlines()
     if common_substrate and not external:
         from merlin.development.targetgen.tool_profile import COMMON_PUBLIC_MODULES
@@ -661,20 +570,14 @@ def public_probe_session(
                 argv += ["--rtl-facts", str(selected_facts)]
             with (channel / "broker.log").open("w", encoding="utf-8") as log:
                 processes.append(subprocess.Popen(inherited_python_command(argv), stdout=log, stderr=subprocess.STDOUT))
-        component = _component_selection(bundle)
-        fresh10 = component is not None and component[0].fresh10
         yield _component_probe(bundle, repo=context.repo, schema_path=component_schema) + _sandbox_probe(
             context.target,
             tools,
             _asm_probe(context) if "isa_tools" in tools else "",
-            common_substrate=(
-                bundle.get("compiler_tool_profile") is not None
-                and (not fresh10 or component[0].allows("transform_library"))
-            ),
+            common_substrate=bundle.get("compiler_tool_profile") is not None,
             common_profile_sha256=(bundle.get("compiler_tool_profile") or {}).get("sha256"),
             common_modules=tuple((bundle.get("compiler_tool_profile") or {}).get("common_public_modules", ())) or None,
             withheld_cca=_cca_withheld(bundle),
-            projected_source=fresh10,
         )
     finally:
         for channel in channels:
@@ -699,12 +602,8 @@ def _live_probe(context, te, ws: Path, bundle: dict, tools: tuple[str, ...]) -> 
             from merlin.development.backend.full_compiler_workspace import stage
 
             stage(component[1], probe_ws)
-            if component[0].fresh10:
-                manifest = probe_ws / "profile-source-manifest.json"
-                manifest.write_bytes(component[1].manifest_path.read_bytes())
-                manifest.chmod(0o444)
         probe_schema = None
-        if component is not None and (component[0].level == 3 or component[0].fresh10):
+        if component is not None and component[0].level == 3:
             source = _component_schema_path(bundle, repo=context.repo)
             [frozen] = BW.snapshot_input_paths(ws, bundle, [source], repo=context.repo)
             # This is the same explicit public data an authored package can copy.

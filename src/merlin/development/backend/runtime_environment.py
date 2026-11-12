@@ -94,13 +94,7 @@ def prepare_runtime_environment(
         remove(author_profiles.ENV)
     else:
         set_value(author_profiles.ENV, profile.name)
-        if profile.fresh10:
-            for key in tuple(environment):
-                if key.startswith("MERLIN_REFERENCE") and not (
-                    key == "MERLIN_REFERENCE_MAP" and profile.raw_kernel_references and not profile.current_library
-                ):
-                    remove(key)
-        elif not profile.modern:
+        if not profile.modern:
             for key in tuple(environment):
                 if key.startswith("MERLIN_REFERENCE"):
                     remove(key)

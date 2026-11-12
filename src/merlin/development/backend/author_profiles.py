@@ -20,14 +20,10 @@ SCRATCH_NAMES = tuple("xs-el-v1/el" + str(level) for level in range(1, 5))
 SEEDED_NAMES = ("xs-f6-v1/inherited", "xs-f6-v1/dense-epochs")
 NO_EXPERT_NAMES = tuple("xs-el-no-expert-v1/el" + str(level) for level in range(1, 4))
 RAW_RTL_NAMES = tuple("xs-el-raw-rtl-v2/el" + str(level) for level in range(1, 4))
-from merlin.development.backend import fresh10_profiles as F10
 
 NAMES = (
     *SCRATCH_NAMES,
     *SEEDED_NAMES,
-    *F10.NAMES,
-    *F10.COVERAGE_NAMES,
-    *F10.RAW_ORIGINALS_NAMES,
     *NO_EXPERT_NAMES,
     *RAW_RTL_NAMES,
 )
@@ -100,31 +96,12 @@ class AuthorProfile:
 
     @property
     def seeded(self):
-        return self.name in SEEDED_NAMES or self.coverage
-
-    @property
-    def fresh10(self):
-        return self.name in F10.NAMES or self.name in F10.RAW_ORIGINALS_NAMES or self.coverage
-
-    @property
-    def coverage(self):
-        """A seeded fresh10 continuation on the current reviewed compiler (CCA coverage study)."""
-        return self.name in F10.coverage_names()
-
-    @property
-    def raw_originals(self):
-        """A from-scratch fresh10 arm whose raw grant is exactly the pinned originals (no seed)."""
-        return self.name in F10.RAW_ORIGINALS_NAMES
-
-    @property
-    def current_library(self):
-        """Stages the current reviewed full compiler and library, never the fresh10 projection."""
-        return self.coverage or self.raw_originals
+        return self.name in SEEDED_NAMES
 
     @property
     def bank_sha256(self):
-        """The pinned precomputed CCA bank of a bank arm; None for every other profile."""
-        return F10.resolve(self.name).bank_sha256 if self.fresh10 else None
+        """The pinned precomputed CCA bank this profile is served; no current profile selects one."""
+        return None
 
     @property
     def raw_rtl_study(self):
@@ -150,23 +127,13 @@ class AuthorProfile:
 
     @property
     def raw_kernel_references(self):
-        if self.name in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES):
-            return False
-        return F10.resolve(self.name).raw_kernel_references if self.fresh10 else True
+        return self.name not in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES)
 
     def allows(self, capability):
-        if self.fresh10:
-            return F10.resolve(self.name).allows(capability)
         return self.modern
 
     @property
     def entries(self):
-        if self.current_library:
-            return None  # The complete current reviewed public compiler (seeded or from scratch).
-        if self.fresh10:
-            from merlin.development.backend import fresh10_sources
-
-            return fresh10_sources.entry_modules(self.name)
         if self.raw_rtl_study and self.level == 2:
             from merlin.development.backend import raw_interface_sources
 
@@ -175,8 +142,6 @@ class AuthorProfile:
 
     @property
     def tools(self):
-        if self.fresh10:
-            return F10.TOOLS
         if self.raw_rtl_study and self.level == 2:
             return ()
         return (
@@ -191,51 +156,9 @@ class AuthorProfile:
 
     @property
     def modern(self):
-        return self.level == 4 and not self.fresh10
+        return self.level == 4
 
     def record(self):
-        if self.fresh10:
-            return dict(
-                schema=SCHEMA,
-                name=self.name,
-                level=self.level,
-                source_scope=(
-                    "current_reviewed_full_public" if self.current_library else "reviewed_fresh10_capability_removal"
-                ),
-                baseline_source_revision=None if self.current_library else F10.BASE_REVISION,
-                entry_modules=None if self.entries is None else list(self.entries),
-                tools=list(self.tools),
-                capabilities=F10.resolve(self.name).record(),
-                optimization_guidance=self.allows("catalog_advice"),
-                live_cca=False,
-                prior_reference_tasks=False,
-                historical_levels_unchanged=True,
-                **(
-                    {"seeded": True, "raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256)}
-                    if self.coverage and self.bank_sha256 is None
-                    else {}
-                ),
-                # A bank arm's raw grant is exactly its pinned bank's raw list, no other original.
-                **({"seeded": True} if self.coverage and self.bank_sha256 is not None else {}),
-                **(
-                    {
-                        "raw_reference_grant": "cca_bank_raw_list_only",
-                        "cca_bank_sha256": self.bank_sha256,
-                        "cca_bank_grant": BANK_GRANT,
-                        "cca_bank_service": "precomputed_selected_units_only",
-                    }
-                    if self.bank_sha256 is not None
-                    else {}
-                ),
-                # From scratch: every granted file by bytes, the 23 pinned originals (for the
-                # bank arm also exactly its all-originals bank's raw list plus the manifest).
-                **(
-                    {"raw_reference_sha256": sorted(F10.COVERAGE_RAW_REFERENCE_SHA256), "reference_map": False}
-                    | ({} if self.bank_sha256 is not None else {"raw_reference_grant": "pinned_originals_only"})
-                    if self.raw_originals
-                    else {}
-                ),
-            )
         return dict(
             schema=SCHEMA,
             name=self.name,
@@ -267,14 +190,12 @@ class AuthorProfile:
 def resolve(name):
     if not name:
         return None
-    if name not in NAMES and name not in F10.COVERAGE_BANKS:
+    if name not in NAMES:
         raise ValueError("unknown versioned author profile: " + str(name))
     levels = dict(zip((*SCRATCH_NAMES, *SEEDED_NAMES), range(1, 7), strict=True))
     levels.update(zip(NO_EXPERT_NAMES, range(1, 4), strict=True))
     levels.update(zip(RAW_RTL_NAMES, range(1, 4), strict=True))
-    return AuthorProfile(
-        name, 4 if name in (*F10.NAMES, *F10.RAW_ORIGINALS_NAMES, *F10.coverage_names()) else levels[name]
-    )
+    return AuthorProfile(name, levels[name])
 
 
 def current():
@@ -291,8 +212,6 @@ def validate_options(options):
     profile = resolve(getattr(options, "author_profile", ""))
     if profile is None:
         return None
-    if profile.fresh10:
-        F10.require_preparable(profile.name)
     if options.sandbox != "bwrap" or options.compiler_execution != "snapshot_external_v1":
         raise ValueError("versioned author profiles require isolated snapshot execution")
     if profile.seeded:
@@ -334,11 +253,6 @@ def verify_sources(profile, selection, *, bundle=None):
     document = json.loads(selection.manifest_path.read_bytes())
     if bundle is not None and bundle.get("author_profile_sources") != selection.record():
         raise ValueError("selected compiler sources differ from the sealed author profile")
-    if profile.current_library:
-        # The current reviewed full public compiler, prepared for exactly this profile.
-        if document.get("author_profile") != profile.record():
-            raise ValueError("compiler inventory belongs to another author profile")
-        return
     if profile.seeded:
         return  # The sealed explicit source pin, not a new SDK version, binds this inherited closure.
     if document.get("author_profile") != profile.record():
@@ -347,11 +261,6 @@ def verify_sources(profile, selection, *, bundle=None):
         from merlin.development.backend import raw_interface_sources
 
         raw_interface_sources.verify_sources(selection)
-        return
-    if profile.fresh10:
-        from merlin.development.backend import fresh10_sources
-
-        fresh10_sources.verify_sources(profile.name, selection)
         return
     if profile.entries is not None:
         if document.get("entry_modules") != list(profile.entries):
@@ -369,7 +278,7 @@ def prepare_sources(repo, destination, *, profile, review_id, source_selection=N
     profile = resolve(profile) if isinstance(profile, str) else profile
     if profile is None:
         raise ValueError("source preparation requires an explicit author profile")
-    if profile.seeded and not profile.coverage:
+    if profile.seeded:
         if isinstance(source_selection, dict):
             source_selection = full.select(
                 **{key: source_selection[key] for key in ("root", "manifest_path", "manifest_sha256")}
@@ -380,18 +289,7 @@ def prepare_sources(repo, destination, *, profile, review_id, source_selection=N
         raise ValueError("scratch author profile cannot select an inherited source tree")
     if profile.level == 1:
         return None
-    if profile.current_library:
-        from merlin.development.backend import fresh10_sources
-
-        F10.require_preparable(profile.name)
-        selection = full.prepare(
-            repo, destination, review_id=review_id, extra_modules=fresh10_sources.coverage_extra_modules(repo)
-        )
-    elif profile.fresh10:
-        from merlin.development.backend import fresh10_sources
-
-        selection = fresh10_sources.prepare_sources(repo, destination, profile.name, review_id)
-    elif profile.raw_rtl_study and profile.level == 2:
+    if profile.raw_rtl_study and profile.level == 2:
         from merlin.development.backend import raw_interface_sources
 
         selection = raw_interface_sources.prepare(repo, destination, review_id=review_id)
@@ -484,149 +382,6 @@ def _verify_no_expert_grants(bundle):
             raise ValueError("no-expert author profile exposes a reference bank through an ancestor grant")
 
 
-_REFERENCE_RECORDS = frozenset(("reference-manifest.json", "reference-selection.json"))
-
-
-BANK_GRANT = "cca-evidence"
-
-
-def _grant_root(row):
-    root = Path(row["path"])
-    return root if root.is_absolute() else Path.cwd() / root
-
-
-def _verify_coverage_references(bundle, *, content=True, bank_sha256=None, all_originals=False):
-    """Grant exactly the coverage study's pinned raw executables, read-only, and nothing derived.
-
-    Every supplied reference alias (bank, map, analysis, CCA product) counts as a grant, so a
-    second one refuses. The one bank holds the pinned original bytes plus its staged records.
-    A bank arm (``bank_sha256``) additionally holds exactly one read-only ``cca-evidence`` grant:
-    one precomputed condition payload whose bank.json has that SHA256 and verifies completely.
-    Its raw grant is then exactly that bank's ``raw`` list by bytes, never the Raw arm's full set.
-    ``all_originals`` (the from-scratch raw-originals arms) also requires that grant to be the whole
-    pinned originals set, so a bank arm's bank must have been prepared from every original.
-    """
-    _refuse_reference_maps(bundle, content=content)
-    rows = [row for row in bundle.get("allowed", ()) if expert_reference_grant(row)]
-    banks = [row for row in rows if row.get("as") == BANK_GRANT]
-    raw = [row for row in rows if row not in banks]
-    if bank_sha256 is None and banks:
-        raise ValueError("coverage profile requires exactly one read-only raw reference grant")
-    expected = sorted(F10.COVERAGE_RAW_REFERENCE_SHA256)
-    if bank_sha256 is not None:
-        if len(banks) != 1 or banks[0].get("mode") != "ro":
-            raise ValueError("coverage bank arm requires exactly one read-only cca-evidence bank grant")
-        _verify_bank_grant(bundle, banks[0], raw, bank_sha256, content=content)
-        expected = bank_raw_sha256(_grant_root(banks[0])) if _grant_root(banks[0]).is_dir() else None
-        if all_originals and expected is not None and expected != sorted(F10.COVERAGE_RAW_REFERENCE_SHA256):
-            raise ValueError("raw-originals bank arm requires a bank prepared from every pinned original")
-    rows = raw
-    if len(rows) != 1 or rows[0].get("as") != "reference-kernels" or rows[0].get("mode") != "ro":
-        raise ValueError("coverage profile requires exactly one read-only raw reference grant")
-    root = _grant_root(rows[0])
-    if not root.is_dir() or expected is None:
-        if content:
-            raise ValueError("coverage raw reference grant is unavailable for verification: " + str(root))
-        return
-    found = []
-    for path in sorted(root.rglob("*")):
-        if path.is_symlink():
-            raise ValueError("coverage raw reference grant contains an indirect path")
-        if path.is_file() and path.relative_to(root).as_posix() not in _REFERENCE_RECORDS:
-            found.append(hashlib.sha256(path.read_bytes()).hexdigest())
-    manifest = json.loads((root / "reference-manifest.json").read_bytes())
-    listed = sorted(member["sha256"] for origin in manifest.get("origins", ()) for member in origin.get("files", ()))
-    if sorted(found) != expected or listed != expected:
-        raise ValueError("coverage reference grant differs from the pinned raw executables")
-
-
-def _refuse_reference_maps(bundle, *, content):
-    """No historical or operator reference map reaches a coverage arm, under any alias.
-
-    Map-named aliases already count as reference grants. Every file grant is also checked by
-    exact bytes against the withheld historical maps and by its declared map schema.
-    """
-    from merlin.development.backend.feedback.reference_map import SCHEMA
-
-    if not content:
-        return
-    for row in bundle.get("allowed", ()):
-        if not row.get("path"):
-            continue
-        path = _grant_root(row)
-        if not path.is_file() or path.stat().st_size > 64 << 20:
-            continue
-        raw = path.read_bytes()
-        withheld = hashlib.sha256(raw).hexdigest() in F10.WITHHELD_REFERENCE_MAP_SHA256
-        try:
-            document = json.loads(raw)
-        except (UnicodeDecodeError, ValueError):
-            document = None
-        if withheld or isinstance(document, dict) and document.get("schema") == SCHEMA:
-            raise ValueError("coverage profile cannot receive a reference map")
-
-
-def _verify_bank_grant(bundle, row, raw, pin, *, content):
-    """One whole, pinned precomputed bank; no indirect path or ancestor grant can widen it."""
-    root = _grant_root(row)
-    for other in bundle.get("allowed", ()):
-        if other is row or not other.get("path"):
-            continue
-        # Any other grant equal to, above or inside the bank is a second (or wider) alias for it,
-        # e.g. the conditions/ folder holding every bank, or the corpus it was prepared from.
-        public = _grant_root(other)
-        if public == root or public in root.parents or root in public.parents:
-            raise ValueError("coverage bank grant is exposed or widened through another grant")
-    if not root.is_dir():
-        if content:
-            raise ValueError("coverage bank grant is unavailable for verification: " + str(root))
-        return
-    if any(part.is_symlink() for part in (root, *root.parents)):
-        raise ValueError("coverage bank grant contains an indirect path")
-    if any(path.is_symlink() or not (path.is_file() or path.is_dir()) for path in root.rglob("*")):
-        raise ValueError("coverage bank grant contains an indirect path")
-    try:
-        from merlin.analysis.mining.reference_subsets import verify_bank
-    except ImportError as error:
-        raise ValueError(
-            "coverage bank verification requires Merlin's mining workflow "
-            "(install 'merlin[mining]') on the preparation PYTHONPATH"
-        ) from error
-    if not (root / "bank.json").is_file() or hashlib.sha256((root / "bank.json").read_bytes()).hexdigest() != pin:
-        raise ValueError("coverage bank grant differs from the profile's pinned bank")
-    try:
-        bank = verify_bank(root)
-    except (OSError, KeyError, TypeError) as error:
-        raise ValueError("coverage bank grant failed verification") from error
-    if not bank.get("cca_enabled") or not bank.get("units"):
-        raise ValueError("coverage bank grant has no admitted CCA units")
-
-
-def bank_raw_sha256(root):
-    """A bank arm's required raw grant, by bytes, from its own pinned ``bank.json`` ``raw`` list.
-
-    Each must be one of the study's pinned originals, so a bank never widens the Raw arm's set.
-    A bank prepared from every original gets the Raw arm's exact grant (with the originals
-    manifest); any other bank gets exactly its raw list and no manifest naming other originals.
-    """
-    from collections import Counter
-
-    rows = json.loads((Path(root) / "bank.json").read_bytes()).get("raw")
-    if (
-        not isinstance(rows, list)
-        or not rows
-        or any(not isinstance(row, dict) or not F10._sha256(row.get("sha256")) for row in rows)
-    ):
-        raise ValueError("coverage bank lists no raw originals")
-    found = sorted(row["sha256"] for row in rows)
-    pinned = Counter(F10.COVERAGE_RAW_REFERENCE_SHA256)
-    if Counter(found) - pinned:
-        raise ValueError("coverage bank raw list names a file outside the study's pinned originals")
-    if Counter([*found, F10.COVERAGE_ORIGINALS_MANIFEST_SHA256]) == pinned:
-        return sorted(F10.COVERAGE_RAW_REFERENCE_SHA256)
-    return found
-
-
 def materialize_bundle(bundle, *, profile, common_allowed, source_selection=None):
     """Keep common public data explicit; retain old SDK leaves as host-only judge inputs.
 
@@ -670,8 +425,6 @@ def materialize_bundle(bundle, *, profile, common_allowed, source_selection=None
     verify_tool_profile(selected, tools=profile.tools)
     if not profile.raw_kernel_references:
         _verify_no_expert_grants(selected)
-    if profile.coverage or profile.raw_originals:
-        _verify_coverage_references(selected, bank_sha256=profile.bank_sha256, all_originals=profile.raw_originals)
     if profile.raw_rtl_study:
         from merlin.development.backend import raw_rtl_inputs
 
@@ -687,11 +440,6 @@ def verify_bundle(profile, bundle):
         raise ValueError("profile bundle exposes framework source outside its selected inventory")
     if not profile.raw_kernel_references:
         _verify_no_expert_grants(bundle)
-    if profile.coverage or profile.raw_originals:
-        # Content was pinned when the release was prepared; a sealed bundle may be reopened elsewhere.
-        _verify_coverage_references(
-            bundle, content=False, bank_sha256=profile.bank_sha256, all_originals=profile.raw_originals
-        )
     if profile.raw_rtl_study:
         from merlin.development.backend import raw_rtl_inputs
 
@@ -699,11 +447,6 @@ def verify_bundle(profile, bundle):
 
 
 def check_broker_action(action):
-    profile = current()
-    if profile is not None and profile.fresh10:
-        if not F10.broker_allowed(profile.name, action):
-            raise FileNotFoundError("service is withheld by the selected fresh10 capability profile")
-        return
     if not modern_advice() and action in {
         "common-transform",
         "common-check",
@@ -729,10 +472,6 @@ def stage_record(workspace, run_dir, profile, selection):
 
 
 def task(profile):
-    if profile.fresh10:
-        from merlin.development.backend import fresh10_disclosure
-
-        return fresh10_disclosure.capability_text(profile.name)
     if profile.raw_rtl_study:
         return raw_rtl_task(profile)
     language = "C++/MLIR" if profile.level < 3 else "Python/xDSL or C++/MLIR"
@@ -1016,33 +755,25 @@ def stage_release_bundles(experiment, te, *, profile, source_selection, common_i
     import yaml
 
     profile = resolve(profile)
-    if profile.fresh10:
-        if common_inputs != "fresh10_common":
-            raise ValueError("fresh10 profiles require their reviewed fresh10 common input selection")
-    elif common_inputs != "canonical_common":
+    if common_inputs != "canonical_common":
         raise ValueError("author profiles require explicit canonical_common input selection")
     records = []
     for path in sorted((Path(experiment) / "input_bundles").glob("*/input_bundle_manifest.yaml")):
         base = yaml.safe_load(path.read_text())
-        if profile.fresh10:
-            from merlin.development.backend import fresh10_sources
+        common = canonical_common(base, te, base.get("variant", "public_v0"))
+        if not profile.raw_kernel_references:
+            common = [row for row in common if not expert_reference_grant(row)]
+        if profile.raw_rtl_study:
+            from merlin.development.backend import raw_rtl_inputs
 
-            common = fresh10_sources.common_allowed(base, profile.name)
-        else:
-            common = canonical_common(base, te, base.get("variant", "public_v0"))
-            if not profile.raw_kernel_references:
-                common = [row for row in common if not expert_reference_grant(row)]
-            if profile.raw_rtl_study:
-                from merlin.development.backend import raw_rtl_inputs
-
-                base, common = raw_rtl_inputs.prepare(
-                    base,
-                    common,
-                    profile=profile,
-                    experiment=experiment,
-                    repo=te._source_root(),
-                    corpus_paths=(te.corpus_rel(), *te.corpus_siblings()),
-                )
+            base, common = raw_rtl_inputs.prepare(
+                base,
+                common,
+                profile=profile,
+                experiment=experiment,
+                repo=te._source_root(),
+                corpus_paths=(te.corpus_rel(), *te.corpus_siblings()),
+            )
         selected = materialize_bundle(base, profile=profile, common_allowed=common, source_selection=source_selection)
         path.write_text(yaml.safe_dump(selected, sort_keys=False))
         directory = path.parent
@@ -1051,7 +782,7 @@ def stage_release_bundles(experiment, te, *, profile, source_selection, common_i
         (directory / "tools.txt").write_text("".join(name + "\n" for name in profile.tools))
         (directory / "STARTER_PROMPT.md").write_text(task(profile))
         (directory / "ALLOWED_MERLIN_TOOLS.md").write_text(task(profile))
-        if profile.fresh10 or profile.name in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES):
+        if profile.name in (*NO_EXPERT_NAMES, *RAW_RTL_NAMES):
             # This independent copied document is discoverable even when the
             # full-model TASK path does not append it. Do not retain old CCA or
             # full-SDK advertisements outside the selected TASK disclosure.
