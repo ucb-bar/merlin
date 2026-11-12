@@ -92,6 +92,14 @@ class MatrixRouting:
         """
         return self.provider().geometry(unit=self.unit, config=self.config)[0]
 
+    def route_feature(self) -> str | None:
+        """The feature name that requests this routing, as the selected extension declares it."""
+        from merlin.targetgen.plugins import load_declared
+
+        bound = load_declared(self.support_target, "extension").bind(self)
+        name = getattr(bound, "route_feature_name", None)
+        return name() if callable(name) else None
+
     def selector(self) -> Callable[[Any], bool]:
         return self.select if self.select is not None else self.provider().selector(self.tile_edge())
 

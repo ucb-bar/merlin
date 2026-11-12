@@ -13,7 +13,7 @@
     },
     "family": {
       "type": "string",
-      "enum": ["circt_static", "simt_config", "opu"],
+      "enum": ["circt_static", "simt_config", "spatial_manifest"],
       "description": "Which extractor produced this artifact, and therefore which shape its body has. Taken from the producing family's own `fact_extractor` so the two cannot drift: a family added there arrives here, and an artifact claiming a family that does not exist is refused rather than read as the nearest one."
     },
     "generator": {
@@ -41,7 +41,7 @@
     "families": {
       "type": "array",
       "description": "Every extractor that contributed, for a HYBRID target whose declared compute-unit kinds route to more than one. Absent on a single-family artifact, so nothing that existed before grows a key. When it is present the body carries more than one family's shape at once by construction, so the single-family shape constraints below do not apply to it.",
-      "items": {"type": "string", "enum": ["circt_static", "simt_config", "opu"]},
+      "items": {"type": "string", "enum": ["circt_static", "simt_config", "spatial_manifest"]},
       "minItems": 2
     },
     "conflicts": {
@@ -155,7 +155,7 @@
       }
     },
     {
-      "if": {"required": ["family"], "properties": {"family": {"const": "opu"}}, "not": {"required": ["families"]}},
+      "if": {"required": ["family"], "properties": {"family": {"const": "spatial_manifest"}}, "not": {"required": ["families"]}},
       "then": {
         "anyOf": [
           {"required": ["unknown"]},

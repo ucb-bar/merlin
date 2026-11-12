@@ -5,7 +5,8 @@ The extension's instructions occupy reserved encoding slots, so no assembler kno
 
 * **An audit must decode the raw encoding word, not the mnemonic.** Every count here comes from
   extracting opcode / funct3 / funct6 out of the 32-bit word and comparing those integers against a
-  DERIVED encoding table (:mod:`targetgen.rtl.opu_isa`). Nothing string-matches a mnemonic, and nothing
+  DERIVED encoding table (the matrix provider's
+  ``derive_encodings``). Nothing string-matches a mnemonic, and nothing
   hardcodes a field value. This is also the difference between this tool and the one whose "100%
   coverage" claim was wrong: that one counted ``.insn`` occurrences in *source text*, which says what a
   programmer wrote, not what the compiler emitted or what the hardware will run.
@@ -36,7 +37,7 @@ __all__ = ["Audit", "Decoded", "audit", "decode_stream", "digest", "fields_of"]
 #: vector-format instruction splits funct7 into funct6[31:26] and vm[25].
 _OPCODE_MASK = 0x7F  # derived-ok: RISC-V base encoding — opcode is bits[6:0] of every 32-bit
 #                      word; a field WIDTH, not an opcode VALUE (the value is compared against
-#                      the derived table in targetgen.rtl.opu_isa, never against a literal here)
+#                      the provider-derived table, never against a literal here)
 _FUNCT3_SHIFT, _FUNCT3_MASK = 12, 0x7
 _FUNCT6_SHIFT, _FUNCT6_MASK = 26, 0x3F
 _VM_SHIFT = 25
@@ -76,7 +77,7 @@ def decode_stream(insns: Sequence[Any], encodings: Mapping[str, Any], roles_of=N
     """Name every instruction in a disassembly stream, using ``encodings`` for the unnameable ones.
 
     ``insns`` are :class:`kernels.decode.objdump.RawInsn`; ``encodings`` maps a name to anything
-    carrying ``opcode`` / ``funct3`` / ``funct6`` (i.e. an :class:`targetgen.rtl.opu_isa.Encoding`).
+    carrying ``opcode`` / ``funct3`` / ``funct6`` (i.e. a provider-derived encoding).
     Matching is on the three integers, so a spelling difference between the RTL's vocabulary and a
     header's cannot cause a miss, and a value is never compared as a string.
     """

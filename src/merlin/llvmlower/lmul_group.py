@@ -25,8 +25,7 @@ DERIVED from the contraction's element widths and the target's VLEN.
 
 The derivation (not a constant 4)
 ---------------------------------
-The floor is the same inequality :func:`merlin.kernels.cca_matrix.vtype_spans_tile_row` already
-states for the matrix path: a vtype at ``SEW``/``LMUL`` covers one full row of ``operand_bits``
+The floor is the inequality that also bounds a matrix unit's operand rows: a vtype at ``SEW``/``LMUL`` covers one full row of ``operand_bits``
 lanes exactly when ``LMUL * operand_bits >= SEW``. Read with ``SEW = acc_bits`` (the accumulator
 is what the vectorizer configures for a widening contraction) that says
 
@@ -163,7 +162,7 @@ def group_lmul(*, operand_bits: int, acc_bits: int, vlen: int | None = None, max
             f"acc_bits={acc_bits} is narrower than operand_bits={operand_bits}: an accumulator that "
             "loses bits against its own operands is a mis-declared datapath, not a group width"
         )
-    # FLOOR: LMUL * operand_bits >= acc_bits (cca_matrix.vtype_spans_tile_row, read with SEW=acc).
+    # FLOOR: LMUL * operand_bits >= acc_bits (a vtype spans a tile row; read with SEW=acc).
     lmul = _ladder_ceil(acc_bits / operand_bits)
     if (max_group_elems is None) != (vlen is None):
         raise LmulDerivationError(

@@ -95,7 +95,7 @@ __all__ = [
 ]
 
 #: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
-#: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
+#: treat it as "unchanged".
 UNKNOWN = "UNKNOWN"
 
 

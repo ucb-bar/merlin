@@ -357,7 +357,7 @@ class MeasuredCost:
     #: Units that need the left operand K-major. Not a target fact — a property the contract declares.
     requires_k_major: frozenset[str] = frozenset()
     #: Logical tile edge per unit, for units that quantize work into tiles. Absent -> costed elementwise.
-    #: Derived from the target (see ``kernels.opu_cert.logical_tile_edge``), never assumed here.
+    #: Derived from the target (the unit provider's logical tile edge), never assumed here.
     tile_edge: Mapping[str, int] = field(default_factory=dict)
     #: Fixed cycles charged ONCE PER TILE PAIR, for units whose per-tile overhead (loading operands into
     #: the array, draining the accumulator out of it) does not scale with the reduction.

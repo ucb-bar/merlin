@@ -99,12 +99,12 @@ def decode_for_endpoint(raws, target: str, endpoint):
 
     if kind == "matrix_units":
         from merlin.kernels import asm_audit as _aa
-        from merlin.kernels.decode import opu as _opu
+        from merlin.kernels.decode import matrix_units as _matrix_units
 
         encodings, _why = _aa._matrix_encodings(target, block)
         if not encodings:
             return []
-        decoded = _opu.decode_stream(raws, encodings, endpoint.roles_of)
+        decoded = _matrix_units.decode_stream(raws, encodings, endpoint.roles_of)
         for d in decoded:  # this decoder spells it `from_extension`; consumers read `from_endpoint`
             object.__setattr__(d, "from_endpoint", d.from_extension)
         return decoded

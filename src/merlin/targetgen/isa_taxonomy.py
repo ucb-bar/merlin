@@ -549,8 +549,8 @@ def clear_cache() -> None:
 # A matrix extension reached through the VECTOR opcode has no shipped ``isa_definition.py`` and no RoCC
 # ``encoding`` map, so neither regime above sees it and its class list came out EMPTY — which makes a
 # corpus's coverage expectation unfalsifiable (an empty required set is satisfied by emitting nothing).
-# Its encodings ARE derived, just by a different reader (:mod:`targetgen.rtl.opu_isa`, cross-checked
-# against the unit's own header), so this bridges that derivation into the same role-slot vocabulary the
+# Its encodings ARE derived, just by a different reader (the matrix provider's ``derive_encodings``,
+# cross-checked against the unit's own header), so this bridges that derivation into the same role-slot vocabulary the
 # taxonomy path uses.
 #
 # The class NAMES are the derived instruction names — whatever the unit's own RTL calls them — so nothing

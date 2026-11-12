@@ -547,28 +547,6 @@ register(
     )
 )
 
-OPU_MATMUL_NAME = "opu_matmul"
-
-register(
-    ImprFeature(
-        name=OPU_MATMUL_NAME,
-        action_class="PASS",
-        description=(
-            "Route int8 rank-2 contractions with a zero accumulator init to the certified outer-product "
-            "matrix microkernel, as calls to a generated translation unit that transposes the left operand "
-            "K-major and reads its extents from the memref descriptors. NOT a schedule or pipeline edit: "
-            "the rewrite happens on the prepared IR (llvmlower/int8_contractions), which is why both hooks are "
-            "None. Selection is a separate decision -- which contractions move is answered by the cost "
-            "model / e-graph and passed in, so enabling this feature without a selector routes nothing. "
-            "Coverage on spectformer int8: 90 of 106 contractions are legal (the 16 batch_matmuls are "
-            "gapped by a matmul-only contract), and a tile-filling selector at edge 32 moves 41 of them, "
-            "which is the shapes carrying ~88% of the arithmetic. Requires a pinned implementation "
-            "revision carrying the unit at build time, because the instruction encodings are derived "
-            "from its RTL rather than written down. Default-off."
-        ),
-    )
-)
-
 from merlin.llvmlower.reduce_vec import ensure_registered as _ensure_amax_reduction
 
 VECTORIZE_AMAX_REDUCTION_NAME = _ensure_amax_reduction()

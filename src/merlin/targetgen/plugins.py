@@ -87,6 +87,14 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
         consumed=True,
         expects="path",
     ),
+    "spatial_introspect": PluginKey(
+        "spatial_introspect",
+        "A spatial tensor-tile RTL reader exposing ARC_TARGETS, build_fact_bundle(), render_fact_bundle() "
+        "and spatial_facts(). rtl.mlc_bridge registers every declared one and serves the arc models it "
+        "names, so core names no spatial unit.",
+        consumed=True,
+        expects="path",
+    ),
     "simt_introspect": PluginKey(
         "simt_introspect",
         "The SIMT RTL introspect this package serves, as `<plugin.backend>:<attribute>` -- an attribute of "

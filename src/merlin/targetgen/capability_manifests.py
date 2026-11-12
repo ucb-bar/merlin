@@ -136,9 +136,9 @@ def manifest_for(name: str) -> dict[str, Any]:
         # collapses the named fp8 datapaths to an unnamed float width, which is a quietly weaker contract
         # rather than a failure. Empty {} when mlc or the OPU artifacts are unavailable, so the deriver
         # falls back to the family default instead of a fabricated tile.
-        from .rtl import spatial_introspect as _si
+        from .rtl import mlc_bridge as _mb
 
-        facts = _si.build_fact_bundle(facts_target)
+        facts = _mb.spatial_fact_bundle(facts_target)
     return derive_manifest({"target": name, "facts_source": facts_source}, facts, residual=residual)
 
 

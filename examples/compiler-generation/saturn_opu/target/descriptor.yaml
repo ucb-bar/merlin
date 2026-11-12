@@ -1,7 +1,7 @@
 # Declarative per-target experiment SETUP for SATURN_OPU (the Saturn OuterProductUnit spatial tensor
 # tile) — a NON-SYSTOLIC, ISA-less accelerator: a cluster x cell grid of accumulator cells driven by a
 # COMMAND BUFFER over one-hot op ports (macc / mvin / shift), with int8 and fp8 e4m3/e5m2 datapaths. It
-# exercises the SPATIAL fact family (merlin.targetgen.rtl.spatial_introspect) and the command_buffer
+# exercises the SPATIAL fact family (the spatial reader kodiak-mlir declares) and the command_buffer
 # codegen endpoint — the ladder's generality for an accelerator CLASS that has NO RoCC/.insn command ISA
 # at all (contrast the systolic MXUs and the SIMT core, which are both .insn+CSR).
 #

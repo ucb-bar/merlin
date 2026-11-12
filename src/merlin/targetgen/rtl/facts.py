@@ -282,7 +282,7 @@ def _written_by_another_family(doc, target: str) -> bool:
 #: Not a shape map and not a fallback ladder: these two tokens each name exactly one extractor's output
 #: and always did. The third family's artifacts spell a bare number that three different shapes share,
 #: so it cannot be read this way and is resolved from the generator instead.
-_VERSION_FAMILY = {"simt-facts/v0": "simt_config", "spatial-facts/v0": "opu"}
+_VERSION_FAMILY = {"simt-facts/v0": "simt_config", "spatial-facts/v0": "spatial_manifest"}
 
 
 def family_of(doc: Any, *, target: str | None = None) -> tuple[str | None, str]:
@@ -670,7 +670,7 @@ def _resolve_facts(target: str, *, explicit: str | Path | None, regenerate: bool
 #: the artifact itself (the seam snapshots and guards it).
 #:
 #: A table rather than an ``if`` chain because the chain silently DEFAULTED: only ``simt_config`` was
-#: branched on and every other name — including ``opu``, which the spatial family has declared since it
+#: branched on and every other name — including the spatial family's extractor, which it has declared since it
 #: was added — fell through to the systolic CIRCT extractor. That extractor finds no RoCC decoder on a
 #: command-buffer tile, so it wrote a near-empty artifact that read as "this hardware has no structure"
 #: while the tile's OWN extractor derives its geometry, capacities, datapaths and latencies from the
@@ -679,7 +679,7 @@ def _resolve_facts(target: str, *, explicit: str | Path | None, regenerate: bool
 _ARTIFACT_PRODUCERS: dict[str, str] = {
     "circt_static": "writes",
     "simt_config": "returns",
-    "opu": "returns",
+    "spatial_manifest": "returns",
 }
 
 
@@ -692,8 +692,8 @@ def _producer_for(extractor: str):
         from .mlc_bridge import simt_facts
 
         return _ARTIFACT_PRODUCERS[extractor], simt_facts
-    if extractor == "opu":
-        from .spatial_introspect import spatial_facts
+    if extractor == "spatial_manifest":
+        from .mlc_bridge import spatial_facts
 
         return _ARTIFACT_PRODUCERS[extractor], spatial_facts
     if extractor == "circt_static":

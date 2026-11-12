@@ -343,9 +343,9 @@ def audit_stream(obj_path, target: str, endpoint=None) -> AsmAudit:
             return AsmAudit(
                 target=target, endpoint=endpoint.name, engine=endpoint.engine, total=len(raws), notes=(why,)
             )
-        from merlin.kernels.decode import opu as _opu
+        from merlin.kernels.decode import matrix_units as _matrix_units
 
-        decoded = _opu.decode_stream(raws, encodings, endpoint.roles_of)
+        decoded = _matrix_units.decode_stream(raws, encodings, endpoint.roles_of)
         # `from_extension` is this decoder's spelling of "the derived table claims it"; the classifier
         # reads `from_endpoint`, so bridge the two rather than teaching the classifier a second name.
         for d in decoded:
@@ -375,34 +375,20 @@ def _derived_opcodes(target: str) -> dict:
 def _matrix_encodings(target: str, block: dict) -> tuple[dict, str]:
     """Derive the matrix extension's encoding table from the target's own RTL sources.
 
-    The table is not stored anywhere: it is derived on demand from the Chisel sources the unit
-    declaration names, under the pin that says which revision they must be. So an audit of this
+    The table is not stored anywhere: the target's own matrix provider (``plugin.matrix_lowering``)
+    derives it on demand from the sources the unit declaration names, under the pin that says which
+    revision they must be. So an audit of this
     endpoint is only as good as the checkout, and when the pin does not verify the honest result is no
     table and a stated reason — never a guessed encoding, which would name instructions confidently
     and wrongly.
     """
     try:
-        from merlin.common import provenance as _prov
-        from merlin.targetgen.rtl import opu_isa as _opu_isa
-        from merlin.targetgen.target_registry import load_matrix_contract
+        from merlin.targetgen.plugins import load_declared
 
-        enc = block.get("encoding") or {}
-        units = load_matrix_contract(target)["units"]
-        spec = units.get(enc.get("unit")) or {}
-        if not spec:
-            return {}, f"{target}: matrix_units.yaml declares no unit {enc.get('unit')!r}"
-        root = Path(_prov.verify(str(spec["pin"])).observed.path)
-        S, D = spec["sources"], spec["declarations"]
-        derived = _opu_isa.derive(
-            consts=root / S["consts"],
-            instructions=root / S["instructions"],
-            params=root / S["params"],
-            funct6_enum=D["funct6_enum"],
-            consts_container=D["consts_container"],
-            insn_seq=D["insn_seq"],
-            opcode_name=D["opcode_name"],
-            form_funct3=D["form_funct3"],
-        )
+        unit = (block.get("encoding") or {}).get("unit")
+        provider = load_declared(target, "matrix_lowering")
+        adapter = provider.for_unit(unit) if callable(getattr(provider, "for_unit", None)) else provider
+        derived = adapter.derive_encodings(adapter.load_contract(unit))
         return dict(derived.encodings), ""
     except Exception as exc:  # noqa: BLE001
         return {}, (

@@ -967,8 +967,7 @@ def build_matrix(
     """
     if not support_target:
         raise ValueError("matrix routing requires an explicit support_target")
-    from merlin.compiler.optimizations.registry import OPU_MATMUL_NAME
-    from merlin.kernels.decode import opu as unit_audit
+    from merlin.kernels.decode import matrix_units as unit_audit
     from merlin.targetgen.plugins import load_declared
 
     provider = load_declared(support_target, "matrix_lowering")
@@ -990,7 +989,7 @@ def build_matrix(
             rvv_hart=0,
             cpus=cpus,
             int8_compute=True,
-            features=frozenset([PEROP_BLOCK_NAME, OPU_MATMUL_NAME]),
+            features=frozenset([PEROP_BLOCK_NAME, routing.route_feature()]),
             n_harts=harts,
             sdk_dir=sdk_dir,
             debug=dbg,

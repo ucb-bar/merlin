@@ -5,7 +5,6 @@ merlin/python/merlin/perf/emitter_reach.py
 merlin/python/merlin/perf/explicit_plan_adapter.py
 merlin/python/merlin/targetgen/_aten_opset_worker.py
 merlin/python/merlin/targetgen/_pt2_capture_worker.py
-merlin/python/merlin/targetgen/artifact_dag.py
 merlin/python/merlin/targetgen/heavy_oracles.py
 merlin/python/merlin/targetgen/inline_assembly_probe.py
 merlin/python/merlin/targetgen/oracle_helpers/functional_errata_runner.py

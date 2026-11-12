@@ -535,8 +535,8 @@ def mx_mmio_for(target: str) -> dict | None:
         return None
 
 
-def opu_artifact_paths(target: str) -> dict | None:
-    """Resolved ``{hw, man, so}`` artifact paths for a SPATIAL/OPU target via mlc's per-target
+def arc_artifact_paths(target: str) -> dict | None:
+    """Resolved ``{hw, man, so}`` artifact paths for an arc-modelled target via mlc's per-target
     fingerprint map — which knows the two-level ``runs/circt-arc/<family>/<config>/outputs`` layout the
     OuterProductUnit uses, UNLIKE the flat one-level layout
     :func:`core_hw_mlir` assumes. Absolute paths under the mlc dir. None when mlc is not resolvable or
@@ -1610,159 +1610,94 @@ def render_fact_bundle(target: str, bundle: dict | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
-# -------------------------------------------------------------- SPATIAL tensor-tile (OPU) fact bundle
+# -------------------------------------------------------------- SPATIAL tensor-tile fact bundle
 # The spatial siblings of target_fact_bundle / render_fact_bundle. The systolic path (target_fact_bundle
 # above) reads the RoCC decoder + mesh DIM; a spatial tensor tile (an OuterProductUnit) has NO RoCC
 # funct decode and its geometry is a cluster x cell tile that discover_mesh_dim mis-derives — so it gets
-# its own structural extractor (merlin.targetgen.rtl.spatial_introspect), delegated to here.
+# its own structural reader, declared by the target as plugin.spatial_introspect.
 
 # generate_prompt.py routes through fact_bundle_for + render_fact_bundle_for (below) by KIND, so a
 # spatial/simt target's brief renders from its own extractor; a systolic target stays byte-identical.
 
 
-def spatial_fact_bundle(target: str) -> dict:
-    """The STATIC, provenance-tagged SPATIAL tensor-tile fact bundle for ``target`` (an OPU) — no model
-    run, no arc probe. Delegates to :func:`spatial_introspect.build_fact_bundle`. Same ``{target, method,
-    fields, n_derived}`` shape as :func:`target_fact_bundle`, with fields tile_dim/mrf_depth/
-    element_widths/dtypes/fma_latency/op_categories/accum_kind."""
-    from . import spatial_introspect
+_SPATIAL_INTROSPECTS: dict[str, object] = {}
 
-    return spatial_introspect.build_fact_bundle(target)
+
+def register_spatial_introspect(module) -> None:
+    """Register a spatial tensor-tile reader for every arc model it names in ``ARC_TARGETS``. Idempotent."""
+    for arc in getattr(module, "ARC_TARGETS", ()):
+        _SPATIAL_INTROSPECTS[arc] = module
+
+
+def _register_declared_spatial_introspects() -> None:
+    """Register every spatial reader a target contract declares (``plugin.spatial_introspect``).
+
+    The reader is the target's data, loaded from its own support provider, so core names no unit. A
+    declaration that does not load registers nothing and the fact bundle says so.
+    """
+    try:
+        from .. import target_registry as _tr
+        from ..plugins import load_declared
+
+        names = _tr.all_targets()
+    except Exception:  # noqa: BLE001 — no registry, no declared reader; the bundle reports it
+        return
+    for name in names:
+        try:
+            if not _tr.resolve(name).plugin().get("spatial_introspect"):
+                continue
+            register_spatial_introspect(load_declared(name, "spatial_introspect"))
+        except Exception:  # noqa: BLE001 — unresolvable declaration: register nothing, report honestly
+            continue
+
+
+def resolve_spatial_introspect(target: str):
+    """The declared spatial reader serving ``target``'s arc model, or None."""
+    if not _SPATIAL_INTROSPECTS:
+        _register_declared_spatial_introspects()
+    return _SPATIAL_INTROSPECTS.get(_arc_target(target))
+
+
+_SPATIAL_FIELDS = ("tile_dim", "mrf_depth", "element_widths", "dtypes", "fma_latency", "op_categories", "accum_kind")
+
+
+def _spatial_unavailable(target: str, reason: str) -> dict:
+    """An honest all-unavailable spatial bundle — never a fabricated tile."""
+    return {
+        "target": target,
+        "method": "declared spatial state-manifest reader (no model run)",
+        "kind": "spatial",
+        "fields": {k: {"value": None, "derived": False, "source": None, "evidence": reason} for k in _SPATIAL_FIELDS},
+        "n_derived": 0,
+        "reason": reason,
+    }
+
+
+def spatial_fact_bundle(target: str) -> dict:
+    """The STATIC, provenance-tagged SPATIAL tensor-tile fact bundle for ``target`` from its declared
+    reader, or an all-unavailable bundle naming why. Same ``{target, method, fields}`` shape as the
+    systolic :func:`target_fact_bundle`."""
+    reader = resolve_spatial_introspect(target)
+    if reader is None:
+        return _spatial_unavailable(target, f"no declared spatial reader serves {target!r}")
+    return reader.build_fact_bundle(target)
 
 
 def render_spatial_fact_bundle(target: str, bundle: dict | None = None) -> str:
-    """Render :func:`spatial_fact_bundle` as an agent-facing spatial-tile brief (Markdown). Sibling of
-    :func:`render_fact_bundle`."""
-    from . import spatial_introspect
-
-    return spatial_introspect.render_fact_bundle(target, bundle)
-
-
-# --- SPATIAL (OPU) op-category EFFECT confirmation ----------------------------------------------------
-# The OuterProductUnit has NO RoCC funct decode — its op categories are separate one-hot io_op_* ports
-# (macc / mvin / shift), so there is no op ENCODING to discover: spatial_introspect._op_categories reads
-# the category NAMES structurally off the port names. This pair CONFIRMS those structural names against the
-# measured datapath effect on the arc model (mlc.discover.opu_roles): macc ACCUMULATES (the MRF accumulator
-# cells grow monotonically across repeated identical issues), mvin OVERWRITES (idempotent load — the bank
-# changes once, the magnitude does not grow), shift RELOCATES readout through the clusters_*/pipe chain (the
-# accumulator aggregate magnitude is conserved, no new products). A "shift" that grows magnitude, or a
-# "macc" that only overwrites, is a real alarm (mislabel or RTL drift). HONEST RESIDUE: this CONFIRMS the
-# port names by effect, it does not DISCOVER categories (there is no encoding); the mvin bcast/col sub-
-# variants are only partially separable (by which cells the overwrite lands in) — their naming leans on the
-# port name.
-
-# category -> the measured-effect predicate that CONFIRMS its structural port name.
-_OPU_CATEGORY_CONFIRM = {
-    "macc": lambda f: bool(f.get("writes_accumulator")) and bool(f.get("accumulates")),
-    "mvin": lambda f: bool(f.get("writes_accumulator")) and not bool(f.get("accumulates")),
-    "shift": lambda f: bool(f.get("conserves_magnitude")) and not bool(f.get("writes_accumulator")),
-}
+    """Render :func:`spatial_fact_bundle` as an agent-facing spatial-tile brief (Markdown)."""
+    reader = resolve_spatial_introspect(target)
+    if reader is None:
+        b = bundle or spatial_fact_bundle(target)
+        return f"## Spatial tile facts: {target}\n\nUnavailable: {b.get('reason')}\n"
+    return reader.render_fact_bundle(target, bundle)
 
 
-def spatial_effect_roles(target: str) -> dict:
-    """DERIVED op-category -> measured-effect signature for a SPATIAL tile (OPU), or EMPTY when it cannot be
-    grounded. The spatial analogue of :func:`fine_roles`: reads the ``discovered_opu_roles.json`` cache
-    beside the OPU state manifest, regenerating on demand ONLY where the probe is possible (a live arc
-    model, :func:`arc_available`) and degrading honestly (empty ``{derived: False, reason}``) for a no-arc
-    target or a failed probe. Returns ``{features: {category: {writes_accumulator, accumulates,
-    magnitude_grows, changed_cells, conserves_magnitude, ...}}, source, derived, reason}``. Wrapped under
-    :func:`_mlc_cwd` (the probe resolves its arc artifacts by paths relative to the mlc root)."""
-    if mlc_dir() is None:
-        return {"features": {}, "source": None, "derived": False, "reason": "MERLIN_MLC_DIR unset"}
-    paths = opu_artifact_paths(target)
-    if not paths or paths.get("man") is None:
-        return {
-            "features": {},
-            "source": None,
-            "derived": False,
-            "reason": f"no OPU arc artifacts for {target!r} (not in the mlc OPU fingerprint map)",
-        }
-    cache = Path(paths["man"]).parent / "discovered_opu_roles.json"
-    if not cache.is_file():
-        # Regenerate on demand ONLY where the probe is possible (a live arc model). A no-arc target keeps
-        # the honest-empty path below — never auto-regen where impossible, never crash the bundle.
-        if _arc_model_present(target):
-            try:
-                with _mlc_cwd():
-                    from mlc.discover.opu_roles import derive_and_cache_opu_roles
-
-                    derive_and_cache_opu_roles(target)
-            except Exception as e:  # noqa: BLE001 — a failed probe is honest-unavailable, never a crash/guess
-                return {
-                    "features": {},
-                    "source": None,
-                    "derived": False,
-                    "reason": f"OPU effect probe failed for {target!r}: {type(e).__name__}: {e}",
-                }
-    if not cache.is_file():
-        return {
-            "features": {},
-            "source": None,
-            "derived": False,
-            "reason": f"no discovered_opu_roles cache for {target!r} — run derive_and_cache_opu_roles in the mlc venv",
-        }
-    try:
-        import json as _json
-
-        data = _json.loads(cache.read_text())
-        if not data.get("available"):
-            return {
-                "features": {},
-                "source": data.get("method"),
-                "derived": False,
-                "reason": data.get("reason") or f"OPU effect probe unavailable for {target!r}",
-            }
-        feats = data.get("features") or {}
-        return {
-            "features": feats,
-            "source": data.get("method", "probe:opu-effect-confirm(mlc-arc)"),
-            "derived": True,
-            "reason": f"{len(feats)} op-category effect signatures from the mlc OPU probe",
-        }
-    except Exception as e:  # noqa: BLE001 — an unreadable cache is honest-unavailable, never a guess
-        return {"features": {}, "source": None, "derived": False, "reason": f"unreadable opu roles cache: {e}"}
-
-
-def crosscheck_op_categories(target: str) -> list[str]:
-    """ALWAYS-ON cross-check gate for a SPATIAL tile: VERIFY each STRUCTURALLY-declared op category
-    (:func:`spatial_introspect._op_categories`, read off the ``io_op_<cat>_`` port names) against the
-    behaviourally MEASURED effect (:func:`spatial_effect_roles`). For every category the effect probe
-    measured, assert its measured signature CONFIRMS its structural name via :data:`_OPU_CATEGORY_CONFIRM`
-    (macc accumulates, mvin overwrites idempotently, shift conserves accumulator magnitude). Returns the
-    list of DISAGREEMENTS (empty = every structural category name reproduced by RTL behaviour). A
-    structurally-declared category the probe never measured, or one whose measured effect contradicts its
-    name, is a real alarm. When nothing was behaviourally derived (no arc / mlc absent / not an OPU) the
-    list is empty — nothing to cross-check — mirroring :func:`crosscheck_semantic_class_fine`."""
-    er = spatial_effect_roles(target)
-    feats = er.get("features") or {}
-    if not feats:
-        return []  # nothing behaviourally derived (no arc / mlc absent / not an OPU) -> nothing to check
-    paths = opu_artifact_paths(target)
-    if not paths or paths.get("man") is None:
-        return []
-    from . import spatial_introspect
-
-    _module, _states, names = spatial_introspect._load_state_names(Path(paths["man"]))
-    structural = spatial_introspect._op_categories(names)
-    disagreements: list[str] = []
-    for cat in structural:
-        f = feats.get(cat)
-        if f is None:
-            disagreements.append(
-                f"op category {cat!r} declared structurally (io_op_{cat}_ ports) but the "
-                "effect probe measured no signature for it"
-            )
-            continue
-        confirm = _OPU_CATEGORY_CONFIRM.get(cat)
-        if confirm is None:
-            continue  # no confirmation predicate for this category name -> nothing to assert
-        if not confirm(f):
-            disagreements.append(
-                f"op category {cat!r}: measured effect does not confirm its name "
-                f"(writes_accumulator={f.get('writes_accumulator')}, accumulates={f.get('accumulates')}, "
-                f"conserves_magnitude={f.get('conserves_magnitude')})"
-            )
-    return disagreements
+def spatial_facts(target: str) -> dict:
+    """The spatial facts artifact for ``target`` from its declared reader; fails closed without one."""
+    reader = resolve_spatial_introspect(target)
+    if reader is None:
+        raise RuntimeError(f"no declared spatial reader serves {target!r}; select its support provider")
+    return reader.spatial_facts(target)
 
 
 def _arc_model_kind(target: str) -> str | None:
@@ -1851,7 +1786,7 @@ def fact_bundle_for(target: str) -> dict:
         CIRCT HW-dialect static bundle :func:`target_fact_bundle` (BYTE-IDENTICAL to the pre-dispatch
         path for every current caller);
       * ``simt_config`` (simt) -> the SIMT config+FIRRTL introspect, adapted to the bundle shape;
-      * ``opu`` (spatial) -> the OuterProductUnit state-manifest introspect
+      * ``spatial_manifest`` -> the target's declared spatial state-manifest reader
         :func:`spatial_fact_bundle`.
 
     All branches return the uniform ``{target, method, fields, n_derived}`` shape, so consumers
@@ -1931,7 +1866,7 @@ def _extractors_for(target: str) -> tuple[str, ...]:
 
 
 def _run_extractor(name: str, target: str) -> dict:
-    if name == "opu":
+    if name == "spatial_manifest":
         return spatial_fact_bundle(target)
     if name == "simt_config":
         return _simt_fact_bundle(target)

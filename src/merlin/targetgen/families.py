@@ -71,8 +71,8 @@ class FamilyProfile:
     fact_extractor: str  # RTL fact-extraction family this kind routes to (see mlc_bridge
     # .fact_bundle_for): "circt_static" (the decoder/HW-dialect static
     # bundle + the generic no-arc fallback), "simt_config" (the SIMT
-    # config+FIRRTL introspect), or "opu" (the spatial tensor-tile
-    # state-manifest introspect). Never a target *name* — a routing key.
+    # config+FIRRTL introspect), or "spatial_manifest" (the target's declared
+    # spatial tensor-tile state-manifest reader). Never a target *name* — a routing key.
     #: HOW this kind's COMPUTE ELEMENT is located in an elaborated design — the routing axis the
     #: datapath reader (:mod:`merlin.targetgen.rtl.datapaths`) uses instead of a per-target branch:
     #:
@@ -174,8 +174,8 @@ _PROFILES: dict[str, FamilyProfile] = {
     # COMMAND BUFFER over one-hot op ports (macc/mvin/shift) — NOT a RoCC command ISA. So there is no
     # op->``.insn`` encoding to derive (encoding_required=False) and no rocc_insn trace gate; the 4th
     # artifact IS the schema-valid command buffer (command_buffer endpoint). Its facts come from the OPU
-    # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "opu" fact
-    # extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
+    # state-manifest geometry (cluster x cell tile, MRF depth, int8/fp8 datapaths) via the "spatial_manifest"
+    # fact extractor. Perf is tensor-tile MAC throughput. (See memory: opu-endpoint-is-command-buffer-not-rocc.)
     "spatial": FamilyProfile(
         "spatial",
         "command_buffer",
@@ -183,7 +183,7 @@ _PROFILES: dict[str, FamilyProfile] = {
         None,
         ("L3", "L4", "L5"),
         ("macs", "mac_per_cycle", "pct_mac_peak"),
-        "opu",
+        "spatial_manifest",
         compute_element="array_element",
         # The tile's geometry (`spatial`: cluster x cell extents, element widths) and its per-cell
         # register depth (`memories`, the MRF -- this tile's only on-chip store) are what a command

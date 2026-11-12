@@ -882,6 +882,26 @@ def prepare_for_lowering(
     require_device_offload_selection(device, offload_selection)
     require_supported_device_preparation(offload_selection, prepared_model_transform)
     features = frozenset(features or frozenset())
+    # A matrix-unit route feature belongs to the selected matrix extension, not to the shared feature
+    # registry. Only a requested name the registry does not define is asked of the extension (binding it
+    # reads the unit's sources), so a routing that no feature requests binds nothing.
+    route_requested = False
+    if matrix is not None:
+        from merlin.compiler.optimizations.registry import get as _registered_feature
+
+        def _registered(name: str) -> bool:
+            try:
+                _registered_feature(name)
+            except KeyError:
+                return False
+            return True
+
+        foreign = {name for name in features if not _registered(name)}
+        if foreign:
+            matrix_route = matrix.route_feature()
+            route_requested = matrix_route in foreign
+            if route_requested:
+                features = features - {matrix_route}
     if getattr(device, "connected_spatial", None) is not None:
         # The explicitly selected original host writer must be inlined before
         # bufferization so its output is forwarded and its scratch lifetime is
@@ -1042,17 +1062,7 @@ def prepare_for_lowering(
     # MATRIX-UNIT ROUTING, before the register blocking below: a contraction that has become a call is no
     # longer on the vector path, so the block table must be derived from the IR that remains. Doing it the
     # other way round would tag ops that no longer exist and leave the routed ones double-claimed.
-    from merlin.compiler.optimizations.registry import OPU_MATMUL_NAME
-
-    if OPU_MATMUL_NAME in features:
-        if matrix is None:
-            # Silently not routing would be indistinguishable from a feature that did nothing, and the
-            # model would grade correctly while reporting a capability it never used.
-            raise ValueError(
-                f"feature {OPU_MATMUL_NAME!r} is enabled but no `matrix=` routing was supplied, so the "
-                "unit and configuration to route to are unknown; pass "
-                "MatrixRouting(support_target=..., unit=..., config=...)"
-            )
+    if route_requested:
         routed = MatrixExtension(matrix).lower(prepared, work)
         (work / MATRIX_ROUTING_RECORD).write_text(
             json.dumps(

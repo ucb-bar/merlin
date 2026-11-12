@@ -46,9 +46,10 @@ def main(argv: list[str] | None = None) -> int:
     descriptor = yaml.safe_load((tdir / "descriptor.yaml").read_text(encoding="utf-8"))
     residual = yaml.safe_load((tdir / "residual.yaml").read_text(encoding="utf-8"))
 
-    from merlin.targetgen.rtl import spatial_introspect as si
+    from merlin.targetgen.rtl import mlc_bridge as _mb
 
-    facts = si.build_fact_bundle(a.facts_from)
+    reader = _mb.resolve_spatial_introspect(a.facts_from)
+    facts = _mb.spatial_fact_bundle(a.facts_from)
     required = ("tile_dim", "mrf_depth", "element_widths", "dtypes", "fma_latency", "op_categories", "accum_kind")
     missing = [key for key in required if not (facts.get("fields") or {}).get(key, {}).get("derived")]
     inputs = facts.get("inputs") or {}
@@ -87,7 +88,7 @@ def main(argv: list[str] | None = None) -> int:
         "derivation": "spatial_introspect state-manifest + HW MLIR, then capability_manifests.derive_manifest",
         "generator_sources_sha256": {
             "entrypoint": _digest(Path(__file__)),
-            "spatial_introspect": _digest(Path(si.__file__)),
+            "spatial_introspect": _digest(Path(reader.__file__)),
             "capability_manifests": _digest(Path(cm.__file__)),
         },
         "inputs": {
