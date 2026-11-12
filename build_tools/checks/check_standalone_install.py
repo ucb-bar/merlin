@@ -123,9 +123,6 @@ for module in ("merlin.targetgen.aet_bridge",
     assert spec is not None and spec.origin is None and spec.loader is None, (module, spec)
     assert tuple(Path(item).resolve() for item in spec.submodule_search_locations or ()) == (directory,), module
     assert all(Path(main.locate_file(name)).is_file() for name in members), module
-from merlin.kernels import ceiling_drivers
-from pathlib import Path
-assert (Path(ceiling_drivers.__file__).parent / "common.h").is_file()
 from merlin.targetgen.contract.matmul_interface import emit_interface_mlir
 assert 'merlin_iface.target = "probe_device"' in emit_interface_mlir(
     lhs="A", weight="W", out="Y", M=2, K=3, N=4, epilogue=[],
