@@ -30,7 +30,8 @@ def test_async_read_keeps_the_input_storage_live():
     request = ArenaRequirements(8, (0, 1, 2, 6), (1, 5, 3, 7), alignment=1, dispatch_digest=dispatch_digest(graph()))
     memory = plan_bounded_arena(program, request)
     assert memory.arena_bytes == 8
-    assert memory.offsets == {"a": 0, "c": 4}
+    assert set(memory.offsets.values()) == {0, 4}
+    assert plan_bounded_arena(program, request).offsets == memory.offsets
     with pytest.raises(ArenaPlanError, match="unsat"):
         plan_bounded_arena(program, replace(request, capacity_bytes=4))
 
@@ -105,6 +106,54 @@ def test_view_lifetime_retains_its_parent_allocation():
     assert memory.offsets == {"a": 0, "c": 4, "v": 2}
     with pytest.raises(ArenaPlanError, match="unsat"):
         plan_bounded_arena(program, replace(request, capacity_bytes=4))
+
+
+def test_nested_views_use_checked_placement_with_reservations(monkeypatch):
+    import merlin.semantic_compiler.buffer_allocation as allocation
+
+    program = graph()
+    program.buffers["v"] = Buffer("v", [3], "i8", "intermediate")
+    program.buffers["w"] = Buffer("w", [2], "i8", "intermediate")
+    program.buffers.pop("y")
+    program.nodes[1] = Node("view", "tensor.extract_slice", ["a"], ["v"])
+    program.nodes.insert(2, Node("view", "tensor.extract_slice", ["v"], ["w"]))
+    program.nodes[-1].inputs = ["w", "c"]
+    program.results = ["z"]
+    request = ArenaRequirements(
+        12, (0, 1, 2, 3, 4), (0, 1, 2, 3, 7), alignment=1,
+        aliases=(("v", "a", 1), ("w", "v", 1)), reserved=((0, 4),),
+        persistent=("w",), dispatch_digest=dispatch_digest(program),
+    )
+
+    def unexpected_solver(*args, **kwargs):
+        raise AssertionError("a checked view placement needs no solver")
+
+    monkeypatch.setattr(allocation, "allocate_buffers", unexpected_solver)
+    memory = plan_bounded_arena(program, request)
+    assert memory.offsets == {"a": 4, "c": 8, "v": 5, "w": 6}
+    assert memory.arena_bytes == 12
+    assert build_program(program, memory_requirements=request, memory_plan=memory)
+
+
+def test_invalid_view_proposal_still_uses_solver(monkeypatch):
+    import merlin.semantic_compiler.buffer_allocation as allocation
+
+    program = graph()
+    program.buffers["v"] = Buffer("v", [2], "i8", "intermediate")
+    program.buffers.pop("y")
+    program.nodes[1] = Node("view", "tensor.extract_slice", ["a"], ["v"])
+    program.nodes[-1].inputs = ["v", "c"]
+    program.results = ["z"]
+    request = ArenaRequirements(
+        8, (0, 1, 2, 3), (0, 1, 2, 3), alignment=1,
+        aliases=(("v", "a", 2),), dispatch_digest=dispatch_digest(program),
+    )
+    # A malformed proposal must neither hide the root's extended lifetime nor
+    # turn heuristic failure into an unsatisfiability claim.
+    monkeypatch.setattr(allocation, "first_fit_buffer_assignment",
+                        lambda *args, **kwargs: {"a": 0, "c": 0, "v": 2})
+    memory = plan_bounded_arena(program, request)
+    assert memory.offsets == {"a": 0, "c": 4, "v": 2}
 
 
 def test_invalid_event_schedules_and_external_aliases_refuse():

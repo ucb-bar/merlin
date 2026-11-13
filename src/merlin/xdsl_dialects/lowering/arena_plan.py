@@ -466,7 +466,12 @@ def check_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements, 
 
 def plan_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements) -> MemoryPlan:
     """Place completion-aware temporaries; leave external buffers caller-owned."""
-    from merlin.semantic_compiler.buffer_allocation import BufferAllocation, allocate_buffers, check_buffer_allocation
+    from merlin.semantic_compiler.buffer_allocation import (
+        BufferAllocation,
+        allocate_buffers,
+        check_buffer_allocation,
+        first_fit_buffer_assignment,
+    )
 
     sizes, requests, banks, reservations = _bounded_arena_inputs(prog, requirements)
     result = None
@@ -497,6 +502,18 @@ def plan_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements) -
             pass
         else:
             result = BufferAllocation("sat", tuple(offsets.items()))
+    if result is None:
+        # Views retain their root through the last completion of every alias.
+        # The shared proposal also respects reservations and persistent roots;
+        # independently check its witness before bypassing the bounded solver.
+        offsets = first_fit_buffer_assignment(requests, banks, reservations=reservations)
+        if offsets is not None:
+            try:
+                check_buffer_allocation(requests, banks, offsets, reservations=reservations)
+            except ValueError:
+                pass
+            else:
+                result = BufferAllocation("sat", tuple(offsets.items()))
     if result is None:
         result = allocate_buffers(requests, banks, reservations=reservations)
     if result.status != "sat":
