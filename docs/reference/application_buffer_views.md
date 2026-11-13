@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-12
 related: [architecture, core_dialects]
-code_refs: [src/merlin/compile/application_views.py, src/merlin/compile/semantic_regions.py, src/merlin/compile/semantic_application.py, src/merlin/semantic_compiler/codegen.py]
+code_refs: [src/merlin/compile/application_views.py, src/merlin/compile/operand_permutations.py, src/merlin/compile/layout_c.py, src/merlin/compile/semantic_regions.py, src/merlin/compile/semantic_application.py, src/merlin/semantic_compiler/codegen.py]
 ---
 
 # Application buffer views
@@ -45,3 +45,21 @@ This is a shared graph, buffer-ownership and dispatch optimization. Target
 resource limits and folding actual layout transformations into accelerator
 loads or stores belong to the target provider. A view does not grant a new
 device layout or arithmetic capability.
+
+## Permutations absorbed by a consumer
+
+`private_operand_permutations(source, choices)` supplies a separate shared
+proof for providers that can absorb an operand permutation. It checks a full,
+offset-free permutation, unchanged types and boundary representations, matching
+placement, and that every reader is inside the proposed consumer region. It
+preserves the complete original source slice and exposes the original input
+ports. Public or shared permutation results remain materialized.
+
+The helper only offers candidates. A provider must separately prove that its
+consumer supports the indexing and fits its resources before adding a fused
+alternative. The ordinary region selector still checks compatible coverage
+and ordering. No alias permission is granted by this helper.
+
+`layout_c.permutation_axes` owns the common permutation proof. The existing
+host BF16 contraction emitter re-exports it for compatibility and continues to
+use the same proof; targets can use it without importing host arithmetic.

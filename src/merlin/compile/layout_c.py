@@ -11,6 +11,35 @@ from merlin.semantic_compiler.model import IndexMap, KernelRequest, pointwise_id
 from .c_sources import c_source_pair
 
 
+
+def permutation_axes(source, view):
+    """Return the result axis read by each source axis for a pure permutation.
+
+    ``view`` must be a complete, offset-free dimension permutation of
+    ``source`` with an identity write map and unchanged element type: every
+    source element is read exactly once and no value is converted. Anything
+    else, including broadcasts, slices and reversals, returns ``None``.
+    """
+    rank = len(source.type.shape)
+    if (view.op not in {"gather", "transpose"} or view.effect != "pure" or view.inputs != (source.id,)
+            or view.attrs or rank == 0 or len(view.type.shape) != rank or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)):
+        return None
+    read, write = view.index_maps
+    if (write != pointwise_identity_maps(rank, 1)[-1] or read.loop_rank != rank
+            or len(read.coefficients) != rank or any(read.offsets)):
+        return None
+    axes = []
+    for row, extent in zip(read.coefficients, source.type.shape, strict=True):
+        if len(row) != rank or set(row) - {0, 1} or sum(row) != 1:
+            return None
+        axis = row.index(1)
+        if view.type.shape[axis] != extent or axis in axes:
+            return None
+        axes.append(axis)
+    return tuple(axes)
+
+
 def _element_bytes(dtype: str) -> int:
     if dtype in DT_BYTES:
         return DT_BYTES[dtype]
