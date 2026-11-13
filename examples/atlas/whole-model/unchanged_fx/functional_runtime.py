@@ -14,6 +14,7 @@ from pathlib import Path
 import torch
 from npu_model.functional import FunctionalConfig, FunctionalInterpreter, FunctionalResult, FunctionalState
 from npu_model.functional.program import FunctionalInstruction, FunctionalProgram
+from npu_model.isa import SBType, UJType
 
 from model_runtime import (ModelRuntime as _CycleModelRuntime, authenticate_model,
                            output_ranges, active_dram_prefix, check_immutable_memory)
@@ -55,11 +56,14 @@ class PhysicalFunctionalInterpreter(FunctionalInterpreter):
             state.load_dram(address, data)
         for address, data in (vmem or {}).items():
             state.load_vmem(address, data)
-        pc, executed = 0, 0
+        pc, executed, target = 0, 0, None
         while 0 <= pc < len(program.instructions):
             if executed >= max_instructions:
                 raise RuntimeError(f"functional instruction limit ({max_instructions}) reached at PC {pc}")
             entry = program.instructions[pc]
+            if target is not None and (isinstance(entry.instruction, (SBType, UJType))
+                                       or entry.instruction.mnemonic == "jalr"):
+                raise RuntimeError(f"illegal control flow '{entry.instruction.mnemonic}' in the delay slot at PC {pc}")
             state.execute_pc, state.npc, state.redirect_requested = pc, pc + 1, False
             # The original instruction object executes without rewritten
             # operands. Optional state adapters have separate qualification.
@@ -68,7 +72,12 @@ class PhysicalFunctionalInterpreter(FunctionalInterpreter):
             if state.halted:
                 pc += 1
                 break
-            pc = state.npc if state.redirect_requested else pc + 1
+            if target is not None:
+                pc, target = target, None
+            else:
+                pc, target = pc + 1, state.npc if state.redirect_requested else None
+        if target is not None and not state.halted:
+            raise RuntimeError(f"delay slot at PC {pc} lies outside the program")
         if pc < 0 or pc > len(program.instructions):
             raise RuntimeError(f"functional control flow reached invalid PC {pc}")
         return FunctionalResult(state, executed, pc, state.halt_reason)
