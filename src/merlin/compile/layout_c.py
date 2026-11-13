@@ -62,32 +62,73 @@ def render_permutation_slice_copy(source, view, name):
     chunk or reduction-group boundaries without materializing the whole view.
     The generated helper returns -1 before any write on invalid spans or aliasing.
     """
-    if not name or not name.isascii() or not name.isidentifier() or not name[0].isalpha():
-        raise ValueError("C helper name must begin with an ASCII letter")
     axes = permutation_axes(source, view)
     if axes is None:
         raise ValueError("slice packing requires a complete unchanged permutation")
-    width, count = _element_bytes(source.type.dtype), prod(source.type.shape)
-    if not 0 < count * width <= 2**63 - 1:
-        raise ValueError("permutation exceeds the supported C size domain")
     terms = []
     for dimension, axis in enumerate(axes):
         logical_stride = prod(view.type.shape[axis + 1:])
         source_stride = prod(source.type.shape[dimension + 1:])
         terms.append(f"((linear/{logical_stride}u)%{view.type.shape[axis]}u)*{source_stride}u")
     index = " + ".join(terms)
+    return _render_slice_copy(source, view, name, "", index)
+
+
+def bounded_dense_read_map(source, view):
+    """Recognize a byte-preserving affine read into an identity-written result.
+
+    Broadcasts, slices and reversals are allowed only when every read is
+    statically in bounds. This proves indexing, not ownership or placement.
+    """
+    rank = len(view.type.shape)
+    if (rank == 0 or view.op not in {"gather", "transpose"} or view.effect != "pure"
+            or view.inputs != (source.id,) or view.attrs or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)
+            or view.index_maps[-1] != pointwise_identity_maps(rank, 1)[-1]
+            or (view.op == "transpose" and permutation_axes(source, view) is None)):
+        return None
+    read = view.index_maps[0]
+    try:
+        _flat_map(read, view.type.shape, source.type.shape)
+    except ValueError:
+        return None
+    return read
+
+
+def render_indexed_slice_copy(source, view, name):
+    """Pack a logical consumer slice through a checked dense affine read map."""
+    mapping = bounded_dense_read_map(source, view)
+    if mapping is None:
+        raise ValueError("slice packing requires a bounded unchanged dense read")
+    coordinates = "\n    ".join(
+        f"size_t d{i}=(linear/{prod(view.type.shape[i + 1:])}u)%{extent}u; (void)d{i};"
+        for i, extent in enumerate(view.type.shape))
+    return _render_slice_copy(source, view, name, coordinates,
+                              _flat_map(mapping, view.type.shape, source.type.shape))
+
+
+def _render_slice_copy(source, view, name, coordinates, index):
+    if not name or not name.isascii() or not name.isidentifier() or not name[0].isalpha():
+        raise ValueError("C helper name must begin with an ASCII letter")
+    width = _element_bytes(source.type.dtype)
+    count, source_count = prod(view.type.shape), prod(source.type.shape)
+    if min(count, source_count) <= 0 or max(count, source_count) * width > 2**63 - 1:
+        raise ValueError("layout exceeds the supported C size domain")
     return f"""#include <stddef.h>
 #include <stdint.h>
-_Static_assert(SIZE_MAX/{width}u >= {count}ULL, "permutation tensor exceeds host size_t");
+_Static_assert(SIZE_MAX/{width}u >= {max(count, source_count)}ULL, "layout tensor exceeds host size_t");
 static int {name}(void *destination,const void *source,size_t first,size_t count) {{
   if (!source || !destination || !count || first>{count}u || count>{count}u-first)
     return -1;
   size_t bytes=count*{width}u;
   uintptr_t input=(uintptr_t)source,output=(uintptr_t)destination;
-  if (input>UINTPTR_MAX-{count * width}u || output>UINTPTR_MAX-bytes ||
-      (input<output+bytes && output<input+{count * width}u)) return -1;
+  if (input>UINTPTR_MAX-{source_count * width}u || output>UINTPTR_MAX-bytes ||
+      (input<output+bytes && output<input+{source_count * width}u)) return -1;
   for (size_t j=0;j<count;++j) {{
-    size_t linear=first+j,source_index={index};
+    size_t linear=first+j;
+    (void)linear;
+    {coordinates}
+    size_t source_index={index};
     __builtin_memcpy((unsigned char *)destination+j*{width}u,
                      (const unsigned char *)source+source_index*{width}u,{width}u);
   }}
