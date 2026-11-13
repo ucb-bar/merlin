@@ -141,5 +141,14 @@ def application_plan(source, adapter):
     """
     enumerate_regions = getattr(adapter, "application_region_alternatives", None)
     if enumerate_regions is not None:
-        return fold_host_permutations(source, select_application_plan(source, enumerate_regions(source)))
-    return fold_host_permutations(source, adapter.plan(source))
+        plan = select_application_plan(source, enumerate_regions(source))
+    else:
+        plan = adapter.plan(source)
+    plan = fold_host_permutations(source, plan)
+    from merlin.semantic_compiler.codegen import current_codegen_options
+
+    if current_codegen_options().application_buffer_views:
+        from .application_views import select_dense_buffer_views
+
+        plan = select_dense_buffer_views(source, plan)
+    return plan

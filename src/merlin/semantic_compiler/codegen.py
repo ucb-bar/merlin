@@ -20,12 +20,15 @@ class CodegenOptions:
     io_memory_bytes: int | None = None
     exact_float_unroll: bool = False
     execution_instruction_limit: int | None = None
+    application_buffer_views: bool = False
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
             raise ValueError("reduction unroll must be auto, 1, 2, 4 or 8")
         if type(self.exact_float_unroll) is not bool:
             raise ValueError("exact float unroll must be Boolean")
+        if type(self.application_buffer_views) is not bool:
+            raise ValueError("application buffer views must be Boolean")
         if self.execution_instruction_limit is not None and (
             type(self.execution_instruction_limit) is not int or self.execution_instruction_limit <= 0
         ):
@@ -45,6 +48,8 @@ class CodegenOptions:
             del record["exact_float_unroll"]
         if self.execution_instruction_limit is None:
             del record["execution_instruction_limit"]
+        if not self.application_buffer_views:
+            del record["application_buffer_views"]
         return record
 
 
@@ -116,6 +121,7 @@ def options_from_args(args):
         getattr(args, "io_memory_bytes", None),
         getattr(args, "exact_float_unroll", False),
         getattr(args, "execution_instruction_limit", None),
+        getattr(args, "application_buffer_views", False),
     )
 
 

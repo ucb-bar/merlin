@@ -163,6 +163,8 @@ def add_native_codegen_commands(sub, handlers):
         "--abi", required=True, help="fixed_inputs/fixed_outputs JSON, or auto for provider layout"
     )
     native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
+    native_compile.add_argument("--application-buffer-views", action="store_true",
+                               help="share proved internal dense reshape/copy buffers")
     native_compile.add_argument("--reduction-unroll", choices=("auto", "1", "2", "4", "8"), default="auto")
     native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
     native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
@@ -313,6 +315,8 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--outer-tile-index", type=int, help="recheck selected row-major output tile")
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--artifact", required=True, help="published native compilation directory")
+    native_verify.add_argument("--application-buffer-views", action="store_true",
+                              help="replay internal dense buffer views used for compilation")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
     native_verify.add_argument(
         "--execution-instruction-limit", type=int, help="per-launch executed-instruction budget used for compilation"

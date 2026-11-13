@@ -284,6 +284,9 @@ def outline_semantic_regions(
     target emitter; this outliner supports unchanged boundary representations.
     """
     logical = semantic_dispatch(request, entry=entry)
+    from .application_views import checked_view_aliases
+
+    views = {name for name, _, _ in checked_view_aliases(request, plan)}
     source_digest = request.digest()
     problems = verify_global_plan(logical, plan)
     if problems:
@@ -323,7 +326,7 @@ def outline_semantic_regions(
         kept.update((*inputs, *outputs))
         calls.append(
             Node(
-                "dispatch",
+                "view" if len(outputs) == 1 and outputs[0] in views else "dispatch",
                 selected[key].implementation,
                 list(inputs),
                 list(outputs),
