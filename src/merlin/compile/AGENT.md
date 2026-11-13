@@ -21,6 +21,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `mesh_backend.py` — Plumbing for running a layer through a target's out-of-tree backend package.
 - `mesh_model.py` — Drivers that run every matmul layer of a whole model, or of an int8 layer chain, on the mesh.
 - `mesh_reference.py` — The host-side reference a mesh tile is checked against.
+- `input_widening.py` — Prove private exact input casts without selecting target arithmetic.
 - `result_narrowing.py` — Recognize a private exact result cast without selecting target arithmetic.
 - `route_before_build.py` — Source-derived placement and device routing selected before whole-model compilation.
 
@@ -82,3 +83,5 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - Generic RMSNorm source recognition infers any finite positive binary32 epsilon.
   A target caller may constrain the match with explicit `epsilon_bits`; no model
   epsilon or shape belongs in the shared matcher.
+
+- Input widening proofs establish source ownership, dense indexing and exact BF16 conversion only. Providers must separately prove direct-code consumption preserves their selected arithmetic and rejection behavior.

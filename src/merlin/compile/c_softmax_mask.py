@@ -4,7 +4,7 @@ from math import prod
 import math
 import struct
 
-from merlin.compile.c_conversions import render_f32_array_c
+from merlin.compile.c_conversions import render_f32_array_c, render_bf16_codes_c
 from merlin.semantic_compiler.guarded_softmax_source import GuardedMaskedRowSoftmaxSource
 
 
@@ -83,7 +83,7 @@ static int {prefix}_row_span(const uint8_t *in,const uint8_t *keep) {{
 """
 
 
-def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, *, finite_sentinel_bits=None):
+def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, *, finite_sentinel_bits=None, score_dtype="f32"):
     """Convert additive or Boolean exclusion masks to sanitized scores and keeps.
 
     This is an explicit selected representation change. The device still
@@ -97,6 +97,7 @@ def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, 
         not prefix.isascii()
         or not prefix.isidentifier()
         or not prefix[0].isalpha()
+        or score_dtype not in {"f32", "bf16"}
         or spec.format != "bf16"
         or spec.direction != "encode"
         or len(pad_element) != 2
@@ -119,6 +120,9 @@ def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, 
         raise ValueError("masked softmax affine map leaves its source")
     mask_domain = "bits>1u" if guarded else "bits!=0u && bits!=0xff800000u"
     score_preflight = ""
+    score_type = "uint8_t" if score_dtype == "bf16" else "float"
+    read_score = ("uint32_t bits=((uint32_t)scores[2*i]|((uint32_t)scores[2*i+1]<<8))<<16;"
+                  if score_dtype == "bf16" else "uint32_t bits; __builtin_memcpy(&bits,scores+i,4u);")
     if finite_sentinel_bits is not None:
         if guarded or type(finite_sentinel_bits) is not int or not 0 <= finite_sentinel_bits <= 0xffffffff:
             raise ValueError("finite additive sentinel needs an explicit binary32 bit pattern")
@@ -137,7 +141,7 @@ def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, 
         bound_bits = struct.unpack("<I", struct.pack("<f", bound))[0]
         mask_domain = f"bits!=0u && bits!={finite_sentinel_bits}u"
         score_preflight = f"""  for (size_t i=0;i<{count}u;++i) {{
-    uint32_t bits; __builtin_memcpy(&bits,scores+i,4u);
+    {read_score}
     if ((bits&0x7fffffffu)>{bound_bits}u) return 1;
   }}
 """
@@ -152,13 +156,13 @@ def render_masked_softmax_inputs(region, mask_shape, spec, pad_element, prefix, 
         else "uint32_t bits; __builtin_memcpy(&bits,(const uint8_t *)mask+4u*at,4u);"
     )
     return (
-        render_f32_array_c(spec, count, prefix + "_encode")
+        (render_bf16_codes_c if score_dtype == "bf16" else render_f32_array_c)(spec, count, prefix + "_encode")
         + f"""
 static size_t {prefix}_mask_index(size_t index) {{
 {chr(10).join(steps)}
   return (size_t)({expression});
 }}
-static int {prefix}_prepare(const float *scores,const void *mask,uint8_t *encoded,uint8_t *keep) {{
+static int {prefix}_prepare(const {score_type} *scores,const void *mask,uint8_t *encoded,uint8_t *keep) {{
 {score_preflight}
   for (size_t i=0; i<{prod(mask_shape)}u; ++i) {{
     size_t at=i; {load}
