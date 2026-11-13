@@ -21,6 +21,7 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
 - `mesh_backend.py` — Plumbing for running a layer through a target's out-of-tree backend package.
 - `mesh_model.py` — Drivers that run every matmul layer of a whole model, or of an int8 layer chain, on the mesh.
 - `mesh_reference.py` — The host-side reference a mesh tile is checked against.
+- `result_narrowing.py` — Recognize a private exact result cast without selecting target arithmetic.
 - `route_before_build.py` — Source-derived placement and device routing selected before whole-model compilation.
 
 <!-- Purpose/Modules derived from docstrings via build_tools/scripts/gen_package_docs.py.
