@@ -39,6 +39,7 @@ def authenticate_model(root):
 
 
 _ACT_FRAMES = {"atlas.exact_float.v1", "atlas.activation_quantize_vector_plan.v1"}
+_ROW_FRAMES = {"atlas.row_loop_execution_plan.v1", "atlas.row_loop_execution_plan.v2"}
 
 
 def _validate_act_frame(plan, base, memory_bytes):
@@ -165,7 +166,13 @@ def output_ranges(plan, base, memory_bytes):
         ranges = [(address-base, address-base+size) for address in addresses if type(address) is int]
         if len(ranges) != len(addresses):
             raise AssertionError("invalid published device output address")
-    elif plan.get("schema") == "atlas.row_loop_execution_plan.v1":
+    elif plan.get("schema") in _ROW_FRAMES:
+        # Version 2 records the selected batching budget. It owns exactly the
+        # same output and scratch windows as version 1, regardless of batching.
+        if plan["schema"] == "atlas.row_loop_execution_plan.v2":
+            budget = plan.get("dispatch_instruction_budget")
+            if type(budget) is not int or budget <= 0:
+                raise AssertionError("invalid published row-loop instruction budget")
         keys = ("output_base", "groups", "output_stride_bytes")
         if any(type(plan.get(key)) is not int for key in keys) or plan['groups'] <= 0 or plan['output_stride_bytes'] <= 0:
             raise AssertionError("invalid published row-loop footprint")
@@ -214,7 +221,7 @@ def active_dram_prefix(plan, base, memory_bytes):
     """Bound the original interpreter to declared inputs, outputs, and scratch."""
     mutable = output_ranges(plan,base,memory_bytes)
     ends = [last for _,last in mutable]
-    if plan.get('schema') == 'atlas.row_loop_execution_plan.v1':
+    if plan.get('schema') in _ROW_FRAMES:
         keys = ('readonly_base','readonly_stride_bytes','groups')
         if any(type(plan.get(key)) is not int for key in keys) or plan['readonly_stride_bytes'] <= 0:
             raise AssertionError('compact execution needs the declared row-loop readonly frame')

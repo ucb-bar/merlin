@@ -47,6 +47,39 @@ def quantizer_plan(dynamic=False):
 
 
 class MemoryFootprintTests(unittest.TestCase):
+    def test_row_loop_versions_keep_identical_mutable_and_readonly_windows(self):
+        p = dict(schema='atlas.row_loop_execution_plan.v1', groups=3,
+                 readonly_base=BASE, readonly_stride_bytes=2048,
+                 output_base=BASE + 6144, output_stride_bytes=4096,
+                 scratch_address=BASE + 8192, scratch_stride_bytes=4096,
+                 scratch_bytes=2048)
+        expected = ((6144, 18432), (8192, 18432))
+        for version in (1, 2):
+            with self.subTest(version=version):
+                record = dict(p, schema=f'atlas.row_loop_execution_plan.v{version}')
+                if version == 2:
+                    record['dispatch_instruction_budget'] = 128000000
+                ranges = output_ranges(record, BASE, 20480)
+                self.assertEqual(ranges, expected)
+                self.assertEqual(active_dram_prefix(record, BASE, 20480), 18432)
+                before = bytes(20480)
+                after = bytearray(before)
+                after[6144:18432] = bytes([1]) * 12288
+                check_immutable_memory(before, after, ranges)
+                for index in (0, 6143, 18432, 20479):
+                    broken = bytearray(after)
+                    broken[index] ^= 1
+                    with self.subTest(index=index), self.assertRaises(AssertionError):
+                        check_immutable_memory(before, broken, ranges)
+                with self.assertRaises(AssertionError):
+                    output_ranges(record, BASE, 18431)
+        for budget in (None, True, 0, -1, 1.5, '128000000'):
+            with self.subTest(budget=budget), self.assertRaises(AssertionError):
+                output_ranges(dict(p, schema='atlas.row_loop_execution_plan.v2',
+                                   dispatch_instruction_budget=budget), BASE, 20480)
+        with self.assertRaises(AssertionError):
+            output_ranges(dict(p, schema='atlas.row_loop_execution_plan.v3'), BASE, 20480)
+
     def test_exact_status_write_with_guards_and_readonly_exponents(self):
         ranges = output_ranges(plan(), BASE, 16384)
         self.assertEqual(ranges, ((8192, 10240), (12288, 14336)))
