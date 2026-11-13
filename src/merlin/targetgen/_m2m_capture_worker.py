@@ -31,6 +31,12 @@ import shutil
 import sys
 from pathlib import Path
 
+if __package__:
+    from . import _external_quantization_capture as EQ
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import _external_quantization_capture as EQ
+
 # canonical dtype token -> (torchAO scheme | None, base-weight dtype cast | None). Mirrors
 # workloads/capture.py SCHEME + DTYPE_CAST so a capsule's precision matches how models are captured.
 _SCHEME = {
@@ -708,7 +714,7 @@ def _materialize_session(
     return 0 if ok else 3
 
 
-def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | None:
+def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path, *, exported_program=None) -> str | None:
     """Write manifest-listed ``@forward`` buffers and lifted constants omitted from weights.
 
     Use m2m's bundle layout: ``buf::<dotted name>`` for buffers and the
@@ -735,7 +741,7 @@ def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | N
         from m2m.capture.bundle import _lifted_constants
 
         found: dict = {}
-        _lifted_constants(mdl, tuple(inputs), found)
+        _lifted_constants(mdl, tuple(inputs), found, exported_program=exported_program)
         extra.update({key: value for key, value in found.items() if key in lifted})
     recovered = {"b_" + key[len("buf::") :].replace(".", "_") for key in extra if key.startswith("buf::")}
     missing = sorted(buffers - recovered) + [name for name in lifted if name not in extra]
@@ -769,11 +775,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="path to a quant_recipe_v1 JSON derived from the target; when given, the "
         "model is quantized under it and --scheme / the dtype default are not used",
     )
-    ap.add_argument(
-        "--already-quantized",
-        action="store_true",
-        help="capture the loader's own materialized numeric graph without applying a TorchAO recipe or scheme",
-    )
+    EQ.add_arguments(ap)
     ap.add_argument(
         "--seed", type=int, default=0, help="Python/NumPy/Torch RNG seed applied before loader import and construction"
     )
@@ -808,14 +810,15 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         help="copy raw converted MLIR for inventory with byte hashes, without a capture receipt or Phase 0 admission",
     )
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
+    external_selection = EQ.select_external(a, ap)
     if a.materialize_bundle and a.diagnostic_model_copy:
         ap.error("--materialize-bundle and --diagnostic-model-copy are mutually exclusive")
     if not 0 <= a.seed < 2**32:
         ap.error("--seed must be an unsigned 32-bit integer")
     if not all(math.isfinite(value) and value >= 0 for value in (a.agreement_atol, a.agreement_rtol)):
         ap.error("agreement tolerances must be finite and nonnegative")
-    if a.already_quantized and (a.recipe or a.scheme):
-        ap.error("--already-quantized cannot be combined with --recipe or --scheme")
+    if a.already_quantized and (a.recipe or a.scheme or a.quantize_activation_contractions or a.integer_nonlinear):
+        ap.error("--already-quantized forbids recipes, schemes, and numerical rewrites")
     if a.integer_nonlinear and not a.quantize_activation_contractions:
         # Defined only on top of the int8 contractions (the softmax's int8 numerators are the next
         # contraction's own operand), so it is refused without them rather than mixed into a float program.
@@ -912,7 +915,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             "loader_paper_ready": None,
         }
     )
-    mdl.eval()
+    selected_export, mdl = EQ.prepared_module(mdl, already_quantized=a.already_quantized)
     source_layer_inventory = None
     if a.stage_fp32 and a.recipe:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -948,11 +951,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 inspect.signature(RQ.agreement).parameters["limit"].default,
             )
             calibration = _freeze_calibration(samples, limit=calibration_limit, normalize=RQ._as_tuple, torch=torch)
-    original_snapshot = {
-        "status": "unavailable",
-        "stage": "original",
-        "reason": "selected model2MLIR does not expose frontend capture tracing",
-    }
+    original_snapshot = EQ.unavailable_original_snapshot()
     trace_supported = "capture_trace" in inspect.signature(m2m.convert).parameters
     if trace_supported and not a.already_quantized:
         try:
@@ -965,14 +964,12 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 source_exported if source_exported is not None else mdl, tuple(inputs), stage="original"
             )
         except Exception as exc:  # noqa: BLE001 -- unknown source counts are not fabricated
-            original_snapshot = {
-                "status": "unavailable",
-                "stage": "original",
-                "reason": f"original frontend capture failed: {type(exc).__name__}: {exc}",
-            }
+            original_snapshot = EQ.unavailable_original_snapshot(
+                f"original frontend capture failed: {type(exc).__name__}: {exc}"
+            )
     elif a.already_quantized:
         original_snapshot["reason"] = "loader supplies an already-quantized graph; the original model was not captured"
-    _scheme, cast = _SCHEME.get(a.dtype, (None, None))
+    _scheme, cast = (None, None) if a.already_quantized else _SCHEME.get(a.dtype, (None, None))
     # THE FLOAT MODEL'S OWN OUTPUT, before any precision cast or quantization rewrites it. The golden
     # below is the transformed model -- what the compiler must reproduce -- and so can say nothing about
     # how far the transformation moved the network; this is the reference that can.
@@ -1024,19 +1021,17 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             )
         except Exception as exc:  # noqa: BLE001 -- compatibility output retains unknown lineage
             precision_conversion = {"status": "unavailable", "reason": f"{type(exc).__name__}: {exc}"}
-            original_snapshot = {
-                "stage": "original",
-                "status": "unavailable",
-                "reason": "precision conversion lacks exact original source ownership",
-            }
+            original_snapshot = EQ.unavailable_original_snapshot(
+                "precision conversion lacks exact original source ownership"
+            )
             mdl = mdl.to(getattr(torch, cast))
             inputs = tuple(
                 x.to(getattr(torch, cast)) if isinstance(x, torch.Tensor) and x.is_floating_point() else x
                 for x in inputs
             )
-    # PyTorch's public exported-model train/eval helper may return None.
-    # The owned GraphModule remains the conversion source.
-    mdl.eval()
+    # Preserve captured eval semantics; exported modules reject train/eval calls.
+    if selected_export is None:
+        mdl.eval()
     fp32_staging = None
     if a.stage_fp32:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1079,11 +1074,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
         if recipe.get("recipe_sha256") != recipe_digest(recipe):
             raise ValueError("selected quantization recipe digest does not match its content")
-    q = None if (recipe is not None or a.already_quantized) else _quant_for(a.dtype, a.scheme or None)
-    quant_stats = (
-        {"applied": False, "why": "the loader declares its numeric graph already materialized"}
-        if a.already_quantized
-        else None
+    q, quant_stats = EQ.quantization(a, external_selection, recipe=recipe, quant_for=_quant_for)
+    original_snapshot = EQ.external_original_snapshot(
+        selected_export, external_selection, q, original_snapshot, trace_supported=trace_supported
     )
     agreement = None
     if recipe is not None:
@@ -1134,7 +1127,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         else:
             raise ValueError(f"no capture provenance scheme for mixed recipe formats {sorted(formats)}")
         q = QuantizationConfig(scheme=provenance_scheme)
-    elif q is not None:
+    elif q is not None and not a.already_quantized:
         # Apply quantization explicitly so both conversion and the golden run consume
         # the SAME returned module.  Most TorchAO quantize_ schemes mutate in place,
         # which hid the bug here; PT2E correctly returns a new GraphModule, so running
@@ -1157,7 +1150,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         mdl = apply_quantization(mdl, q, **quant_trace_options)
         quant_stats = getattr(mdl, "_m2m_quantization_stats", None)
     integerization_receipt = None
-    if q is not None and q.scheme == "int8_static_act_int8_weight" and not a.already_quantized:
+    if not a.already_quantized and q is not None and q.scheme == "int8_static_act_int8_weight":
         # Account for every selected PT2E contraction: genuine integer work or
         # an explicitly preserved non-FP32 floating Q/DQ operation. Preserving
         # precision is not accelerator/host admission. The independent reference
@@ -1284,8 +1277,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
         nl_census = NL.install(mdl)
     trace_options = {"capture_trace": True, "original_frontend_snapshot": original_snapshot} if trace_supported else {}
+    trace_options.update(EQ.normalization_options(loader, external_selection))
     res = m2m.convert(
-        mdl,
+        selected_export if selected_export is not None else mdl,
         inputs,
         backend="fx_importer",
         quantization=q,
@@ -1372,7 +1366,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # An untransformed capture's golden IS the float model's output.
         reference = outputs if float_reference is None else float_reference["outputs"]
         (out / "float_reference.json").write_text(json.dumps(reference), encoding="utf-8")
-    extra_path = _write_leaf_constants(mdl, inputs, weights_path, out / "extra.npz")
+    extra_path = _write_leaf_constants(
+        mdl, inputs, weights_path, out / "extra.npz", exported_program=res.exported_program
+    )
     precision = frontend_trace.get("precision") or {}
     precision_exact = precision.get("status") != "projected" and not precision.get("projections")
     meta = {
@@ -1477,7 +1473,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # Reuse the actual typed conversion and its prepared ExportedProgram.
         # A second export can reorder lifted constants or sever source lineage.
         write_bundle(
-            mdl,
+            selected_export if selected_export is not None else mdl,
             tuple(inputs),
             out,
             quant=q,
@@ -1486,6 +1482,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             source_path=Path(a.loader),
             capture_trace=True,
             conversion_result=res,
+            metadata=EQ.bundle_metadata(res),
         )
     if completed is not None:
         completed(

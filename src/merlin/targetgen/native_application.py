@@ -39,6 +39,21 @@ def _source(args, binding, target_identity):
         raise NativeCompilationError("unsupported_semantics", "selected support has no semantic application adapter")
     directory = Path(args.compile_inputs)
     staged = load_compile_inputs(directory)
+    adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
+    already_quantized = getattr(args, "already_quantized", False)
+    declared = bool((staged.precision_policy or {}).get("already_quantized"))
+    if already_quantized != declared:
+        raise ValueError("already-quantized application flag and source-bound precision policy must agree")
+    source_translators = None
+    if already_quantized:
+        source_translators = getattr(adapter, "source_operation_translators", None)
+        if callable(source_translators):
+            source_translators = source_translators()
+        if not isinstance(source_translators, dict) or not source_translators or any(
+            not isinstance(name, str) or not callable(translator)
+            for name, translator in source_translators.items()
+        ):
+            raise NativeCompilationError("unsupported_semantics", "selected support has no already-quantized source translators")
     state_path = getattr(args, "application_state", None)
     declaration = None
     if state_path:
@@ -61,6 +76,7 @@ def _source(args, binding, target_identity):
         target_identity=target_identity,
         lowering_policy=args.mode,
         argument_constants={index: payload for index, payload in parameters.items() if index not in state_arguments},
+        source_operation_translators=source_translators,
     ).request
     state = None
     if external:
@@ -72,7 +88,6 @@ def _source(args, binding, target_identity):
                 (source.source_identity + ":state:" + declaration.compilation_identity(parameters)).encode()
             ).hexdigest(),
         )
-    adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
     try:
         source, folding = prepare_source(
             source, constant_math_policy=(staged.precision_policy or {}).get("source_constant_math")
@@ -81,6 +96,21 @@ def _source(args, binding, target_identity):
         raise NativeCompilationError(error.status, str(error)) from error
     if folding.get("limits"):
         raise NativeCompilationError("resource_limit", json.dumps(folding["limits"], sort_keys=True))
+    if getattr(args, "application_common_values", False):
+        from merlin.compile.application_plan import application_plan
+        from merlin.compile.semantic_regions import outline_semantic_regions
+        from merlin.semantic_compiler.source_preparation import append_common_preparation
+
+        plan = application_plan(source, adapter)
+        outlined = outline_semantic_regions(source, entry=staged.entry, plan=plan)
+        groups = tuple(
+            tuple(node.id for node in region.nodes if node.effect == "pure") for _, region in outlined.regions
+        )
+        source, folding = append_common_preparation(source, folding, groups=groups)
+    if getattr(args, "application_compose_reshapes", False):
+        from merlin.semantic_compiler.source_preparation import append_reshape_preparation
+
+        source, folding = append_reshape_preparation(source, folding)
     if declaration is not None:
         state = declaration.bind(source, parameters)
     model_parameters = bind_application_parameters(directory, staged, source) if external else None
@@ -96,6 +126,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
         raise ValueError("application compilation requires a fresh output directory")
     if args.status_file and Path(args.status_file).resolve().is_relative_to(output.resolve()):
         raise ValueError("application status must be outside the compilation")
+    materialization_stats = {}
     output.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="native-application-", dir=output.parent) as temporary:
         destination = Path(temporary) / "application"
@@ -112,6 +143,13 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
                 state=state,
                 source_folding=folding,
                 parameters=parameters,
+                reuse_materializations=(getattr(args, "materialization_cache", False)
+                    and not getattr(args, "no_materialization_cache", False)),
+                reuse_region_materializations=(getattr(args, "region_materialization_cache", False)
+                    and not getattr(args, "no_materialization_cache", False)),
+                emit_region_loop=getattr(args, "application_region_loop", False),
+                deterministic_receipts=getattr(args, "deterministic_receipts", False),
+                materialization_stats=materialization_stats,
             )
             _, current, _, current_state, current_folding, current_parameters = _source(
                 args, binding, snapshot.profile.target_identity
@@ -158,6 +196,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
         "execution": "not_run",
         **preparation_counts(folding),
         "qualification": "diagnostic_precision_change",
+        "materialization_cache": materialization_stats,
     }
     if args.status_file:
         write_status(Path(args.status_file), report)
@@ -181,18 +220,22 @@ def verify_application_command(args, write_status):
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("application snapshot differs from selected support profile")
         _, source, adapter, state, folding, parameters = _source(args, binding, snapshot.profile.target_identity)
+        materialization_stats = {}
         report = verify_semantic_application(
             source,
             adapter=adapter,
             snapshot=snapshot,
             target_source=Path(args.target_source),
             artifact=artifact,
+            reuse_materializations=False,
+            materialization_stats=materialization_stats,
             state=state,
             source_folding=folding,
             parameters=parameters,
         )
         report.update(
-            status="verified_artifacts", engine=args.engine, scope="application_source_and_emitted_C_identity"
+            status="verified_artifacts", engine=args.engine, scope="application_source_and_emitted_C_identity",
+            materialization_cache=materialization_stats,
         )
     except (OSError, ValueError, RuntimeError, KeyError, TypeError, ImportError, UnicodeError) as error:
         report = {"status": getattr(error, "status", "compile_error"), "engine": args.engine, "reason": str(error)}

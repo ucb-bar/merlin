@@ -25,6 +25,7 @@ that venv and not in merlin's.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import os
 import sys
@@ -53,13 +54,24 @@ def _example_inputs(exported):
     return tuple(args)
 
 
+def _read_only_buffer_arguments(exported):
+    """Use the export's mutation signature, never dtype or tensor contents."""
+    mutated = set(exported.graph_signature.buffers_to_mutate.values())
+    return [index for index, spec in enumerate(exported.graph_signature.input_specs)
+            if spec.kind.name == "BUFFER" and spec.target not in mutated]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Capture an exported PyTorch program (.pt2) as a bundle.")
     ap.add_argument("--exported", required=True, help="path to a torch.export .pt2 archive")
     ap.add_argument("--out", required=True, help="bundle directory to write")
     ap.add_argument("--m2m-dir", default=os.environ.get("MERLIN_M2M_DIR"))
     ap.add_argument("--quant", default="", help="torchAO scheme name; empty means no quantization")
+    ap.add_argument("--already-quantized", action="store_true", help="preserve the exported numeric graph without casts or quantization")
+    ap.add_argument("--register-module", action="append", default=[], help="import an installed custom-op registration module before loading; repeatable")
     a = ap.parse_args(argv)
+    if a.already_quantized and a.quant:
+        ap.error("--already-quantized forbids --quant")
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
         sys.path.insert(0, a.m2m_dir)
@@ -71,6 +83,8 @@ def main(argv=None) -> int:
     if not src.is_file():
         raise RuntimeError(f"no exported program at {src}")
 
+    for module_name in a.register_module:
+        importlib.import_module(module_name)
     exported = torch.export.load(str(src))
     inputs = _example_inputs(exported)
     # `.module()` gives the callable GraphModule the golden is taken from. The bundle writer re-runs
@@ -101,13 +115,31 @@ def main(argv=None) -> int:
     # The already-loaded ExportedProgram is also the authoritative source of lifted
     # constants. Re-exporting its module can lose non-contiguous views and produce
     # an MLIR/manifest that names constants absent from extra.npz.
-    written = write_bundle(model, inputs, str(out), quant=quant, source_path=src, exported_program=exported)
+    conversion = None
+    metadata = None
+    if a.already_quantized:
+        import m2m
+
+        # The saved export is the source of truth, including lifted argument
+        # identities. Re-exporting its callable module can change that ABI.
+        conversion = m2m.convert(
+            exported, inputs, backend="fx_importer", level="linalg-on-tensors",
+            weights_path=str(out / "weights.safetensors"), capture_trace=True, decompose=False,
+        )
+        readonly = _read_only_buffer_arguments(exported)
+        metadata = {"capture_quantization": "already_materialized", "read_only_buffer_arguments": readonly}
+    written = write_bundle(
+        model, inputs, str(out), quant=quant, source_path=src, exported_program=exported,
+        capture_trace=a.already_quantized, conversion_result=conversion, metadata=metadata,
+    )
 
     meta = {
         "ok": True,
         "source_pt2": str(src),
         "source_bytes": src.stat().st_size,
         "quant": a.quant or None,
+        "capture_quantization": "already_materialized" if a.already_quantized else None,
+        "registration_modules": list(a.register_module),
         "input_shapes": [list(getattr(t, "shape", ())) for t in inputs],
         "bundle": written if isinstance(written, dict) else None,
     }

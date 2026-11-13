@@ -17,7 +17,12 @@ from merlin.semantic_compiler.target_binding import load_native_target_binding, 
 
 def run_profile(args):
     """Runner data is evaluation-only; ordinary compilation never invokes it."""
-    with codegen_options(CodegenOptions(io_memory_bytes=getattr(args, "io_memory_bytes", None))):
+    with codegen_options(
+        CodegenOptions(
+            io_memory_bytes=getattr(args, "io_memory_bytes", None),
+            exact_float_unroll=getattr(args, "exact_float_unroll", False),
+        )
+    ):
         return _run_profile_with_options(args)
 
 
@@ -52,6 +57,7 @@ def _run_profile_with_options(args):
         CodegenOptions(
             program_size_limit_bytes=args.program_size_limit_bytes,
             io_memory_bytes=getattr(args, "io_memory_bytes", None),
+            exact_float_unroll=getattr(args, "exact_float_unroll", False),
         )
     ):
         key = key_factory(snapshot, request, abi["fixed_inputs"], tuple(abi["fixed_outputs"]), limits)
@@ -71,7 +77,10 @@ def _run_profile_with_options(args):
             compile_start = monotonic()
             with codegen_options(
                 CodegenOptions(
-                    str(factor), args.program_size_limit_bytes, io_memory_bytes=getattr(args, "io_memory_bytes", None)
+                    str(factor),
+                    args.program_size_limit_bytes,
+                    io_memory_bytes=getattr(args, "io_memory_bytes", None),
+                    exact_float_unroll=getattr(args, "exact_float_unroll", False),
                 )
             ):
                 compile_args = Namespace(

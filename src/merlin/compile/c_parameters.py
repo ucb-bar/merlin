@@ -66,7 +66,8 @@ class ApplicationParameters:
                 node.op != "input" or node.effect != "input" or key not in dict(source.input_storages)
                 or type(entry.arg_index) is not int or entry.arg_index < 0
                 or tuple(entry.shape) != node.type.shape or width is None or entry.dtype not in DTYPE_BYTES
-                or not any(dtype[0] == node.type.dtype and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
+                or not any((dtype[0] == node.type.dtype or node.type.dtype == "i8" and dtype[1] == "U8")
+                           and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
                 or type(entry.offset) is not int or entry.offset < 0 or entry.offset % width
                 or type(entry.nbytes) is not int or entry.nbytes != prod(node.type.shape) * width
                 or entry.offset + entry.nbytes > self.payload_bytes

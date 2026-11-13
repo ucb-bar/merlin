@@ -53,3 +53,7 @@ SmolVLA and ResNet-50 are held-out validation workloads, never capsule derivatio
 or tuning inputs. Partial checkpoints, synthetic data and one denoising stage
 remain explicitly diagnostic. The evaluator uses the selected OOT compiler and
 saved facts; it does not download a model or silently select a reference backend.
+
+The [unchanged quantized FX route](unchanged_fx/README.md) preserves original TinyLlama parameter bytes through regional compilation, execution, and cache phases.
+
+Follow the [layer-0 and whole-model run guide](unchanged_fx/README.md#live-capture-and-the-standard-application-compiler) for source regeneration, adapter setup, phase-specific compiler flags, and test entry points.

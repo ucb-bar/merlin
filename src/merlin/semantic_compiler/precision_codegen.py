@@ -101,6 +101,7 @@ def finite_f32_codebook(spec: FloatBoundarySpec) -> FiniteF32Codebook:
         or spec.direction != "encode"
         or storage_bits(spec.format) != 8
         or not spec.flush_below_normal
+        or spec.column_scale_exponents
     ):
         raise ValueError("host codebook requires a flushing eight-bit encode boundary")
     eb, mb, bias, scheme = float_format_params(spec.format)
@@ -128,6 +129,8 @@ def finite_f32_codebook(spec: FloatBoundarySpec) -> FiniteF32Codebook:
         raise ValueError("selected float grid has a different normal threshold")
     if struct.unpack("<f", struct.pack("<I", first_bits))[0] != first:
         raise ValueError("scaled normal threshold is not exact in binary32")
+    if spec.underflow_rounding == "round-normal-significand-then-flush":
+        first_bits = _f32_bits(first * (1.0 - 2.0 ** (-mb - 2)))
     midpoints = []
     for left, right in zip(codes, codes[1:]):
         midpoint = math.ldexp((left[1] + right[1]) / 2.0, inverse_scale)

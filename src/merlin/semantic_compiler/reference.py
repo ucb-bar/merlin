@@ -305,11 +305,12 @@ def evaluate_graph(
             if primitive is None:
                 if node.op in {
                     "source_f32_matmul_unqualified",
+                    "source_bf16_matmul_unqualified",
                     "source_f32_reduce_add_unqualified",
                     "source_f32_reduce_max_unqualified",
                 }:
                     raise ValueError(
-                        "source f32 computation has unresolved reduction order and needs a qualified reference"
+                        "source floating computation has unresolved reduction order and needs a qualified reference"
                     )
                 raise ValueError("source computation has no qualified numerical reference")
             result = primitive(node, operands)
@@ -521,6 +522,16 @@ def evaluate_graph(
                 )
                 result.append(bits | (0x80000000 if integer < 0 else 0))
             values[node.id] = TensorValue(node.type, tuple(result))
+            continue
+        if node.op in {"f32_neg", "f64_neg"}:
+            dtype = node.op.removesuffix("_neg")
+            if (len(operands) != 1 or operands[0].type != node.type
+                    or node.type.dtype != dtype or node.type.numerical_policy != "raw-bit-pattern"
+                    or dict(node.attrs) != {"numeric_semantics": f"{dtype}-sign-bit-flip-v1"}
+                    or node.index_maps != pointwise_identity_maps(len(node.type.shape), 1)):
+                raise ValueError("floating sign flip has an unsupported type or policy")
+            sign = 1 << (31 if dtype == "f32" else 63)
+            values[node.id] = TensorValue(node.type, tuple(bits ^ sign for bits in operands[0].elements))
             continue
         if node.op in {"f32_add", "f32_sub", "f32_mul", "f32_div"}:
             if (

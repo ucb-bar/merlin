@@ -1,0 +1,295 @@
+"""TinyLlama raw-state loader for the external adapter capture worker.
+
+Select ATLAS_EXPORT_DIR, ATLAS_ARCHITECTURE, and ATLAS_INPUTS_SAFETENSORS.
+Set ATLAS_EXPECTED_CONTRACT_SHA256 and ATLAS_EXPECTED_POLICY_SHA256 from the
+authenticated source receipt. The input archive contains input_ids. Source
+modules must be on PYTHONPATH.
+Invoke the worker with --already-quantized --quant-adapter atlas_fp8 and the
+export's manifest.json and policy.json as --contract and --policy, with the
+same expected values as --expected-contract-sha256 and --expected-policy-sha256.
+
+For a live layer-0 capture, set ATLAS_CAPTURE_BOUNDARY=layer0 and point
+ATLAS_INPUTS_SAFETENSORS at its original boundary tensor archive. Also select
+ATLAS_BOUNDARY_SOURCE_JSON and its frozen ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256.
+Only the saved tensor words and their authenticated ABI are read; the decoder
+executes directly from the reconstructed source modules, without a saved graph.
+For a head-only attempt, select ATLAS_CAPTURE_BOUNDARY=head with its authenticated
+norm-output archive and source receipt. The current live external adapter may
+refuse this all-host boundary because it contains no native calls.
+An authenticated six-input cache boundary selects the existing tensor-cache
+append semantics and returns hidden state, updated K, and updated V.
+Select ATLAS_CAPTURE_BOUNDARY=layer0-prefill-cache with the original four-input
+layer0 archive to return hidden state and the initial post-RoPE, pre-GQA BF16
+K/V. The default layer0 selection continues to return only hidden state.
+Select ATLAS_CAPTURE_BOUNDARY=model-prefill-cache for ids, absolute positions,
+and a BF16 mask, returning logits followed by K/V for every source layer.
+model-decode-cache adds ordered past K/V tensors after those three inputs.
+Both selections authenticate their independent input archive and source receipt.
+An explicit source receipt ``decoder_layers: [0]`` selects embedding, decoder
+zero, final norm, and head, returning logits and one K/V pair. This is a declared
+one-decoder source graph, distinct from the hidden-only layer0 boundary.
+"""
+from __future__ import annotations
+
+import os
+import json
+import importlib.util
+from hashlib import sha256
+from pathlib import Path
+import sys
+
+from atlas_mlir_native.capture import normalize_capture, prepare_model
+
+
+def _load_sibling(name):
+    """Load an example helper next to this adapter without a package import."""
+    spec = importlib.util.spec_from_file_location(f"_adapter_{name}", Path(__file__).with_name(f"{name}.py"))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def layer0_boundary(model, inputs, source, *, tensor_record, prefill_cache=False):
+    """Wrap the original decoder, preserving its source parameter paths."""
+    import torch
+    from torch import nn
+
+    if source.get("kind") != "layer0":
+        raise ValueError("layer0 requires the original decoder source boundary")
+    cache_roles = source.get("cache_roles")
+    cached = cache_roles is not None
+    if prefill_cache and cached:
+        raise ValueError("layer0 prefill cache outputs require the original four-input boundary")
+    keys = source.get("input_keys")
+    if keys != [f"input_{index}" for index in range(6 if cached else 4)]:
+        raise ValueError("layer0 requires hidden, cosine, sine, and additive mask")
+    if cached:
+        for field, expected in (("inputs", ["source_tensor", "source_tensor", "source_tensor",
+                                            "past_key", "attention_mask", "past_value"]),
+                                ("outputs", ["hidden_state", "updated_key", "updated_value"])):
+            entries = cache_roles.get(field, [])
+            if ([entry.get("role") for entry in entries] != expected
+                    or [entry.get("index") for entry in entries] != list(range(len(expected)))
+                    or any(entry.get("layer") != 0 for entry in entries
+                           if entry.get("role") not in ("source_tensor", "attention_mask"))):
+                raise ValueError("layer0 cache roles differ from the original ordered source ABI")
+    if set(inputs) != set(source["tensors"]):
+        raise ValueError("boundary archive tensor roster differs from selected source")
+    for key, value in inputs.items():
+        if tensor_record(value) != source["tensors"][key]:
+            raise ValueError(f"boundary tensor words differ from selected source: {key}")
+    arguments = tuple(inputs[key] for key in keys)
+    hidden, cosine, sine = arguments[:3]
+    mask = arguments[4 if cached else 3]
+    config = model.config
+    batch, query, width = hidden.shape
+    head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+    past = arguments[3].shape[2] if cached else 0
+    if (any(value.dtype != torch.bfloat16 for value in arguments)
+            or width != config.hidden_size or cosine.shape != (batch, query, head_dim)
+            or sine.shape != cosine.shape or mask.shape != (batch, 1, query, past + query)):
+        raise ValueError("layer0 boundary differs from the original BF16 decoder geometry")
+    if cached:
+        cache_shape = (batch, config.num_key_value_heads, past, head_dim)
+        if past < 1 or arguments[3].shape != cache_shape or arguments[5].shape != cache_shape:
+            raise ValueError("layer0 cache requires positive-length BF16 post-RoPE, pre-GQA K/V")
+
+    class Layer0(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # Keep only this decoder in the registered hierarchy. Its exact
+            # model.model.layers.0 names match the original CausalLogits export.
+            self.model = nn.Module()
+            self.model.model = nn.Module()
+            self.model.model.layers = nn.ModuleList([model.model.layers[0]])
+
+        def forward(self, hidden, cosine, sine, attention_mask):
+            return self.model.model.layers[0](hidden, attention_mask=attention_mask,
+                                              position_embeddings=(cosine, sine))
+
+    if cached or prefill_cache:
+        cache_source = _load_sibling("cache_source")
+
+        class PrefillCacheLayer0(Layer0):
+            def forward(self, hidden, cosine, sine, attention_mask):
+                cache = cache_source._AppendTensorCache(((None, None),))
+                hidden = self.model.model.layers[0](hidden, attention_mask=attention_mask,
+                    position_embeddings=(cosine, sine), past_key_values=cache, use_cache=True)
+                return (hidden, *cache.tensors())
+
+        class CachedLayer0(Layer0):
+            def forward(self, hidden, cosine, sine, past_key, attention_mask, past_value):
+                cache = cache_source._AppendTensorCache(((past_key, past_value),))
+                hidden = self.model.model.layers[0](hidden, attention_mask=attention_mask,
+                    position_embeddings=(cosine, sine), past_key_values=cache, use_cache=True)
+                return (hidden, *cache.tensors())
+
+        boundary = CachedLayer0().eval() if cached else PrefillCacheLayer0().eval()
+    else:
+        boundary = Layer0().eval()
+    state = list(boundary.named_parameters()) + list(boundary.named_buffers())
+    actual_state = {name: tensor_record(value) for name, value in state if value.device.type != "meta"}
+    if actual_state != source["parameters"]:
+        raise ValueError("live layer0 parameters differ from selected source boundary")
+    return boundary, arguments
+
+
+def head_boundary(model, inputs, source, *, tensor_record):
+    """Select the original BF16 head with authenticated saved activation words."""
+    import torch
+    from torch import nn
+
+    if source.get("kind") != "head" or source.get("input_keys") != ["input_0"]:
+        raise ValueError("head requires one original norm-output boundary")
+    if set(inputs) != set(source["tensors"]):
+        raise ValueError("head boundary archive tensor roster differs")
+    if any(tensor_record(value) != source["tensors"][key] for key, value in inputs.items()):
+        raise ValueError("head boundary tensor words differ")
+    hidden = inputs["input_0"]
+    if hidden.dtype != torch.bfloat16 or hidden.ndim != 3 or hidden.shape[-1] != model.config.hidden_size:
+        raise ValueError("head boundary requires rank-three BF16 hidden states")
+
+    class Head(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.model = nn.Module()
+            self.model.lm_head = model.lm_head
+
+        def forward(self, hidden):
+            return self.model.lm_head(hidden)
+
+    boundary = Head().eval()
+    state = list(boundary.named_parameters()) + list(boundary.named_buffers())
+    if {name: tensor_record(value) for name, value in state} != source["parameters"]:
+        raise ValueError("live head parameters differ from selected source boundary")
+    return boundary, (hidden,)
+
+
+def model_cache_boundary(model, inputs, source, *, tensor_record, prefill_cache,
+                         authenticated_parameters=None):
+    """Select source logits/KV, optionally declaring only decoder layer zero."""
+    cache_source = _load_sibling("cache_source")
+    decoder_layers = source.get("decoder_layers")
+    if "decoder_layers" in source and (type(decoder_layers) is not list or len(decoder_layers) != 1
+            or type(decoder_layers[0]) is not int or decoder_layers[0] != 0):
+        raise ValueError("decoder_layers currently requires exactly [0]")
+    layer_count = 1 if decoder_layers is not None else model.config.num_hidden_layers
+    count = 3 if prefill_cache else 3 + 2 * layer_count
+    keys = [f"input_{index}" for index in range(count)]
+    if source.get("kind") != "model" or source.get("input_keys") != keys:
+        raise ValueError("model cache requires ids, positions, mask, and ordered source K/V")
+    if set(inputs) != set(keys) or set(inputs) != set(source["tensors"]):
+        raise ValueError("model cache archive tensor roster differs from selected source")
+    if any(tensor_record(value) != source["tensors"][key] for key, value in inputs.items()):
+        raise ValueError("model cache tensor words differ from selected source")
+    arguments = tuple(inputs[key] for key in keys)
+    if prefill_cache:
+        cache_source.validate_prefill_phase(*arguments)
+    else:
+        cache_source.validate_phase(*arguments[:3], arguments[3:])
+        if arguments[3].shape[2] < 1:
+            raise ValueError("model decode cache requires a positive-length source prefix")
+    roles = source.get("cache_roles")
+    if roles is not None:
+        expected_inputs = [("input_ids", None), ("position_ids", None), ("attention_mask", None)]
+        expected_outputs = [("logits", None)]
+        for layer in range(layer_count):
+            for operand in ("key", "value"):
+                if not prefill_cache:
+                    expected_inputs.append((f"past_{operand}", layer))
+                expected_outputs.append((f"updated_{operand}", layer))
+        for field, expected in (("inputs", expected_inputs), ("outputs", expected_outputs)):
+            entries = roles.get(field, [])
+            if (len(entries) != len(expected)
+                    or any(entry.get("index") != index or entry.get("role") != role
+                           or entry.get("layer") != layer
+                           for index, (entry, (role, layer)) in enumerate(zip(entries, expected)))):
+                raise ValueError("model cache roles differ from the ordered source ABI")
+    selector = cache_source.TensorPrefillLogits if prefill_cache else cache_source.TensorCacheLogits
+    boundary = selector(model.eval(), decoder_layers=decoder_layers).eval()
+    state = list(boundary.named_parameters()) + list(boundary.named_buffers())
+    actual_state = {name: tensor_record(value) for name, value in state if value.device.type != "meta"}
+    if decoder_layers is not None and authenticated_parameters is not None:
+        authenticated_parameters = {name: record for name, record in authenticated_parameters.items()
+            if not name.startswith("model.model.layers.") or name.startswith("model.model.layers.0.")}
+    expected_state = source.get("parameters", authenticated_parameters)
+    if expected_state is None or actual_state != expected_state:
+        missing = sorted(set(expected_state or {}) - set(actual_state))
+        extra = sorted(set(actual_state) - set(expected_state or {}))
+        changed = sorted(name for name in actual_state.keys() & (expected_state or {}).keys()
+                         if actual_state[name] != expected_state[name])
+        raise ValueError(f"live model cache parameters differ from selected source boundary: "
+                         f"missing={missing}, extra={extra}, changed={changed}")
+    return boundary, arguments
+
+
+def get_model_and_inputs():
+    import algos
+    import fx_export
+    import load_quantized
+    import ref_attention
+    import ref_profile
+    import torch
+    from safetensors.torch import load_file
+    from transformers import AutoConfig, AutoModelForCausalLM
+
+    raw_capture = _load_sibling("raw_capture")
+    inventory = raw_capture.inventory
+    prohibit_weight_conversion = raw_capture.prohibit_weight_conversion
+    reconstruct = raw_capture.reconstruct
+
+    export = Path(os.environ["ATLAS_EXPORT_DIR"])
+    architecture = Path(os.environ["ATLAS_ARCHITECTURE"])
+    expected_contract = os.environ["ATLAS_EXPECTED_CONTRACT_SHA256"]
+    expected_policy = os.environ["ATLAS_EXPECTED_POLICY_SHA256"]
+    for path, expected in ((export / "manifest.json", expected_contract),
+                           (export / "policy.json", expected_policy)):
+        if sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError(f"selected source receipt digest differs: {path.name}")
+    # read_export authenticates files before any model reconstruction.
+    tensors, policy, manifest = load_quantized.read_export(export, verify=True)
+    if sha256((architecture / "config.json").read_bytes()).hexdigest() != manifest["model"]["checkpoint"]["config_json_sha256"]:
+        raise ValueError("architecture differs from authenticated export")
+    before = inventory(tensors)
+    config = AutoConfig.from_pretrained(str(architecture), local_files_only=True)
+    config.use_cache, config._attn_implementation = False, "eager"
+    with prohibit_weight_conversion(), torch.device("meta"):
+        model = AutoModelForCausalLM.from_config(config, dtype=torch.bfloat16, attn_implementation="eager")
+    for module in model.modules():
+        module._non_persistent_buffers_set.clear()
+    replay = load_quantized.PolicyAlgo(policy, tensors)
+    with prohibit_weight_conversion(), algos.active(replay):
+        reconstruct(model, policy, tensors, replay=replay, linear_class=ref_profile.RefQuantLinear,
+                    patch_attention=ref_attention.patch_attention)
+    if inventory(tensors) != before:
+        raise ValueError("raw source state changed during reconstruction")
+    inputs = load_file(os.environ["ATLAS_INPUTS_SAFETENSORS"])
+    selected = os.environ.get("ATLAS_CAPTURE_BOUNDARY", "model")
+    if selected == "model":
+        boundary = fx_export.CausalLogits(model).eval()
+        if set(inputs) != {"input_ids"} or inputs["input_ids"].dtype != torch.int64:
+            raise ValueError("input archive must contain only int64 input_ids")
+        arguments = (inputs["input_ids"],)
+    elif selected in {"layer0", "layer0-prefill-cache", "head", "model-prefill-cache", "model-decode-cache"}:
+        source_path = raw_capture.checked_path(os.environ["ATLAS_BOUNDARY_SOURCE_JSON"])
+        source_bytes = source_path.read_bytes()
+        if sha256(source_bytes).hexdigest() != os.environ["ATLAS_EXPECTED_BOUNDARY_SOURCE_SHA256"]:
+            raise ValueError("selected boundary source receipt digest differs")
+        if selected in {"model-prefill-cache", "model-decode-cache"}:
+            selector = model_cache_boundary
+            ordinary, quantized = raw_capture.state_tensor_names(tensors, policy)
+            options = {"prefill_cache": selected == "model-prefill-cache",
+                       "authenticated_parameters": {f"model.{name}": before[name] for name in ordinary | quantized}}
+        else:
+            selector = head_boundary if selected == "head" else layer0_boundary
+            options = {"prefill_cache": True} if selected == "layer0-prefill-cache" else {}
+        boundary, arguments = selector(model, inputs, json.loads(source_bytes),
+                                      tensor_record=raw_capture.tensor_record, **options)
+    else:
+        raise ValueError(f"unsupported live capture boundary: {selected}")
+    with prohibit_weight_conversion(), algos.active(replay):
+        return prepare_model(boundary, arguments, export / "manifest.json",
+                             export / "policy.json", export_prefix="model.",
+                             expected_contract_sha256=expected_contract,
+                             expected_policy_sha256=expected_policy)

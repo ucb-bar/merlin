@@ -114,3 +114,20 @@ Complete source coverage preserves input validation. Keep partial/strided views
 deferred, preserve escaping values and replay original/generated SSA nodes.
 Source-preparation v3 wraps the earlier numerical receipt; historical receipts
 retain their earlier pass sequence. The snapshot pins the indexing pass source.
+
+`common_values.py` shares deterministic pure logical values only when ordered
+operands, types, numerical policies, indexing and non-provenance attributes agree.
+Keep every input/constant and ordered public output identity; this is not a
+physical alias grant. Removed and rewired nodes retain their full provenance in
+replay receipts. Source-preparation v4 explicitly opts into commoning after the
+earlier preparation sequence; historical receipts and default behavior stay fixed.
+Application commoning preserves the provider's checked region groups atomically:
+never common only one sibling result or split a selected fused region.
+
+`reshape_chains.py` composes adjacent dense logical reshapes with only provenance attributes and
+identical dtype, numerical policy and element count. Remove only bypassed
+intermediates that have no remaining users and are not public outputs; preserve
+every boundary and constant binding. Do not treat gathers, transposes, casts or
+allocated physical layouts as transparent. Source-preparation v5 appends this
+optional pass after ordinary preparation and optional atomic value commoning.
+Retain original positions/nodes and replay both composition and liveness checks.

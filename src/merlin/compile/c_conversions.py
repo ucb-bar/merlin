@@ -37,7 +37,7 @@ def render_bf16_codes_c(spec: FloatBoundarySpec, count: int, prefix: str) -> str
     if (type(count) is not int or count <= 0 or not prefix or not prefix.isascii()
             or not prefix.isidentifier() or not prefix[0].isalpha()
             or spec.direction != "encode" or spec.format != "bf16"
-            or spec.pre_encode_scale_exponent or spec.flush_below_normal
+            or spec.pre_encode_scale_exponent or spec.column_scale_exponents or spec.flush_below_normal
             or spec.canonicalize_negative_zero):
         raise ValueError("raw BF16 input needs a code-domain policy without numerical conversion")
     eb, mb, _, scheme = float_format_params(spec.format)
@@ -80,6 +80,15 @@ def render_bf16_decode_c(spec: FloatBoundarySpec, prefix: str) -> str:
         or not prefix[0].isalpha()
     ):
         raise ValueError("BF16 decoder requires a decode specification and an ASCII C identifier")
+    if spec.column_scale_exponents:
+        if spec.scale_axis != 1:
+            raise ValueError("BF16 C result decoder supports logical column scales only")
+        pieces, choices = [], []
+        for index, (_start, stop, exponent) in enumerate(spec.column_scale_exponents):
+            panel_name = f"{prefix}_panel_{index}"
+            pieces.append(render_bf16_decode_c(spec.scalar_panel(exponent), panel_name))
+            choices.append(f"  if (column < {stop}u) return {panel_name}(code);")
+        return "#include <stddef.h>\n" + "\n".join(pieces) + f"\nstatic uint32_t {prefix}(uint16_t code, size_t column) {{\n" + "\n".join(choices) + "\n  return 0x7fc00000u;\n}\n"
     return f"""#include <stdint.h>
 static uint32_t {prefix}(uint16_t code) {{
   uint32_t bits=(uint32_t)code<<16, sign=bits&0x80000000u;
@@ -134,11 +143,24 @@ def render_f32_operand_c(conversion: BoundaryConversion, prefix: str) -> str:
         f"row*{source_cols}u+col" if conversion.target_axes_from_source == (0, 1) else (f"col*{source_cols}u+row")
     )
     if spec.format == "bf16":
-        if spec.pre_encode_scale_exponent:
+        if spec.pre_encode_scale_exponent or spec.column_scale_exponents:
             raise ValueError("C BF16 conversion does not support a pre-encode scale")
         return _render_bf16_operand_c(conversion, prefix, source_index)
     codebook = prefix + "_codebook"
-    table = "\n".join(render_finite_f32_codebook_c(codebook, finite_f32_codebook(spec)))
+    table = ""
+    selected_codebook = "&" + codebook
+    if spec.column_scale_exponents:
+        if spec.column_scale_exponents[-1][1] != (rows, cols)[spec.scale_axis]:
+            raise ValueError("column scale partition differs from operand geometry")
+        choices = []
+        for index, (_start, stop, exponent) in enumerate(spec.column_scale_exponents):
+            panel_name = f"{codebook}_{index}"
+            table += "\n".join(render_finite_f32_codebook_c(panel_name, finite_f32_codebook(spec.scalar_panel(exponent)))) + "\n"
+            axis = "row" if spec.scale_axis == 0 else "col"
+            choices.append(f"{axis} < {stop}u ? &{panel_name} : ")
+        selected_codebook = "(" + "".join(choices) + "0)"
+    else:
+        table = "\n".join(render_finite_f32_codebook_c(codebook, finite_f32_codebook(spec)))
     return f"""#include <float.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -153,7 +175,7 @@ static int {prefix}(const float *source, uint8_t *output) {{
       for (size_t col = 0; col < {cols}u; ++col) {{
         uint32_t bits; uint8_t code;
         __builtin_memcpy(&bits,source+({source_index}),4u);
-        int status = merlin_f32_u8_encode_checked_table(bits,&{codebook},&code);
+        int status = merlin_f32_u8_encode_checked_table(bits,{selected_codebook},&code);
         if (status != MERLIN_F32_U8_OK) return status;
         if (pass) output[row*{cols}u+col] = code;
       }}
