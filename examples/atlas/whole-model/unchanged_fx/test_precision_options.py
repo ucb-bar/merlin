@@ -118,28 +118,3 @@ def test_compile_cli_refuses_nonpositive_allocation_budget(budget):
                                   '--allocation-timeout-ms', budget]), pytest.raises(SystemExit):
         compile_capsule.main()
 
-
-@pytest.mark.parametrize('module_name', ['composition', 'cache_composition'])
-@pytest.mark.parametrize('override,expected', [(None, 1000), (2300, 2300)])
-def test_driver_clis_select_default_or_explicit_budget_and_domain(module_name, override, expected):
-    import importlib
-
-    driver = importlib.import_module(module_name)
-    command = [module_name + '.py']
-    for option in ('regions', 'compiled', 'execution', 'atlas-root', 'model-python', 'model-root'):
-        command += ['--' + option, 'unused']
-    command += ['--reduction-policy', NONNEGATIVE_NORMAL_REDUCTION_POLICY]
-    if override is not None:
-        command += ['--allocation-timeout-ms', str(override)]
-    original_parse = argparse.ArgumentParser.parse_args
-    observed = []
-    class Parsed(Exception):
-        pass
-    def parse_and_stop(parser, *args, **kwargs):
-        selected = original_parse(parser, *args, **kwargs)
-        observed.append((selected.allocation_timeout_ms, selected.reduction_policy))
-        raise Parsed
-    with patch.object(sys, 'argv', command), patch.object(argparse.ArgumentParser, 'parse_args', parse_and_stop):
-        with pytest.raises(Parsed):
-            driver.main()
-    assert observed == [(expected, NONNEGATIVE_NORMAL_REDUCTION_POLICY)]

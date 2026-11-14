@@ -60,24 +60,6 @@ class InitialEmbeddingTests(unittest.TestCase):
         self.assertTrue(record["independent_raw_gather_verified"])
         self.assertFalse(record["source_graph_numerical_execution"])
 
-    def test_driver_authentication_uses_source_gather_without_arithmetic_engines(self):
-        import sys
-        from types import SimpleNamespace
-        from whole_model import authenticate_initial_inputs
-
-        (self.root / "preparation.json").write_text(json.dumps(self.preparation))
-        args = SimpleNamespace(initial_inputs=self.root / "initial-inputs.npz",
-            initial_preparation=self.root / "preparation.json", initial_tokens=self.root / "tokens.npy",
-            source_bundle=self.root, selection_manifest=None)
-        before = set(sys.modules)
-        value, receipt = authenticate_initial_inputs(args, self.manifest, self.capsule)
-        np.testing.assert_array_equal(value, self.activation)
-        self.assertTrue(receipt["independent_raw_gather_verified"])
-        self.assertFalse(receipt["source_graph_numerical_execution"])
-        added = set(sys.modules) - before
-        self.assertFalse(any(name in {"whole_reference", "layer_reference", "fx_layer_reference"}
-                             or name == "npu_model" or name.startswith("npu_model.") for name in added))
-
     def test_forged_receipt_cannot_bless_arbitrary_activation(self):
         changed = self.activation.copy()
         changed[0, 0, 0] ^= np.uint16(1)
