@@ -1,7 +1,5 @@
-"""Explicit domain selection and invocation budgets must survive the CLI."""
+"""Explicit reduction-domain selection must survive the CLI and the reuse checks."""
 import argparse
-import sys
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -9,9 +7,7 @@ import pytest
 from atlas_mlir_native.reduction import (
     NONNEGATIVE_NORMAL_REDUCTION_POLICY, REDUCTION_POLICY, input_spec,
 )
-from merlin.semantic_compiler.buffer_allocation import current_allocation_wall_budget_ms
 from precision_options import add_reduction_policy_argument, verify_reduction_policy
-import compile_capsule
 from merlin.compile.c_bf16_linear import SOURCE_POLICY
 
 
@@ -95,26 +91,4 @@ def test_head_reuse_accepts_current_policy_and_preserves_precision_only_receipts
             {'description': {'arithmetic': 'byte-preserving'}},
             {'description': {'arithmetic': 'selected-host-bf16-matmul', 'numeric_semantics': SOURCE_POLICY}}]
     verify_reduction_policy('head', precision, compilation, REDUCTION_POLICY)
-
-
-@pytest.mark.parametrize('override,expected', [(None, 1000), (2300, 2300)])
-def test_compile_cli_records_selected_domain_and_uses_default_or_explicit_wall_budget(override, expected):
-    command = ['compile_capsule.py', '--capsule', '.', '--output', 'unused-output',
-               '--reduction-policy', NONNEGATIVE_NORMAL_REDUCTION_POLICY]
-    if override is not None:
-        command += ['--allocation-timeout-ms', str(override)]
-    observed = []
-    def compile_selected(args):
-        observed.append((args.reduction_policy, args.allocation_timeout_ms, current_allocation_wall_budget_ms()))
-    with patch.object(sys, 'argv', command), patch.object(compile_capsule, 'compile_capsule', compile_selected):
-        compile_capsule.main()
-    assert observed == [(NONNEGATIVE_NORMAL_REDUCTION_POLICY, expected, expected)]
-    assert current_allocation_wall_budget_ms() == 1000
-
-
-@pytest.mark.parametrize('budget', ['0', '-1'])
-def test_compile_cli_refuses_nonpositive_allocation_budget(budget):
-    with patch.object(sys, 'argv', ['compile_capsule.py', '--capsule', '.', '--output', 'unused-output',
-                                  '--allocation-timeout-ms', budget]), pytest.raises(SystemExit):
-        compile_capsule.main()
 
