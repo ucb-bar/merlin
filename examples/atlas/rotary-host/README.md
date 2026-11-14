@@ -44,8 +44,6 @@ nice -n 10 "$TORCH_PYTHON" reference/validate_rotary_v3.py \
   --rv64-output out/rv64-rotary.bin --archive-gate out/rotary-libm-receipt.json
 ROTARY_SOURCE_TRACE="$CAPTURE/frontend-trace.json" nice -n 10 "$TORCH_PYTHON" \
   -m unittest discover -s reference -p 'test_*.py'
-nice -n 10 "$TORCH_PYTHON" reference/validate_rotary_sequence_v3.py \
-  --source-bundle "$CAPTURE" --qualification reference/out/rotary-v3/reference.json
 ```
 
 The archive and independent oracle agree at binary32 and BF16. Torch agrees at

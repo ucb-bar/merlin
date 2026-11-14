@@ -54,17 +54,7 @@ slice, expanding only its arange extent to cover the qualified domain, and
 compares every word with the direct independent computation. Lifted frequency
 words are authenticated against their original captured bytes.
 
-## Check source replay and fixture refusal
-
-The sequence smoke test supplies deliberately incorrect all-zero rotary fixtures
-and verifies that production stage inputs instead come from authenticated fresh
-computation:
-
-```sh
-nice -n 10 "$TORCH_PYTHON" reference/validate_rotary_sequence_v3.py \
-  --source-bundle "$CAPTURE" \
-  --qualification "$REFERENCE_OUT/reference.json"
-```
+## Rotary inputs in stage sequences
 
 For a stage-capsule sequence, pass `--rotary-source-bundle "$CAPTURE"` and
 `--rotary-validation "$REFERENCE_OUT/reference.json"` to
@@ -72,9 +62,9 @@ For a stage-capsule sequence, pass `--rotary-source-bundle "$CAPTURE"` and
 arguments. Version 3 replaces the captured `to_7` cosine and `to_8` sine
 preparation inputs with freshly interpreted source outputs and refuses those
 inputs without authenticated replay. Other preparation and arithmetic policies
-retain their behavior. Passing the rotary gate or this sequence smoke does not
-establish complete whole-model compilation, decoder execution, generated cache
-continuity, or quality.
+retain their behavior. Passing the rotary gate does not establish complete
+whole-model compilation, decoder execution, generated cache continuity, or
+quality.
 
 ## Source-order head reference
 
