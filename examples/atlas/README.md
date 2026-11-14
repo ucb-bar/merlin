@@ -11,7 +11,7 @@ target `atlas`; provider identity and hardware configuration are separate inputs
 - [Phase 1 guide](phase1/README.md): supplied compiler-authoring inputs and functional experiment requirements.
 - [Phase 2 handoff](phase2/README.md): select frozen compiler evidence and the existing optimization templates.
 - [Whole-model entrypoints](whole-model/README.md): capture/lowering inspection and separate deployment prerequisites.
-- Model bringup: the [unchanged quantized TinyLlama FX route](whole-model/unchanged_fx/README.md), with original parameter bytes and separate compilation, exactness, and quality gates.
+- Model bringup: the [quantized TinyLlama route](whole-model/unchanged_fx/README.md), which keeps original parameter bytes and keeps compilation and exactness checks separate; model quality is not yet evaluated.
 - [Artifact navigation](artifacts/README.md): raw CIRCT facts, actual consumer views, coverage and capsule lineage.
 
 [Target setup](target/README.md) describes support selection (the vendored [`support/`](support/README.md)

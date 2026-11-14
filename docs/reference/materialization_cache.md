@@ -1,3 +1,12 @@
+---
+title: Application compilation reuse
+kind: reference
+status: current
+owner: compiler
+last_verified: 2026-11-13
+code_refs: [src/merlin/semantic_compiler/materialization.py, src/merlin/compile/semantic_application.py, src/merlin/targetgen/native_application.py]
+---
+
 # Application compilation reuse
 
 Application compilation executes fresh compiler tools and region compilation by

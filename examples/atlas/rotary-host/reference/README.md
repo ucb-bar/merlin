@@ -1,4 +1,4 @@
-# Independent rotary reference v3
+# Reference v3: rotary, head, and whole-model caches
 
 `whole_reference.py` computes rotary preparation in its original-ATen
 interpreter. `rotary_source.py` reads the dependency slice of a complete captured
@@ -95,7 +95,10 @@ verification, and independent numerical comparison receipts separate.
 `cache_decode_reference.py` reconstructs the original source FX from a complete
 captured `frontend-trace.json` and unchanged `weights.safetensors`. It interprets
 the source operations through reference v3, gathers embedding words independently,
-and computes rotary words with the qualified integer oracle. The source boundary
+and computes rotary words with the qualified integer oracle. Elementwise,
+reduction, and softmax steps call npu_model's `RtlNumerics`; the rotary, MXU dot,
+and head arithmetic are reimplemented here. Agreement with the functional model
+is therefore not independent for those shared steps. The source boundary
 has token IDs, absolute positions, and an exact BF16 causal mask. A prefill returns
 logits followed by every layer's post-RoPE, pre-GQA K/V pair.
 
@@ -122,9 +125,7 @@ nice -n 10 "$TORCH_PYTHON" -m unittest discover -s reference \
   -p 'test_cache_decode_reference.py'
 ```
 
-The layer-0 `cache_reference.py` in the unchanged-FX example remains the
-reference for saved regional capsules and their independent regression gates.
-This whole-model reference instead interprets complete live source captures.
+This whole-model reference interprets complete live source captures.
 
 Whole-model generated-cache execution has been checked on `qualified_native`
 only. Layer-0 continuity has separate exact checks on both backends.

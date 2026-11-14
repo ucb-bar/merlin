@@ -25,6 +25,8 @@ Choose a range inside the board's physical memory, separate from program section
 and device scratch. For SophiaLake's 1 GiB DRAM map a 44,120,064-byte payload at
 `0xa0000000` ends at `0xa2a13800`. The generated binder authenticates the payload
 at startup. Keep it immutable and retain DRAM between invocations.
+DRAM placement has not run on penguin26; the bench runs used scratchpad or VMEM
+windows over JTAG.
 The emitter refuses missing or incorrect
 pinned math archives when the application declares host linkage. Applications
 without math symbols do not require a math supplier.

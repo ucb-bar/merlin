@@ -1,4 +1,4 @@
-# Unchanged quantized FX model regions
+# Quantized TinyLlama from original parameter bytes
 
 The pinned model2MLIR revision `ebb1c600e0d7f3205c801d8f00acb960015b32f2` is available from [reed-nicolas/model2MLIR, branch feat/tinyllama](https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama) until its upstream PR merges. The software verifier retains the canonical upstream origin: clone `https://github.com/ucb-bar/model2MLIR.git`, add `https://github.com/reed-nicolas/model2MLIR.git` as a named remote, fetch `feat/tinyllama`, and check out the pinned revision.
 
@@ -7,6 +7,10 @@ The pinned model2MLIR revision `ebb1c600e0d7f3205c801d8f00acb960015b32f2` is ava
 Use `merlin targetgen native-compile --application` to stage captured IR and
 parameters through the installed provider's `application_adapter` and
 `compile_region`. See the shared [application workflow](../../../../docs/guides/whole_model_on_accelerator.md).
+
+Install matching Merlin, model2MLIR, and atlas-mlir checkouts in the compiler
+environment, then install the standalone `atlas_fp8` adapter package with
+`python -m pip install -e "$ATLAS_ROOT/adapter"`.
 
 After a worker capture with `--materialize-bundle --already-quantized --quant-adapter
 atlas_fp8`, the existing compiler commands are:
@@ -32,10 +36,13 @@ already-quantized worker's `stage="original"` authenticates the selected native
 ExportedProgram; it does not claim float-to-quantized equivalence.
 
 For decoder-0 prefill64 or decode65, freeze the independent boundary receipt's
-digest before capture. `adapter_loader.py` reconstructs the graph and parameters
-live using the saved activation archive, without loading a saved graph. Decode
-uses the authenticated six-input BF16 cache boundary. Use fresh destinations for
-each phase and run one native compile at a time:
+digest before capture. `adapter_loader.py` rebuilds the model live from the
+authenticated export. It instantiates the architecture with eager attention and
+no cache object, installs the export's raw tensors, uses atlas-torchao's
+`RefQuantLinear` and reference attention for quantized sites, and wraps the
+selected boundary. Parameter bytes are unchanged, and no saved graph is loaded.
+Decode uses the authenticated six-input BF16 cache boundary. Use fresh
+destinations for each phase and run one native compile at a time:
 
 ```sh
 TOOLS=examples/atlas/whole-model/unchanged_fx
@@ -80,10 +87,13 @@ nice -n 10 "$MODEL_PYTHON" "$TOOLS/execute_graph.py" \
 
 Use the pinned model's compatible interpreter, with `$ATLAS_ROOT` and
 `$ATLAS_ROOT/python` on its import path. Execution publishes
-`EXECUTED_UNCOMPARED`; compare with the authenticated same-shape independent
-reference using `cache_composition.compare_outputs`. Decode65 also requires
-verified independent parent-cache words through `composition.verify_stage_inputs`
-and `execute_graph.py --input-overrides VERIFIED_CACHE_INPUTS.npz`. This fixed-input
+`EXECUTED_UNCOMPARED`; the functional backend executes one delay slot after each
+taken branch or jump and rejects control flow inside a delay slot. Compare every
+raw BF16 word of `$EXECUTION/actual.npz` with the same-shape reference's
+`expected.npz`, as in the fixed64 check below. Decode65 also requires the
+reference's parent-cache words: check that each override's SHA-256 equals the
+input recorded in the reference's `reference.json`, then pass them with
+`execute_graph.py --input-overrides VERIFIED_CACHE_INPUTS.npz`. This fixed-input
 check does not establish generated parent-cache continuity.
 
 Select qualified execution with `--backend qualified_native --native-qualification
@@ -153,7 +163,7 @@ wrapper and binding. The two materialization caches affect compilation;
 operand writes. Check the manifest's loop selection, compile-status cache records,
 and execution residency counters when recording the combined gate.
 
-Authenticate the independent reference's source inputs and parameters as in the
+Authenticate the separate reference's source inputs and parameters as in the
 host-rotary gate, then compare every raw BF16 output word. For its fixed64 head
 `expected.npz`, set `$REFERENCE_OUTPUTS` and run:
 
@@ -180,76 +190,20 @@ print("PASS", digest)
 PYTHON
 ```
 
-## Saved-boundary regression
-
-Install matching Merlin, model2MLIR, and atlas-mlir checkouts in the compiler
-environment, then install the standalone `atlas_fp8` adapter package from
-`$ATLAS_ROOT/adapter` with `python -m pip install -e "$ATLAS_ROOT/adapter"`.
-Put the provider's Python directory and
-the source custom-op registration on `PYTHONPATH`. `$BUNDLE/fx` must be a verified
-native FP8 export with original unfolded codes, exponents, and ordinary tensors.
-Freeze `$CONTRACT_SHA` and `$POLICY_SHA` from its source receipt before capture.
-
-```sh
-TOOLS=examples/atlas/whole-model/unchanged_fx
-nice -n 10 "$CAPTURE_PYTHON" "$TOOLS/extract_capsules.py" \
-  --bundle "$BUNDLE/fx" --output "$REGIONS" --whole-model --threads 1
-nice -n 10 "$COMPILER_PYTHON" "$TOOLS/composition.py" \
-  --regions "$REGIONS" --compiled "$COMPILED" --execution "$COMPILE_RECEIPT" \
-  --atlas-root "$ATLAS_ROOT" --compiler-python "$COMPILER_PYTHON" \
-  --model-python "$MODEL_PYTHON" --model-root "$MODEL_ROOT" \
-  --adapter-export "$BUNDLE/export" --expected-contract-sha256 "$CONTRACT_SHA" \
-  --expected-policy-sha256 "$POLICY_SHA" --compile-only --stop-after head
-```
-
-The compiler uses `convert`, `AtlasApplicationAdapter`, external parameter
-capture and staging, and `compile_semantic_application`. Completed compilations
-are reused only after source, policy, and host-head arithmetic checks. Use fresh
-compiled output trees when changing policies. The host BF16 head retains source
-words and selects `bf16-exact-product-f32-ltr-rne-bf16-rne-v1`: exact widening,
-separate binary32 multiply/add in ascending K order, then one BF16 RNE. Historical
-VPU head arithmetic remains refused; no exact torch summation-order claim is made.
-
-Execute with the same arguments, a fresh `--execution` destination,
-`--oracle "$ORACLE" --sequential --stop-after head`, and without `--compile-only`.
-For a layer-0 check, use `--stop-after layer0` in both commands. `--sequential`
-consumes authenticated generated predecessor words; without it, stages use the
-independent oracle's authenticated runtime inputs. Both modes compare every
-selected output and close generated seam hashes before PASS. Source embedding
-gathers can be authenticated through `--initial-inputs`, `--initial-preparation`,
-`--source-bundle`, and optional `--initial-tokens` and `--selection-manifest`.
-Only the layer-0 embedding may replace its captured fixture.
-
 ## Cache phases and source preparation
 
 `raw_capture.py` reconstructs the source from authenticated raw buffers;
 `--intake-only` checks source identity without forward execution.
-`cache_source.py` defines tensor-only prefill and appended BF16 K/V boundaries.
-`capture_cache_source.py` requires the completed raw64 source gate and publishes
-authenticated phase ABI sidecars. Pass those to `extract_capsules.py --cache-abi
-SIDECAR --cache-capture RECEIPT`; decode65 requires its own query-one,
-past-length-64 source capture.
+`cache_source.py` defines tensor-only prefill and appended BF16 K/V boundaries;
+decode65 requires its own query-one, past-length-64 source capture.
 
-`cache_reference.py` interprets source cache phases independently. Nonempty cache
-inputs require a completed parent reference through `--parent-reference` and
-`--parent-capsules`. `cache_composition.py` compiles with `--compile-only` and then
-executes against `--oracle`; decode additionally requires `--parent-execution`
-and `--parent-regions`. Every K/V input comes from authenticated actual parent
-outputs. Ordinary composition refuses cached manifests. Source parity, generated
-cache continuity, and full-protocol quality remain separate checks.
-
-Run the regional and embedding tests in separate processes to avoid conflicting
+Run the example and embedding tests in separate processes to avoid conflicting
 source-op registration:
 
 ```sh
 python -m pytest "$TOOLS"/test_*.py
 python -m pytest "$TOOLS/quality"
 ```
-
-The consolidated `test_cache_composition.py` covers phase roles, parent-cache
-publications, driver source and memory selection, oracle lineage, and mutation
-refusal using synthetic artifacts and mocked dispatch. Numerical exactness,
-hardware behavior, quality, and timing require their own qualification evidence.
 
 ## Generated cache through standard applications
 
@@ -278,11 +232,10 @@ to decode with an explicit JSON descriptor:
 
 Paths are relative to the descriptor. Pass it to `execute_graph.py
 --input-bindings bindings.json` when executing the separately compiled decode65
-application. This descriptor selects generated cache inputs directly;
-`cache_composition.py` continues to use override archives. The example helper
-checks producer identity, completed execution, output hashes, and exact
-input/output shape and dtype before exposing generated arrays.
-Decode receipts record the producer and each consumed output. Independent
+application. This descriptor selects generated cache inputs directly. The
+example helper checks producer identity, completed execution, output hashes, and
+exact input/output shape and dtype before exposing generated arrays.
+Decode receipts record the producer and each consumed output. Separate
 references remain comparison-only; they do not supply these cache words.
 
 This uses the existing synchronous, caller-owned application buffers. Keep
@@ -306,14 +259,13 @@ standard application commands and retain separate updated-cache outputs.
 Independent fixture caches used during capture do not establish continuity;
 execute decode with all 44 generated-output bindings. Compare logits and every
 cache tensor, authenticate every producer edge, and check each old cache prefix.
-The [independent whole-cache reference](../../rotary-host/reference/README.md)
+The [separate whole-cache reference](../../rotary-host/reference/README.md)
 computes its own prefill and decode state from original weights and tokens,
 including v3 rotary preparation.
 
 Whole-model generated-cache numerical evidence uses `qualified_native` only;
-layer-0 continuity is checked separately on both backends. The regional
-`cache_reference.py` remains for saved-capsule layer-0 and composition regressions;
-the whole-cache reference interprets complete live source captures.
+layer-0 continuity is checked separately on both backends. The whole-cache
+reference interprets complete live source captures.
 
 ### Greedy decoding with decoder layer 0
 
@@ -362,7 +314,7 @@ backend chain with the default execution limits.
 Use the same three phases and greedy policy, omit `decoder_layers` from the
 authenticated model-cache source receipts, and include all 44 cache bindings
 in each decode descriptor. Each decode takes 47 inputs and returns 45 outputs.
-The independent replay authenticates all 356 original source weight tensors.
+The separate replay authenticates all 356 original source weight tensors.
 Require that scope explicitly when comparing the qualified whole-model chain:
 
 ```bash

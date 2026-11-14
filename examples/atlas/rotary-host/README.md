@@ -66,7 +66,9 @@ packager selects native unary components in its separate runtime copy only with
 explicit validation flags and an equality receipt; every output is computed by
 the selected library, while qualified-angle membership is checked separately.
 
-The fixed64 functional run at the branch just before final cleanup matched all 2,048,000 BF16 words of independent reference v3 with output SHA-256 `b81d4a7eb71d12ca9a1a601a1ddecb7d0354be968a1143f235acea7761e3aeba`.
+A recorded fixed64 functional run matched all 2,048,000 BF16 words of reference
+v3, with output SHA-256
+`b81d4a7eb71d12ca9a1a601a1ddecb7d0354be968a1143f235acea7761e3aeba`.
 
 For the fixed64 capture, `whole-model-policy.json` records the complete precision
 policy including `host_preparation_scope`; its source digest must match the capture.

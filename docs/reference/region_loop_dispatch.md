@@ -1,3 +1,12 @@
+---
+title: Optional host dispatch loops
+kind: reference
+status: current
+owner: runtime
+last_verified: 2026-11-13
+code_refs: [src/merlin/compile/dispatch_c.py, src/merlin/compile/region_loop.py, src/merlin/compile/counted_loop.py, merlin/tests/runtime/test_dispatch_loop_c.py]
+---
+
 # Optional host dispatch loops
 
 `merlin.compile.dispatch_c.prepare_dispatch_loop` captures an explicit counted
@@ -73,5 +82,4 @@ combines the counted C driver, opt-in compilation caches and the example
 persistent-IMEM functional bridge. The residency trampoline adds two executed
 instructions per launch beyond the body's proven bound. The combined bound is
 not statically proven; only the runtime cap enforces the 1,000,000-instruction
-policy for that qualification. This does not establish a whole-model result
-until the complete authenticated run and independent output comparison pass.
+policy for that qualification.
