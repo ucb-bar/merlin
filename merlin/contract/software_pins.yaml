@@ -17,7 +17,7 @@ pins:
       shift and floor-division decompositions, PT2E integer-contraction capture, and literal
       quantization-parameter lowering; missing any of these leaves supported operations opaque.
     repo_canonical: https://github.com/ucb-bar/model2MLIR.git
-    commit: "e445587543bf9b84e6ee1371414f2202f2533d9c"
+    commit: "ebb1c600e0d7f3205c801d8f00acb960015b32f2"
     root_env: MERLIN_M2M_DIR
     requires_paths:
       - m2m/api.py
@@ -36,12 +36,6 @@ pins:
       - m2m/capture/torch_mlir_bridge.py
     content_check: true
     notes: >-
-      Revision e445587543bf9b84e6ee1371414f2202f2533d9c is supplied by
-      https://github.com/reed-nicolas/model2MLIR/tree/pr/tinyllama until its
-      upstream PR merges. Keep repo_canonical for origin verification; fetch the
-      revision from a named fork remote. Local integration of upstream 7859da0b9601d5eeb219a2cc408e41e06551ed16 with
-      generic external quantization adapters, opaque schemas and multiple results,
-      and normalization before capture finalization. Preserves registered-buffer dtypes,
-      exact source identities, complete archive bindings, numerical frontend fixes,
-      and rank-general linear dimensions. Target semantics live in provider packages;
-      frontend intake does not certify target storage encodings or device execution.
+      Supplied by https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama
+      (https://github.com/ucb-bar/model2MLIR/pull/7) until it merges; fetch it from
+      a named fork remote.
