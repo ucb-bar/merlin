@@ -30,6 +30,7 @@ from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
 from .application_c import emit_application_c
 from .application_plan import application_plan
+from .application_views import IMPLEMENTATION as VIEW_IMPLEMENTATION, checked_view_aliases, compile_view
 from .c_sources import c_source_pair
 from .dispatch_c import DispatchCall, emit_program_c, prepare_dispatch_loop_from_plan
 from .semantic_regions import outline_semantic_regions
@@ -78,6 +79,7 @@ def _render(
         raise TypeError("region loop emission needs an explicit Boolean")
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
+    aliases = checked_view_aliases(source, plan)
     try:
         program = build_program(
             outlined.logical,
@@ -88,6 +90,7 @@ def _render(
                 capacity,
                 tuple(2 * i for i in range(len(graph.nodes))),
                 tuple(2 * i + 1 for i in range(len(graph.nodes))),
+                aliases=aliases,
                 dispatch_digest=dispatch_digest(graph),
             ),
         )
@@ -133,7 +136,8 @@ def _render(
   return {lowered.symbol}(context,ordered_inputs,ordered_outputs);
 }}
 """)
-        calls[index] = DispatchCall(symbol, placements[key], context_index=index)
+        calls[index] = DispatchCall(symbol, placements[key], context_index=index,
+                                    alias_safe=node.kind == "view")
         summaries.append(
             {
                 "id": key,
@@ -410,6 +414,9 @@ def _compile_semantic_application(
         for i, (key, region) in enumerate(outlined.regions):
             alternative = selected[key]
             _stats["region_calls"] += 1
+            if alternative.implementation == VIEW_IMPLEMENTATION:
+                lowered.append(compile_view(region, f"region_{i:03d}"))
+                continue
             contract = _region_materialization_contract(adapter, region, alternative)
             region_key = _region_materialization_key(
                 adapter, snapshot, region, alternative, target_source, limits, contract=contract)
@@ -588,6 +595,9 @@ def _verify_semantic_application(
     compiled = []
     for i, (key, region) in enumerate(outlined.regions):
         alternative = selected[key]
+        if alternative.implementation == VIEW_IMPLEMENTATION:
+            compiled.append(compile_view(region, f"region_{i:03d}"))
+            continue
         region_key = _region_materialization_key(
             adapter, snapshot, region, alternative, target_source, limits)
         with materialization_region(region_key):

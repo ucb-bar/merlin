@@ -756,6 +756,8 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
             raise ValueError("--application-common-values requires --application")
         if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
             raise ValueError("--application-compose-reshapes requires --application")
+        if getattr(args, "application_buffer_views", False) and not getattr(args, "application", False):
+            raise ValueError("--application-buffer-views requires --application")
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded" and not args.application:
@@ -770,6 +772,7 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
                 ("reduction_unroll", options.reduction_unroll != "auto"),
                 ("tuning_profile", options.tuning_profile is not None),
                 ("program_size_limit_bytes", options.program_size_limit_bytes is not None),
+                ("execution_instruction_limit", options.execution_instruction_limit is not None),
                 ("io_memory_bytes", options.io_memory_bytes is not None),
             )
             if active
@@ -1159,6 +1162,8 @@ def _native_verify_with_options(args: argparse.Namespace) -> int:
             raise ValueError("--application-common-values requires --application")
         if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
             raise ValueError("--application-compose-reshapes requires --application")
+        if getattr(args, "application_buffer_views", False) and not getattr(args, "application", False):
+            raise ValueError("--application-buffer-views requires --application")
         if getattr(args, "application_state", None):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded":

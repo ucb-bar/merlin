@@ -21,6 +21,7 @@ def run_profile(args):
         CodegenOptions(
             io_memory_bytes=getattr(args, "io_memory_bytes", None),
             exact_float_unroll=getattr(args, "exact_float_unroll", False),
+            execution_instruction_limit=getattr(args, "execution_instruction_limit", None),
         )
     ):
         return _run_profile_with_options(args)
@@ -58,6 +59,7 @@ def _run_profile_with_options(args):
             program_size_limit_bytes=args.program_size_limit_bytes,
             io_memory_bytes=getattr(args, "io_memory_bytes", None),
             exact_float_unroll=getattr(args, "exact_float_unroll", False),
+            execution_instruction_limit=getattr(args, "execution_instruction_limit", None),
         )
     ):
         key = key_factory(snapshot, request, abi["fixed_inputs"], tuple(abi["fixed_outputs"]), limits)
@@ -81,6 +83,7 @@ def _run_profile_with_options(args):
                     args.program_size_limit_bytes,
                     io_memory_bytes=getattr(args, "io_memory_bytes", None),
                     exact_float_unroll=getattr(args, "exact_float_unroll", False),
+                    execution_instruction_limit=getattr(args, "execution_instruction_limit", None),
                 )
             ):
                 compile_args = Namespace(
