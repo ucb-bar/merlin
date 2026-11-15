@@ -258,6 +258,31 @@ def test_profile_scope_receives_geometry_and_program_budget(monkeypatch):
     assert selected == CodegenOptions(program_size_limit_bytes=4096, **IO_GEOMETRY)
 
 
+@pytest.mark.parametrize('application', [False, True])
+def test_verify_replays_stored_program_budget_separately_from_execution_limit(application, monkeypatch):
+    from merlin.targetgen import cli
+
+    parser = cli.build_parser()
+    flags = ['native-verify', *_native_args('native-verify')]
+    if application:
+        flags.append('--application')
+    defaults = options_from_args(parser.parse_args(flags))
+    assert defaults.program_size_limit_bytes is None
+    observed = []
+
+    def replay(args):
+        observed.append(current_codegen_options())
+        return 0
+
+    monkeypatch.setattr(cli, '_native_verify_with_options', replay)
+    selected = parser.parse_args([
+        *flags, '--program-size-limit-bytes', '8192', '--execution-instruction-limit', '128000000',
+    ])
+    assert selected.func(selected) == 0
+    assert observed == [CodegenOptions(program_size_limit_bytes=8192, execution_instruction_limit=128000000)]
+    assert current_codegen_options().identity_record() == defaults.identity_record()
+
+
 @pytest.mark.parametrize("changed", ("samples", "correctness", "factor", "missing"))
 def test_malformed_profiles_cannot_select_a_variant(changed):
     value = profile()

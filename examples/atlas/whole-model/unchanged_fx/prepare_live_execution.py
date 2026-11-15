@@ -33,6 +33,8 @@ def main():
     from merlin.targetgen.native_codegen_cli import add_io_memory_argument
 
     add_io_memory_argument(parser)
+    parser.add_argument('--program-size-limit-bytes', type=int,
+                        help='stored program byte budget selected during compilation')
     parser.add_argument('--execution-instruction-limit', type=int,
                         help='per-launch executed-instruction budget selected during compilation')
     parser.add_argument('--exact-float-unroll', action='store_true',
@@ -42,12 +44,14 @@ def main():
     parser.add_argument('--execution-host-math-equivalence', type=Path)
     parser.add_argument('--execution-host-math-rv64-output', type=Path)
     args = parser.parse_args()
-    if args.execution_instruction_limit is not None and args.execution_instruction_limit <= 0:
-        parser.error('execution instruction limit must be positive')
     codegen_choices, codegen_flags = {}, []
-    if args.execution_instruction_limit is not None:
-        codegen_choices['execution_instruction_limit'] = args.execution_instruction_limit
-        codegen_flags.extend(['--execution-instruction-limit', str(args.execution_instruction_limit)])
+    for name in ('program_size_limit_bytes', 'execution_instruction_limit'):
+        selected = getattr(args, name)
+        if selected is not None:
+            if selected <= 0:
+                parser.error(name.replace('_', ' ') + ' must be positive')
+            codegen_choices[name] = selected
+            codegen_flags.extend(['--' + name.replace('_', '-'), str(selected)])
     if args.exact_float_unroll:
         codegen_choices['exact_float_unroll'] = True
         codegen_flags.append('--exact-float-unroll')

@@ -129,9 +129,13 @@ def test_packaging_refuses_geometry_outside_compiler_publication(case, monkeypat
     assert not (case.root / 'compiled.json').exists()
 
 
-@pytest.mark.parametrize('budget,unroll', [(None, False), (128000000, False), (1000000, True)])
-def test_execution_choices_are_replayed_and_published_without_building(case, monkeypatch, budget, unroll):
+@pytest.mark.parametrize('budget,program_bytes,unroll', [
+    (None, None, False), (128000000, 8192, False), (1000000, None, True), (None, 4096, False),
+])
+def test_execution_choices_are_replayed_and_published_without_building(case, monkeypatch, budget, program_bytes, unroll):
     options = [] if budget is None else ['--execution-instruction-limit', str(budget)]
+    if program_bytes is not None:
+        options.extend(['--program-size-limit-bytes', str(program_bytes)])
     if unroll:
         options.append('--exact-float-unroll')
     monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *options])
@@ -151,14 +155,21 @@ def test_execution_choices_are_replayed_and_published_without_building(case, mon
     else:
         assert command[command.index('--execution-instruction-limit') + 1] == str(budget)
         assert record['execution_instruction_limit'] == budget
+    if program_bytes is None:
+        assert '--program-size-limit-bytes' not in command
+        assert 'program_size_limit_bytes' not in record
+    else:
+        assert command[command.index('--program-size-limit-bytes') + 1] == str(program_bytes)
+        assert record['program_size_limit_bytes'] == program_bytes
     assert ('--exact-float-unroll' in command) is unroll
     assert record.get('exact_float_unroll', False) is unroll
     assert case.events == ['verify']
 
 
 @pytest.mark.parametrize('budget', ['0', '-1'])
-def test_invalid_execution_budget_refuses_before_source_or_verification(case, monkeypatch, budget):
-    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, '--execution-instruction-limit', budget])
+@pytest.mark.parametrize('flag', ['--execution-instruction-limit', '--program-size-limit-bytes'])
+def test_invalid_execution_budget_refuses_before_source_or_verification(case, monkeypatch, budget, flag):
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, flag, budget])
     with pytest.raises(SystemExit) as error:
         packaging.main()
     assert error.value.code == 2

@@ -354,6 +354,9 @@ def add_native_codegen_commands(sub, handlers):
                               help="replay internal dense buffer views used for compilation")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
     native_verify.add_argument(
+        "--program-size-limit-bytes", type=int, help="stored program byte budget used for compilation"
+    )
+    native_verify.add_argument(
         "--execution-instruction-limit", type=int, help="per-launch executed-instruction budget used for compilation"
     )
     native_verify.add_argument(
