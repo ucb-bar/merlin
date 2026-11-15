@@ -18,7 +18,7 @@ from typing import Protocol
 from merlin.common.content_store import digest_file
 from merlin.runtime.program import build_program
 from merlin.semantic_compiler.model import KernelRequest
-from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS, current_codegen_options
+from merlin.semantic_compiler.codegen import APPLICATION_BUDGET_OPTIONS, IO_MEMORY_OPTIONS, current_codegen_options
 from merlin.semantic_compiler.materialization import (
     MaterializationCache, canonical_request, materialization_key, materialization_region, materialization_session,
 )
@@ -506,6 +506,7 @@ def _compile_semantic_application(
     manifest.update({
         name: getattr(options, name) for name in IO_MEMORY_OPTIONS if getattr(options, name) is not None
     })
+    manifest.update({name: getattr(options, name) for name in APPLICATION_BUDGET_OPTIONS})
     if emit_region_loop:
         manifest["dispatch_loop"] = True
     (destination / "manifest.json").write_bytes(_json(manifest))
@@ -569,6 +570,11 @@ def _verify_semantic_application(
     has_memory_selection = published_memory or any(name in selected_memory for name in IO_MEMORY_OPTIONS[1:])
     if has_memory_selection and _json(published_memory) != _json(selected_memory):
         raise ValueError("application I/O memory geometry differs from compilation")
+    published_budgets = {name: manifest[name] for name in APPLICATION_BUDGET_OPTIONS if name in manifest}
+    if published_budgets and _json(published_budgets) != _json({
+        name: getattr(options, name) for name in APPLICATION_BUDGET_OPTIONS
+    }):
+        raise ValueError("application budgets differ from compilation")
     emit_region_loop = manifest.get("dispatch_loop", False)
     if type(emit_region_loop) is not bool:
         raise ValueError("application dispatch loop option must be Boolean")

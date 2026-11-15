@@ -21,9 +21,9 @@ def add_io_memory_argument(parser):
     )
     for name, help_text in (
         ("base", "device-visible I/O window base address"),
-        ("alignment", "device-visible I/O allocation alignment in bytes"),
+        ("alignment", "required alignment of the I/O window base in bytes"),
         ("capacity-base", "base address of the containing device-visible memory capacity"),
-        ("capacity-bytes", "byte size of the containing device-visible memory capacity"),
+        ("capacity-bytes", "byte size of the containing device-visible memory capacity; SophiaLake DDR board compiles must declare --io-memory-capacity-base 0x80000000 --io-memory-capacity-bytes 0x40000000 (1 GiB); without capacity, windows above 1 GiB are admitted"),
     ):
         def memory_integer(text, *, option=name):
             try:

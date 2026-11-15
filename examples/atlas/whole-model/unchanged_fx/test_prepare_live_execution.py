@@ -138,7 +138,8 @@ def test_execution_choices_are_replayed_and_published_without_building(case, mon
         options.extend(['--program-size-limit-bytes', str(program_bytes)])
     if unroll:
         options.append('--exact-float-unroll')
-    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *options])
+    case.manifest.update(program_size_limit_bytes=program_bytes, execution_instruction_limit=budget, exact_float_unroll=unroll)
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
 
     def package_library(*args, package, **kwargs):
         # Only exercise packaging metadata here; no C compiler or model runs.
@@ -151,13 +152,13 @@ def test_execution_choices_are_replayed_and_published_without_building(case, mon
     record = json.loads((case.root / 'compiled.json').read_text())
     if budget is None:
         assert '--execution-instruction-limit' not in command
-        assert 'execution_instruction_limit' not in record
+        assert record['execution_instruction_limit'] is None
     else:
         assert command[command.index('--execution-instruction-limit') + 1] == str(budget)
         assert record['execution_instruction_limit'] == budget
     if program_bytes is None:
         assert '--program-size-limit-bytes' not in command
-        assert 'program_size_limit_bytes' not in record
+        assert record['program_size_limit_bytes'] is None
     else:
         assert command[command.index('--program-size-limit-bytes') + 1] == str(program_bytes)
         assert record['program_size_limit_bytes'] == program_bytes
@@ -304,3 +305,20 @@ def test_complete_execution_host_choice_forwards_explicit_rv64_output(case, monk
     assert observed == [dict(functional_validation=True, **{name: path.resolve() for name, path in paths.items()})]
     assert case.events == ['verify']
     assert not (case.root / 'runtime').exists()
+
+
+@pytest.mark.parametrize('name,published,restated', [
+    ('execution_instruction_limit', 1000000, 128000000),
+    ('program_size_limit_bytes', 4096, 8192),
+    ('exact_float_unroll', False, True),
+])
+def test_packaging_refuses_restated_budget(case, monkeypatch, name, published, restated):
+    case.manifest.update(program_size_limit_bytes=None, execution_instruction_limit=None, exact_float_unroll=False)
+    case.manifest[name] = published
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
+    flag = '--' + name.replace('_', '-')
+    flags = [flag] if name == 'exact_float_unroll' else [flag, str(restated)]
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *flags])
+    with pytest.raises(ValueError, match='selected budget differs'):
+        packaging.main()
+    assert case.events == []

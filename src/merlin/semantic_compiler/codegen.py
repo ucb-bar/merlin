@@ -10,6 +10,23 @@ from hashlib import sha256
 from pathlib import Path
 
 FACTORS = (1, 2, 4, 8)
+APPLICATION_BUDGET_OPTIONS = ("program_size_limit_bytes", "execution_instruction_limit", "exact_float_unroll")
+
+
+def application_budget_options(manifest, requested):
+    """Read published choices, refusing conflicting operator restatements."""
+    published = {name: manifest[name] for name in APPLICATION_BUDGET_OPTIONS if name in manifest}
+    if not published:  # Legacy application without published budgets.
+        return {name: value for name, value in requested.items() if value is not None}
+    if set(published) != set(APPLICATION_BUDGET_OPTIONS):
+        raise ValueError("incomplete application budget publication")
+    CodegenOptions(**published)
+    for name, value in requested.items():
+        if value is not None and json.dumps(value) != json.dumps(published[name]):
+            raise ValueError("selected budget differs from compiled application: " + name)
+    return published
+
+
 IO_MEMORY_OPTIONS = (
     "io_memory_bytes",
     "io_memory_base",

@@ -1126,6 +1126,22 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
     """Reopen a native package against its source and snapshot identities."""
     from merlin.semantic_compiler.codegen import codegen_options, options_from_args
 
+    if getattr(args, "application", False) and (Path(args.artifact) / "manifest.json").is_file():
+        from copy import copy
+        from merlin.semantic_compiler.codegen import APPLICATION_BUDGET_OPTIONS, application_budget_options
+
+        try:
+            manifest = json.loads((Path(args.artifact) / "manifest.json").read_bytes())
+            requested = {name: getattr(args, name, None) for name in APPLICATION_BUDGET_OPTIONS}
+            if not requested["exact_float_unroll"]:
+                requested["exact_float_unroll"] = None
+            budgets = application_budget_options(manifest, requested)
+            args = copy(args)
+            for name, value in budgets.items():
+                setattr(args, name, value)
+        except (ValueError, OSError) as error:
+            _write_status(Path(args.out), {"status": "compile_error", "reason": str(error)})
+            return 2
     with codegen_options(options_from_args(args)):
         return _native_verify_with_options(args)
 

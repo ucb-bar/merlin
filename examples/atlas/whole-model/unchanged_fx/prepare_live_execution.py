@@ -92,8 +92,18 @@ def main():
     manifest = json.loads((root / 'application/manifest.json').read_text())
     if manifest.get('schema') != 'merlin.semantic_application.v1':
         raise ValueError('standard application compilation did not complete')
-    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS, CodegenOptions
+    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS, CodegenOptions, application_budget_options
 
+    codegen_choices = application_budget_options(manifest, {
+        'program_size_limit_bytes': args.program_size_limit_bytes,
+        'execution_instruction_limit': args.execution_instruction_limit,
+        'exact_float_unroll': True if args.exact_float_unroll else None,
+    })
+    codegen_flags = [value for name, number in codegen_choices.items()
+                     if name != 'exact_float_unroll' and number is not None
+                     for value in ('--' + name.replace('_', '-'), str(number))]
+    if codegen_choices.get('exact_float_unroll'):
+        codegen_flags.append('--exact-float-unroll')
     memory_options = {name: manifest[name] for name in IO_MEMORY_OPTIONS if name in manifest}
     if not memory_options:
         memory_options = {'io_memory_bytes': 67108864}

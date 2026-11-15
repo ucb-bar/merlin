@@ -394,3 +394,28 @@ def test_exact_float_unrolling_is_explicit_and_scoped():
         assert current_codegen_options().exact_float_unroll is False
         selected = options_from_args(parser.parse_args([command, *flags, "--execution-instruction-limit", "9000000"]))
         assert selected.execution_instruction_limit == 9_000_000
+
+
+def test_application_verify_reads_budgets_from_artifact(tmp_path, monkeypatch):
+    import json
+    from argparse import Namespace
+    from merlin.targetgen import cli
+
+    artifact = tmp_path / 'application'
+    artifact.mkdir()
+    budgets = dict(program_size_limit_bytes=8192, execution_instruction_limit=128000000,
+                   exact_float_unroll=True)
+    (artifact / 'manifest.json').write_text(json.dumps(budgets))
+    args = Namespace(application=True, artifact=str(artifact), out=str(tmp_path / 'status.json'),
+                     program_size_limit_bytes=None, execution_instruction_limit=None, exact_float_unroll=False)
+    observed = []
+    def verify(selected):
+        observed.append({name: getattr(current_codegen_options(), name) for name in budgets})
+        return 0
+    monkeypatch.setattr(cli, '_native_verify_with_options', verify)
+    assert cli._cmd_native_verify(args) == 0
+    assert observed == [budgets]
+    args.execution_instruction_limit = 256000000
+    assert cli._cmd_native_verify(args) == 2
+    assert len(observed) == 1
+    assert 'selected budget differs' in json.loads((tmp_path / 'status.json').read_text())['reason']
