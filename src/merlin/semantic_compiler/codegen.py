@@ -117,7 +117,7 @@ class CodegenOptions:
                 raise ValueError(f"{name} must be a positive integer")
 
     def identity_record(self):
-        """Record recipe choices, preserving historical omission of older optional fields."""
+        """Record active recipe choices without changing historical default identities."""
         record = asdict(self)
         if not self.exact_float_unroll:
             del record["exact_float_unroll"]
@@ -127,6 +127,14 @@ class CodegenOptions:
             del record["application_buffer_views"]
         for name in IO_MEMORY_OPTIONS[1:]:
             if record[name] is None:
+                del record[name]
+        for name in (
+            "native_pipeline", "adjacent_patterns", "exponent_page_cache", "staging_storage",
+            "looped_operand_reuse", "quantized_operand_reuse", "exact_binary_lane_groups",
+            "exact_binary_vector_preflight", "exact_cast_vector_preflight", "static_quantizer_sizing",
+            "exact_binary_routes", "capture_postspill", "kernel_library",
+        ):
+            if getattr(self, name) == getattr(type(self), name):
                 del record[name]
         return record
 

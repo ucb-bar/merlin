@@ -23,7 +23,7 @@ def add_native_recipe_arguments(parser):
         ("static-quantizer-sizing", "enable static quantizer sizing"),
         ("exact-binary-routes", "enable exact binary routes"),
         ("capture-postspill", "capture the postspill compilation form"),
-        ("kernel-library", "enable kernel library selection"),
+        ("kernel-library", "request kernel library selection from selected support"),
     ):
         parser.add_argument("--" + flag, action="store_true", help=help_text)
 
@@ -249,6 +249,7 @@ def add_native_codegen_commands(sub, handlers):
     from .native_profile import command as profile_command
 
     profile = sub.add_parser("native-profile", help="measure checked reduction-unroll variants with an explicit runner")
+    add_native_recipe_arguments(profile)
     add_io_memory_argument(profile)
     for name in ("support", "snapshot", "target-source", "runner-command", "out"):
         profile.add_argument("--" + name, required=True)
@@ -275,6 +276,7 @@ def add_native_codegen_commands(sub, handlers):
         "native-probe-model-regions",
         help="diagnose all source-bound native regions without claiming model composition",
     )
+    add_native_recipe_arguments(model_regions)
     model_regions.add_argument("--engine", choices=("merlin_native",), required=True)
     model_regions.add_argument("--support", required=True, help="installed target support entry point")
     model_regions.add_argument("--snapshot", required=True)

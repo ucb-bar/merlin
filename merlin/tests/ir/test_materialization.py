@@ -91,9 +91,7 @@ class MaterializationIdentityTest(unittest.TestCase):
             "reduction_unroll": "auto", "program_size_limit_bytes": None,
             "tuning_profile": None, "io_memory_bytes": None,
         }
-        self.assertEqual({name: default[name] for name in legacy}, legacy)
-        self.assertEqual(default["native_pipeline"], "mandatory")
-        self.assertEqual(default["staging_storage"], "dram")
+        self.assertEqual(default, legacy)
         self.assertNotIn("exact_float_unroll", default)
         self.assertNotIn("execution_instruction_limit", default)
         self.assertNotIn("application_buffer_views", default)
