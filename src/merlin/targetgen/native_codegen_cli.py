@@ -19,6 +19,41 @@ def add_io_memory_argument(parser):
         type=positive_bytes,
         help="device-visible I/O window size; must match the selected snapshot",
     )
+    for name, help_text in (
+        ("base", "device-visible I/O window base address"),
+        ("alignment", "device-visible I/O allocation alignment in bytes"),
+        ("capacity-base", "base address of the containing device-visible memory capacity"),
+        ("capacity-bytes", "byte size of the containing device-visible memory capacity"),
+    ):
+        def memory_integer(text, *, option=name):
+            try:
+                value = int(text, 0)
+            except ValueError as error:
+                raise ArgumentTypeError(f"I/O memory {option} must be an integer") from error
+            minimum = 0 if option in ("base", "capacity-base") else 1
+            if value < minimum:
+                kind = "nonnegative" if minimum == 0 else "positive"
+                raise ArgumentTypeError(f"I/O memory {option} must be a {kind} integer")
+            return value
+
+        parser.add_argument("--io-memory-" + name, type=memory_integer, help=help_text + "; must match the selected snapshot")
+
+
+def requested_io_memory_options(args):
+    """Return every explicitly selected geometry field, including zero bases."""
+    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS
+
+    return {name for name in IO_MEMORY_OPTIONS if getattr(args, name, None) is not None}
+
+
+def require_io_memory_capabilities(args, binding):
+    from merlin.semantic_compiler.target_binding import NativeCompilationError
+
+    unsupported = requested_io_memory_options(args) - set(getattr(binding, "codegen_capabilities", ()))
+    if unsupported:
+        raise NativeCompilationError(
+            "unsupported_semantics", "selected support does not accept: " + ", ".join(sorted(unsupported))
+        )
 
 
 def add_native_codegen_commands(sub, handlers):

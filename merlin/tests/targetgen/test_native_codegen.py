@@ -129,6 +129,135 @@ def test_invalid_io_sizes_are_not_silently_ignored(size):
         CodegenOptions(io_memory_bytes=size)
 
 
+IO_GEOMETRY = {
+    "io_memory_base": 0,
+    "io_memory_alignment": 64,
+    "io_memory_capacity_base": 0,
+    "io_memory_capacity_bytes": 2**24,
+}
+
+
+def _native_args(command, output="output"):
+    common = ["--out", str(output)]
+    if command == "native-profile":
+        return [*common, "--support", "synthetic", "--snapshot", "snapshot", "--request", "request",
+                "--target-source", "target", "--runner-command", "runner.json"]
+    common += ["--engine", "merlin_native", "--support", "synthetic"]
+    if command == "native-build":
+        return [*common, "--cargo-target-dir", "cargo", "--source-revision", "test"]
+    common += ["--snapshot", "snapshot", "--mode", "diagnostic", "--request", "request"]
+    if command == "native-compile":
+        return [*common, "--target-source", "target", "--abi", "auto"]
+    if command == "native-verify":
+        return [*common, "--artifact", "artifact"]
+    return common
+
+
+@pytest.mark.parametrize("command", ["native-build", "native-select", "native-compile", "native-verify", "native-profile"])
+def test_io_geometry_parses_and_preserves_historical_default_identity(command):
+    from merlin.targetgen.cli import build_parser
+
+    historical = {
+        "reduction_unroll": "auto", "program_size_limit_bytes": None,
+        "tuning_profile": None, "io_memory_bytes": None,
+    }
+    parser = build_parser()
+    assert options_from_args(parser.parse_args([command, *_native_args(command)])).identity_record() == historical
+    flags = [value for key, number in IO_GEOMETRY.items() for value in ("--" + key.replace("_", "-"), hex(number))]
+    selected = options_from_args(parser.parse_args([command, *_native_args(command), *flags]))
+    assert selected.identity_record() == {**historical, **IO_GEOMETRY}
+    with codegen_options(selected):
+        assert current_codegen_options() == selected
+    assert current_codegen_options().identity_record() == historical
+
+
+@pytest.mark.parametrize("name", tuple(IO_GEOMETRY))
+@pytest.mark.parametrize("value", [-1, True, 1.5, "64"])
+def test_io_geometry_rejects_invalid_integer_fields(name, value):
+    with pytest.raises(ValueError, match=name):
+        CodegenOptions(**{name: value})
+
+
+@pytest.mark.parametrize("name", ["io_memory_alignment", "io_memory_capacity_bytes"])
+def test_io_geometry_rejects_zero_size_and_alignment(name):
+    with pytest.raises(ValueError, match=name):
+        CodegenOptions(**{name: 0})
+
+
+@pytest.mark.parametrize("command", ["native-build", "native-select", "native-compile", "native-verify"])
+@pytest.mark.parametrize("name", tuple(IO_GEOMETRY))
+def test_native_entrypoints_refuse_unsupported_geometry(command, name, tmp_path, monkeypatch, capsys):
+    import json
+    from types import SimpleNamespace
+
+    from merlin.semantic_compiler import snapshot, target_binding
+    from merlin.targetgen.cli import main
+
+    profile = SimpleNamespace(digest=lambda: "profile", target_identity="synthetic")
+    binding = SimpleNamespace(profile=lambda: profile, codegen_capabilities=())
+    monkeypatch.setattr(target_binding, "load_native_target_binding", lambda _: binding)
+    monkeypatch.setattr(snapshot, "open_native_snapshot", lambda _: SimpleNamespace(profile=profile))
+    output = tmp_path / "status.json"
+    flags = ["--" + name.replace("_", "-"), str(IO_GEOMETRY[name])]
+    assert main([command, *_native_args(command, output), *flags]) == 2
+    report = (json.loads(output.read_text()) if command in ("native-select", "native-verify")
+              else json.loads(capsys.readouterr().out))
+    assert report["status"] == "unsupported_semantics"
+    assert name in report["reason"]
+
+
+def test_application_compile_receives_geometry_and_both_budgets(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from merlin.semantic_compiler import snapshot, target_binding
+    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS
+    from merlin.targetgen import native_application
+    from merlin.targetgen.cli import main
+
+    profile = SimpleNamespace(digest=lambda: "profile", target_identity="synthetic")
+    binding = SimpleNamespace(profile=lambda: profile, codegen_capabilities=(*IO_MEMORY_OPTIONS, "program_size_limit_bytes"))
+    monkeypatch.setattr(target_binding, "load_native_target_binding", lambda _: binding)
+    monkeypatch.setattr(snapshot, "open_native_snapshot", lambda _: SimpleNamespace(profile=profile))
+    observed = []
+
+    def compile_application(*args, **kwargs):
+        observed.append(current_codegen_options())
+        return {"status": "emitted"}
+
+    monkeypatch.setattr(native_application, "compile_application_report", compile_application)
+    flags = [value for key, number in IO_GEOMETRY.items() for value in ("--" + key.replace("_", "-"), str(number))]
+    assert main(["native-compile", *_native_args("native-compile", tmp_path / "compiled"),
+                 "--application", "--application-memory-bytes", "8192", "--program-size-limit-bytes", "4096",
+                 "--io-memory-bytes", "1024", *flags]) == 0
+    assert observed == [CodegenOptions(program_size_limit_bytes=4096, io_memory_bytes=1024, **IO_GEOMETRY)]
+
+
+@pytest.mark.parametrize("name", tuple(IO_GEOMETRY))
+def test_application_replay_refuses_unsupported_geometry(name, tmp_path, monkeypatch, capsys):
+    import json
+    from types import SimpleNamespace
+
+    from merlin.semantic_compiler import target_binding
+    from merlin.targetgen.cli import main
+
+    monkeypatch.setattr(target_binding, "load_native_target_binding", lambda _: SimpleNamespace(codegen_capabilities=()))
+    assert main(["native-verify", *_native_args("native-verify", tmp_path / "status.json"),
+                 "--application", "--" + name.replace("_", "-"), str(IO_GEOMETRY[name])]) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "unsupported_semantics"
+    assert name in report["reason"]
+
+
+def test_profile_scope_receives_geometry_and_program_budget(monkeypatch):
+    from argparse import Namespace
+
+    from merlin.targetgen import native_profile
+
+    monkeypatch.setattr(native_profile, "_run_profile_with_options", lambda _: current_codegen_options())
+    selected = native_profile.run_profile(Namespace(program_size_limit_bytes=4096, **IO_GEOMETRY))
+    assert selected == CodegenOptions(program_size_limit_bytes=4096, **IO_GEOMETRY)
+
+
 @pytest.mark.parametrize("changed", ("samples", "correctness", "factor", "missing"))
 def test_malformed_profiles_cannot_select_a_variant(changed):
     value = profile()

@@ -10,6 +10,13 @@ from hashlib import sha256
 from pathlib import Path
 
 FACTORS = (1, 2, 4, 8)
+IO_MEMORY_OPTIONS = (
+    "io_memory_bytes",
+    "io_memory_base",
+    "io_memory_alignment",
+    "io_memory_capacity_base",
+    "io_memory_capacity_bytes",
+)
 
 
 @dataclass(frozen=True)
@@ -21,6 +28,10 @@ class CodegenOptions:
     exact_float_unroll: bool = False
     execution_instruction_limit: int | None = None
     application_buffer_views: bool = False
+    io_memory_base: int | None = None
+    io_memory_alignment: int | None = None
+    io_memory_capacity_base: int | None = None
+    io_memory_capacity_bytes: int | None = None
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
@@ -40,6 +51,14 @@ class CodegenOptions:
             check_profile(self.tuning_profile)
         if self.io_memory_bytes is not None and (type(self.io_memory_bytes) is not int or self.io_memory_bytes <= 0):
             raise ValueError("device I/O memory window must have a positive byte size")
+        for name in ("io_memory_base", "io_memory_capacity_base"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ValueError(f"{name} must be a nonnegative integer")
+        for name in ("io_memory_alignment", "io_memory_capacity_bytes"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value <= 0):
+                raise ValueError(f"{name} must be a positive integer")
 
     def identity_record(self):
         """Preserve historical identities when optional choices are absent."""
@@ -50,6 +69,9 @@ class CodegenOptions:
             del record["execution_instruction_limit"]
         if not self.application_buffer_views:
             del record["application_buffer_views"]
+        for name in IO_MEMORY_OPTIONS[1:]:
+            if record[name] is None:
+                del record[name]
         return record
 
 
@@ -122,6 +144,10 @@ def options_from_args(args):
         getattr(args, "exact_float_unroll", False),
         getattr(args, "execution_instruction_limit", None),
         getattr(args, "application_buffer_views", False),
+        io_memory_base=getattr(args, "io_memory_base", None),
+        io_memory_alignment=getattr(args, "io_memory_alignment", None),
+        io_memory_capacity_base=getattr(args, "io_memory_capacity_base", None),
+        io_memory_capacity_bytes=getattr(args, "io_memory_capacity_bytes", None),
     )
 
 

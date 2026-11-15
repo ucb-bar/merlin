@@ -206,6 +206,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
 def verify_application_command(args, write_status):
     from merlin.semantic_compiler.snapshot import open_native_snapshot
     from merlin.semantic_compiler.target_binding import load_native_target_binding
+    from .native_codegen_cli import require_io_memory_capabilities
 
     artifact, output = Path(args.artifact), Path(args.out)
     safe_status = not (
@@ -216,6 +217,7 @@ def verify_application_command(args, write_status):
         if not safe_status or not args.support:
             raise ValueError("application verification needs support and an external status file")
         binding = load_native_target_binding(args.support)
+        require_io_memory_capabilities(args, binding)
         snapshot = open_native_snapshot(Path(args.snapshot))
         if snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("application snapshot differs from selected support profile")

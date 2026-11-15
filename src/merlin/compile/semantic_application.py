@@ -18,7 +18,7 @@ from typing import Protocol
 from merlin.common.content_store import digest_file
 from merlin.runtime.program import build_program
 from merlin.semantic_compiler.model import KernelRequest
-from merlin.semantic_compiler.codegen import current_codegen_options
+from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS, current_codegen_options
 from merlin.semantic_compiler.materialization import (
     MaterializationCache, canonical_request, materialization_key, materialization_region, materialization_session,
 )
@@ -502,6 +502,10 @@ def _compile_semantic_application(
             if path.is_file()
         },
     }
+    options = current_codegen_options()
+    manifest.update({
+        name: getattr(options, name) for name in IO_MEMORY_OPTIONS if getattr(options, name) is not None
+    })
     if emit_region_loop:
         manifest["dispatch_loop"] = True
     (destination / "manifest.json").write_bytes(_json(manifest))
@@ -557,6 +561,14 @@ def _verify_semantic_application(
 ):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
+    options = current_codegen_options()
+    selected_memory = {
+        name: getattr(options, name) for name in IO_MEMORY_OPTIONS if getattr(options, name) is not None
+    }
+    published_memory = {name: manifest[name] for name in IO_MEMORY_OPTIONS if name in manifest}
+    has_memory_selection = published_memory or any(name in selected_memory for name in IO_MEMORY_OPTIONS[1:])
+    if has_memory_selection and _json(published_memory) != _json(selected_memory):
+        raise ValueError("application I/O memory geometry differs from compilation")
     emit_region_loop = manifest.get("dispatch_loop", False)
     if type(emit_region_loop) is not bool:
         raise ValueError("application dispatch loop option must be Boolean")
