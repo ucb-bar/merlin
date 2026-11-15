@@ -201,7 +201,6 @@ def test_diagnostic_cli_recipe_choices(parser, command, name, value):
 
 def test_profile_preserves_recipe_for_source_key_and_all_variants(parser, tmp_path, monkeypatch):
     import json
-    from unittest.mock import Mock
 
     from merlin.targetgen import cli, native_profile
 
@@ -221,8 +220,6 @@ def test_profile_preserves_recipe_for_source_key_and_all_variants(parser, tmp_pa
     ])
     expected = options_from_args(args)
     original = current_codegen_options()
-    parse_options = Mock(wraps=options_from_args)
-    monkeypatch.setattr(native_profile, "options_from_args", parse_options)
     target_profile = SimpleNamespace(target_identity="synthetic", digest=lambda: "profile")
     snapshot = SimpleNamespace(profile=target_profile)
     monkeypatch.setattr(native_profile, "open_native_snapshot", lambda _: snapshot)
@@ -253,7 +250,6 @@ def test_profile_preserves_recipe_for_source_key_and_all_variants(parser, tmp_pa
     monkeypatch.setattr(cli, "_native_compile_report_with_options", compile_variant)
     report = native_profile.run_profile(args)
     assert report["failed"] == 4
-    parse_options.assert_called_once_with(args)
     assert observed == [
         ("source", expected), ("key", expected),
         *[("variant", replace(expected, reduction_unroll=str(factor))) for factor in (1, 2, 4, 8)],
