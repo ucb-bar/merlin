@@ -1,6 +1,33 @@
 """Register native compilation commands on the existing TargetGen CLI."""
 
 
+def add_native_recipe_arguments(parser):
+    """Expose the same invocation recipe for regions, applications and replay."""
+    from merlin.semantic_compiler.codegen import (
+        LOOPED_OPERAND_REUSE,
+        NATIVE_PIPELINES,
+        QUANTIZED_OPERAND_REUSE,
+        STAGING_STORAGE,
+    )
+
+    parser.add_argument("--native-pipeline", choices=NATIVE_PIPELINES, default="mandatory")
+    parser.add_argument("--adjacent-patterns", default="", help="explicit adjacent fusion pattern selection")
+    parser.add_argument("--staging-storage", choices=STAGING_STORAGE, default="dram")
+    parser.add_argument("--looped-operand-reuse", choices=LOOPED_OPERAND_REUSE, default="ordered")
+    parser.add_argument("--quantized-operand-reuse", choices=QUANTIZED_OPERAND_REUSE, default="ordered")
+    for flag, help_text in (
+        ("exponent-page-cache", "cache exponent pages during code generation"),
+        ("exact-binary-lane-groups", "enable exact binary lane grouping"),
+        ("exact-binary-vector-preflight", "enable exact binary vector preflight"),
+        ("exact-cast-vector-preflight", "enable exact cast vector preflight"),
+        ("static-quantizer-sizing", "enable static quantizer sizing"),
+        ("exact-binary-routes", "enable exact binary routes"),
+        ("capture-postspill", "capture the postspill compilation form"),
+        ("kernel-library", "enable kernel library selection"),
+    ):
+        parser.add_argument("--" + flag, action="store_true", help=help_text)
+
+
 def add_io_memory_argument(parser):
     """Keep the provider-selected I/O geometry explicit across build and replay."""
     from argparse import ArgumentTypeError
@@ -108,6 +135,7 @@ def add_native_codegen_commands(sub, handlers):
         "native-compile",
         help="compile a native region or staged application with selected OOT support",
     )
+    add_native_recipe_arguments(native_compile)
     native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
     native_compile.add_argument("--support", required=True, help="installed target support entry point")
     native_compile.add_argument("--snapshot", required=True)
@@ -293,6 +321,7 @@ def add_native_codegen_commands(sub, handlers):
     graph_bridge.set_defaults(func=handlers["native_bridge_graph"])
 
     native_verify = sub.add_parser("native-verify", help="recheck native source, snapshot and published artifact bytes")
+    add_native_recipe_arguments(native_verify)
     native_verify.add_argument("--engine", choices=("merlin_native",), required=True)
     native_verify.add_argument("--snapshot", required=True)
     native_verify.add_argument(

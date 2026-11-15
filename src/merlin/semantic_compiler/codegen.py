@@ -37,6 +37,13 @@ IO_MEMORY_OPTIONS = (
     "io_memory_capacity_bytes",
 )
 
+NATIVE_PIPELINES = ("mandatory", "optimized")
+STAGING_STORAGE = ("dram", "vmem", "vmem-inputs")
+LOOPED_OPERAND_REUSE = ("ordered", "resident-a")
+QUANTIZED_OPERAND_REUSE = (
+    "ordered", "row-cache", "prefix-cache", "wide-cache", "paired-cache", "panel-cache", "batch-panel-cache",
+)
+
 
 @dataclass(frozen=True)
 class CodegenOptions:
@@ -51,6 +58,19 @@ class CodegenOptions:
     io_memory_alignment: int | None = None
     io_memory_capacity_base: int | None = None
     io_memory_capacity_bytes: int | None = None
+    native_pipeline: str = "mandatory"
+    adjacent_patterns: str = ""
+    exponent_page_cache: bool = False
+    staging_storage: str = "dram"
+    looped_operand_reuse: str = "ordered"
+    quantized_operand_reuse: str = "ordered"
+    exact_binary_lane_groups: bool = False
+    exact_binary_vector_preflight: bool = False
+    exact_cast_vector_preflight: bool = False
+    static_quantizer_sizing: bool = False
+    exact_binary_routes: bool = False
+    capture_postspill: bool = False
+    kernel_library: bool = False
 
     def __post_init__(self):
         if self.reduction_unroll not in ("auto", *(str(i) for i in FACTORS)):
@@ -59,6 +79,23 @@ class CodegenOptions:
             raise ValueError("exact float unroll must be Boolean")
         if type(self.application_buffer_views) is not bool:
             raise ValueError("application buffer views must be Boolean")
+        for name, choices in (
+            ("native_pipeline", NATIVE_PIPELINES),
+            ("staging_storage", STAGING_STORAGE),
+            ("looped_operand_reuse", LOOPED_OPERAND_REUSE),
+            ("quantized_operand_reuse", QUANTIZED_OPERAND_REUSE),
+        ):
+            if getattr(self, name) not in choices:
+                raise ValueError(f"{name} must be one of {', '.join(choices)}")
+        if type(self.adjacent_patterns) is not str:
+            raise ValueError("adjacent_patterns must be a string")
+        for name in (
+            "exponent_page_cache", "exact_binary_lane_groups", "exact_binary_vector_preflight",
+            "exact_cast_vector_preflight", "static_quantizer_sizing", "exact_binary_routes",
+            "capture_postspill", "kernel_library",
+        ):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be Boolean")
         if self.execution_instruction_limit is not None and (
             type(self.execution_instruction_limit) is not int or self.execution_instruction_limit <= 0
         ):
@@ -80,7 +117,7 @@ class CodegenOptions:
                 raise ValueError(f"{name} must be a positive integer")
 
     def identity_record(self):
-        """Preserve historical identities when optional choices are absent."""
+        """Record recipe choices, preserving historical omission of older optional fields."""
         record = asdict(self)
         if not self.exact_float_unroll:
             del record["exact_float_unroll"]
@@ -167,6 +204,19 @@ def options_from_args(args):
         io_memory_alignment=getattr(args, "io_memory_alignment", None),
         io_memory_capacity_base=getattr(args, "io_memory_capacity_base", None),
         io_memory_capacity_bytes=getattr(args, "io_memory_capacity_bytes", None),
+        native_pipeline=getattr(args, "native_pipeline", "mandatory"),
+        adjacent_patterns=getattr(args, "adjacent_patterns", ""),
+        exponent_page_cache=getattr(args, "exponent_page_cache", False),
+        staging_storage=getattr(args, "staging_storage", "dram"),
+        looped_operand_reuse=getattr(args, "looped_operand_reuse", "ordered"),
+        quantized_operand_reuse=getattr(args, "quantized_operand_reuse", "ordered"),
+        exact_binary_lane_groups=getattr(args, "exact_binary_lane_groups", False),
+        exact_binary_vector_preflight=getattr(args, "exact_binary_vector_preflight", False),
+        exact_cast_vector_preflight=getattr(args, "exact_cast_vector_preflight", False),
+        static_quantizer_sizing=getattr(args, "static_quantizer_sizing", False),
+        exact_binary_routes=getattr(args, "exact_binary_routes", False),
+        capture_postspill=getattr(args, "capture_postspill", False),
+        kernel_library=getattr(args, "kernel_library", False),
     )
 
 
