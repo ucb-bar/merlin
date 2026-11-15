@@ -2,8 +2,38 @@
 import copy
 import unittest
 from model_runtime import output_ranges, active_dram_prefix, check_immutable_memory
+import pytest
 
 BASE = 0x90000000
+
+
+@pytest.mark.parametrize('memory_base', [0, 0x92000000])
+@pytest.mark.parametrize('backend', ['cycle', 'functional'])
+def test_runtime_uses_published_window_for_host_transfers(memory_base, backend, tmp_path, monkeypatch):
+    import ctypes as ct
+    import model_runtime
+
+    monkeypatch.setattr(model_runtime, 'authenticate_model', lambda _: {})
+    runtime_type = model_runtime.ModelRuntime
+    if backend == 'functional':
+        import functional_runtime
+
+        monkeypatch.setattr(functional_runtime, 'authenticate_model', lambda _: {})
+        runtime_type = functional_runtime.FunctionalModelRuntime
+    (tmp_path / 'docs').mkdir()
+    (tmp_path / 'docs/selected-variant-inventory.json').write_text('{}')
+    runtime = runtime_type(tmp_path, tmp_path, [], tmp_path / 'execution',
+                           memory_base=memory_base, memory_bytes=64)
+    incoming, outgoing = ct.create_string_buffer(b'published'), ct.create_string_buffer(9)
+    assert runtime.base == memory_base
+    assert runtime.put(None, memory_base + 55, incoming, 9) == 0
+    assert runtime.get(None, memory_base + 55, outgoing, 9) == 0
+    assert outgoing.raw == b'published'
+    assert runtime.get(None, memory_base + 56, outgoing, 9) == 1
+    assert 'host transfer exceeds declared memory' in runtime.errors[-1]
+    if backend == 'functional':
+        assert runtime.functional_config.dram_base == memory_base
+        assert runtime.functional_config.dram_size == 64
 
 
 def plan():

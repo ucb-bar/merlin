@@ -30,6 +30,9 @@ def main():
     parser.add_argument('--boundary-source', type=Path, required=True)
     parser.add_argument('--expected-boundary-source-sha256', required=True)
     parser.add_argument('--inputs', type=Path, required=True)
+    from merlin.targetgen.native_codegen_cli import add_io_memory_argument
+
+    add_io_memory_argument(parser)
     parser.add_argument('--functional-validation', action='store_true', help='enable validation-only execution-host math component text replacement')
     parser.add_argument('--execution-host-math-archive', type=Path)
     parser.add_argument('--execution-host-math-equivalence', type=Path)
@@ -69,17 +72,31 @@ def main():
     staged = load_compile_inputs(args.staged)
     if staged.original_source_sha256 != sha256((args.capture / 'model.mlir').read_bytes()).hexdigest():
         raise ValueError('staged source differs from the live capture')
+    manifest = json.loads((root / 'application/manifest.json').read_text())
+    if manifest.get('schema') != 'merlin.semantic_application.v1':
+        raise ValueError('standard application compilation did not complete')
+    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS, CodegenOptions
+
+    memory_options = {name: manifest[name] for name in IO_MEMORY_OPTIONS if name in manifest}
+    if not memory_options:
+        memory_options = {'io_memory_bytes': 67108864}
+    CodegenOptions(**memory_options)
+    for name in IO_MEMORY_OPTIONS:
+        selected = getattr(args, name)
+        if selected is not None and selected != memory_options.get(name):
+            raise ValueError('selected I/O memory geometry differs from compiled application: ' + name)
+    memory_flags = [value for name, number in memory_options.items()
+                    for value in ('--' + name.replace('_', '-'), str(number))]
     subprocess.run([
         sys.executable, '-m', 'merlin.targetgen.cli', 'native-verify',
         '--engine', 'merlin_native', '--support', 'atlas', '--snapshot', str(args.snapshot),
         '--target-source', str(args.atlas_root), '--compile-inputs', str(args.staged),
         '--application', '--already-quantized', '--application-parameters', 'external',
-        '--io-memory-bytes', '67108864', '--mode', 'diagnostic',
+        *memory_flags, '--mode', 'diagnostic',
         '--artifact', str(root / 'application'), '--out', str(root / 'application-verified.json'),
     ], check=True)
-    manifest = json.loads((root / 'application/manifest.json').read_text())
-    if manifest.get('schema') != 'merlin.semantic_application.v1':
-        raise ValueError('standard application compilation did not complete')
+    if json.loads((root / 'application/manifest.json').read_text()) != manifest:
+        raise ValueError('application manifest changed during verification')
     interface = preflight_host_library(manifest, execution_host_math=math_selection)
     arguments = [tensors[key] for key in source['input_keys']]
     if len(arguments) != len(interface['inputs']):
@@ -121,7 +138,7 @@ def main():
                   capture_mlir_sha256=sha256((args.capture / 'model.mlir').read_bytes()).hexdigest(),
                   source_request_digest=manifest['request_digest'],
                   logical_source_tensors=source['tensors'], interface=interface,
-                  io_memory_bytes=67108864, application_memory_bytes=manifest['application_memory_bytes'],
+                  **memory_options, application_memory_bytes=manifest['application_memory_bytes'],
                   segments=manifest['segments'], regions=manifest['regions'],
                   compilation_entry='merlin targetgen native-compile --application',
                   boundary_source_sha256=args.expected_boundary_source_sha256,

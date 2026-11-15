@@ -73,11 +73,12 @@ def case(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_inputs, "load_compile_inputs", lambda _: staged)
     monkeypatch.setattr(application_inventory, "verify_capture_receipt",
                         lambda _: {"status": "verified_materialized"})
-    events, real_run = [], subprocess.run
+    events, verification_commands, real_run = [], [], subprocess.run
 
     def run(command, **kwargs):
         if "native-verify" in command:
             events.append("verify")
+            verification_commands.append(command)
             assert Path(command[command.index("--artifact") + 1]) == application
             assert command[command.index("--compile-inputs") + 1] == str(tmp_path / "staged")
             return subprocess.CompletedProcess(command, 0)
@@ -93,7 +94,39 @@ def case(tmp_path, monkeypatch):
             "--inputs", str(inputs)]
     monkeypatch.setattr(packaging.sys, "argv", argv)
     return SimpleNamespace(root=root, capture=capture, application=application, boundary=boundary,
-                           inputs=inputs, staged=staged, events=events, manifest=manifest)
+                           inputs=inputs, staged=staged, events=events, manifest=manifest,
+                           verification_commands=verification_commands)
+
+
+def test_compiler_memory_geometry_is_forwarded_without_runtime_overrides(case, monkeypatch):
+    geometry = dict(io_memory_base=0x92000000, io_memory_bytes=4096,
+                    io_memory_alignment=64, io_memory_capacity_base=0x90000000,
+                    io_memory_capacity_bytes=64 * 1024 * 1024)
+    case.manifest.update(geometry)
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
+
+    class Verified(Exception):
+        pass
+
+    def stop_before_host_build(*args, **kwargs):
+        raise Verified
+
+    monkeypatch.setattr(packaging, 'preflight_host_library', stop_before_host_build)
+    with pytest.raises(Verified):
+        packaging.main()
+    command, = case.verification_commands
+    for name, expected in geometry.items():
+        flag = '--' + name.replace('_', '-')
+        assert command[command.index(flag) + 1] == str(expected)
+    assert case.events == ['verify']
+
+
+def test_packaging_refuses_geometry_outside_compiler_publication(case, monkeypatch):
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, '--io-memory-base', '0x92000000'])
+    with pytest.raises(ValueError, match='differs from compiled application: io_memory_base'):
+        packaging.main()
+    assert case.events == []
+    assert not (case.root / 'compiled.json').exists()
 
 
 def test_real_emitted_host_library_preserves_words_and_native_inventory(case):

@@ -170,7 +170,8 @@ def main():
         from resident_runtime import ResidentFunctionalModelRuntime
         runtime_type = ResidentFunctionalModelRuntime
     runtime = runtime_type(args.atlas_root.resolve(), args.model_root.resolve(), images, execution_root / "execution",
-                           image_plans=plans, memory_bytes=max(262144, record.get("io_memory_bytes") or 0), **options)
+                           image_plans=plans, memory_bytes=record.get("io_memory_bytes") or 262144,
+                           memory_base=record.get("io_memory_base"), **options)
     library_path = Path(record.get("host_library", "application/c-package/capsule.so"))
     if library_path.is_absolute() or ".." in library_path.parts:
         raise ValueError("host library must be inside the compiled publication")

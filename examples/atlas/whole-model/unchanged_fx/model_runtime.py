@@ -257,7 +257,11 @@ def check_immutable_memory(before, after, ranges):
 
 class ModelRuntime:
     def __init__(self, atlas_root: Path, model_root: Path, images: list[bytes], output: Path,
-                 *, memory_bytes=262144, image_plans=None, max_cycles=100000):
+                 *, memory_bytes=262144, memory_base=None, image_plans=None, max_cycles=100000):
+        if type(memory_bytes) is not int or memory_bytes <= 0:
+            raise ValueError("memory_bytes must be a positive integer")
+        if memory_base is not None and (type(memory_base) is not int or memory_base < 0):
+            raise ValueError("memory_base must be a nonnegative integer")
         from npu_model.configs import isa_definition as isa
         from npu_model.configs.hardware.default import DefaultHardwareConfig
         from npu_model.logging import LoggerConfig
@@ -282,7 +286,7 @@ class ModelRuntime:
         self.imem = {}
         self.starts, self.polls, self.running = 0, 0, False
         self.errors, self.launches, self.transfers = [], [], []
-        self.base = 0x90000000
+        self.base = 0x90000000 if memory_base is None else memory_base
         self.callbacks = READ(self.read), WRITE(self.write), MEMORY(self.put), MEMORY(self.get)
 
     def read(self, _, address):

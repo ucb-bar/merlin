@@ -89,7 +89,7 @@ class FunctionalModelRuntime(_CycleModelRuntime):
     """ModelRuntime callback ABI, with original physical instruction execution."""
 
     def __init__(self, atlas_root: Path, model_root: Path, images: list[bytes], output: Path,
-                 *, memory_bytes=262144, image_plans=None, max_instructions=1_000_000, trace_payloads=True, compact_dram_prefix=None,
+                 *, memory_bytes=262144, memory_base=None, image_plans=None, max_instructions=1_000_000, trace_payloads=True, compact_dram_prefix=None,
                  math_proxy=None, memory_factory=None, execution_metadata=None):
         if type(max_instructions) is not int or max_instructions <= 0:
             raise ValueError("max_instructions must be a positive integer")
@@ -99,7 +99,8 @@ class FunctionalModelRuntime(_CycleModelRuntime):
             raise ValueError("execution adapters require explicit qualified metadata")
         self.math_proxy, self.memory_factory = math_proxy, memory_factory
         self.execution_metadata = execution_metadata
-        super().__init__(atlas_root, model_root, images, output, memory_bytes=memory_bytes, image_plans=image_plans)
+        super().__init__(atlas_root, model_root, images, output, memory_bytes=memory_bytes,
+                         memory_base=memory_base, image_plans=image_plans)
         self.trace_payloads = trace_payloads
         self.compact_dram_prefix = not trace_payloads if compact_dram_prefix is None else compact_dram_prefix
         if type(self.compact_dram_prefix) is not bool or (trace_payloads and self.compact_dram_prefix):
