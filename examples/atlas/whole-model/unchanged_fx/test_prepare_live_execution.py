@@ -129,6 +129,43 @@ def test_packaging_refuses_geometry_outside_compiler_publication(case, monkeypat
     assert not (case.root / 'compiled.json').exists()
 
 
+@pytest.mark.parametrize('budget,unroll', [(None, False), (128000000, False), (1000000, True)])
+def test_execution_choices_are_replayed_and_published_without_building(case, monkeypatch, budget, unroll):
+    options = [] if budget is None else ['--execution-instruction-limit', str(budget)]
+    if unroll:
+        options.append('--exact-float-unroll')
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *options])
+
+    def package_library(*args, package, **kwargs):
+        # Only exercise packaging metadata here; no C compiler or model runs.
+        (package / 'capsule.so').write_bytes(b'host library fixture')
+        (package / 'shim.c').write_bytes(b'host shim fixture')
+
+    monkeypatch.setattr(packaging, 'build_host_library', package_library)
+    packaging.main()
+    command, = case.verification_commands
+    record = json.loads((case.root / 'compiled.json').read_text())
+    if budget is None:
+        assert '--execution-instruction-limit' not in command
+        assert 'execution_instruction_limit' not in record
+    else:
+        assert command[command.index('--execution-instruction-limit') + 1] == str(budget)
+        assert record['execution_instruction_limit'] == budget
+    assert ('--exact-float-unroll' in command) is unroll
+    assert record.get('exact_float_unroll', False) is unroll
+    assert case.events == ['verify']
+
+
+@pytest.mark.parametrize('budget', ['0', '-1'])
+def test_invalid_execution_budget_refuses_before_source_or_verification(case, monkeypatch, budget):
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, '--execution-instruction-limit', budget])
+    with pytest.raises(SystemExit) as error:
+        packaging.main()
+    assert error.value.code == 2
+    assert case.events == []
+    assert not (case.root / 'compiled.json').exists()
+
+
 def test_real_emitted_host_library_preserves_words_and_native_inventory(case):
     if not shutil.which("cc"):
         pytest.skip("C compiler required")

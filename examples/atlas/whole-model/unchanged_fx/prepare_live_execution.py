@@ -33,11 +33,24 @@ def main():
     from merlin.targetgen.native_codegen_cli import add_io_memory_argument
 
     add_io_memory_argument(parser)
+    parser.add_argument('--execution-instruction-limit', type=int,
+                        help='per-launch executed-instruction budget selected during compilation')
+    parser.add_argument('--exact-float-unroll', action='store_true',
+                        help='replay the exact float unrolling selected during compilation')
     parser.add_argument('--functional-validation', action='store_true', help='enable validation-only execution-host math component text replacement')
     parser.add_argument('--execution-host-math-archive', type=Path)
     parser.add_argument('--execution-host-math-equivalence', type=Path)
     parser.add_argument('--execution-host-math-rv64-output', type=Path)
     args = parser.parse_args()
+    if args.execution_instruction_limit is not None and args.execution_instruction_limit <= 0:
+        parser.error('execution instruction limit must be positive')
+    codegen_choices, codegen_flags = {}, []
+    if args.execution_instruction_limit is not None:
+        codegen_choices['execution_instruction_limit'] = args.execution_instruction_limit
+        codegen_flags.extend(['--execution-instruction-limit', str(args.execution_instruction_limit)])
+    if args.exact_float_unroll:
+        codegen_choices['exact_float_unroll'] = True
+        codegen_flags.append('--exact-float-unroll')
     math_selection = None
     if (args.functional_validation or args.execution_host_math_archive
             or args.execution_host_math_equivalence or args.execution_host_math_rv64_output):
@@ -80,7 +93,7 @@ def main():
     memory_options = {name: manifest[name] for name in IO_MEMORY_OPTIONS if name in manifest}
     if not memory_options:
         memory_options = {'io_memory_bytes': 67108864}
-    CodegenOptions(**memory_options)
+    CodegenOptions(**memory_options, **codegen_choices)
     for name in IO_MEMORY_OPTIONS:
         selected = getattr(args, name)
         if selected is not None and selected != memory_options.get(name):
@@ -92,7 +105,7 @@ def main():
         '--engine', 'merlin_native', '--support', 'atlas', '--snapshot', str(args.snapshot),
         '--target-source', str(args.atlas_root), '--compile-inputs', str(args.staged),
         '--application', '--already-quantized', '--application-parameters', 'external',
-        *memory_flags, '--mode', 'diagnostic',
+        *memory_flags, *codegen_flags, '--mode', 'diagnostic',
         '--artifact', str(root / 'application'), '--out', str(root / 'application-verified.json'),
     ], check=True)
     if json.loads((root / 'application/manifest.json').read_text()) != manifest:
@@ -138,7 +151,7 @@ def main():
                   capture_mlir_sha256=sha256((args.capture / 'model.mlir').read_bytes()).hexdigest(),
                   source_request_digest=manifest['request_digest'],
                   logical_source_tensors=source['tensors'], interface=interface,
-                  **memory_options, application_memory_bytes=manifest['application_memory_bytes'],
+                  **memory_options, **codegen_choices, application_memory_bytes=manifest['application_memory_bytes'],
                   segments=manifest['segments'], regions=manifest['regions'],
                   compilation_entry='merlin targetgen native-compile --application',
                   boundary_source_sha256=args.expected_boundary_source_sha256,
