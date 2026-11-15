@@ -1139,8 +1139,11 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
             args = copy(args)
             for name, value in budgets.items():
                 setattr(args, name, value)
-        except (ValueError, OSError) as error:
-            _write_status(Path(args.out), {"status": "compile_error", "reason": str(error)})
+        except (ValueError, OSError, TypeError, KeyError) as error:
+            output = Path(args.out)
+            if not (output.resolve().is_relative_to(Path(args.artifact).resolve())
+                    or output.resolve().is_relative_to(Path(args.snapshot).resolve())):
+                _write_status(output, {"status": "compile_error", "reason": str(error)})
             return 2
     with codegen_options(options_from_args(args)):
         return _native_verify_with_options(args)

@@ -15,6 +15,8 @@ APPLICATION_BUDGET_OPTIONS = ("program_size_limit_bytes", "execution_instruction
 
 def application_budget_options(manifest, requested):
     """Read published choices, refusing conflicting operator restatements."""
+    if not isinstance(manifest, dict):
+        raise ValueError("application manifest must be an object")
     published = {name: manifest[name] for name in APPLICATION_BUDGET_OPTIONS if name in manifest}
     if not published:  # Legacy application without published budgets.
         return {name: value for name, value in requested.items() if value is not None}

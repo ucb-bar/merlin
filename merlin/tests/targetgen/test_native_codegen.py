@@ -406,7 +406,7 @@ def test_application_verify_reads_budgets_from_artifact(tmp_path, monkeypatch):
     budgets = dict(program_size_limit_bytes=8192, execution_instruction_limit=128000000,
                    exact_float_unroll=True)
     (artifact / 'manifest.json').write_text(json.dumps(budgets))
-    args = Namespace(application=True, artifact=str(artifact), out=str(tmp_path / 'status.json'),
+    args = Namespace(application=True, artifact=str(artifact), snapshot=str(tmp_path / 'snapshot'), out=str(tmp_path / 'status.json'),
                      program_size_limit_bytes=None, execution_instruction_limit=None, exact_float_unroll=False)
     observed = []
     def verify(selected):
@@ -419,3 +419,7 @@ def test_application_verify_reads_budgets_from_artifact(tmp_path, monkeypatch):
     assert cli._cmd_native_verify(args) == 2
     assert len(observed) == 1
     assert 'selected budget differs' in json.loads((tmp_path / 'status.json').read_text())['reason']
+    before = (artifact / 'manifest.json').read_bytes()
+    args.out = str(artifact / 'manifest.json')
+    assert cli._cmd_native_verify(args) == 2
+    assert (artifact / 'manifest.json').read_bytes() == before
