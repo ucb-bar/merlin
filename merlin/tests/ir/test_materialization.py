@@ -87,10 +87,16 @@ class MaterializationIdentityTest(unittest.TestCase):
     def test_default_codegen_record_retains_legacy_fields(self):
         import json
         default = json.loads(key(request()).identity)["codegen_options"]
-        self.assertEqual(default, {
+        legacy = {
             "reduction_unroll": "auto", "program_size_limit_bytes": None,
             "tuning_profile": None, "io_memory_bytes": None,
-        })
+        }
+        self.assertEqual({name: default[name] for name in legacy}, legacy)
+        self.assertEqual(default["native_pipeline"], "mandatory")
+        self.assertEqual(default["staging_storage"], "dram")
+        self.assertNotIn("exact_float_unroll", default)
+        self.assertNotIn("execution_instruction_limit", default)
+        self.assertNotIn("application_buffer_views", default)
         selected = json.loads(key(request(), options=CodegenOptions(exact_float_unroll=True)).identity)
         self.assertIs(selected["codegen_options"]["exact_float_unroll"], True)
 

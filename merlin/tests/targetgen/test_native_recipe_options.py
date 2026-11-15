@@ -54,6 +54,30 @@ def test_recipe_defaults_are_explicit_and_roundtrip_without_arguments():
     assert CodegenOptions(**options.identity_record()) == options
 
 
+def test_all_recipe_variants_partition_actual_materialization_cache_keys():
+    from merlin.semantic_compiler.materialization import MaterializationCache, materialization_key
+    from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
+
+    tensor = TensorType((32,), "bf16", "raw-bit-pattern")
+    source = KernelRequest(
+        nodes=(SemanticNode("input", "input", (), tensor, effect="input"),),
+        outputs=("input",), output_storages=("external",),
+        input_storages=(("input", "external"),), target_identity="recipe-test-target",
+    )
+    options = [CodegenOptions(), *[replace(CodegenOptions(), **{name: value}) for name, value in RECIPE_VARIANTS]]
+    keys = [materialization_key(
+        source, target_choice={"provider": "recipe-test"}, options=selected,
+        compilation_identity={"snapshot": "fixed", "toolchain": "fixed"},
+    ) for selected in options]
+    assert len({key.digest for key in keys}) == len(keys)
+    assert len({key.identity for key in keys}) == len(keys)
+    cache = MaterializationCache("recipe-test")
+    for index, key in enumerate(keys):
+        assert cache.get(key) is None
+        cache.put(key, index)
+    assert [cache.get(key) for key in keys] == list(range(len(keys)))
+
+
 @pytest.mark.parametrize(("name", "value"), RECIPE_VARIANTS)
 def test_each_recipe_choice_changes_only_its_identity_entry_and_restores_context(name, value):
     original = current_codegen_options()
