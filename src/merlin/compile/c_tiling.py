@@ -264,12 +264,14 @@ static int {prefix}_run_chunks(void *context,{prefix}_chunk_callback invoke,
 """
 
 
-def render_row_softmax_c(plan: RowSoftmaxTiling, prefix: str) -> str:
+def render_row_softmax_c(plan: RowSoftmaxTiling, prefix: str, *, output_element_bytes: int | None = None) -> str:
     """Pack a row group and scatter valid columns without target lane layout.
 
     The caller checks source bounds and buffer ownership. All output rows are
     staged privately until every group completes, so failed launches cannot
-    publish a partial source tensor.
+    publish a partial source tensor. A provider may select a different output
+    element width after proving its result encoding; this helper only copies
+    bytes and never changes arithmetic or infers a conversion.
     """
     if not isinstance(plan, RowSoftmaxTiling):
         raise ValueError("row packing requires a checked softmax tiling plan")
@@ -278,7 +280,10 @@ def render_row_softmax_c(plan: RowSoftmaxTiling, prefix: str) -> str:
     m, n = plan.shape
     tm, tn = plan.tile_type.shape
     width = len(plan.pad_element)
-    largest = max(m * n * width, tm * tn * width)
+    output_width = width if output_element_bytes is None else output_element_bytes
+    if type(output_width) is not int or output_width <= 0:
+        raise ValueError("output element width must be a positive integer")
+    largest = max(m * n, tm * tn) * max(width, output_width)
     if largest > (1 << 64) - 1:
         raise ValueError("row buffers exceed the supported C size domain")
     pad = ",".join(str(value) for value in plan.pad_element)
@@ -302,7 +307,7 @@ static void {prefix}_scatter_row_tile(uint8_t *out, const uint8_t *tile,
   size_t columns = {n}u-column_tile*{tn}u;
   if (columns > {tn}u) columns = {tn}u;
   for (size_t row = 0; row < {tm}u && start_row+row < {m}u; ++row)
-    __builtin_memcpy(out+((start_row+row)*{n}u+column_tile*{tn}u)*{width}u,
-                     tile+row*{tn * width}u,columns*{width}u);
+    __builtin_memcpy(out+((start_row+row)*{n}u+column_tile*{tn}u)*{output_width}u,
+                     tile+row*{tn * output_width}u,columns*{output_width}u);
 }}
 """
