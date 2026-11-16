@@ -91,3 +91,8 @@ f32 schemas retain their meanings. It grants no framework numerical equivalence.
 - `connected_region.py` extracts an exact single-block source window with literal/init closure, nested captures and every live output. `verify_window` reconstructs from pinned original bytes before returning operation pairs. Re-run source/trace/index proofs on the projection; do not copy ordinal-bound host admissions. Runtime inputs remain explicit, and no numerical or target qualification follows.
 
 - `bounded_control_source_body.py` admits only exact scalar count/index/guard roles from a caller-reproved whole-source interval context. `connected_index_source_body.py` preserves the closed prepared-index recognizers while requiring a separately reconstructed projection and exact captured typed-root join. Neither supplies linked host qualification, compiled bounds, or numerical credit.
+
+Canonical rank-two/three `linalg.generic` multiply/add contractions share the
+named-matmul reader after exact map, iterator, scalar-body and positive-zero
+checks. Both literal `tensor.splat` and `linalg.fill` initializers are admitted;
+unknown geometry or arithmetic never receives numeric replacement permission.

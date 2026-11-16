@@ -9,28 +9,55 @@ not establish source equivalence, hardware support or experiment admission.
 from hashlib import sha256
 
 from xdsl.dialects import arith, bufferization, builtin, func, memref, tensor
-from xdsl.dialects.linalg.ops import FillOp, MatmulOp
+from xdsl.dialects.linalg.ops import FillOp
 from xdsl.ir import Block, Region
 
-from merlin.frontends.linalg_batch_matmul import BatchMatmulOp
-from merlin.frontends.linalg_tensor_graph import read_tensor_graph
+from merlin.frontends.linalg_tensor_graph import contraction_kind, read_tensor_graph
 from merlin.frontends.linalg_text import parse_mlir_text
 from merlin.xdsl_dialects._common import text
 
 
+def static_tensor_signature(source, *, entry):
+    """Explicit ranked host ABI; integer IDs/masks never change contraction dtype."""
+    module = parse_mlir_text(source)
+    functions = tuple(module.body.block.ops)
+    if len(functions) != 1 or type(functions[0]) is not func.FuncOp or functions[0].sym_name.data != entry:
+        raise ValueError("one matching source function required")
+    fn = functions[0]
+    result = {}
+    for name, types in (("inputs", fn.function_type.inputs), ("outputs", fn.function_type.outputs)):
+        if any(
+            type(t) is not builtin.TensorType
+            or type(t.encoding) is not builtin.NoneAttr
+            or any(d <= 0 for d in t.get_shape())
+            or str(t.element_type) not in ("f32", "f64", "i1", "i8", "i16", "i32", "i64")
+            for t in types
+        ):
+            raise ValueError("host ABI requires supported positive static tensor types")
+        result[name] = [list(t.get_shape()) for t in types]
+        result[name + "_dtypes"] = [str(t.element_type) for t in types]
+    return result
+
+
 def contraction_source(op):
     """Extract and check actual operands, recurrence and positive-zero seed."""
-    if type(op) not in (MatmulOp, BatchMatmulOp) or len(op.inputs) != 2 or len(op.outputs) != 1:
-        raise ValueError("one named two-input matmul required")
+    if contraction_kind(op) is None or len(op.inputs) != 2 or len(op.outputs) != 1:
+        raise ValueError("one checked two-input matmul required")
     fill = op.outputs[0].owner
-    if type(fill) is not FillOp or not len(fill.inputs) == len(fill.outputs) == 1:
-        raise ValueError("matmul requires a literal fill")
-    zero, empty = fill.inputs[0].owner, fill.outputs[0].owner
-    if type(zero) is not arith.ConstantOp or type(empty) is not tensor.EmptyOp:
-        raise ValueError("matmul requires a constant and static empty")
+    if type(fill) is tensor.SplatOp:
+        dependencies = (fill.operands[0].owner, fill)
+    elif type(fill) is FillOp and len(fill.inputs) == len(fill.outputs) == 1:
+        zero, empty = fill.inputs[0].owner, fill.outputs[0].owner
+        if type(empty) is not tensor.EmptyOp:
+            raise ValueError("matmul requires a static empty")
+        dependencies = (zero, empty, fill)
+    else:
+        raise ValueError("matmul requires a literal fill or splat")
+    if type(dependencies[0]) is not arith.ConstantOp:
+        raise ValueError("matmul requires a constant initializer")
     block = Block(arg_types=[v.type for v in op.inputs])
     mapping = dict(zip(op.inputs, block.args, strict=True))
-    for original in (zero, empty, fill):
+    for original in dependencies:
         block.add_op(original.clone(value_mapper=mapping))
     cloned = op.clone(value_mapper=mapping)
     # The same source SSA value can occupy both operand positions. Keep two
@@ -45,7 +72,7 @@ def contraction_source(op):
 
 
 def outline_floating_matmuls(source, *, entry, numerical_policy):
-    """Outline top-level f32 named matmul/batch_matmul, retaining other ops.
+    """Outline checked f32 named/canonical-generic contractions, retaining other ops.
 
     Callback ABI is three ranked memref descriptors (lhs, rhs, fresh output),
     synchronous, read-only inputs and complete output writes. The existing
@@ -65,7 +92,7 @@ def outline_floating_matmuls(source, *, entry, numerical_policy):
         raise ValueError("entry or control flow differs")
     records = []
     for ordinal, op in enumerate(tuple(fn.walk())):
-        if type(op) not in (MatmulOp, BatchMatmulOp):
+        if contraction_kind(op) is None:
             continue
         if op.parent_block() is not fn.body.block:
             raise ValueError("nested matmul requires explicit control-flow dispatch")

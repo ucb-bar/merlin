@@ -462,8 +462,8 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## What belongs here
 
-- `floating_matmul_outline.py` outlines checked top-level f32 named matmul and
-  batch-matmul operations to synchronous ranked-memref callbacks under an explicit
+- `floating_matmul_outline.py` outlines checked top-level f32 named and canonical-generic
+  matmul/batch-matmul operations to synchronous ranked-memref callbacks under an explicit
   caller-selected numerical policy. Other source operations and returned tensors
   remain in ordinary whole-model lowering. The existing host pipeline and C runtime
   own buffer lifetime and copying; the OOT owns conversion and device execution.
@@ -1391,3 +1391,7 @@ feed an explicitly selected `QuantizedSumRoute` after target admission. Shared
 producer symbols, observed intermediates and intervening effects stay unfused.
 Discovery supplies neither target borrowing/completion premises nor execution
 or performance evidence; unsupported adapters retain the separate source route.
+
+`floating_matmul_outline.static_tensor_signature` describes static ranked host
+arguments/results, including integer IDs, boolean masks and rank-zero buffers.
+These boundary types do not widen the f32 contraction replacement contract.

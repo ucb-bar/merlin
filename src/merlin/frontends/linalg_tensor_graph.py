@@ -9,6 +9,7 @@ from hashlib import sha256
 from math import copysign, isnan
 
 from xdsl.dialects import arith, builtin, func, math, tensor
+from xdsl.dialects.linalg.attrs import IteratorType
 from xdsl.dialects.linalg.ops import FillOp, GenericOp, MatmulOp, ReduceOp, TransposeOp, YieldOp
 from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr, AffineMap
 
@@ -68,6 +69,32 @@ def scalar_body(op, operations, operands):
             "scalar operands or flags differ",
         )
     return body
+
+
+def contraction_kind(op):
+    """Recognize standard rank-two/three contraction geometry, without provenance hints.
+
+    Scalar arithmetic and initializer legality are checked by read_tensor_graph;
+    matching maps alone never grants a numerical replacement.
+    """
+    if type(op) in (MatmulOp, BatchMatmulOp):
+        return "batch_matmul" if type(op) is BatchMatmulOp else "matmul"
+    if type(op) is not GenericOp or len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
+        return None
+    if not isinstance(op.inputs[0].type, builtin.TensorType):
+        return None
+    rank = len(op.inputs[0].type.get_shape())
+    if rank not in (2, 3):
+        return None
+    dims = tuple(AffineDimExpr(i) for i in range(rank + 1))
+    batch = dims[:1] if rank == 3 else ()
+    m, n, k = dims[-3:]
+    maps = tuple(AffineMap(rank + 1, 0, v) for v in ((*batch, m, k), (*batch, k, n), (*batch, m, n)))
+    if tuple(v.data for v in op.indexing_maps) != maps:
+        return None
+    if tuple(v.data for v in op.iterator_types) != (IteratorType.PARALLEL,) * rank + (IteratorType.REDUCTION,):
+        return None
+    return "batch_matmul" if rank == 3 else "matmul"
 
 
 def read_tensor_graph(source, *, entry, target_identity):
@@ -135,11 +162,11 @@ def read_tensor_graph(source, *, entry, target_identity):
             scalar_body(op, (), (lambda b, ops: (b.args[0],),))
             empty(op.operands[1])
             emit(op, "transpose", (op.operands[0],))
-        elif type(op) in (MatmulOp, BatchMatmulOp):
-            metadata(op, ("operandSegmentSizes", "indexing_maps"))
+        elif contraction_kind(op) is not None:
+            metadata(op, ("operandSegmentSizes", "indexing_maps", "iterator_types"))
             require(len(op.inputs) == 2 and len(op.outputs) == len(op.results) == 1, "matmul arity differs")
             a, b, out = (tensor_type(v) for v in (*op.inputs, op.results[0]))
-            batched = type(op) is BatchMatmulOp
+            batched = contraction_kind(op) == "batch_matmul"
             rank = 3 if batched else 2
             require(
                 len(a.shape) == len(b.shape) == rank
@@ -163,22 +190,32 @@ def read_tensor_graph(source, *, entry, target_identity):
                 (arith.MulfOp, arith.AddfOp),
                 (
                     lambda b, ops: b.args[:2],
-                    lambda b, ops: (ops[0].results[0], b.args[2]),
+                    lambda b, ops: (
+                        (b.args[2], ops[0].results[0])
+                        if type(op) is GenericOp and tuple(ops[1].operands) == (b.args[2], ops[0].results[0])
+                        else (ops[0].results[0], b.args[2])
+                    ),
                     lambda b, ops: (ops[1].results[0],),
                 ),
             )
             fill = op.outputs[0].owner
-            require(type(fill) is FillOp and len(fill.inputs) == len(fill.outputs) == 1, "zero-seeded matmul required")
-            metadata(fill, ("operandSegmentSizes",))
-            scalar_body(fill, (), (lambda b, ops: (b.args[0],),))
-            value = scalar_constant(fill.inputs[0])
-            require(
-                fill.inputs[0].type == op.results[0].type.element_type and fill.outputs[0].type == op.results[0].type,
-                "matmul initializer type differs",
-            )
+            if type(fill) is tensor.SplatOp:
+                metadata(fill)
+                require(len(fill.operands) == 1, "one splat scalar required")
+                initializer = fill.operands[0]
+            else:
+                require(
+                    type(fill) is FillOp and len(fill.inputs) == len(fill.outputs) == 1, "zero-seeded matmul required"
+                )
+                metadata(fill, ("operandSegmentSizes",))
+                scalar_body(fill, (), (lambda b, ops: (b.args[0],),))
+                initializer = fill.inputs[0]
+                require(fill.outputs[0].type == op.results[0].type, "matmul initializer type differs")
+                empty(fill.outputs[0])
+            value = scalar_constant(initializer)
+            require(initializer.type == op.results[0].type.element_type, "matmul initializer type differs")
             require(value == 0 and copysign(1, value) > 0, "positive zero matmul seed required")
-            empty(fill.outputs[0])
-            used.update((fill, fill.inputs[0].owner))
+            used.update((fill, initializer.owner))
             emit(
                 op,
                 "batch_matmul" if batched else "matmul",

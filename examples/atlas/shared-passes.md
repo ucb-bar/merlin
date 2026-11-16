@@ -279,3 +279,7 @@ The compiler-library selection adds the batch parser dependency (42 members).
 The new whole-host outlining/build helper is used from the installed Merlin
 checkout; it has not been added to the closed OOT-authoring library selection or
 independently admitted as a generation input. No OOT generation loop was run.
+
+The [generalization change log](generalization-changelog.md) records every
+extension needed for TinyLlama, SmolVLA and ResNet-50, with executed model scope,
+source-order/optimized results and remaining qualification limits.
