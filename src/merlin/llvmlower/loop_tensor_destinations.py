@@ -33,6 +33,11 @@ def _ltd_fresh_seed(value):
     op = value.owner.operation
     if op.name == 'tensor.empty':
         return True
+    if op.name == 'bufferization.alloc_tensor':
+        # This operation guarantees a new buffer even when copying an
+        # immutable captured value. It grants no ownership of the source.
+        return (len(op.results) == 1 and not op.regions
+                and _ltd_numeric(ir.RankedTensorType(value.type).element_type))
     if op.name == 'arith.constant':
         return 'value' in op.attributes and isinstance(op.attributes['value'], ir.DenseElementsAttr)
     if (op.name == 'linalg.generic' and 'library_call' not in op.attributes and len(op.results) == 1 and op.operands
@@ -541,8 +546,70 @@ def _ltd_private_seed(ctx, loop, incoming):
     return empty, copy
 
 
+def _ltd_protect_region_destinations(ctx, module):
+    # Linalg's scalar region is executed repeatedly, but the pinned native
+    # bufferization model does not describe it as a repetitive region. A
+    # captured loop seed or functional tensor destination must therefore receive
+    # independent storage at each original scalar invocation. Ordinary readonly
+    # tensor captures are untouched. Keep the portable computation and loops.
+    changed = 0
+    for operation in tuple(_ltd_walk(module.operation)):
+        if operation.name in ('scf.for', 'scf.while'):
+            first = 3 if operation.name == 'scf.for' else 0
+            positions = [(index, True) for index in range(first, len(operation.operands))]
+        elif operation.name in ('linalg.generic', 'linalg.reduce', 'linalg.fill') and operation.results:
+            count = len(operation.results)
+            body = operation.regions[0].blocks[0]
+            positions = [(len(operation.operands) - count + index,
+                          bool(list(body.arguments[len(body.arguments) - count + index].uses)))
+                         for index in range(count)]
+        elif operation.name in ('tensor.insert', 'tensor.insert_slice'):
+            positions = [(1, True)]
+        else:
+            continue
+        scope = operation.parent
+        while scope is not None and not scope.name.startswith('linalg.'):
+            scope = scope.parent
+        if scope is None:
+            continue
+        for position, read_initial in positions:
+            incoming = operation.operands[position]
+            if not isinstance(incoming.type, ir.RankedTensorType):
+                continue
+            owner = (incoming.owner.operation if isinstance(incoming, ir.OpResult)
+                     else incoming.owner.owner.operation)
+            while owner is not None and owner != scope:
+                owner = owner.parent
+            if owner is not None:
+                continue
+            with ctx, operation.location, ir.InsertionPoint(operation):
+                dimensions = []
+                if not read_initial:
+                    for axis, extent in enumerate(ir.RankedTensorType(incoming.type).shape):
+                        if extent < 0:
+                            index = ir.Operation.create('arith.constant', results=[ir.IndexType.get()],
+                                attributes={'value': ir.IntegerAttr.get(ir.IndexType.get(), axis)})
+                            dimensions.append(ir.Operation.create('tensor.dim',
+                                operands=[incoming, index.results[0]], results=[ir.IndexType.get()]).results[0])
+                copy = ir.Operation.create('bufferization.alloc_tensor',
+                    operands=[incoming] if read_initial else dimensions, results=[incoming.type], attributes={
+                        'operandSegmentSizes': ir.DenseI32ArrayAttr.get([0, 1, 0] if read_initial else [len(dimensions), 0, 0]),
+                        'prov.family': ir.StringAttr.get('loop-state'),
+                        'prov.op': ir.StringAttr.get('copy-captured-region-seed' if read_initial
+                                                     else 'private-region-destination'),
+                    })
+                for key in ('prov.source_ids', 'prov.original_ops', 'prov.normalized_ids',
+                            'prov.normalized_ops', 'prov.region_id'):
+                    if key in operation.attributes:
+                        copy.attributes[key] = operation.attributes[key]
+            operation.operands[position] = copy.results[0]
+            changed += 1
+    module.operation.verify()
+    return changed
+
+
 def _ltd_reuse(ctx, module):
-    changed, claimed = 0, set()
+    changed, claimed = _ltd_protect_region_destinations(ctx, module), set()
     for loop in tuple(_ltd_walk(module.operation)):
         block, edges = _ltd_carried_edges(loop)
         if not edges:

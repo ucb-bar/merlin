@@ -81,6 +81,14 @@ scalar transport is ready. Those markers supply no expected outcome.
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
 in position and type. Computed/permuted condition state grants no seed facts.
+The pinned Linalg bufferizer does not mark scalar regions repetitive. Before
+destination planning, tensor loop seeds and functional destinations captured
+from outside their nearest Linalg body receive an actual independent
+`bufferization.alloc_tensor` at the original invocation. Preserve initial values
+when used; complete unused-init producers need allocation without a data copy.
+Keep dynamic dimensions, ordinary readonly captures, source positions and every
+ownership/lifetime gate. A tensor type or provenance marker grants no ownership
+of the original captured storage. Local producers retain their existing path.
 Scalar `scf.if`/`scf.for`/`scf.while` inside a producer may retain general numeric
 iteration state after actual native control verification. Keep the complete
 body in place and inspect every descendant, including unused calls, mutable

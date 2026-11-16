@@ -86,6 +86,88 @@ with ir.Context() as ctx:
 
 @pytest.mark.skipif(not available(), reason="existing native MLIR required")
 @pytest.mark.parametrize("control", ["for", "while"])
+@pytest.mark.parametrize("local", [False, True])
+def test_linalg_region_tensor_destinations_and_loop_seeds_have_invocation_storage(tmp_path, control, local):
+    seed = "%seed=arith.constant dense<0.0>:tensor<4xf32>"
+    state = '''%state=scf.for %i=%c0 to %bound step %c1 iter_args(%old=%seed)->tensor<4xf32> {
+      scf.yield %old:tensor<4xf32>
+    }'''
+    if control == "while":
+        state = '''%state:2=scf.while (%old=%seed,%i=%c0):(tensor<4xf32>,index)->(tensor<4xf32>,index) {
+          %more=arith.cmpi slt,%i,%bound:index
+          scf.condition(%more) %old,%i:tensor<4xf32>,index
+        } do {
+        ^bb0(%old:tensor<4xf32>,%i:index):
+          %next=arith.addi %i,%c1:index
+          scf.yield %old,%next:tensor<4xf32>,index
+        }'''
+    result = "%state#0" if control == "while" else "%state"
+    original = f'''module {{func.func @forward(%x:tensor<4xf32>,%bound:index)->tensor<4xf32> {{
+      %c0=arith.constant 0:index
+      %c1=arith.constant 1:index
+      {seed if not local else ""}
+      %empty=tensor.empty():tensor<4xf32>
+      %out=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+        ins(%x:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{
+        ^bb0(%value:f32,%init:f32):
+          {seed if local else ""}
+          {state}
+          %word=tensor.extract {result}[%c0]:tensor<4xf32>
+          linalg.yield %word:f32
+      }} -> tensor<4xf32>
+      return %out:tensor<4xf32>
+    }} }}'''
+    stdout, output = rewrite(tmp_path, original)
+    assert "OK loop_tensor_destinations" in stdout
+    assert output.count('prov.op = "copy-captured-region-seed"') == (0 if local else 1)
+    assert output.count("bufferization.alloc_tensor") == (0 if local else 1)
+    assert "scf." + control in output and "tensor.extract" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("dynamic", [False, True])
+@pytest.mark.parametrize("read_initial", [False, True])
+@pytest.mark.parametrize("local", [False, True])
+def test_only_captured_writable_destinations_need_private_region_allocations(tmp_path, dynamic, read_initial, local):
+    shape = "?" if dynamic else "4"
+    type_ = f"tensor<{shape}xf32>"
+    empty = f"%e=tensor.empty({'%size' if dynamic else ''}):{type_}"
+    init = "%seed=linalg.fill ins(%one:f32) outs(%e:" + type_ + ")->" + type_
+    value = "arith.addf %in,%old:f32" if read_initial else "arith.addf %in,%in:f32"
+    original = f'''module {{func.func @forward(%x:{type_})->{type_} {{
+      %c0=arith.constant 0:index
+      %one=arith.constant 1.0:f32
+      %size=tensor.dim %x,%c0:{type_}
+      {empty if not local else ""}
+      {init if not local else ""}
+      %out_empty=tensor.empty({'%size' if dynamic else ''}):{type_}
+      %out=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+        ins(%x:{type_}) outs(%out_empty:{type_}) {{
+        ^bb0(%scalar:f32,%unused:f32):
+          {empty if local else ""}
+          {init if local else ""}
+          %filled=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+            ins(%x:{type_}) outs(%seed:{type_}) {{
+            ^bb1(%in:f32,%old:f32):
+              %value={value}
+              linalg.yield %value:f32
+          }} -> {type_}
+          %word=tensor.extract %filled[%c0]:{type_}
+          linalg.yield %word:f32
+      }} -> {type_}
+      return %out:{type_}
+    }} }}'''
+    _, output = rewrite(tmp_path, original)
+    assert output.count("bufferization.alloc_tensor") == (0 if local else 1)
+    marker = "copy-captured-region-seed" if read_initial else "private-region-destination"
+    assert output.count(f'prov.op = "{marker}"') == (0 if local else 1)
+    # Readonly captured x remains a value input; it is never replaced by a
+    # private destination or copied just because its tensor type is captured.
+    assert "ins(%arg0" in output
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("control", ["for", "while"])
 @pytest.mark.parametrize("effect", ["guard", "call", "write", "read"])
 def test_numeric_guards_stay_in_complete_producers_without_admitting_hidden_effects(tmp_path, control, effect):
     declaration = "func.func private @unknown(f32)->f32" if effect == "call" else ""
