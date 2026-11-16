@@ -94,7 +94,7 @@ intermediate domain. They are never provided to the compiler as expected results
 
 `tools/check_shared_dense.py` runs another 78 executions covering continued K,
 multiple output tiles, numeric rounding/range witnesses and direct Atlas
-comparators. It requires the full Merlin source tree for its test-fixture builder.
+comparators. Its test-fixture builder uses the isolated library's pure parser.
 Each compilation records source, checked schedules, virtual/machine IR, final
 words, tool hashes, issue constraints and consumed schedule annotations.
 
@@ -131,6 +131,11 @@ arbitrary intermediate domains and BF16 physical transpose remain unsupported.
 The reader itself has no hardware tile restriction. The old exact-policy graph
 path and its seven-code PACK premise remain separate from this diagnostic path.
 
+Repeat the attention command with `--dense-witnesses` and a fresh output directory
+to exercise dense signed weights, cancellation and accumulated rounding. This
+adds another 16 executions with the same source graphs and independent reference.
+It changes test inputs only, never compilation or numerical policy selection.
+
 ## Measured scope and remaining launch requirements
 
 Observed model results on November 10, 2026:
@@ -161,3 +166,66 @@ reviewed corpus, independent hardware/software/runtime intake, tool sandbox and
 timing evidence must be selected through the existing Phase 0/1 gates before a
 verified generation run. This preflight supplies working shared compiler APIs
 and execution evidence; it does not manufacture those authorities or qualify RTL.
+
+## Full-model readiness review (November 16, 2026)
+
+**The shared library is a working bounded compiler component, not yet a complete
+model-lowering path or a launch-ready Atlas generation experiment.** The limits
+below are integration work, not reasons to add target branches to shared passes.
+
+Two source-validation defects were reproduced and fixed. Static
+`tensor.expand_shape` now checks its explicit output shape against the result
+type. Ordered floating matmul now checks the fill region's scalar argument types
+against the initializer and destination. The selected xDSL version accepted both
+malformed forms; relying on `module.verify()` alone was insufficient. Regression
+tests cover mismatched expansion dimensions and both fill arguments through the
+single-matmul and graph readers.
+
+The review also checked actual compiler inputs without reading their runtime
+inputs or expected outputs. The available TinyLlama batch-two and vision captures
+parse and verify but are refused by this reader: they contain mixed BF16/integer
+boundaries and target-prepared `atlas.qlinear`, `atlas.quantize_act`,
+`atlas.qk_matmul` and `atlas.pv_matmul` operations. They additionally need batched
+geometry, casts, general reshape, normalization and, for the decoder capture,
+slice/concat operations. These are capture-stage examples, not evidence of a
+complete decoder or policy application. The older generic quantized coverage-MLP
+artifact fails xDSL verification on `arith.trunci`'s `overflowFlags` property;
+that is an intake/version mismatch before any shared lowering occurs.
+
+| Blocking area | Current evidence | Smallest reusable next step |
+| --- | --- | --- |
+| Whole-model API compatibility | `atlas_mlir_native.binding` fails to import `StagedCompileInputs`; it also depends on precision modules and graph APIs absent from this main-derived branch. | Agree on one staged-input/graph contract, then port the required generic staging, constant binding and precision components with their consumer tests. Do not shim the import while omitting its invariants. |
+| Graph and operator coverage | The new reader covers a closed floating subset; it does not cover quantized captures, batched matmul, arbitrary views, casts, rsqrt/normalization, SiLU/GELU, masking or KV-cache updates. | Reuse existing frontend recognizers and host lowering. Preserve explicit index maps, types, source bodies and retained outputs in a shared graph. Put prepared Atlas-operation intake in the OOT adapter. |
+| Model-scale execution | This adapter expands at most 64 dense tile products, uses full 32-element tiles and reduces only complete 32-element rows. A 256×256×256 matmul already needs 512 tile products. Input staging is limited to 256 physical slots. | Keep shared counted-loop planning and verification; teach the OOT emitter to consume loops or bounded partitions. Connect shared buffer ownership, weight staging, dispatch and host fallback with checked target layouts and transfer lifetimes. Raising the expansion limit alone is insufficient. |
+| Numerical validity | Source f32 is explicitly approximated by E4M3/BF16, PACK and VPU approximations; runtime intermediate domains and application quality remain unproved. | Select and validate a model precision policy, including scales, exceptional values, reduction order and quality thresholds. Keep exact-source and approximate-policy APIs separate. |
+| Generation setup | `atlas-functional` is still diagnostic. Its selected oracle timing file is absent, the descriptor's host commit is `UNKNOWN`, and the old bundle does not select the new compiler-library contract. | Use the existing intake/admission workflow to freeze compatible tools, reviewed corpus, host runtime, timing evidence and the exported library before launching. A library export is not an experiment admission receipt. |
+
+The smallest useful next milestone is one statically shaped transformer block
+through the agreed staged-input interface, with real weight binding and explicit
+host/device coverage for every operation. Test source order and optimized order,
+all intermediate tensors, at least one sequence length above 32, a tail, and a
+contraction above 64 tile products. Only then scale to full prefill, decode and
+application loops with their state and complete output ABI. These cases should
+derive from independent synthetic graphs; held-out model outputs must not guide
+lowering or optimization choices.
+
+The fresh sparse and dense attention witnesses both match the declared target
+arithmetic byte-for-byte, in source order and optimized order, including all 12
+retained stages. Dense-weight f32 comparisons are materially less accurate than
+the sparse witnesses: maximum absolute error ranges from **0.2765 to 0.6897**,
+and RMSE from **0.0683 to 0.1919** (f32 output maxima 1.78–7.69). These observations
+do not establish an acceptable model-quality threshold.
+
+Scheduling checks retain their limited meanings. The shared dense verifier
+proves actual projected loop coverage, order and residency under the adapter's
+synchronous contract. The Atlas timing export is trusted provider evidence bound
+to emitted words; checking it does not independently derive hardware latencies.
+DMA, reservations and control flow are still checked by the OOT compiler.
+Reported cycles come from the pinned `npu_model` execution, not from shared
+planning costs or an RTL measurement. None of these runs generates a new OOT
+backend, compares one against Atlas MLIR, or establishes full-model execution.
+
+FP4/FP6 remain reusable codecs and explicit packed storage. There is no
+MX-Gemmini instruction lowering, model precision selection, or target admission
+for those formats in this branch. Fusion likewise retains producer/consumer SSA
+edges and target allocation, but has no general whole-model fusion planner yet.
