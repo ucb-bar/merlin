@@ -119,6 +119,8 @@ def recognize_ordered_float_dense(dot, *, policy: OrderedFloatPolicy):
     _require(tuple(str(v.type.element_type) for v in values) ==
              (policy.input_type, policy.input_type, policy.accumulator_type, policy.accumulator_type,
               policy.accumulator_type), "element formats differ")
+    _require(tuple(arg.type for arg in fill_body.args) == (zero.result.type, empty.results[0].type.element_type),
+             "fill scalar types differ from initializer and destination")
     shapes = tuple(tuple(v.type.get_shape()) for v in values)
     _require(all(len(s) == 2 and all(d > 0 for d in s) for s in shapes), "positive static rank-two shapes required")
     _require(shapes[2] == shapes[3] == shapes[4], "destination/result shape differs")

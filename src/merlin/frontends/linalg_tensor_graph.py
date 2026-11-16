@@ -212,6 +212,10 @@ def read_tensor_graph(source, *, entry, target_identity):
                 and tuple(tuple(i.value.data for i in group) for group in op.reassociation) == ((0, 1),),
                 "expansion reassociation differs",
             )
+            require(
+                tuple(op.static_output_shape.iter_values()) == dst.shape,
+                "expansion output shape differs from result type",
+            )
             emit(op, "expand_dims", (op.operands[0],), (("axis", 1),))
         elif type(op) is GenericOp:
             metadata(op, ("indexing_maps", "iterator_types", "operandSegmentSizes"))

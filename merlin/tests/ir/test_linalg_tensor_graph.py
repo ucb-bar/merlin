@@ -177,7 +177,8 @@ def test_unary_sources(kind):
         read(source.replace("linalg.yield %z", "linalg.yield %old"))
 
 
-def test_reduce_expand_dims_keeps_ssa_edge():
+@pytest.mark.parametrize("output_shape", ["3, 1", "99, 1", "3, 2", "1, 3"])
+def test_reduce_expand_dims_keeps_ssa_edge(output_shape):
     source = reduction().replace(") -> tensor<3xf32> {", ") -> tensor<3x1xf32> {", 1)
     source = source.replace(
         "func.return %r : tensor<3xf32>",
@@ -186,6 +187,11 @@ def test_reduce_expand_dims_keeps_ssa_edge():
         : tensor<3xf32> into tensor<3x1xf32>
       func.return %expanded : tensor<3x1xf32>""",
     )
+    source = source.replace("output_shape [3, 1]", "output_shape [" + output_shape + "]")
+    if output_shape != "3, 1":
+        with pytest.raises(ValueError, match="expansion output shape differs"):
+            read(source)
+        return
     graph = read(source)
     assert graph.nodes[-1].op == "expand_dims"
     assert graph.nodes[-1].inputs == (graph.nodes[-2].id,)

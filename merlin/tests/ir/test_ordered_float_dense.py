@@ -73,12 +73,36 @@ def test_source_identity_changes_with_geometry():
 
 
 def test_fill_must_yield_the_actual_scalar_initializer():
+    from xdsl.dialects.linalg.ops import FillOp
+
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects._common import text
-    from xdsl.dialects.linalg.ops import FillOp
 
     module = parse_mlir_text(source())
     fill = next(op for op in module.walk() if type(op) is FillOp)
     fill.body.block.last_op.operands = [fill.body.block.args[1]]
     with pytest.raises(ValueError, match="fill body"):
         read_ordered_float_dense(text(module, generic=True), entry="dense", policy=POLICY)
+
+
+@pytest.mark.parametrize("argument", [0, 1])
+@pytest.mark.parametrize("reader", ["dense", "graph"])
+def test_fill_scalar_types_must_match_tensor_operands(argument, reader):
+    from xdsl.dialects.builtin import f32
+    from xdsl.dialects.linalg.ops import FillOp
+
+    from merlin.frontends.linalg_float_graph import read_float_graph
+    from merlin.frontends.linalg_text import parse_mlir_text
+    from merlin.xdsl_dialects._common import text
+
+    module = parse_mlir_text(source())
+    fill = next(op for op in module.walk() if type(op) is FillOp)
+    fill.body.block.args[argument]._type = f32
+    # xDSL's fill verifier currently accepts this inconsistent scalar region.
+    module.verify()
+    changed = text(module, generic=True)
+    with pytest.raises(ValueError, match="fill scalar types"):
+        if reader == "dense":
+            read_ordered_float_dense(changed, entry="dense", policy=POLICY)
+        else:
+            read_float_graph(changed, entry="dense", target_identity="test", ordered_policies=(POLICY,))
