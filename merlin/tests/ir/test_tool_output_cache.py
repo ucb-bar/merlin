@@ -179,6 +179,43 @@ def test_application_cached_and_fresh_publications_match_every_byte(tmp_path, su
     assert results[0] == results[1]
 
 
+def test_application_memory_geometry_is_published_and_replayed(tmp_path):
+    from merlin.compile.semantic_application import verify_semantic_application
+    from merlin.semantic_compiler.codegen import CodegenOptions, codegen_options
+
+    source, adapter = graph(), SyntheticAdapter()
+    snapshot_root = tmp_path / "snapshot"
+    snapshot_root.mkdir()
+    (snapshot_root / "manifest.json").write_text("{}")
+    snapshot = SimpleNamespace(root=snapshot_root)
+    geometry = dict(io_memory_base=0, io_memory_bytes=4096, io_memory_alignment=64,
+                    io_memory_capacity_base=0, io_memory_capacity_bytes=8192)
+    output = tmp_path / "application"
+    with codegen_options(CodegenOptions(**geometry)):
+        manifest = compile_semantic_application(
+            source, adapter=adapter, snapshot=snapshot, target_source=tmp_path,
+            destination=output, limits=None, name="test_application", capacity=4096,
+            allow_host_only=True,
+        )
+        assert {name: manifest[name] for name in geometry} == geometry
+        # All five fields are compiler metadata; reserialization cannot replace
+        # an integer base with a JSON Boolean that compares equal in Python.
+        manifest["io_memory_base"] = False
+        (output / "manifest.json").write_text(json.dumps(manifest))
+        with pytest.raises(ValueError, match="I/O memory geometry differs"):
+            verify_semantic_application(
+                source, adapter=adapter, snapshot=snapshot, target_source=tmp_path,
+                artifact=output, allow_host_only=True,
+            )
+        manifest.update(geometry)
+        (output / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="I/O memory geometry differs"):
+        verify_semantic_application(
+            source, adapter=adapter, snapshot=snapshot, target_source=tmp_path,
+            artifact=output, allow_host_only=True,
+        )
+
+
 def test_cli_exposes_fresh_application_baseline():
     from merlin.targetgen.cli import build_parser
 

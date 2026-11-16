@@ -105,6 +105,29 @@ int run(const void *const *inputs, void *const *outputs) {
             assert row[field] == sha256(path.read_bytes()).hexdigest()
 
 
+@pytest.mark.parametrize('memory_base', [0, 0x92000000])
+def test_execute_passes_compiler_memory_window_to_runtime(bound_execution, monkeypatch, memory_base):
+    case = bound_execution
+    record = json.loads((case.consumer / 'compiled.json').read_text())
+    record.update(io_memory_base=memory_base, io_memory_bytes=4096)
+    _save(case.consumer / 'compiled.json', record)
+    observed = []
+
+    class RuntimeSelected(Exception):
+        pass
+
+    class PublishedRuntime:
+        def __init__(self, *args, **kwargs):
+            observed.append(kwargs)
+            raise RuntimeSelected
+
+    monkeypatch.setattr(execute_graph, 'ModelRuntime', PublishedRuntime)
+    with pytest.raises(RuntimeSelected):
+        execute_graph.main()
+    assert observed[0]['memory_base'] == memory_base
+    assert observed[0]['memory_bytes'] == 4096
+
+
 def test_all_layer_cache_bindings_detect_each_skipped_substitution(bound_execution, monkeypatch):
     import application_bindings
 

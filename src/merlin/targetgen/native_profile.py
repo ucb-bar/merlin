@@ -6,10 +6,11 @@ import hashlib
 import json
 import subprocess
 from argparse import Namespace
+from dataclasses import replace
 from pathlib import Path
 from time import monotonic
 
-from merlin.semantic_compiler.codegen import FACTORS, CodegenOptions, check_profile, codegen_options
+from merlin.semantic_compiler.codegen import FACTORS, check_profile, codegen_options, options_from_args
 from merlin.semantic_compiler.search import SearchLimits
 from merlin.semantic_compiler.snapshot import open_native_snapshot
 from merlin.semantic_compiler.target_binding import load_native_target_binding, verify_native_publication
@@ -17,12 +18,7 @@ from merlin.semantic_compiler.target_binding import load_native_target_binding, 
 
 def run_profile(args):
     """Runner data is evaluation-only; ordinary compilation never invokes it."""
-    with codegen_options(
-        CodegenOptions(
-            io_memory_bytes=getattr(args, "io_memory_bytes", None),
-            exact_float_unroll=getattr(args, "exact_float_unroll", False),
-        )
-    ):
+    with codegen_options(options_from_args(args)):
         return _run_profile_with_options(args)
 
 
@@ -53,13 +49,7 @@ def _run_profile_with_options(args):
     key_factory = getattr(binding, "tuning_key", None)
     if key_factory is None:
         raise ValueError("selected support does not expose reduction-unroll profiling")
-    with codegen_options(
-        CodegenOptions(
-            program_size_limit_bytes=args.program_size_limit_bytes,
-            io_memory_bytes=getattr(args, "io_memory_bytes", None),
-            exact_float_unroll=getattr(args, "exact_float_unroll", False),
-        )
-    ):
+    with codegen_options(options_from_args(args)):
         key = key_factory(snapshot, request, abi["fixed_inputs"], tuple(abi["fixed_outputs"]), limits)
     rows = []
     runner_identity = {
@@ -75,14 +65,7 @@ def _run_profile_with_options(args):
         row = {"factor": factor, "status": "failed"}
         try:
             compile_start = monotonic()
-            with codegen_options(
-                CodegenOptions(
-                    str(factor),
-                    args.program_size_limit_bytes,
-                    io_memory_bytes=getattr(args, "io_memory_bytes", None),
-                    exact_float_unroll=getattr(args, "exact_float_unroll", False),
-                )
-            ):
+            with codegen_options(replace(options_from_args(args), reduction_unroll=str(factor))):
                 compile_args = Namespace(
                     **{
                         **vars(args),

@@ -73,11 +73,12 @@ def case(tmp_path, monkeypatch):
     monkeypatch.setattr(compile_inputs, "load_compile_inputs", lambda _: staged)
     monkeypatch.setattr(application_inventory, "verify_capture_receipt",
                         lambda _: {"status": "verified_materialized"})
-    events, real_run = [], subprocess.run
+    events, verification_commands, real_run = [], [], subprocess.run
 
     def run(command, **kwargs):
         if "native-verify" in command:
             events.append("verify")
+            verification_commands.append(command)
             assert Path(command[command.index("--artifact") + 1]) == application
             assert command[command.index("--compile-inputs") + 1] == str(tmp_path / "staged")
             return subprocess.CompletedProcess(command, 0)
@@ -93,7 +94,88 @@ def case(tmp_path, monkeypatch):
             "--inputs", str(inputs)]
     monkeypatch.setattr(packaging.sys, "argv", argv)
     return SimpleNamespace(root=root, capture=capture, application=application, boundary=boundary,
-                           inputs=inputs, staged=staged, events=events, manifest=manifest)
+                           inputs=inputs, staged=staged, events=events, manifest=manifest,
+                           verification_commands=verification_commands)
+
+
+def test_compiler_memory_geometry_is_forwarded_without_runtime_overrides(case, monkeypatch):
+    geometry = dict(io_memory_base=0x92000000, io_memory_bytes=4096,
+                    io_memory_alignment=64, io_memory_capacity_base=0x90000000,
+                    io_memory_capacity_bytes=64 * 1024 * 1024)
+    case.manifest.update(geometry)
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
+
+    class Verified(Exception):
+        pass
+
+    def stop_before_host_build(*args, **kwargs):
+        raise Verified
+
+    monkeypatch.setattr(packaging, 'preflight_host_library', stop_before_host_build)
+    with pytest.raises(Verified):
+        packaging.main()
+    command, = case.verification_commands
+    for name, expected in geometry.items():
+        flag = '--' + name.replace('_', '-')
+        assert command[command.index(flag) + 1] == str(expected)
+    assert case.events == ['verify']
+
+
+def test_packaging_refuses_geometry_outside_compiler_publication(case, monkeypatch):
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, '--io-memory-base', '0x92000000'])
+    with pytest.raises(ValueError, match='differs from compiled application: io_memory_base'):
+        packaging.main()
+    assert case.events == []
+    assert not (case.root / 'compiled.json').exists()
+
+
+@pytest.mark.parametrize('budget,program_bytes,unroll', [
+    (None, None, False), (128000000, 8192, False), (1000000, None, True), (None, 4096, False),
+])
+def test_execution_choices_are_replayed_and_published_without_building(case, monkeypatch, budget, program_bytes, unroll):
+    options = [] if budget is None else ['--execution-instruction-limit', str(budget)]
+    if program_bytes is not None:
+        options.extend(['--program-size-limit-bytes', str(program_bytes)])
+    if unroll:
+        options.append('--exact-float-unroll')
+    case.manifest.update(program_size_limit_bytes=program_bytes, execution_instruction_limit=budget, exact_float_unroll=unroll)
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
+
+    def package_library(*args, package, **kwargs):
+        # Only exercise packaging metadata here; no C compiler or model runs.
+        (package / 'capsule.so').write_bytes(b'host library fixture')
+        (package / 'shim.c').write_bytes(b'host shim fixture')
+
+    monkeypatch.setattr(packaging, 'build_host_library', package_library)
+    packaging.main()
+    command, = case.verification_commands
+    record = json.loads((case.root / 'compiled.json').read_text())
+    if budget is None:
+        assert '--execution-instruction-limit' not in command
+        assert record['execution_instruction_limit'] is None
+    else:
+        assert command[command.index('--execution-instruction-limit') + 1] == str(budget)
+        assert record['execution_instruction_limit'] == budget
+    if program_bytes is None:
+        assert '--program-size-limit-bytes' not in command
+        assert record['program_size_limit_bytes'] is None
+    else:
+        assert command[command.index('--program-size-limit-bytes') + 1] == str(program_bytes)
+        assert record['program_size_limit_bytes'] == program_bytes
+    assert ('--exact-float-unroll' in command) is unroll
+    assert record.get('exact_float_unroll', False) is unroll
+    assert case.events == ['verify']
+
+
+@pytest.mark.parametrize('budget', ['0', '-1'])
+@pytest.mark.parametrize('flag', ['--execution-instruction-limit', '--program-size-limit-bytes'])
+def test_invalid_execution_budget_refuses_before_source_or_verification(case, monkeypatch, budget, flag):
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, flag, budget])
+    with pytest.raises(SystemExit) as error:
+        packaging.main()
+    assert error.value.code == 2
+    assert case.events == []
+    assert not (case.root / 'compiled.json').exists()
 
 
 def test_real_emitted_host_library_preserves_words_and_native_inventory(case):
@@ -223,3 +305,20 @@ def test_complete_execution_host_choice_forwards_explicit_rv64_output(case, monk
     assert observed == [dict(functional_validation=True, **{name: path.resolve() for name, path in paths.items()})]
     assert case.events == ['verify']
     assert not (case.root / 'runtime').exists()
+
+
+@pytest.mark.parametrize('name,published,restated', [
+    ('execution_instruction_limit', 1000000, 128000000),
+    ('program_size_limit_bytes', 4096, 8192),
+    ('exact_float_unroll', False, True),
+])
+def test_packaging_refuses_restated_budget(case, monkeypatch, name, published, restated):
+    case.manifest.update(program_size_limit_bytes=None, execution_instruction_limit=None, exact_float_unroll=False)
+    case.manifest[name] = published
+    (case.application / 'manifest.json').write_text(json.dumps(case.manifest))
+    flag = '--' + name.replace('_', '-')
+    flags = [flag] if name == 'exact_float_unroll' else [flag, str(restated)]
+    monkeypatch.setattr(packaging.sys, 'argv', [*packaging.sys.argv, *flags])
+    with pytest.raises(ValueError, match='selected budget differs'):
+        packaging.main()
+    assert case.events == []

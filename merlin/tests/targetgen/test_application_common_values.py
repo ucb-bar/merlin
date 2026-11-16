@@ -6,7 +6,7 @@ from merlin.targetgen.cli import _native_compile_report_with_options, build_pars
 
 
 @pytest.mark.parametrize("command", ["native-compile", "native-verify"])
-@pytest.mark.parametrize("option", ["common_values", "compose_reshapes"])
+@pytest.mark.parametrize("option", ["common_values", "compose_reshapes", "buffer_views"])
 def test_commoning_selection_is_opt_in_on_both_entrypoints(command, option):
     parser = build_parser()
     flags = [
@@ -36,7 +36,7 @@ def test_commoning_selection_is_opt_in_on_both_entrypoints(command, option):
     assert getattr(parser.parse_args([*flags, "--application-" + option.replace("_", "-")]), attribute) is True
 
 
-@pytest.mark.parametrize("option", ["common-values", "compose-reshapes"])
+@pytest.mark.parametrize("option", ["common-values", "compose-reshapes", "buffer-views"])
 def test_nonapplication_compile_refuses_the_flag_before_loading_support(monkeypatch, option):
     parser = build_parser()
     args = parser.parse_args(
