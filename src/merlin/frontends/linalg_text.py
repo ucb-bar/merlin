@@ -120,6 +120,9 @@ def make_context():
     ctx = Context(allow_unregistered=True)
     for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf, MemRef, layout_bufferization_dialect()):
         ctx.load_dialect(d)
+    from .linalg_batch_matmul import BatchMatmulOp
+
+    ctx.load_op(BatchMatmulOp)
     return ctx
 
 

@@ -1,0 +1,182 @@
+"""Explicit synchronous floating-matmul callbacks inside ordinary model lowering.
+
+Reuse the closed tensor reader to qualify source arithmetic. Everything outside
+the selected contractions stays in the original MLIR for ordinary host lowering.
+The caller selects a numerical replacement policy; this diagnostic seam does
+not establish source equivalence, hardware support or experiment admission.
+"""
+
+from hashlib import sha256
+
+from xdsl.dialects import arith, bufferization, builtin, func, memref, tensor
+from xdsl.dialects.linalg.ops import FillOp, MatmulOp
+from xdsl.ir import Block, Region
+
+from merlin.frontends.linalg_batch_matmul import BatchMatmulOp
+from merlin.frontends.linalg_tensor_graph import read_tensor_graph
+from merlin.frontends.linalg_text import parse_mlir_text
+from merlin.xdsl_dialects._common import text
+
+
+def contraction_source(op):
+    """Extract and check actual operands, recurrence and positive-zero seed."""
+    if type(op) not in (MatmulOp, BatchMatmulOp) or len(op.inputs) != 2 or len(op.outputs) != 1:
+        raise ValueError("one named two-input matmul required")
+    fill = op.outputs[0].owner
+    if type(fill) is not FillOp or not len(fill.inputs) == len(fill.outputs) == 1:
+        raise ValueError("matmul requires a literal fill")
+    zero, empty = fill.inputs[0].owner, fill.outputs[0].owner
+    if type(zero) is not arith.ConstantOp or type(empty) is not tensor.EmptyOp:
+        raise ValueError("matmul requires a constant and static empty")
+    block = Block(arg_types=[v.type for v in op.inputs])
+    mapping = dict(zip(op.inputs, block.args, strict=True))
+    for original in (zero, empty, fill):
+        block.add_op(original.clone(value_mapper=mapping))
+    cloned = op.clone(value_mapper=mapping)
+    # The same source SSA value can occupy both operand positions. Keep two
+    # independent ABI parameters in the extracted source in that case too.
+    cloned.operands = (*block.args, mapping[op.outputs[0]])
+    block.add_op(cloned)
+    block.add_op(func.ReturnOp(mapping[op.results[0]]))
+    fn = func.FuncOp("contraction", ([v.type for v in op.inputs], [op.results[0].type]), Region(block))
+    source = text(builtin.ModuleOp([fn]), generic=True)
+    request = read_tensor_graph(source, entry="contraction", target_identity="source-only")
+    return source, request
+
+
+def outline_floating_matmuls(source, *, entry, numerical_policy):
+    """Outline top-level f32 named matmul/batch_matmul, retaining other ops.
+
+    Callback ABI is three ranked memref descriptors (lhs, rhs, fresh output),
+    synchronous, read-only inputs and complete output writes. The existing
+    upstream ownership/deallocation pipeline owns the fresh output allocation.
+    Host operations retain their original precision. Nested matmuls refuse;
+    other contraction forms remain explicit host operations.
+    """
+    if type(numerical_policy) is not str or not numerical_policy.strip():
+        raise ValueError("explicit numerical replacement policy required")
+    module = parse_mlir_text(source)
+    module.verify()
+    functions = tuple(module.body.block.ops)
+    if len(functions) != 1 or type(functions[0]) is not func.FuncOp:
+        raise ValueError("one source function required")
+    fn = functions[0]
+    if fn.sym_name.data != entry or len(fn.body.blocks) != 1:
+        raise ValueError("entry or control flow differs")
+    records = []
+    for ordinal, op in enumerate(tuple(fn.walk())):
+        if type(op) not in (MatmulOp, BatchMatmulOp):
+            continue
+        if op.parent_block() is not fn.body.block:
+            raise ValueError("nested matmul requires explicit control-flow dispatch")
+        kernel, request = contraction_source(op)
+        if any(n.type.dtype != "f32" for n in request.nodes):
+            raise ValueError("floating callback ABI requires f32 tensors")
+        symbol = f"merlin_matmul_{len(records)}"
+        if symbol == entry:
+            raise ValueError("entry collides with callback symbol")
+        types = [builtin.MemRefType(v.type.element_type, v.type.get_shape()) for v in (*op.inputs, *op.results)]
+        buffers = [
+            bufferization.ToBufferOp(operands=[v], result_types=[t], properties={"read_only": builtin.UnitAttr()})
+            for v, t in zip(op.inputs, types[:2], strict=True)
+        ]
+        output = memref.AllocOp((), (), types[2])
+        call = func.CallOp(symbol, [*buffers, output], [])
+        result = bufferization.ToTensorOp(output, restrict=True, writable=True)
+        fn.body.block.insert_ops_before([*buffers, output, call, result], op)
+        op.results[0].replace_all_uses_with(result.tensor)
+        fn.body.block.erase_op(op)
+        declaration = func.FuncOp.external(symbol, types, [])
+        declaration.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
+        module.body.block.add_op(declaration)
+        records.append(
+            {
+                "symbol": symbol,
+                "source_ordinal": ordinal,
+                "source": kernel,
+                "source_sha256": sha256(kernel.encode()).hexdigest(),
+                "input_shapes": [list(n.type.shape) for n in request.nodes if n.op == "input"],
+                "output_shape": list(request.nodes[-1].type.shape),
+                "numerical_policy": numerical_policy,
+            }
+        )
+    fn.attributes["llvm.emit_c_interface"] = builtin.UnitAttr()
+    module.verify()
+    return text(module, generic=True), records
+
+
+def callback_bridge(records):
+    """C-interface transport hook; failure aborts rather than publishing garbage.
+
+    The selected runtime supplies descriptor validation, numerical conversion,
+    execution and synchronous completion. There is no CPU arithmetic fallback.
+    """
+    lines = [
+        "#include <stdint.h>",
+        "#include <stdlib.h>",
+        "typedef int (*Dispatch)(int64_t,void*,void*,void*);",
+        "static Dispatch dispatch;",
+        "void merlin_set_dispatch(Dispatch f) { dispatch=f; }",
+    ]
+    for i, record in enumerate(records):
+        if record["symbol"] != f"merlin_matmul_{i}":
+            raise ValueError("callback symbol differs from outlined ordinal")
+        lines.append(
+            f"void _mlir_ciface_{record['symbol']}(void*a,void*b,void*c) {{"
+            f"if(!dispatch || dispatch({i},a,b,c)) abort(); }}"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def compile_callback_host(host, records, *, destination, llc, cc):
+    """Compile the outlined graph with the existing host pipeline/runtime.
+
+    The caller owns a fresh build directory. Link-time unresolved-symbol
+    checking catches missing runtime helpers before an image is published.
+    """
+    import subprocess
+    from pathlib import Path
+
+    from merlin.llvmlower.codegen import mlir_runtime_c
+    from merlin.llvmlower.pipeline import lower_to_llvm_ir
+
+    destination = Path(destination)
+    llvm = lower_to_llvm_ir(host, workdir=destination / "host-lowering")
+    (destination / "host.ll").write_text(llvm)
+    (destination / "dispatch.c").write_text(callback_bridge(records))
+    runtime = mlir_runtime_c().read_bytes()
+    (destination / "mlir_runtime.c").write_bytes(runtime)
+    subprocess.run(
+        [
+            str(llc),
+            "-filetype=obj",
+            "-relocation-model=pic",
+            "-O2",
+            str(destination / "host.ll"),
+            "-o",
+            str(destination / "host.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    subprocess.run(
+        [
+            str(cc),
+            "-shared",
+            "-fPIC",
+            "-O2",
+            str(destination / "dispatch.c"),
+            str(destination / "host.o"),
+            str(destination / "mlir_runtime.c"),
+            "-Wl,-z,defs",
+            "-lm",
+            "-o",
+            str(destination / "model.so"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )

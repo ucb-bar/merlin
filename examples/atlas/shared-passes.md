@@ -39,7 +39,7 @@ two operations with matching shapes can be numerically fused.
 
 ## Isolated compiler library
 
-[shared-library.json](shared-library.json) explicitly selects 41 source/namespace
+[shared-library.json](shared-library.json) explicitly selects 42 source/namespace
 members and 16 public leaf modules. Pure parsing and instruction contract types
 are separated from capture, backend discovery and reference evaluation. The
 export uses the existing `CompilerLibraryContract` hash, namespace and import
@@ -229,3 +229,53 @@ FP4/FP6 remain reusable codecs and explicit packed storage. There is no
 MX-Gemmini instruction lowering, model precision selection, or target admission
 for those formats in this branch. Fusion likewise retains producer/consumer SSA
 edges and target allocation, but has no general whole-model fusion planner yet.
+
+## Complete layer integration on the generalized branch
+
+The separate Atlas branch `feat/generalized-tinyllama-layer` now connects this
+branch to complete-layer host/device lowering. Its walkthrough is
+[docs/generalized-tinyllama-layer.md](https://github.com/ucb-bar/atlas-mlir/blob/feat/generalized-tinyllama-layer/docs/generalized-tinyllama-layer.md).
+The older bounded adapter above retains its original limits; this is a new,
+explicit diagnostic model entry point, not a silent change to that adapter.
+
+Merlin now parses and checks named `linalg.batch_matmul` with the same closed
+scalar recurrence, positive-zero initializer, dtype and affine-map checks used
+for ordinary matmul. `llvmlower.floating_matmul_outline` outlines checked f32
+contractions to synchronous ranked-memref callbacks under an explicit caller
+precision policy. It preserves the rest of the original graph and all returned
+tensors, using the existing host lowering, ownership and MLIR C runtime.
+Device conversion, layouts, addresses and instructions remain in Atlas.
+
+The layer fixture contains RMSNorm, Q/K/V projections, RoPE, grouped-query
+attention, a causal mask, softmax, the output projection, both residuals, and a
+gated SiLU MLP. All nine contractions use Atlas. Other operations use compiled
+host f32 code. Full geometry is 2048 hidden, 5632 intermediate, 32 query heads,
+four KV heads and sequence length 32, with synthetic weights. A reduced fixture
+and a 120/270-width, seven-token fixture exercise independent M/N/K tails.
+This does not establish complete-model, decode, historical KV-cache, all-device
+execution or pretrained quality.
+
+The OOT consumes the actual shared dense schedule with a compact counted K loop
+and bounded DMA. Exact BF16 readout/restore carries the reduction state; no host
+partial-sum reassociation is used. Programs handle complete padded K up to 8192,
+while the test transport dispatches batches and M/N output tiles. This reuses
+Atlas's existing bounded-address and code-size support instead of increasing
+unrolled program limits. The full-width K=5632 kernel is 98 words in source order
+and 96 words optimized.
+
+The selected policy is explicitly approximate: finite f32 inputs are rounded to
+E4M3FN, saturated, subnormals flushed to positive zero, and accumulated in K order
+with BF16 rounding. Tests separately require bit-exact device outputs on actual
+operands and f32 host-partition agreement with Torch at common device boundaries.
+A free-running independent Torch reference is retained as a separate observation.
+It exposes a full-width RMSNorm difference of about 2.4e-7 at one element straddling
+an FP8 midpoint; after the MLP the final output differs by about 54. This is not
+end-to-end numerical equivalence, and increasing comparison tolerance is not the
+correctness gate. Host partition tolerance is rtol/atol 1e-5; the recorded final
+host-replay output differences are zero. Model quality and a stronger whole-graph
+precision contract remain unresolved.
+
+The compiler-library selection adds the batch parser dependency (42 members).
+The new whole-host outlining/build helper is used from the installed Merlin
+checkout; it has not been added to the closed OOT-authoring library selection or
+independently admitted as a generation input. No OOT generation loop was run.

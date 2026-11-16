@@ -49,6 +49,10 @@
       "path": "src/merlin/compile/scheduling/timed_schedule.py"
     },
     {
+      "module": "merlin.frontends.linalg_batch_matmul",
+      "path": "src/merlin/frontends/linalg_batch_matmul.py"
+    },
+    {
       "module": "merlin.frontends.linalg_bf16_add",
       "path": "src/merlin/frontends/linalg_bf16_add.py"
     },

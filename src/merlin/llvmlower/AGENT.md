@@ -462,6 +462,13 @@ Whole-model lowering: linalg-on-tensors MLIR (model2MLIR artifacts) → upstream
 
 ## What belongs here
 
+- `floating_matmul_outline.py` outlines checked top-level f32 named matmul and
+  batch-matmul operations to synchronous ranked-memref callbacks under an explicit
+  caller-selected numerical policy. Other source operations and returned tensors
+  remain in ordinary whole-model lowering. The existing host pipeline and C runtime
+  own buffer lifetime and copying; the OOT owns conversion and device execution.
+  This diagnostic seam does not qualify approximation, concurrency or deployment.
+
 - `closed_tensor_insert.py` extends current scalar-observation analysis to a
   unique i8 insertion in an immutable static tensor carrier. Typed constant or
   bounded SCF-IV coordinates must be in bounds and distinct across lanes.

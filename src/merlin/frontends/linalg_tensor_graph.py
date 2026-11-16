@@ -14,6 +14,7 @@ from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr, AffineMap
 
 from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
 
+from .linalg_batch_matmul import BatchMatmulOp
 from .linalg_text import parse_mlir_text
 
 
@@ -134,22 +135,27 @@ def read_tensor_graph(source, *, entry, target_identity):
             scalar_body(op, (), (lambda b, ops: (b.args[0],),))
             empty(op.operands[1])
             emit(op, "transpose", (op.operands[0],))
-        elif type(op) is MatmulOp:
+        elif type(op) in (MatmulOp, BatchMatmulOp):
             metadata(op, ("operandSegmentSizes", "indexing_maps"))
             require(len(op.inputs) == 2 and len(op.outputs) == len(op.results) == 1, "matmul arity differs")
             a, b, out = (tensor_type(v) for v in (*op.inputs, op.results[0]))
+            batched = type(op) is BatchMatmulOp
+            rank = 3 if batched else 2
             require(
-                len(a.shape) == len(b.shape) == 2
-                and a.shape[1] == b.shape[0]
-                and out.shape == (a.shape[0], b.shape[1])
+                len(a.shape) == len(b.shape) == rank
+                and a.shape[:-2] == b.shape[:-2]
+                and a.shape[-1] == b.shape[-2]
+                and out.shape == (*a.shape[:-2], a.shape[-2], b.shape[-1])
                 and a.dtype == b.dtype == out.dtype
                 and op.outputs[0].type == op.results[0].type,
                 "matmul shape or element type differs",
             )
-            dims = tuple(AffineDimExpr(i) for i in range(3))
-            expected = ((dims[0], dims[2]), (dims[2], dims[1]), (dims[0], dims[1]))
+            dims = tuple(AffineDimExpr(i) for i in range(rank + 1))
+            batch = dims[:1] if batched else ()
+            m, n, k = dims[-3:]
+            expected = ((*batch, m, k), (*batch, k, n), (*batch, m, n))
             require(
-                tuple(m.data for m in op.indexing_maps) == tuple(AffineMap(3, 0, v) for v in expected),
+                tuple(m.data for m in op.indexing_maps) == tuple(AffineMap(rank + 1, 0, v) for v in expected),
                 "matmul indexing differs",
             )
             scalar_body(
@@ -173,7 +179,12 @@ def read_tensor_graph(source, *, entry, target_identity):
             require(value == 0 and copysign(1, value) > 0, "positive zero matmul seed required")
             empty(fill.outputs[0])
             used.update((fill, fill.inputs[0].owner))
-            emit(op, "matmul", tuple(op.inputs), (("reduction_order", "source-unspecified"),))
+            emit(
+                op,
+                "batch_matmul" if batched else "matmul",
+                tuple(op.inputs),
+                (("reduction_order", "source-unspecified"),),
+            )
         elif type(op) is ReduceOp:
             metadata(op, ("dimensions",))
             axes = tuple(op.dimensions.iter_values())

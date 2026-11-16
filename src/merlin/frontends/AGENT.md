@@ -6,6 +6,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 
 ## What belongs here
 
+- `linalg_batch_matmul.py` supplies the upstream named batch-matmul syntax missing
+  from the selected xDSL dialect. `linalg_tensor_graph` checks its complete batch
+  geometry, affine maps, scalar recurrence and positive-zero initialization with
+  the same source-only rules as ordinary matmul.
+
 - `linalg_mlir.py` — xDSL parsing of linalg-on-tensors artifacts + matmul inventory (shapes, dtypes, weights resolved via the safetensors manifest, `prov.*` provenance).
   Its standard memref and bufferization dialect registrations admit prepared
   fresh borrowed writer wrappers without an unregistered custom-syntax fallback.
