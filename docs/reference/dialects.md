@@ -3,7 +3,7 @@ title: Dialects
 kind: reference
 status: current
 owner: ir
-last_verified: 2026-07-14
+last_verified: 2026-11-16
 related: [core_dialects, xdsl]
 code_refs: [src/merlin/xdsl_dialects]
 ---
@@ -47,3 +47,12 @@ Then each real target has its own dialect (e.g. `toynpu`, gemmini, saturn, radia
 
 Prototype all five in `src/merlin/xdsl_dialects/`; promote stable ones to a future
 MLIR/C++ plane (**not yet built** — see `docs/design/compiler_plane.md`).
+
+## Static timing and completion decisions
+
+`schedule.time_annotation` records issue/completion cycles and `schedule.overlap`
+records realized lifetime overlap. `schedule.drain` names the fixed-latency scope
+exit cycle after all work completes. `schedule.await_completion` selects the
+completion token of a bound asynchronous call; its consumer emits a concrete
+target wait inside the original loop. The [static scheduling design](../design/static_scheduling.md)
+defines construction, materialization, clock scope and refusal behavior.

@@ -41,3 +41,8 @@ Per-dialect build/verify/invalid/round-trip tests plus the end-to-end lowering t
 ## Notes for future agents
 
 xDSL is the default way we handle MLIR-style IR until a specific pipeline is chosen. Copy the proven xDSL 0.65 idioms (field-annotation attribute params, `EnumAttribute` + `SpacedOpaqueSyntaxAttribute`, `func.ReturnOp`). See `docs/xdsl.md` and `docs/dialects.md`.
+
+`schedule.drain` is consumed by fixed-block scheduling/materialization;
+`schedule.await_completion` is consumed by the event completion pass. Both bind
+current payload semantics, refuse unconsumed decisions, and require target-owned
+instruction realization. They are distinct from hardware latency declarations.

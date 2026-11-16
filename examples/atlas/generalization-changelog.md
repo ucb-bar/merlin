@@ -88,3 +88,25 @@ KV-cache decoding and an application-approved quantization policy remain work.
 The isolated compiler-library export remains tested; the whole-host outlining
 helper is not yet admitted into the compiler-authoring source closure. No OOT
 compiler-generation or optimization-agent loop was started.
+
+## Static scheduling and authoring-library extension
+
+- Added a source-order fixed-block scheduler driven entirely by provider effects,
+  resource capacities and natural issue advances. Serial and independent-overlap
+  policies share existing timing verification.
+- Added `schedule.drain` and `schedule.await_completion` with actual consumers.
+  Fixed drains become target delays; event waits remain tokens in existing
+  counted-loop IR and require target emission support.
+- Added plan-to-emitted-call correspondence and delay/tail validation. Final
+  binary decoding and hardware-specific timing verification remain OOT duties.
+- Split pure contraction outlining from the installed host build driver and
+  exported it alongside both scheduling APIs (46 members, 19 public modules).
+- Added portability tests for pipelines, multiple issue, read/write hazards,
+  resource reservations, long latencies, and a compiled event-driven loop.
+- Added an Atlas fixed-only consumer using the existing model timing provider's
+  conservative complete-machine occupancy. It schedules real matmul and VPU
+  programs through Merlin, then verifies and executes the resulting words.
+  This initial consumer rejects DMA and CFG; it does not replace the existing
+  full-model scheduler or qualify whole-model OOT authoring by itself.
+
+See the [design and API contract](../../docs/design/static_scheduling.md).

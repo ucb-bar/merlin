@@ -68,7 +68,6 @@ def test_group_dispatch_rejects_empty():
 
 def test_bad_enum_spelling_rejected_by_parser():
     from xdsl.parser import Parser
-    from xdsl.utils.exceptions import ParseError
 
     ctx = _common.make_context(s.get_dialect())
     ir = '"schedule.bind"() <{target = "@x"}> : () -> !schedule.handle\n'
@@ -78,3 +77,13 @@ def test_bad_enum_spelling_rejected_by_parser():
     )
     with pytest.raises(Exception):
         Parser(ctx, "%0 = " + ir + bad).parse_module()
+
+
+@pytest.mark.parametrize("cycle,clock", [(-1, "core"), (0, "")])
+def test_drain_rejects_invalid_clock_and_cycle(cycle, clock):
+    from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
+    from xdsl.utils.exceptions import VerifyException
+
+    op = s.DrainOp(properties={"cycle": IntegerAttr(cycle, i64), "clock": StringAttr(clock)})
+    with pytest.raises(VerifyException):
+        op.verify()

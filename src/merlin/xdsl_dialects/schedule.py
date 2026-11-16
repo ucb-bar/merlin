@@ -27,6 +27,8 @@ OPS = [
     "panel_pipeline",
     "overlap",
     "time_annotation",
+    "drain",
+    "await_completion",
 ]
 TYPES = ["handle", "plan", "policy"]
 
@@ -305,6 +307,25 @@ if HAS_XDSL:
                 raise VerifyException("overlap needs distinct handles and require/forbid mode")
 
     @irdl_op_definition
+    class DrainOp(IRDLOperation):
+        """Complete this fixed-latency scope before transferring control."""
+
+        name = "schedule.drain"
+        cycle = prop_def(IntegerAttr)
+        clock = prop_def(StringAttr)
+
+        def verify_(self) -> None:
+            if self.cycle.type != i64 or self.cycle.value.data < 0 or not self.clock.data:
+                raise VerifyException("drain needs a nonnegative i64 cycle and explicit clock")
+
+    @irdl_op_definition
+    class AwaitCompletionOp(IRDLOperation):
+        """Select an actual source call's completion token, not a predicted time."""
+
+        name = "schedule.await_completion"
+        target = operand_def(HandleType)
+
+    @irdl_op_definition
     class ApplyPolicyOp(IRDLOperation):
         """schedule.apply_policy — applies a named policy to bound handles."""
 
@@ -404,8 +425,8 @@ if HAS_XDSL:
         def verify_(self) -> None:
             if self.interface.data not in KNOWN_INTERFACES:
                 raise VerifyException(
-                    "schedule.select_interface %r not a known interface abstraction "
-                    "(known: %s)" % (self.interface.data, sorted(KNOWN_INTERFACES))
+                    f"schedule.select_interface {self.interface.data!r} not a known interface abstraction "
+                    f"(known: {sorted(KNOWN_INTERFACES)})"
                 )
 
     _OP_CLASSES = [
@@ -415,6 +436,8 @@ if HAS_XDSL:
         PlanOp,
         BindOp,
         TimeAnnotationOp,
+        DrainOp,
+        AwaitCompletionOp,
         OverlapOp,
         ApplyPolicyOp,
         PreserveLayoutOp,

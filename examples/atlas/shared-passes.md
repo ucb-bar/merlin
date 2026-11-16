@@ -39,8 +39,8 @@ two operations with matching shapes can be numerically fused.
 
 ## Isolated compiler library
 
-[shared-library.json](shared-library.json) explicitly selects 42 source/namespace
-members and 16 public leaf modules. Pure parsing and instruction contract types
+[shared-library.json](shared-library.json) explicitly selects 46 source/namespace
+members and 19 public leaf modules. Pure parsing and instruction contract types
 are separated from capture, backend discovery and reference evaluation. The
 export uses the existing `CompilerLibraryContract` hash, namespace and import
 closure checks. It includes no Atlas compiler, reference output, model or grader.
@@ -276,10 +276,21 @@ host-replay output differences are zero. Model quality and a stronger whole-grap
 precision contract remain unresolved.
 
 The compiler-library selection adds the batch parser dependency (42 members).
-The new whole-host outlining/build helper is used from the installed Merlin
-checkout; it has not been added to the closed OOT-authoring library selection or
-independently admitted as a generation input. No OOT generation loop was run.
+Pure whole-model outlining, typed signatures and callback bridge emission are now
+exported from `merlin.llvmlower.floating_contractions`. The installed host LLVM
+build driver remains outside the closed selection. Export is not experiment
+admission. No OOT generation loop was run.
 
 The [generalization change log](generalization-changelog.md) records every
 extension needed for TinyLlama, SmolVLA and ResNet-50, with executed model scope,
 source-order/optimized results and remaining qualification limits.
+
+## Constructing static schedules
+
+The [portable scheduling design](../../docs/design/static_scheduling.md) adds
+source-order fixed-latency synthesis and checked delay materialization, plus
+explicit block drains and completion-token waits. The authoring library includes
+both consumers and pure model outlining. The companion OOT's
+`shared_static_schedule` adapter exercises Merlin scheduling on actual fixed-only
+machine instructions; its existing scheduler is not run on that path. DMA and
+CFG need separate completion boundaries and remain outside this adapter's scope.

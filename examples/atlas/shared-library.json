@@ -17,7 +17,10 @@
     "merlin.sched.ir.expr",
     "merlin.sched.isa.model",
     "merlin.xdsl_dialects.schedule",
-    "merlin.xdsl_dialects._common"
+    "merlin.xdsl_dialects._common",
+    "merlin.compile.scheduling.static_schedule",
+    "merlin.compile.scheduling.completion_schedule",
+    "merlin.llvmlower.floating_contractions"
   ],
   "sources": [
     {
@@ -143,6 +146,18 @@
     {
       "module": "merlin.xdsl_dialects.schedule",
       "path": "src/merlin/xdsl_dialects/schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.static_schedule",
+      "path": "src/merlin/compile/scheduling/static_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.completion_schedule",
+      "path": "src/merlin/compile/scheduling/completion_schedule.py"
+    },
+    {
+      "module": "merlin.llvmlower.floating_contractions",
+      "path": "src/merlin/llvmlower/floating_contractions.py"
     }
   ],
   "empty_namespaces": [
@@ -156,6 +171,7 @@
     "merlin.sched.isa",
     "merlin.semantic_compiler",
     "merlin.transforms",
-    "merlin.xdsl_dialects"
+    "merlin.xdsl_dialects",
+    "merlin.llvmlower"
   ]
 }

@@ -276,3 +276,15 @@ refusal; other adapter/infrastructure exceptions must not be hidden as poor
 performance. A missing cycle estimate never becomes an instruction-count score.
 Normal author-library preparation accepts explicit inventory22 with individually
 reviewed new modules; prior default inventory21 and frozen selections stay intact.
+
+## Physical timing and event completion
+
+`static_schedule` constructs source-order fixed-block plans from complete
+`TimedEffects`, capacities and natural issue advances. It never predicts unknown
+latencies. Materialization preserves source calls, verifies every target delay,
+and drains the scope. The OOT must verify CFG entry assumptions and decoded
+machine bytes. `completion_schedule` consumes `schedule.await_completion` by
+inserting concrete target waits at the existing `Call.produces` sites, preserving
+counted loops and existing annotations. It never turns event waits into cycles.
+Both paths are exported through the explicit compiler-library selection. See
+`docs/design/static_scheduling.md` and the matching infra tests.

@@ -2,7 +2,6 @@
 
 import importlib.util
 import json
-from pathlib import Path
 import subprocess
 import sys
 
@@ -22,10 +21,16 @@ def exporter(monkeypatch):
 
 
 def selection():
-    return dict(schema="merlin.compiler_library_selection.v1", review_id="test-review", public_modules=[
-        "merlin.runtime.packed_float"], empty_namespaces=["merlin", "merlin.runtime"], sources=[
+    return dict(
+        schema="merlin.compiler_library_selection.v1",
+        review_id="test-review",
+        public_modules=["merlin.runtime.packed_float"],
+        empty_namespaces=["merlin", "merlin.runtime"],
+        sources=[
             dict(path=f"src/merlin/runtime/{name}.py", module=f"merlin.runtime.{name}")
-            for name in ("fp8_formats", "packed_float")])
+            for name in ("fp8_formats", "packed_float")
+        ],
+    )
 
 
 def test_export_is_importable_without_original_namespace_or_reference(exporter, tmp_path):
@@ -33,7 +38,7 @@ def test_export_is_importable_without_original_namespace_or_reference(exporter, 
     contract.verify(tmp_path / "library")
     assert contract.permits("merlin.runtime.packed_float")
     assert not contract.permits("merlin.runtime")
-    script = '''
+    script = """
 import importlib.util, sys
 from pathlib import Path
 root = Path(sys.argv[1])
@@ -43,7 +48,7 @@ assert pack_codes((1, 2), PackedFloatLayout("fp4_e2m1", 2, 1, "lsb-first", "litt
 assert importlib.util.find_spec("merlin.runtime.reference") is None
 assert all(Path(module.__file__).is_relative_to(root) for name, module in sys.modules.items()
            if name == "merlin" or name.startswith("merlin."))
-'''
+"""
     subprocess.run([sys.executable, "-I", "-c", script, str(tmp_path / "library")], check=True, cwd=tmp_path)
     (tmp_path / "library/merlin/runtime/packed_float.py").write_text("changed")
     with pytest.raises(ValueError, match="changed"):
@@ -64,3 +69,51 @@ def test_invalid_selection_never_leaves_a_usable_library(exporter, tmp_path, mut
     with pytest.raises(ValueError):
         exporter(selected, repo_root(), tmp_path / "library")
     assert not (tmp_path / "library").exists()
+
+
+def test_authoring_library_constructs_schedules_and_outlines_without_host_driver(exporter, tmp_path):
+    selected = json.loads((repo_root() / "examples/atlas/shared-library.json").read_text())
+    root = tmp_path / "library"
+    contract = exporter(selected, repo_root(), root)
+    contract.verify(root)
+    assert contract.permits("merlin.compile.scheduling.static_schedule")
+    assert contract.permits("merlin.compile.scheduling.completion_schedule")
+    assert contract.permits("merlin.llvmlower.floating_contractions")
+    assert not contract.permits("merlin.llvmlower.floating_matmul_outline")
+    script = r'''
+import importlib.util, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from merlin.compile.scheduling.static_schedule import schedule_fixed_block, materialize_timing_plan
+from merlin.compile.scheduling.timed_schedule import TimedEffects
+from merlin.compile.scheduling.completion_schedule import make_completion_plan, apply_completion_plan
+from merlin.llvmlower.floating_contractions import outline_floating_matmuls, static_tensor_signature, callback_bridge
+from merlin.sched.ir import Call, Const, Kernel, Loop
+kernel = Kernel("k", (), (Call("compute", ()),))
+project = lambda c: TimedEffects(c.instr, 4 if c.instr == "compute" else c.arg("cycles").value)
+gap = lambda c: 1 if c.instr == "compute" else c.arg("cycles").value
+options = dict(project=project, issue_gap=gap, capacities={}, model_identity="selected", clock="core")
+plan = schedule_fixed_block(kernel, **options)
+result = materialize_timing_plan(kernel, plan, delay=lambda n: (Call("delay", (("cycles", Const(n)),)),), **options)
+assert len(result.kernel.body) == 2
+async_kernel = Kernel("async", (), (Loop("i", 5, (Call("launch", (), produces="done"),)),))
+completed = apply_completion_plan(async_kernel, make_completion_plan(async_kernel),
+                                 wait=lambda c: Call("join", (), awaits=(c.produces,)))
+assert len(completed.body[0].body) == 2
+source = """module { func.func @main(%a: tensor<2x2xf32>, %b: tensor<2x2xf32>) -> tensor<2x2xf32> {
+ %z = arith.constant 0.0 : f32
+ %init = tensor.splat %z : tensor<2x2xf32>
+ %r = linalg.matmul ins(%a, %b : tensor<2x2xf32>, tensor<2x2xf32>)
+       outs(%init : tensor<2x2xf32>) -> tensor<2x2xf32>
+ return %r : tensor<2x2xf32>
+}}"""
+host, calls = outline_floating_matmuls(source, entry="main", numerical_policy="explicit-test")
+assert len(calls) == 1 and "merlin_matmul_0" in callback_bridge(calls)
+assert static_tensor_signature(source, entry="main")["inputs_dtypes"] == ["f32", "f32"]
+for missing in ("merlin.runtime.reference", "merlin.llvmlower.floating_matmul_outline", "merlin.llvmlower.pipeline"):
+    assert importlib.util.find_spec(missing) is None
+root = Path(sys.argv[1])
+assert all(Path(module.__file__).is_relative_to(root) for name, module in sys.modules.items()
+           if name == "merlin" or name.startswith("merlin."))
+'''
+    subprocess.run([sys.executable, "-I", "-c", script, str(root)], check=True, cwd=tmp_path)
