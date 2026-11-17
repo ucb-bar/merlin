@@ -101,7 +101,9 @@ def pipeline(*, features=frozenset(), index_bits=64):
 
     if type(index_bits) is not int or index_bits != 64:
         raise ValueError("owned result host transport currently requires observed 64-bit indices")
-    passes = apply_pipeline(list(_UPSTREAM_PASSES), normalize(features))
+    # Source legalization features prepend their markers. Grid normalization
+    # must belong to the base pipeline so it cannot run ahead of those seams.
+    passes = apply_pipeline(["scf-forall-to-for", *_UPSTREAM_PASSES], normalize(features))
     outs = [p for p in passes if p.startswith("buffer-results-to-out-params")]
     if len(outs) != 1 or passes.count("__DEALLOC__") != 1:
         raise ValueError("owned results require the ordinary result and ownership seams")
@@ -115,7 +117,7 @@ def pipeline(*, features=frozenset(), index_bits=64):
             raise ValueError("owned result index conversion is missing or preconfigured")
         options = "use-generic-functions " if name == "finalize-memref-to-llvm" else ""
         passes[passes.index(name)] = f"{name}{{{options}index-bitwidth={index_bits}}}"
-    selected = _splice(["scf-forall-to-for", *passes])
+    selected = _splice(passes)
     if "ownership-based-buffer-deallocation" not in selected:
         raise ValueError("owned result allocation requires active ownership/deallocation checks")
     return selected
