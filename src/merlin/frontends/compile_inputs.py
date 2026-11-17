@@ -70,6 +70,8 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path, *, re
         raise ValueError("capture directory is absent")
     receipt_raw = _read_member(source, "capture_receipt.json")
     receipt = json.loads(receipt_raw)
+    if "execution_allocation_policy" in receipt and receipt.get("schema") != "t2m.bound-model-receipt.v2":
+        raise ValueError("explicit execution allocation policy requires a v2 execution-owned model receipt")
     if receipt.get("schema") in ("t2m.capture-receipt.v2", "t2m.effect-kernel-receipt.v1"):
         from .kernel_compile_inputs import _stage_kernel_inputs
 
@@ -95,8 +97,11 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path, *, re
         raise ValueError("frontend trace does not bind complete captured IR")
     module = parse_mlir_text(raw.decode("utf-8"))
     from .compiler_constants import checked_compiler_constants
-    constants = checked_compiler_constants(receipt, copied["weights.safetensors.manifest.json"], copied["weights.safetensors"],
-                                           module, trace, entry_name=metadata.get("func_name", "forward"))
+
+    constants = checked_compiler_constants(
+        receipt, copied["weights.safetensors.manifest.json"], copied["weights.safetensors"],
+        module, trace, entry_name=metadata.get("func_name", "forward"),
+    )
     if constants is not None:
         copied["compiler-constants.json"] = (json.dumps(constants, sort_keys=True, indent=2) + "\n").encode()
     old_reference = module.attributes.get("prov.weights_file")
@@ -139,7 +144,9 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path, *, re
             "signature.json": _sha(signature_raw),
             **{name: _sha(value) for name, value in copied.items()},
         },
-        "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz"],
+        "excluded_evaluator_members": [
+            "inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz",
+        ],
     }
     selected_manifest(manifest, result_mode)
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -65,6 +65,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   compilation; staging never reads its evaluator/qualification report and grants
   no execution verdict. Old receipt/default readers reject this selection.
   Correspondence grants no TTIR equivalence, numeric/effect, ownership or target permission.
+  Explicit `execution_allocation_policy` on a derived v2 receipt selects
+  `merlin.owned-result-limits.v2`. Independently validate complete finite positive
+  byte/output/allocation-work limits and the supported index transport before
+  signature v6 selection. Legacy v1 limits remain exact. These are operator
+  resource bounds, not source shape facts or permission to skip allocation,
+  ownership or lifetime guards; evaluators remain excluded from staging.
   `derived_live_arguments.py` independently checks the explicit
   `t2m.live-runtime-arguments.v1` profile against original typed parent calls.
   Exact scalar SSA and unencoded singleton tensors stay live; index casts need

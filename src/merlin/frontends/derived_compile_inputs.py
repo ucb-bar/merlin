@@ -67,6 +67,13 @@ def _stage_bound_model_inputs(
     bindings_raw = checked("kernel-bindings.json")
     bindings = json.loads(bindings_raw)
     executed_model = receipt.get("schema") == "t2m.bound-model-receipt.v2"
+    allocation_policy = None
+    if "execution_allocation_policy" in receipt:
+        from .execution_result_signature import LIMITS_PROFILE, checked_allocation_policy
+
+        allocation_policy = checked_allocation_policy(receipt["execution_allocation_policy"])
+        if not executed_model or allocation_policy["schema"] != LIMITS_PROFILE:
+            raise ValueError("explicit execution allocation limits require the selected v2 resource profile")
     if executed_model:
         from .execution_model_correspondence import SCHEMA as EXECUTED_SCHEMA
 
@@ -440,7 +447,7 @@ def _stage_bound_model_inputs(
             signature["guard_storage_scope"] = "sum-of-source-shape-upper-bounds"
     elif contract is not None or "guard_storage_bytes" in bindings:
         raise ValueError("derived model has an unbound guard storage declaration")
-    signature = select_signature(module, signature, result_mode)
+    signature = select_signature(module, signature, result_mode, allocation_policy=allocation_policy)
     correspondence = {
         "schema": "merlin.derived-source-correspondence.v2"
         if executed_model

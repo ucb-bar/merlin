@@ -17,6 +17,42 @@ PROFILE = "merlin.execution-owned-results.v1"
 SCHEMA = "merlin.compile-signature.v6"
 _SCALARS = {"i1", "i8", "i16", "i32", "i64", "f32", "f64"}
 _STORAGE = _SCALARS | {"f16", "bf16", "f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"}
+LIMITS_PROFILE = "merlin.owned-result-limits.v2"
+
+
+def checked_allocation_policy(value=None):
+    """Validate an explicit finite resource selection, separately from semantics.
+
+    Legacy v1 is the exact original default. V2 permits independently selected
+    byte/output/work limits without removing any runtime allocation check.
+    These are operator resource bounds, never source or evaluator shape facts.
+    """
+    default = {
+        "schema": "merlin.owned-result-limits.v1",
+        "max_bytes": 64 << 20,
+        "max_allocations": 4096,
+        "max_output_bytes": 64 << 20,
+        "index_bits": 64,
+    }
+    if value is None:
+        return default
+    if not isinstance(value, dict) or set(value) != set(default):
+        raise ValueError("execution allocation policy needs its complete explicit limits")
+    if value.get("schema") == default["schema"]:
+        if value != default or any(type(value[key]) is not int for key in default if key != "schema"):
+            raise ValueError("legacy execution allocation policy has fixed limits")
+        return default
+    if (
+        value.get("schema") != LIMITS_PROFILE
+        or type(value["index_bits"]) is not int
+        or value["index_bits"] != 64
+        or any(
+            type(value[key]) is not int or not 0 < value[key] < 1 << 63
+            for key in ("max_bytes", "max_allocations", "max_output_bytes")
+        )
+    ):
+        raise ValueError("execution allocation policy requires finite positive signed-i64 limits and supported indices")
+    return dict(value)
 
 
 def validate_mode(mode):
@@ -127,9 +163,11 @@ def _constraints(inputs, rows, bindings):
         raise ValueError("execution input dimension has no original axis/scalar binding")
 
 
-def select_signature(module, signature, mode):
+def select_signature(module, signature, mode, *, allocation_policy=None):
     validate_mode(mode)
     if mode is None:
+        if allocation_policy is not None:
+            raise ValueError("execution allocation policy requires explicit execution-owned results")
         return signature
     module.verify()
     entry = signature.get("entry")
@@ -150,13 +188,7 @@ def select_signature(module, signature, mode):
         "result_abi": PROFILE,
         "input_constraints": constraints,
         "input_mutability": "borrowed-immutable-tensors",
-        "allocation_policy": {
-            "schema": "merlin.owned-result-limits.v1",
-            "max_bytes": 64 << 20,
-            "max_allocations": 4096,
-            "max_output_bytes": 64 << 20,
-            "index_bits": 64,
-        },
+        "allocation_policy": checked_allocation_policy(allocation_policy),
     }
 
 
@@ -166,7 +198,11 @@ def validate_signature(module, signature):
     constraints = signature.get("input_constraints")
     if not isinstance(constraints, dict) or set(constraints) != {"inputs", "dimension_bindings"}:
         raise ValueError("execution result signature lacks its original input constraints")
-    expected = select_signature(module, {"entry": signature.get("entry"), **constraints}, MODE)
+    if "allocation_policy" not in signature:
+        raise ValueError("execution result signature lacks its explicit allocation policy")
+    expected = select_signature(
+        module, {"entry": signature.get("entry"), **constraints}, MODE, allocation_policy=signature["allocation_policy"]
+    )
     if signature != expected:
         raise ValueError("execution result signature differs from the actual source and selected resource profile")
     return expected
