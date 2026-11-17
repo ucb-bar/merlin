@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [execution_owned_results]
-code_refs: [src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py]
+code_refs: [src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py]
 ---
 
 # Source views in execution-owned model binding
@@ -49,6 +49,32 @@ words, including nonfinite values, scalar ranks and empty shapes. External
 frontend integrations additionally exercise complete learned-state models and
 source views feeding content-sized count/scan/scatter. These are separate from
 arbitrary source equivalence and accelerator execution/performance requirements.
-Fully runtime reshape coordinates, rank-reducing/negative source slices,
+Runtime dense adapters have the separate v2 contract below. Rank-reducing/negative source slices,
 encoded or width-changing model views, physical/mutating public views and
 general source-layout/ownership/effect compositions remain separate work.
+
+## Checked runtime dense views
+
+`dense-row-major-runtime-v1` explicitly selects execution view profile v2.
+Kernel input extents come from their actual checked runtime scalar operands;
+multiple dynamic input axes and changes of same-rank geometry retain a real
+collapse/expand. Compatible dynamic types alone cannot prove equal geometry.
+Kernel output extents remain actual computed tensor dimensions. A changed result
+rank may infer one unknown axis only when its other static axes have nonzero
+product. Multiple unknown result axes or a zero static factor require additional
+original coordinate information; no annotation or sample invents that information.
+
+Every dimension is nonnegative and every nonempty product uses standard
+`arith.mului_extended` on `index`, checking both the high word and the signed
+range before reshaping. Empty domains select unit factors before multiplication,
+so large unused extents cannot introduce overflow or element accesses. Actual
+source and destination counts must match, including divisibility of inferred
+axes. Scalar, empty and dynamic views remain ordinary tensor operations, without
+changed arithmetic order, source tiling or physical alias permission.
+
+The independent consumer reconstructs the complete guards, dimension operands,
+collapse/expand and source locations. Missing/downgraded profiles, removed checks
+or substituted dimensions refuse even after outer hashes are repaired. V1 static
+adapters retain their original behavior. Versioned source fingerprints also bind
+`execution_runtime_views.py`; actual native and applicable target execution remain
+separate gates.

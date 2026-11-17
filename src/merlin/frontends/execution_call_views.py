@@ -12,6 +12,8 @@ from xdsl.dialects import builtin, tensor
 
 from .derived_source_views import PROFILE as SOURCE_PROFILE
 from .derived_source_views import checked_source_views
+from .execution_runtime_views import POLICY as RUNTIME_POLICY
+from .execution_runtime_views import PROFILE as RUNTIME_PROFILE
 
 PROFILE = "t2m.execution-checked-call-views.v1"
 POLICY = "dense-row-major-v1"
@@ -21,12 +23,13 @@ FIELDS = {"tensor_views", "source_tensor_views"}
 def validate(bindings):
     records = bindings["calls"]
     present = any(FIELDS & set(record) for record in records)
+    required = RUNTIME_PROFILE if any(record.get("tensor_views") == RUNTIME_POLICY for record in records) else PROFILE
     if present != ("execution_view_binding_profile" in bindings) or (
-        present and bindings["execution_view_binding_profile"] != PROFILE
+        present and bindings["execution_view_binding_profile"] != required
     ):
         raise ValueError("executed views require their explicit source-checked binding profile")
     for record in records:
-        if "tensor_views" in record and record["tensor_views"] != POLICY:
+        if "tensor_views" in record and record["tensor_views"] not in (POLICY, RUNTIME_POLICY):
             raise ValueError("executed tensor view has an unknown policy")
         if "source_tensor_views" in record and (
             not isinstance(record["source_tensor_views"], dict) or not record["source_tensor_views"]

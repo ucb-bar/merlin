@@ -77,7 +77,16 @@ class CallContracts:
                 same = self.append(arith.CmpiOp(actual, dimensions[extent], "eq"), "call-dimension-binding")
                 self.check(same, "tensor dimension differs from scalar: " + buffer["name"])
 
-    def view(self, value, target, buffer, record, attributes, *, role):
+    def view(self, value, target, buffer, record, attributes, *, role, dimensions=None):
+        from .execution_runtime_views import POLICY as RUNTIME_POLICY
+        from .execution_runtime_views import RuntimeViewContracts
+
+        if record.get("tensor_views") == RUNTIME_POLICY and (
+            role == "caller-to-kernel-view" or not _compatible(value.type, target)
+        ):
+            return RuntimeViewContracts(self.append).adapt(
+                value, target, buffer["shape"], dimensions or {}, input_view=role == "caller-to-kernel-view"
+            )
         if _compatible(value.type, target):
             return self.tensor(value, target)
         from .execution_call_views import POLICY, concrete, reshape
@@ -164,8 +173,12 @@ class CallContracts:
         arguments = []
         for source, target in zip(tensor_inputs, function.function_type.inputs, strict=False):
             value = by_name[record["source_operand_bindings"][source["name"]]]
-            if not _compatible(value.type, target):
-                value = self.view(value, target, source, record, attributes, role="caller-to-kernel-view")
+            from .execution_runtime_views import POLICY as RUNTIME_POLICY
+
+            if record.get("tensor_views") == RUNTIME_POLICY or not _compatible(value.type, target):
+                value = self.view(
+                    value, target, source, record, attributes, role="caller-to-kernel-view", dimensions=dimensions
+                )
             self.dimensions(value, source, dimensions)
             arguments.append(self.tensor(value, target))
         arguments.extend(values[s["name"]] for s in scalars)

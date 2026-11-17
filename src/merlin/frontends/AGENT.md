@@ -41,6 +41,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   captured dimensions before reshape; compare complete emitted SSA and source
   locations. Missing profiles or forged coordinates refuse. No public physical
   alias/mutation, fully dynamic reshape or source-layout permission follows.
+  `execution_runtime_views.py` independently reconstructs explicit v2 runtime
+  dense views. Use actual kernel dimension SSA, guarded element products and
+  standard collapse/expand. Same-rank dynamic types do not prove geometry.
+  Empty domains must bypass product overflow; reject ambiguous output axes.
+  Never guess coordinates from evaluator values or grant physical aliases.
   Reopen original calls, retained located kernel bodies and every scalar/
   dimension/cast guard; compare the entire parent expansion and source locations.
   Located artifacts must also reproduce the retained unlocated implementation

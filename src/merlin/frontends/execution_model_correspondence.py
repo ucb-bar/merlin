@@ -264,6 +264,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
                 record,
                 attributes,
                 role="kernel-to-caller-view",
+                dimensions=dimensions,
             )
             for name, old in zip(record["source_result_order"], call.results, strict=True)
         ]
