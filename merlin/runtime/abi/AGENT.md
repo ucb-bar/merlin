@@ -21,6 +21,12 @@ Merlin-owned C implementations of the MLIR runtime symbols the lowered model cal
   Preserve empty ownership, count limits and invalid/double-free refusal.
   Generic callbacks stay hidden and cleanup frees recorded owners only. This
   host selection is not linked into default or bare-metal builds.
+  `MERLIN_OWNED_RESULTS_SERIAL_CONTEXT=1` explicitly selects one nonconcurrent
+  process-local invocation context; it grants no multihart/thread safety.
+  `MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE=1` delegates fatal diagnostics/exit
+  to the selected executor without hosted stdio/TLS. Each selected macro must
+  equal one. Default native TLS and diagnostics remain unchanged. A target must
+  still bind its actual allocator, memory map, execution and failure contracts.
 - `half_extend.h` supplies typed compiler-rt `__extendhfsf2`/`__truncsfhf2` ABIs when the
   selected C compiler supports binary16. Its pinned LLVM specialization retains
   all finite/subnormal/zero words. Narrowing rounds nearest ties to even and

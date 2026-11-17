@@ -8,14 +8,15 @@ from merlin.common.paths import runtime_dir
 from merlin.llvmlower.toolchain import clang
 
 
-@pytest.fixture(scope="module")
-def allocator(tmp_path_factory):
+@pytest.fixture(scope="module", params=["thread-local", "serial", "serial-external"])
+def allocator(tmp_path_factory, request):
     root = tmp_path_factory.mktemp("owned-result-allocator")
     source = root / "driver.c"
     source.write_text(r"""
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <sys/resource.h>
 extern void *_mlir_memref_to_llvm_alloc(size_t);
 extern void *_mlir_memref_to_llvm_aligned_alloc(size_t,size_t);
@@ -26,6 +27,11 @@ extern size_t merlin_owned_results_capacity(void *);
 extern size_t merlin_owned_results_live_count(void);
 extern size_t merlin_owned_results_peak_bytes(void);
 extern size_t merlin_owned_results_total_count(void);
+#ifdef MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE
+_Noreturn void merlin_owned_results_failure(const char *reason) {
+  fputs("explicit failure hook: ",stderr); fputs(reason,stderr); fputc('\n',stderr); abort();
+}
+#endif
 int main(int argc,char **argv) {
   struct rlimit no_core={0,0}; setrlimit(RLIMIT_CORE,&no_core);
   int mode=argc>1 ? atoi(argv[1]) : 0;
@@ -61,6 +67,11 @@ int main(int argc,char **argv) {
 """)
     executable = root / "allocator"
     runtime = runtime_dir() / "abi/owned_results.c"
+    flags = []
+    if request.param != "thread-local":
+        flags.append("-DMERLIN_OWNED_RESULTS_SERIAL_CONTEXT=1")
+    if request.param == "serial-external":
+        flags.append("-DMERLIN_OWNED_RESULTS_EXTERNAL_FAILURE=1")
     done = subprocess.run(
         [
             str(clang()),
@@ -68,6 +79,7 @@ int main(int argc,char **argv) {
             "-Wall",
             "-Wextra",
             "-O2",
+            *flags,
             str(source),
             str(runtime),
             "-o",

@@ -12,6 +12,24 @@ code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_re
 
 ## Lowering before runtime selection
 
+The allocator additionally exposes two explicit build selections:
+`MERLIN_OWNED_RESULTS_SERIAL_CONTEXT=1` uses one nonconcurrent process-local
+context, and `MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE=1` delegates fatal reporting
+to the executor's noreturn `merlin_owned_results_failure`. Neither is inferred
+from a target name or source operation. Other selected macro values refuse;
+the default remains native thread-local state with hosted diagnostics. The
+executor must separately establish serial invocation, allocator/arena bounds
+and failure behavior. The selection supplies no multihart/thread-safety proof.
+
+A bare-metal fixture now links the common lowerer's actual model/bridge and
+serial runtime objects with the existing startup, bounded allocator and console.
+One unchanged image handles content-derived, empty, duplicate and input-snapshot
+results; a separate allocation-budget selection fails before result publication.
+Tests retain image, compiler, simulator, harness/source and output identities.
+This is execution evidence for the runtime seam with standard-MLIR source; it
+does not qualify production v6 package staging, generated model drivers or
+dynamic-result readback. Those integration steps remain required.
+
 `lower_owned_results` emits source/prepared MLIR, LLVM and the source-typed C
 bridge without host linking or invocation data. Its immutable lowering object
 rechecks original input/result types, prepared/bridge reconstruction, selected

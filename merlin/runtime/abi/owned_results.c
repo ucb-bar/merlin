@@ -1,11 +1,19 @@
 /* Invocation-owned allocation for explicitly selected returned MLIR results.
  * Generic MemRefToLLVM callbacks use the upstream malloc/aligned_alloc/free ABI.
- * This host runtime is selected by the caller; ordinary model linking is unchanged.
+ * The default context and diagnostics are hosted. A synchronous serial
+ * executor may explicitly select a process-local context and external failure
+ * hook; this does not authorize concurrent calls or select target placement.
  */
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
+#ifndef MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE
+#include <stdio.h>
+#elif MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE != 1
+#error "MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE must explicitly equal 1"
+#else
+extern _Noreturn void merlin_owned_results_failure(const char *);
+#endif
 
 typedef struct Allocation {
   struct Allocation *next;
@@ -22,14 +30,25 @@ typedef struct {
   int active;
 } Invocation;
 
-/* Each native caller thread owns its complete synchronous invocation. */
+/* Each native caller thread owns its complete synchronous invocation unless
+ * a caller explicitly supplies the nonconcurrent serial-executor contract. */
+#ifndef MERLIN_OWNED_RESULTS_SERIAL_CONTEXT
 static _Thread_local Invocation current;
+#elif MERLIN_OWNED_RESULTS_SERIAL_CONTEXT != 1
+#error "MERLIN_OWNED_RESULTS_SERIAL_CONTEXT must explicitly equal 1"
+#else
+static Invocation current;
+#endif
 
 static _Noreturn void refuse(const char *reason) {
+#ifdef MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE
+  merlin_owned_results_failure(reason);
+#else
   fputs("Merlin owned results: ", stderr);
   fputs(reason, stderr);
   fputc('\n', stderr);
   abort();
+#endif
 }
 
 int merlin_owned_results_begin(size_t byte_limit, size_t count_limit) {
