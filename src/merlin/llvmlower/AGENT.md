@@ -71,6 +71,14 @@ only. Pin the runtime ABI separately from compiler members. BF16 inputs use
 exact source words; plain `ScalarArg.from_storage` avoids Python float rounding
 and preserves signaling NaNs. Neither API supplies alias, numeric or ownership
 permission. Legacy model generation remains unchanged without this selection.
+Signature v3 explicitly binds public input axes to dimensions. Reconstruct the
+actual standard body's result shapes before allocating invocation storage;
+renamed dimension labels must still name the same argument/axis coordinates.
+Downgraded profiles and false/rehashed output-size declarations refuse.
+Its complete positional model archive includes parameters/buffers/constants;
+stored weight arguments must match the original container bytes, while normal
+weight-blob transport remains intact. Parameter stubs require another explicit
+storage contract. No saved invocation size specializes the compiler program.
 The selected runtime signature also admits an actual void entry. Keep its
 result roster empty; no placeholder tensor or output allocation is permitted.
 Runtime archives bind exact argument ordinals and require a complete input

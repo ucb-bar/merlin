@@ -112,6 +112,21 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             or {call.get("implementation_sha256") for call in calls} != set(implementations)
             or len({call.get("id") for call in calls}) != len(calls)):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
+    module = parse_mlir_text(raw.decode())
+    module.verify()
+    from .derived_symbolic_shapes import checked_model_shapes
+
+    interfaces = {}
+    if ("model_shape_profile" in bindings or "runtime_shape_contract" in bindings
+            or any("symbolic_tensor_shapes" in call for call in calls)):
+        for digest, directory in implementations.items():
+            body = parse_mlir_text(checked(directory + "/model.mlir").decode())
+            body.verify()
+            functions = [op for op in body.ops if isinstance(op, FuncOp) and op.body.blocks]
+            if len(functions) != 1:
+                raise ValueError("derived symbolic implementation requires one executable function")
+            interfaces[digest] = (json.loads(checked(directory + "/spec.json")), functions[0])
+    symbolic_model = checked_model_shapes(parent_module, module, bindings, interfaces)
     from .derived_live_arguments import PROFILE as LIVE_PROFILE
     from .derived_live_arguments import RANGE_PROFILE, binding_profile
     expected_profile = binding_profile(calls)
@@ -161,11 +176,15 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 if type(ordinal) is not int or ordinal in runtime_ordinals:
                     raise ValueError("derived runtime kernel call correspondence is ambiguous")
                 runtime_ordinals.add(ordinal)
-                runtime_shapes.append(checked_runtime_call_shapes(parent_module, spec, call, tensor_views=tensor_views,
-                                      source_views=source_views, provenance=provenance,
-                                      live_operands=bindings.get("argument_binding_profile")
-                                      in (LIVE_PROFILE, RANGE_PROFILE),
-                                      checked_indices=bindings.get("argument_binding_profile") == RANGE_PROFILE))
+                if symbolic_model is not None:
+                    runtime_shapes.append(symbolic_model["maximum_shapes"][ordinal])
+                else:
+                    runtime_shapes.append(checked_runtime_call_shapes(
+                                          parent_module, spec, call, tensor_views=tensor_views,
+                                          source_views=source_views, provenance=provenance,
+                                          live_operands=bindings.get("argument_binding_profile")
+                                          in (LIVE_PROFILE, RANGE_PROFILE),
+                                          checked_indices=bindings.get("argument_binding_profile") == RANGE_PROFILE))
         if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
             if not runtime_shapes and any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
@@ -233,15 +252,24 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     staged = module_text(module, generic=True).encode()
     parse_mlir_text(staged.decode()).verify()
     signature = {"schema": "merlin.compile-signature.v1", "entry": entry.sym_name.data,
-                 "inputs": abi(entry.function_type.inputs), "outputs": abi(entry.function_type.outputs),
+                 "inputs": (symbolic_model["contract"]["inputs"] if symbolic_model is not None
+                            else abi(entry.function_type.inputs)),
+                 "outputs": (symbolic_model["contract"]["outputs"] if symbolic_model is not None
+                             else abi(entry.function_type.outputs)),
                  "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
                  "input_mutability": "borrowed-immutable-tensors"}
+    if symbolic_model is not None:
+        signature.update(schema="merlin.compile-signature.v3", shape_scope="source-proved-input-axes",
+                         dimension_bindings=symbolic_model["contract"]["dimension_bindings"],
+                         model_shape_profile=bindings["model_shape_profile"])
     contract = entry.attributes.get("prov.memory_guard_scratch_bytes")
     if guard_storage:
         if (not isinstance(contract, IntegerAttr) or contract.value.data != guard_storage
                 or bindings.get("guard_storage_bytes") != guard_storage):
             raise ValueError("guarded derived scratch declaration differs from kernel call storage")
         signature["guard_storage_bytes"] = guard_storage
+        if symbolic_model is not None:
+            signature["guard_storage_scope"] = "sum-of-source-shape-upper-bounds"
     elif contract is not None or "guard_storage_bytes" in bindings:
         raise ValueError("derived model has an unbound guard storage declaration")
     correspondence = {"schema": "merlin.derived-source-correspondence.v1", "producer": "triton2MLIR",
@@ -255,6 +283,8 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                            "capture_schema": receipt["schema"], "correspondence": "source-correspondence.json"},
                 "members": {name: _sha(data) for name, data in members.items()},
                 "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz", "execution.json"]}
+    if symbolic_model is not None:
+        manifest["scope"] = "compiler_only_symbolic_capture; source_closure_and_numerical_admission_unverified"
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

@@ -11,6 +11,10 @@ code_refs:
   - src/merlin/frontends/derived_runtime_arguments.py
   - src/merlin/frontends/derived_live_arguments.py
   - src/merlin/frontends/source_index_ranges.py
+  - src/merlin/frontends/derived_symbolic_shapes.py
+  - src/merlin/frontends/model_shape_facts.py
+  - src/merlin/llvmlower/runtime_invocation.py
+  - src/merlin/llvmlower/c_runtime.py
   - src/merlin/frontends/derived_source_views.py
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/frontends/kernel_shape_abi.py
@@ -20,6 +24,8 @@ code_refs:
   - src/merlin/xdsl_dialects/standard_memref.py
   - merlin/tests/ir/test_derived_compile_inputs.py
   - merlin/tests/ir/test_derived_live_arguments.py
+  - merlin/tests/ir/test_derived_symbolic_shapes.py
+  - merlin/tests/runtime/test_runtime_input_axes.py
   - merlin/tests/ir/test_derived_runtime_arguments.py
   - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
@@ -33,7 +39,7 @@ code_refs:
 `stage_compile_inputs` accepts the existing `m2m.capture-receipt.v1` path and an
 explicit `t2m.bound-model-receipt.v1` derived-model path. It publishes a
 `merlin.compile-inputs.v1` directory with `source_profile: derived-tensor-model`.
-The latter retains a static typed `forward` program, weights and argument
+The latter retains a typed `forward` program, weights and argument
 manifest, signature, original parent source/FX trace, TTIR implementations/specs,
 and `merlin.derived-source-correspondence.v1` derivation evidence.
 Public tensor inputs carry `bufferization.writable = false`: they are borrowed
@@ -90,7 +96,8 @@ remain executable. Per-query budgets limit predecessors/condition visits to
 4,096, enclosing blocks to 64, constant inspection depth to 16 and integer width
 to 4,096 bits. Arithmetic/CFG/loop-carried closure remains separate. These ranges
 do not provide concrete tensor dimensions, dynamic result allocation or scratch
-costs; the static public signature boundary remains unchanged.
+costs by themselves. The separate symbolic profile below retains actual
+input-axis relationships and independently reconstructs their storage bounds.
 
 Unknown live data may control executable computation but cannot supply a
 tensor dimension or scratch cost. Reopen the original parent before any
@@ -98,8 +105,41 @@ producer inlining; do not treat a prior opaque kernel's eventual literal result
 as an original shape fact. Every named tensor extent still needs an actual
 parent SSA/type fact, and declared scalar bounds retain their own executable
 guards. A changed fact/type/adapter or downgraded profile refuses. The public
-model signature remains static and unchanged. These custody/interface checks
+model signature remains static unless the explicit symbolic profile below is
+selected. These custody/interface checks
 grant no source equivalence, numeric, alias, mutation, effect or target proof.
+
+## Source-proved dynamic model signatures
+
+`t2m.symbolic-model-shapes.v1` selects independent shape reconstruction from
+original parent SSA, actual kernel functions and the complete inlined body.
+`model_shape_facts` follows standard input axes, explicit tensor/memref sizes,
+casts, Linalg destinations, insert-slice/forall destinations, invariant for-loop
+yields and matching if-region yields. Checked scalar adapters retain the
+original dimension identity. Unknown/resizing producers stay unknown. Source
+inspection is bounded to 64 nested queries and 16,384 visits per environment.
+
+`derived_symbolic_shapes` checks dependent calls in original source order and
+matches every input/result relationship to actual executable dimensions. It
+compares original, declared and complete inlined contracts. Guards remain
+executable; no sample, reference, producer import or provenance tag supplies a
+dimension. Guard scratch is independently summed from each call's checked
+source shape upper bounds, under `sum-of-source-shape-upper-bounds`.
+
+The compiler publishes `merlin.compile-signature.v3`, with
+`shape_scope: source-proved-input-axes`, unchanged dynamic public tensor types
+and `dimension_bindings` naming actual function argument/axis coordinates.
+Parameters retain their public positions; no scalar inputs are manufactured.
+Compiler-only staging and evaluator exclusion remain unchanged. Missing or
+downgraded profiles, altered axes/ranges/bodies/order and scratch costs refuse.
+
+Runtime invocation independently reopens the standard body before resolving
+result storage from actual input shapes. The C generator accepts the complete
+positional argument roster and checks stored parameter/buffer/constant bytes
+against the original weight container, retaining its ordinary blob transport.
+This grants no parameter-update protocol, source-equivalence, alias, effect or
+target implementation. Broader dimension expressions, dynamic views, resizing
+state and data-dependent results remain separate work.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
 multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible

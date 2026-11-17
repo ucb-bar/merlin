@@ -331,8 +331,10 @@ def generate(
     if any(i >= len(sig) for i in readonly_input_indices):
         raise ValueError("readonly input index is outside the original capture arguments")
     man = json.loads((model_dir / "weights.safetensors.manifest.json").read_text())
+    axis_invocation = runtime_abi is not None and "input_axis_dimensions" in runtime_abi
+    runtime_kinds = {"input", "param", "buffer", "constant"} if axis_invocation else {"input"}
     if runtime_abi is not None and (set(man) != {str(i) for i in range(len(sig))}
-            or any(row.get("kind") != "input" for row in man.values())):
+            or any(row.get("kind") not in runtime_kinds for row in man.values())):
         raise ValueError("runtime signature requires a complete positional input manifest")
     weights_path = model_dir / "weights.safetensors"
     if manifest_requires_weight_blob(man):
@@ -408,10 +410,32 @@ def generate(
     embedded: set[int] = set()  # arg positions that GOT an embedded array (see the ptr table below)
     n_in = 0  # positional input counter (loaders with a single tuple)
     li = 0  # lifted-constant counter
+
+    def check_runtime_weight(index, name, shape, dtype):
+        if not axis_invocation:
+            return
+        entry = hdr[name]
+        begin, end = entry["data_offsets"]
+        if list(entry["shape"]) != list(shape) or end - begin != prod(shape) * DT_BYTES[dtype]:
+            raise ValueError("runtime model weight descriptor differs from its stored tensor")
+        array = inputs[f"in{index}"]
+        expected_dtype = np.dtype(np.uint16 if dtype == "bf16" else np.float16 if dtype == "f16" else NP_OF[dtype])
+        if list(array.shape) != list(shape) or array.dtype != expected_dtype:
+            raise ValueError("runtime model weight argument differs from its stored type")
+        with weights_path.open("rb") as stream:
+            stream.seek(payload_off + begin)
+            expected = stream.read(end - begin)
+        if array.astype(expected_dtype.newbyteorder("<"), copy=False).tobytes() != expected:
+            raise ValueError("runtime model parameter arguments must match the captured weight container")
+
     for i, (shape, dt) in enumerate(sig):
         meta = man[str(i)]
         elem = DT_BYTES[dt]
         if meta["kind"] in ("param", "constant"):
+            if axis_invocation:
+                if meta.get("stub"):
+                    raise ValueError("runtime model parameter stubs require a separate storage contract")
+                check_runtime_weight(i, meta["weight"], shape, dt)
             if meta["kind"] == "constant" and meta.get("stub"):
                 raise ValueError("source constants cannot use parameter stubs")
             if meta.get("stub"):
@@ -432,6 +456,7 @@ def generate(
         # non-weight arg: resolve its data and embed it.
         name = meta.get("name", "")
         if meta["kind"] == "buffer" and meta.get("weight") in hdr:
+            check_runtime_weight(i, meta["weight"], shape, dt)
             # An EXTERNALIZED buffer (BatchNorm running stats, for instance) is in the weights blob
             # like a parameter and is named under "weight", not "name" -- so it belongs in the blob
             # arg table, not embedded as a C array. Only a buffer that stayed a graph argument

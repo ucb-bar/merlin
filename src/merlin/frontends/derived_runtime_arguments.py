@@ -83,7 +83,8 @@ def checked_source_layout_call(parent_module, provenance, record, profile):
 
 
 def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False, source_views=False, provenance=None,
-                               live_operands=False, checked_indices=False):
+                               live_operands=False, checked_indices=False, shape_facts=None,
+                               kernel_function=None, maximum_shapes=None):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
 
@@ -175,9 +176,25 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
             refuse()
         values[scalar["name"]] = value
     validate_dimensions(spec, buffers, scalars)
-    if {dimension for buffer in buffers for dimension in buffer["shape"] if isinstance(dimension, str)} - set(values):
-        refuse()
-    shapes = {buffer["name"]: [values[n] if isinstance(n, str) else n for n in buffer["shape"]]
+    dimensions = {dimension for buffer in buffers for dimension in buffer["shape"] if isinstance(dimension, str)}
+    symbolic, limits = {}, {}
+    for name in dimensions - set(values):
+        binding = live.get(name)
+        scalar = next(item for item in scalars if item["name"] == name)
+        if shape_facts is None or not isinstance(binding, dict) or binding.get("schema_operand") not in by_name:
+            refuse()
+        value = by_name[binding["schema_operand"]]
+        from xdsl.dialects.builtin import IndexType
+
+        expression = shape_facts.index(value) if isinstance(value.type, IndexType) else None
+        interval = binding.get("unsigned_integer_range")
+        bounds = scalar.get("bounds")
+        if (expression is None or interval is None or bounds is None
+                or not bounds[0] <= interval[0] <= interval[1] <= bounds[1]):
+            refuse()
+        symbolic[name], limits[name] = expression, interval[1]
+    dimensions_values = {**values, **symbolic}
+    shapes = {buffer["name"]: [dimensions_values[n] if isinstance(n, str) else n for n in buffer["shape"]]
               for buffer in buffers}
     inputs = [buffer for buffer in buffers if buffer["effect"] != "write"]
     outputs = {buffer["name"]: buffer for buffer in buffers if buffer["effect"] != "read"}
@@ -203,10 +220,18 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
         refuse()
     expected_views = []
 
-    def matches(type_, buffer, *, argument=None):
+    def matches(value, buffer, *, argument=None):
+        type_ = value.type
         if not isinstance(type_,TensorType) or str(type_.get_element_type()) != buffer["dtype"]:
             return False
         source_shape = shapes[buffer["name"]]
+        if symbolic:
+            declared = [values[n] if n in values else None if isinstance(n, str) else n for n in buffer["shape"]]
+            if (not isinstance(type_.encoding, NoneAttr) or len(type_.get_shape()) != len(declared)
+                    or any((actual >= 0 if wanted is None else actual != wanted)
+                           for actual, wanted in zip(type_.get_shape(), declared, strict=True))):
+                return False
+            return argument is None or shape_facts.shape(value) == tuple(source_shape)
         if view_policy is not None and (not isinstance(type_.encoding, NoneAttr)
                                        or any(n < 0 for n in type_.get_shape())):
             return False
@@ -219,8 +244,8 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
             "concrete_kernel_type":str(TensorType(type_.get_element_type(),source_shape)),"policy":view_policy})
         return True
 
-    if (any(not matches(by_name[mapping[b["name"]]].type, b, argument=index) for index, b in enumerate(inputs))
-            or any(not matches(value.type, outputs[name])
+    if (any(not matches(by_name[mapping[b["name"]]], b, argument=index) for index, b in enumerate(inputs))
+            or any(not matches(value, outputs[name])
                    for value, name in zip(call.results, result_order, strict=True))):
         refuse()
     if view_policy is not None:
@@ -228,4 +253,14 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
         if (not isinstance(adaptations,list) or [item for item in adaptations if isinstance(item,dict)
                 and item.get("kind") in ("dense-tensor-input-view","dense-tensor-result-view")] != expected_views):
             refuse()
+    expected_shapes = shapes if symbolic else None
+    if record.get("symbolic_tensor_shapes") != expected_shapes:
+        refuse()
+    if shape_facts is not None:
+        from .derived_symbolic_shapes import bind_kernel_shapes
+
+        bind_kernel_shapes(shape_facts, kernel_function, spec, shapes, dimensions_values, call, result_order)
+    if maximum_shapes is not None:
+        maximum_shapes.update({buffer["name"]: [values[n] if n in values else limits[n] if isinstance(n, str) else n
+                                                for n in buffer["shape"]] for buffer in buffers})
     return shapes

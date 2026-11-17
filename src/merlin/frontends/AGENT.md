@@ -47,7 +47,17 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   width, messages or tags; signed/unsigned extensions stay distinct. Check the
   exact adapter/range record and preserve executable guards. Range enclosures
   grant no concrete tensor extent, result-allocation or scratch fact. Older
-  profiles refuse; public dynamic model signatures remain separate work.
+  profiles refuse. `derived_symbolic_shapes.py` independently checks the explicit
+  `t2m.symbolic-model-shapes.v1` profile in original call order. The local
+  `model_shape_facts.py` reifies actual standard destination/result dimensions;
+  no producer analysis import or evaluator value supplies a shape. Check kernel
+  results and the complete inlined body against the original public contract.
+  `merlin.compile-signature.v3` binds dimensions to public input axes, including
+  actual parameter argument positions, without extra scalar arguments. Guarded
+  scratch is the sum of actual checked source shape upper-bound costs. Missing
+  profiles, false axes/body/range records and reordered dependencies refuse.
+  General derived/data-dependent dimensions and physical/mutating views remain
+  separate work; shape proofs grant no numeric, effect, alias or target permission.
   `kernel_allocation_evidence.py` independently validates optional allocation
   source capsules: original TTIR, native-normalized/generic input, original
   argument bindings and source-only stage fingerprints. Copy only their exact

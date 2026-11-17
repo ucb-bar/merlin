@@ -32,9 +32,13 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
     model, contract_path, arguments = (Path(p) for p in (model, contract_path, arguments))
     original = [_pin(p) for p in (model, contract_path, arguments)]
     contract = json.loads(contract_path.read_text())
-    if (contract.get("schema") not in {"merlin.compile-signature.v1", "merlin.compile-signature.v2"} or contract.get("entry") != "forward"
+    axis_profile = contract.get("schema") == "merlin.compile-signature.v3"
+    if (contract.get("schema") not in {"merlin.compile-signature.v1", "merlin.compile-signature.v2",
+                                      "merlin.compile-signature.v3"} or contract.get("entry") != "forward"
             or not isinstance(contract.get("inputs"), list) or not isinstance(contract.get("outputs"), list)):
-        raise ValueError("runtime invocation requires an explicit staged signature v1/v2")
+        raise ValueError("runtime invocation requires an explicit staged signature v1/v2/v3")
+    if not axis_profile and "dimension_bindings" in contract:
+        raise ValueError("input-axis dimensions require runtime invocation signature v3")
     module = mlir_query.parse(model)
     module.verify()
     entries = [op for op in module.ops if isinstance(op, FuncOp) and op.sym_name.data == "forward"]
@@ -44,6 +48,25 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
     inputs, outputs = tuple(function.function_type.inputs), tuple(function.function_type.outputs)
     if len(inputs) != len(contract["inputs"]) or len(outputs) != len(contract["outputs"]):
         raise ValueError("runtime invocation contract differs from the complete program signature")
+    if axis_profile:
+        from merlin.frontends.model_shape_facts import ShapeFacts
+
+        expected = ShapeFacts.entry(function).contract(function)
+        bindings = contract.get("dimension_bindings")
+        if not isinstance(bindings, dict):
+            raise ValueError("runtime input-axis signature lacks its dimension bindings")
+
+        def coordinates(rows, names):
+            return [[("axis", names[dim]["argument"], names[dim]["axis"]) if isinstance(dim, str) else dim
+                     for dim in row["shape"]] for row in rows]
+
+        try:
+            if (coordinates(contract["inputs"], bindings) != coordinates(expected["inputs"], expected["dimension_bindings"])
+                    or coordinates(contract["outputs"], bindings) != coordinates(
+                        expected["outputs"], expected["dimension_bindings"])):
+                raise ValueError("runtime input-axis result shapes differ from executable source dimensions")
+        except (KeyError, TypeError) as error:
+            raise ValueError("runtime input-axis signature has incomplete source coordinates") from error
     scalars, words = {}, []
     with np.load(arguments, allow_pickle=False) as archive:
         if set(archive.files) != {f"in{i}" for i in range(len(inputs))}:
@@ -74,6 +97,27 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
             elif declared.get("kind") == "scalar" or "scalar" in declared or "bounds" in declared:
                 raise ValueError("runtime invocation cannot replace a tensor with a native scalar")
 
+        if axis_profile:
+            for name, binding in bindings.items():
+                if (not isinstance(name, str) or not name.isidentifier() or name in scalars
+                        or not isinstance(binding, dict) or set(binding) not in (
+                            {"argument", "axis"}, {"argument", "axis", "bounds"})):
+                    raise ValueError("runtime input-axis binding is incomplete or ambiguous")
+                argument, axis = binding["argument"], binding["axis"]
+                if (type(argument) is not int or not 0 <= argument < len(arrays)
+                        or not isinstance(inputs[argument], TensorType) or type(axis) is not int
+                        or not 0 <= axis < len(arrays[argument].shape)
+                        or axis >= len(contract["inputs"][argument]["shape"])
+                        or contract["inputs"][argument]["shape"][axis] != name):
+                    raise ValueError("runtime input axis must name its actual public tensor dimension")
+                value = arrays[argument].shape[axis]
+                interval = binding.get("bounds")
+                if "bounds" in binding and (not isinstance(interval, list) or len(interval) != 2
+                        or any(type(n) is not int for n in interval)
+                        or not 0 <= interval[0] <= value <= interval[1] < 2**63):
+                    raise ValueError("runtime input axis is outside its declared size bounds")
+                scalars[name] = value
+
         def shape(type_, declared):
             dimensions = declared.get("shape")
             if not isinstance(dimensions, list):
@@ -91,7 +135,7 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
                 size = scalars.get(dimension) if isinstance(dimension, str) else dimension
                 if (type(size) is not int or not 0 <= size < 1 << 62
                         or actual >= 0 and (type(dimension) is not int or dimension != actual)
-                        or actual < 0 and not isinstance(dimension, str)):
+                        or actual < 0 and not axis_profile and not isinstance(dimension, str)):
                     raise ValueError("runtime invocation dimension lacks an exact staged scalar binding")
                 concrete.append(size)
             return concrete
@@ -117,7 +161,9 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
         raise ValueError("runtime invocation sources changed during ABI derivation")
     return {"schema": SCHEMA, "program": original[0], "contract": original[1],
         "arguments": original[2], "inputs": resolved_inputs, "outputs": resolved_outputs,
-        "scalars": words, "mlir_argument_specialization": "not-performed"}
+        "scalars": words, "mlir_argument_specialization": "not-performed",
+        **({"input_axis_dimensions": {name: scalars[name] for name in bindings}}
+           if axis_profile else {})}
 
 
 def call_bridge(scalars, count, *, ciface_name, invoke_name, observe_effects=False):
@@ -135,7 +181,8 @@ def call_bridge(scalars, count, *, ciface_name, invoke_name, observe_effects=Fal
         arguments.append(f"scalar_{i}")
     return ["/* Generated native scalar argument bridge; no MLIR argument rewriting. */",
         '#include "merlin_model.h"', "#include <string.h>",
-        *(["extern void merlin_effect_begin(void);", "extern void merlin_effect_return(void);"] if observe_effects else []),
+        *(["extern void merlin_effect_begin(void);", "extern void merlin_effect_return(void);"]
+          if observe_effects else []),
         f"extern void _mlir_ciface_{ciface_name}({','.join(declarations)});",
         f"void {invoke_name}(void **d) {{", *loads,
         *(["  merlin_effect_begin();"] if observe_effects else []),
