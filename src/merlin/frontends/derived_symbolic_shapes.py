@@ -6,7 +6,7 @@ arrays, references and producer implementation imports are excluded.
 
 from xdsl.dialects import builtin, func
 
-from .model_shape_facts import EXPRESSION_PROFILE, PROFILE, ShapeFacts
+from .model_shape_facts import EXPRESSION_PROFILE, PROFILE, WORD_PROFILE, ShapeFacts
 
 
 def bind_kernel_shapes(facts, function, spec, shapes, dimensions, call, results):
@@ -71,14 +71,16 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
     present = dynamic or any("symbolic_tensor_shapes" in call for call in calls) or "runtime_shape_contract" in bindings
     if selected is None and not present:
         return None
-    if selected not in (PROFILE, EXPRESSION_PROFILE) or len(entries) != 1:
+    if selected not in (PROFILE, EXPRESSION_PROFILE, WORD_PROFILE) or len(entries) != 1:
         raise ValueError("derived symbolic model shapes require their explicit profile")
     original_ordinals = [call.get("parent_call_ordinal") for call in calls]
     if any(type(n) is not int for n in original_ordinals) or original_ordinals != sorted(set(original_ordinals)):
         raise ValueError("derived symbolic model calls require original source order")
     from .derived_runtime_arguments import checked_runtime_call_shapes
 
-    facts = ShapeFacts.entry(entries[0], expressions=selected == EXPRESSION_PROFILE)
+    facts = ShapeFacts.entry(
+        entries[0], expressions=selected in (EXPRESSION_PROFILE, WORD_PROFILE), data_words=selected == WORD_PROFILE
+    )
     call_shapes, maximum = {}, {}
     for record in calls:
         digest = record["implementation_sha256"]
@@ -92,13 +94,19 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
             source_views=bindings.get("source_tensor_view_binding_profile") is not None,
             provenance=bindings["kernels"][digest],
             live_operands=True,
-            checked_indices=bindings.get("argument_binding_profile") == "t2m.checked-index-runtime-arguments.v1",
+            checked_indices=bindings.get("argument_binding_profile")
+            in ("t2m.checked-index-runtime-arguments.v1", "t2m.checked-word-runtime-arguments.v1"),
+            checked_words=bindings.get("argument_binding_profile") == "t2m.checked-word-runtime-arguments.v1",
             shape_facts=facts,
             kernel_function=function,
             maximum_shapes=limits,
         )
         maximum[record["parent_call_ordinal"]] = limits
-    contract = facts.contract(entries[0], force_expressions=selected == EXPRESSION_PROFILE)
+    contract = facts.contract(
+        entries[0],
+        force_expressions=selected in (EXPRESSION_PROFILE, WORD_PROFILE),
+        force_words=selected == WORD_PROFILE,
+    )
     bound_entries = [
         op for op in bound.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "forward" and op.body.blocks
     ]
@@ -108,9 +116,11 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
         or bindings.get("runtime_shape_contract") != contract
     ):
         raise ValueError("derived symbolic model contract differs from the original and executable public interfaces")
-    ShapeFacts.entry(bound_entries[0], expressions=selected == EXPRESSION_PROFILE).check_contract(
-        bound_entries[0], contract
-    )
+    ShapeFacts.entry(
+        bound_entries[0],
+        expressions=selected in (EXPRESSION_PROFILE, WORD_PROFILE),
+        data_words=selected == WORD_PROFILE,
+    ).check_contract(bound_entries[0], contract)
     if (
         ("guard_storage_bytes" in bindings) != ("guard_storage_scope" in bindings)
         or "guard_storage_scope" in bindings

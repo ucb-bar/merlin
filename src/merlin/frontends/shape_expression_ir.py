@@ -15,8 +15,18 @@ def word(facts, value, depth=0):
     if not isinstance(value.type, builtin.IntegerType) or not 1 <= value.type.bitwidth <= 4096:
         return None
     width = value.type.bitwidth
+    from .shape_input_words import leaf
+
+    supplied = leaf(facts, value)
+    if supplied is not None:
+        facts.expression_words[value] = supplied
+        return supplied
     if value in facts.integers:
-        return facts.program.intern("index_castui", type_=width, args=[facts.program.dimension(facts.integers[value])])
+        return facts.program.intern(
+            "index_castui",
+            type_=width,
+            args=[facts.program.dimension(facts.integers[value])],
+        )
     operation = value.owner
     if isinstance(operation, arith.ConstantOp) and isinstance(operation.value, builtin.IntegerAttr):
         result = facts.program.intern("const", type_=width, value=operation.value.value.data % (1 << width))
@@ -56,7 +66,9 @@ def index(facts, value, depth=0):
         if condition is None or any(item is None for item in alternatives):
             return None
         return facts.program.intern(
-            "select", type_="index", args=[condition, *[facts.program.dimension(item) for item in alternatives]]
+            "select",
+            type_="index",
+            args=[condition, *[facts.program.dimension(item) for item in alternatives]],
         )
     if name not in ("index_cast", "index_castui"):
         return None
@@ -64,7 +76,7 @@ def index(facts, value, depth=0):
     expression = word(facts, source, depth + 1)
     if expression is None:
         return None
-    intervals = facts.program.bounds(expression, lambda axis: axis_range(facts, axis, operation))
+    intervals = facts.program.bounds(expression, lambda axis: input_range(facts, axis, operation))
     if not intervals:
         return None
     if name == "index_cast":
@@ -79,7 +91,12 @@ def axis_range(facts, axis, point):
         return facts.axis_limits[axis]
     from merlin.xdsl_dialects.standard_arith import IndexCastUIOp
 
-    from .source_index_ranges import _comparisons, _constant, _dominating_prefix, unsigned_index_range
+    from .source_index_ranges import (
+        _comparisons,
+        _constant,
+        _dominating_prefix,
+        unsigned_index_range,
+    )
 
     prefix = _dominating_prefix(point)
     if prefix is None or axis not in facts.axes:
@@ -104,7 +121,10 @@ def axis_range(facts, axis, point):
             interval = unsigned_index_range(operation.result, point)
             if interval is not None:
                 previous = ranges.get(name, interval)
-                ranges[name] = max(previous[0], interval[0]), min(previous[1], interval[1])
+                ranges[name] = (
+                    max(previous[0], interval[0]),
+                    min(previous[1], interval[1]),
+                )
     for compare in _comparisons(prefix) or []:
         if compare.predicate.value.data != 0:
             continue
@@ -151,14 +171,22 @@ def axis_range(facts, axis, point):
 
 
 def range_at(facts, value, point):
-    dimension = facts.index(value)
+    dimension = facts.size(value, point)
     if dimension is None:
         return None
     if type(dimension) is int:
         return dimension, dimension
     if dimension not in facts.program.nodes:
-        return axis_range(facts, dimension, point)
-    intervals = facts.program.bounds(dimension, lambda axis: axis_range(facts, axis, point))
+        return input_range(facts, dimension, point)
+    intervals = facts.program.bounds(dimension, lambda axis: input_range(facts, axis, point))
     if not intervals or any(not 0 <= low <= high <= MAX_SIZE for low, high in intervals):
         return None
     return min(a for a, _ in intervals), max(b for _, b in intervals)
+
+
+def input_range(facts, name, point):
+    if name in facts.word_bindings:
+        from .shape_input_words import range_at
+
+        return range_at(facts, name, point)
+    return axis_range(facts, name, point)

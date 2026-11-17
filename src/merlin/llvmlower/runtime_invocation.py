@@ -40,7 +40,8 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
     model, contract_path, arguments = (Path(p) for p in (model, contract_path, arguments))
     original = [_pin(p) for p in (model, contract_path, arguments)]
     contract = json.loads(contract_path.read_text())
-    expression_profile = contract.get("schema") == "merlin.compile-signature.v4"
+    word_profile = contract.get("schema") == "merlin.compile-signature.v5"
+    expression_profile = word_profile or contract.get("schema") == "merlin.compile-signature.v4"
     axis_profile = expression_profile or contract.get("schema") == "merlin.compile-signature.v3"
     if (
         contract.get("schema")
@@ -49,16 +50,19 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
             "merlin.compile-signature.v2",
             "merlin.compile-signature.v3",
             "merlin.compile-signature.v4",
+            "merlin.compile-signature.v5",
         }
         or contract.get("entry") != "forward"
         or not isinstance(contract.get("inputs"), list)
         or not isinstance(contract.get("outputs"), list)
     ):
-        raise ValueError("runtime invocation requires an explicit staged signature v1/v2/v3/v4")
+        raise ValueError("runtime invocation requires an explicit staged signature v1/v2/v3/v4/v5")
     if not axis_profile and "dimension_bindings" in contract:
         raise ValueError("input-axis dimensions require runtime invocation signature v3")
     if not expression_profile and "shape_program" in contract:
         raise ValueError("derived dimensions require runtime invocation signature v4")
+    if not word_profile and "word_bindings" in contract:
+        raise ValueError("public storage words require runtime invocation signature v5")
     module = mlir_query.parse(model)
     module.verify()
     entries = [op for op in module.ops if isinstance(op, FuncOp) and op.sym_name.data == "forward"]
@@ -70,19 +74,22 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
         raise ValueError("runtime invocation contract differs from the complete program signature")
     program = None
     if expression_profile:
-        from merlin.frontends.model_shape_facts import EXPRESSION_PROFILE, ShapeFacts
+        from merlin.frontends.model_shape_facts import EXPRESSION_PROFILE, WORD_PROFILE, ShapeFacts
         from merlin.frontends.shape_expressions import Program
 
-        if (
-            contract.get("model_shape_profile") != EXPRESSION_PROFILE
-            or contract.get("shape_scope") != "source-proved-derived-dimensions"
+        if contract.get("model_shape_profile") != (
+            WORD_PROFILE if word_profile else EXPRESSION_PROFILE
+        ) or contract.get("shape_scope") != (
+            "source-proved-input-words-and-dimensions" if word_profile else "source-proved-derived-dimensions"
         ):
             raise ValueError("derived runtime dimensions require their explicit source-proof profile")
         shape_contract = {
-            "schema": "t2m.runtime-shapes.v3",
+            "schema": "t2m.runtime-shapes.v4" if word_profile else "t2m.runtime-shapes.v3",
             **{name: contract.get(name) for name in ("inputs", "outputs", "dimension_bindings", "shape_program")},
         }
-        ShapeFacts.entry(function, expressions=True).check_contract(function, shape_contract)
+        if word_profile:
+            shape_contract["word_bindings"] = contract.get("word_bindings")
+        ShapeFacts.entry(function, expressions=True, data_words=word_profile).check_contract(function, shape_contract)
         bindings = contract["dimension_bindings"]
         roots = [
             size
@@ -90,7 +97,14 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
             for size in row["shape"]
             if isinstance(size, str) and size not in bindings
         ]
-        program = Program.load(contract["shape_program"], bindings, roots)
+        program = Program.load(
+            contract["shape_program"],
+            bindings,
+            roots,
+            words={name: int(row["dtype"][1:]) for name, row in contract["word_bindings"].items()}
+            if word_profile
+            else None,
+        )
     elif axis_profile:
         from merlin.frontends.model_shape_facts import ShapeFacts
 
@@ -193,6 +207,14 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
                 ):
                     raise ValueError("runtime input axis is outside its declared size bounds")
                 scalars[name] = value
+
+        if word_profile:
+            from merlin.frontends.shape_word_bindings import resolve_words
+
+            values = resolve_words(contract["word_bindings"], contract["inputs"], arrays)
+            if set(values) & set(scalars):
+                raise ValueError("runtime size word conflicts with an existing scalar/dimension binding")
+            scalars.update(values)
 
         def shape(type_, declared):
             dimensions = declared.get("shape")

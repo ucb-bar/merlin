@@ -157,14 +157,14 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             interfaces[digest] = (json.loads(checked(directory + "/spec.json")), functions[0])
     symbolic_model = checked_model_shapes(parent_module, module, bindings, interfaces)
     from .derived_live_arguments import PROFILE as LIVE_PROFILE
-    from .derived_live_arguments import RANGE_PROFILE, binding_profile
+    from .derived_live_arguments import RANGE_PROFILE, WORD_RANGE_PROFILE, binding_profile
 
     expected_profile = binding_profile(calls)
     if (
         expected_profile is not None
         and bindings.get("argument_binding_profile") != expected_profile
         or expected_profile is None
-        and bindings.get("argument_binding_profile") in (LIVE_PROFILE, RANGE_PROFILE)
+        and bindings.get("argument_binding_profile") in (LIVE_PROFILE, RANGE_PROFILE, WORD_RANGE_PROFILE)
     ):
         raise ValueError("derived live runtime operands require their explicit binding profile")
     source_views = bindings["schema"] == "t2m.model-kernel-binding.v3"
@@ -230,6 +230,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 "t2m.captured-runtime-arguments.v1",
                 LIVE_PROFILE,
                 RANGE_PROFILE,
+                WORD_RANGE_PROFILE,
             ):
                 raise ValueError("derived runtime kernel arguments require their explicit binding profile")
             for call in selected_calls:
@@ -371,6 +372,13 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 schema="merlin.compile-signature.v4",
                 shape_scope="source-proved-derived-dimensions",
                 shape_program=symbolic_model["contract"]["shape_program"],
+            )
+        elif symbolic_model["contract"]["schema"] == "t2m.runtime-shapes.v4":
+            signature.update(
+                schema="merlin.compile-signature.v5",
+                shape_scope="source-proved-input-words-and-dimensions",
+                shape_program=symbolic_model["contract"]["shape_program"],
+                word_bindings=symbolic_model["contract"]["word_bindings"],
             )
     contract = entry.attributes.get("prov.memory_guard_scratch_bytes")
     if guard_storage:

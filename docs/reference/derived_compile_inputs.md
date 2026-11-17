@@ -15,6 +15,8 @@ code_refs:
   - src/merlin/frontends/model_shape_facts.py
   - src/merlin/frontends/shape_expression_ir.py
   - src/merlin/frontends/shape_expressions.py
+  - src/merlin/frontends/shape_input_words.py
+  - src/merlin/frontends/shape_word_bindings.py
   - src/merlin/llvmlower/runtime_invocation.py
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/frontends/derived_source_views.py
@@ -29,6 +31,7 @@ code_refs:
   - merlin/tests/ir/test_derived_symbolic_shapes.py
   - merlin/tests/runtime/test_runtime_input_axes.py
   - merlin/tests/runtime/test_derived_size_invocation.py
+  - merlin/tests/runtime/test_input_word_sizes.py
   - merlin/tests/ir/test_derived_size_sources.py
   - merlin/tests/ir/test_derived_runtime_arguments.py
   - merlin/tests/ir/test_derived_source_views.py
@@ -181,6 +184,37 @@ still follows checked source upper bounds. These logical proofs grant no
 physical alias, public mutation, effect, numeric policy or target implementation.
 Runtime-supplied slice bounds, data-dependent sizes, resizing state and broader
 model/effect compositions remain separate obligations.
+
+### Runtime input words in result dimensions
+
+`t2m.symbolic-model-shapes.v3` and `t2m.checked-word-runtime-arguments.v1`
+separately select `t2m.runtime-shapes.v4` and `logical-size-program.v2`.
+Signature v5 declares `shape_scope: source-proved-input-words-and-dimensions`
+and exact `word_bindings`. Older programs/profiles/signatures reject these
+fields and input-word leaves. The public model ABI and source artifact roster
+stay unchanged.
+
+`shape_input_words` recognizes only actual public singleton tensor reads or
+native integer arguments, retaining their exact argument, coordinates and dtype.
+Original dominating signed/unsigned assertions constrain the source words.
+Injective extensions can transfer bounds; truncation, late/sibling assertions,
+metadata and sampled values cannot. The checked size adapter keeps its exact
+scalar SSA and independently reconstructed inclusive `integer_range`.
+
+Source-only staging reconstructs each original call, executable kernel result
+and complete inlined body without reading invocation data. Guard scratch still
+uses checked source upper bounds. Runtime invocation rechecks that body before
+`shape_word_bindings` reads declared i8/i16/i32/i64 source storage and evaluates
+the program. Values supply invocation allocation, never a compiler constant or
+proof premise. Negative logical sizes and wrong storage carriers refuse before
+allocation. Rehashed false bindings, output declarations and canonical but
+incorrect programs refuse. Earlier receipt and positional input transport schemas
+remain intact.
+
+This profile grants no physical alias, mutation, numeric, effect or target
+implementation permission. General vector-data-dependent size computations,
+runtime bounds/views, resizing state and effectful size reads remain separate
+obligations. The existing finite program/proof budgets apply unchanged.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
 multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible

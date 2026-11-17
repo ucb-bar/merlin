@@ -103,6 +103,7 @@ def checked_runtime_call_shapes(
     provenance=None,
     live_operands=False,
     checked_indices=False,
+    checked_words=False,
     shape_facts=None,
     kernel_function=None,
     maximum_shapes=None,
@@ -185,7 +186,13 @@ def checked_runtime_call_shapes(
             if isinstance(binding, dict) and binding.get("schema_operand") in attributes.data:
                 refuse()
             fact = checked_live_operand(
-                scalar, binding, by_name, source_point=call, checked_indices=checked_indices, shape_facts=shape_facts
+                scalar,
+                binding,
+                by_name,
+                source_point=call,
+                checked_indices=checked_indices,
+                checked_words=checked_words,
+                shape_facts=shape_facts,
             )
             if fact is not None:
                 values[scalar["name"]] = fact
@@ -237,10 +244,8 @@ def checked_runtime_call_shapes(
         if shape_facts is None or not isinstance(binding, dict) or binding.get("schema_operand") not in by_name:
             refuse()
         value = by_name[binding["schema_operand"]]
-        from xdsl.dialects.builtin import IndexType
-
-        expression = shape_facts.index(value) if isinstance(value.type, IndexType) else None
-        interval = binding.get("unsigned_integer_range")
+        expression = shape_facts.size(value, call)
+        interval = binding.get("unsigned_integer_range", binding.get("integer_range"))
         bounds = scalar.get("bounds")
         if (
             expression is None

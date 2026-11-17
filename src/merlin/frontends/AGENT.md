@@ -67,6 +67,15 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   runtime allocation rechecks the complete body. Never import producer analyses
   or let a rehashed canonical program replace source proof. General runtime views,
   data-dependent allocation, resizing and effects retain their own obligations.
+  `t2m.symbolic-model-shapes.v3` additionally selects typed public input words
+  under runtime-shapes v4/program v2 and signature v5. `shape_input_words`
+  independently proves actual singleton/native integer reads and dominating
+  bounds, transferring only injective extensions. Check the exact live scalar
+  and `integer_range` under `t2m.checked-word-runtime-arguments.v1`. The pure
+  `shape_word_bindings` reader consumes values at invocation only, after the
+  complete standard body has been rechecked. No input value supplies a compiler
+  fact; false/rehashed bindings and older profiles refuse. General vector-data
+  computations, runtime views/resizing, effects and targets stay separate work.
   `kernel_allocation_evidence.py` independently validates optional allocation
   source capsules: original TTIR, native-normalized/generic input, original
   argument bindings and source-only stage fingerprints. Copy only their exact

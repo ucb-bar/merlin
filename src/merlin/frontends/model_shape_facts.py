@@ -15,27 +15,35 @@ from .source_index_ranges import unsigned_index_range
 
 PROFILE = "t2m.symbolic-model-shapes.v1"
 EXPRESSION_PROFILE = "t2m.symbolic-model-shapes.v2"
+WORD_PROFILE = "t2m.symbolic-model-shapes.v3"
 
 
 class ShapeFacts:
-    def __init__(self, *, expressions=False):
+    def __init__(self, *, expressions=False, data_words=False):
         self.tensors = {}
         self.integers = {}
         self.indices = {}
         self.axes = {}
         self.visits = 0
         self.expressions = expressions
+        self.data_words = data_words
         from .shape_expressions import Program
 
         self.program = Program()
         self.expression_words = {}
         self.arguments = ()
         self.axis_limits = {}
+        self.word_bindings, self.word_sources, self.word_limits = {}, {}, {}
+        self.word_range_queries, self.word_reads = set(), False
 
     @classmethod
-    def entry(cls, function, *, expressions=False):
-        facts = cls(expressions=expressions)
+    def entry(cls, function, *, expressions=False, data_words=False):
+        facts = cls(expressions=expressions, data_words=data_words)
         facts.arguments = tuple(function.body.block.args)
+        if data_words:
+            from .shape_input_words import bindings
+
+            facts.word_bindings, facts.word_sources = bindings(facts.arguments)
         for argument, value in enumerate(function.body.block.args):
             if not isinstance(value.type, builtin.TensorType):
                 continue
@@ -112,12 +120,40 @@ class ShapeFacts:
 
         return range_at(self, value, point) if self.expressions else None
 
+    def size(self, value, point):
+        if isinstance(value.type, builtin.IndexType):
+            return self.index(value)
+        if not self.data_words or not isinstance(value.type, builtin.IntegerType):
+            return None
+        from .shape_expression_ir import input_range, word
+        from .shape_expressions import MAX_SIZE, _signed_intervals
+
+        expression = word(self, value)
+        intervals = (
+            None if expression is None else self.program.bounds(expression, lambda name: input_range(self, name, point))
+        )
+        if not intervals or any(
+            not 0 <= low <= high <= MAX_SIZE for low, high in _signed_intervals(intervals, value.type.bitwidth)
+        ):
+            return None
+        return self.program.intern("index_cast", type_="index", args=[expression])
+
     def copy_context(self, other, point):
         from .shape_expression_ir import axis_range
 
         other.program.nodes.update(self.program.nodes)
         other.axes.update(self.axes)
         other.arguments = self.arguments
+        other.data_words = self.data_words
+        other.word_bindings.update(self.word_bindings)
+        other.word_sources.update(self.word_sources)
+        if self.data_words:
+            from .shape_input_words import range_at
+
+            for name in self.word_bindings:
+                interval = range_at(self, name, point)
+                if interval is not None:
+                    other.word_limits[name] = interval
         for name in self.axes:
             interval = axis_range(self, name, point)
             if interval is not None:
@@ -130,7 +166,7 @@ class ShapeFacts:
             return False
         from xdsl.dialects import cf
 
-        from .shape_expression_ir import axis_range, word
+        from .shape_expression_ir import input_range, word
         from .source_index_ranges import _dominating_prefix
 
         assertions = []
@@ -142,7 +178,7 @@ class ShapeFacts:
         return self.program.equivalent(
             self.program.dimension(left),
             self.program.dimension(right),
-            lambda name: axis_range(self, name, point),
+            lambda name: input_range(self, name, point),
             assertions=assertions,
         )
 
@@ -155,8 +191,13 @@ class ShapeFacts:
         )
 
     def check_contract(self, function, declared):
-        actual = self.contract(function, force_expressions=declared.get("schema") == "t2m.runtime-shapes.v3")
-        if declared.get("schema") != "t2m.runtime-shapes.v3" or not self.expressions:
+        word_profile = declared.get("schema") == "t2m.runtime-shapes.v4"
+        actual = self.contract(
+            function,
+            force_expressions=declared.get("schema") in ("t2m.runtime-shapes.v3", "t2m.runtime-shapes.v4"),
+            force_words=word_profile,
+        )
+        if declared.get("schema") not in ("t2m.runtime-shapes.v3", "t2m.runtime-shapes.v4") or not self.expressions:
             if declared != actual:
                 raise ValueError("model shape contract differs from its executable source dimensions")
             return
@@ -178,13 +219,22 @@ class ShapeFacts:
             raise ValueError("derived model outputs require complete logical dimension declarations")
         from .shape_expressions import Program
 
+        if word_profile and (not self.data_words or declared["word_bindings"] != actual["word_bindings"]):
+            raise ValueError("data-derived size words differ from actual typed public storage reads")
         roots = [
             size
             for row in declared["outputs"]
             for size in row["shape"]
             if isinstance(size, str) and size not in self.axes
         ]
-        program = Program.load(declared["shape_program"], self.axes, roots)
+        program = Program.load(
+            declared["shape_program"],
+            self.axes,
+            roots,
+            words={name: int(binding["dtype"][1:]) for name, binding in actual["word_bindings"].items()}
+            if word_profile
+            else None,
+        )
         self.program.nodes.update(program.nodes)
         for expected, observed in zip(declared["outputs"], actual["outputs"], strict=True):
             if (
@@ -236,11 +286,14 @@ class ShapeFacts:
         elif isinstance(operation, scf.ForOp):
             # A dynamic carried tensor may resize. Prove the actual yield keeps
             # every tensor shape; keep hypothetical block facts in a fork.
-            local = ShapeFacts(expressions=self.expressions)
+            local = ShapeFacts(expressions=self.expressions, data_words=self.data_words)
             local.program.nodes.update(self.program.nodes)
             local.axes.update(self.axes)
             local.arguments = self.arguments
             local.axis_limits.update(self.axis_limits)
+            local.word_bindings.update(self.word_bindings)
+            local.word_sources.update(self.word_sources)
+            local.word_limits.update(self.word_limits)
             local.tensors.update(self.tensors)
             local.integers.update(self.integers)
             initial = [
@@ -278,18 +331,27 @@ class ShapeFacts:
             return result
         return None
 
-    def contract(self, function, *, force_expressions=False):
+    def contract(self, function, *, force_expressions=False, force_words=False):
         terminal = function.body.block.last_op
         if not isinstance(terminal, func.ReturnOp):
             raise TypeError("symbolic model shape contract requires one structured return")
-        inputs = [self.shape(value) for value in function.body.block.args]
+        inputs = [
+            () if self.data_words and isinstance(value.type, builtin.IntegerType) else self.shape(value)
+            for value in function.body.block.args
+        ]
         outputs = [self.shape(value) for value in terminal.operands]
         if any(shape is None for shape in (*inputs, *outputs)):
             raise ValueError("symbolic model result dimensions need an executable source relationship")
         contract = {
             "schema": "t2m.runtime-shapes.v2",
             "inputs": [
-                {"shape": list(shape), "dtype": str(value.type.element_type)}
+                {
+                    "shape": list(shape),
+                    "dtype": str(value.type.element_type)
+                    if isinstance(value.type, builtin.TensorType)
+                    else str(value.type),
+                    **({"kind": "scalar"} if isinstance(value.type, builtin.IntegerType) else {}),
+                }
                 for value, shape in zip(function.body.block.args, inputs, strict=True)
             ],
             "outputs": [
@@ -303,4 +365,16 @@ class ShapeFacts:
         ]
         if roots or force_expressions:
             contract.update(schema="t2m.runtime-shapes.v3", shape_program=self.program.export(roots))
+        if (
+            force_words
+            or self.data_words
+            and (self.word_reads or contract.get("shape_program", {}).get("schema") == "logical-size-program.v2")
+        ):
+            program = self.program.export(roots, word_profile=True)
+            used = {row["word"] for row in program["nodes"].values() if row["op"] == "word"}
+            contract.update(
+                schema="t2m.runtime-shapes.v4",
+                shape_program=program,
+                word_bindings={name: self.word_bindings[name] for name in sorted(used)},
+            )
         return contract

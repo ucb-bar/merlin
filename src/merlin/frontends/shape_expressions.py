@@ -10,8 +10,21 @@ import json
 
 MAX_SIZE = (1 << 63) - 1
 SCHEMA = "logical-size-program.v1"
+WORD_SCHEMA = "logical-size-program.v2"
 PREDICATES = ("eq", "ne", "slt", "sle", "sgt", "sge", "ult", "ule", "ugt", "uge")
-BINARY = {"addi", "subi", "muli", "andi", "ori", "xori", "divui", "divsi", "floordivsi", "remui", "remsi"}
+BINARY = {
+    "addi",
+    "subi",
+    "muli",
+    "andi",
+    "ori",
+    "xori",
+    "divui",
+    "divsi",
+    "floordivsi",
+    "remui",
+    "remsi",
+}
 CASTS = {"extui", "extsi", "trunci", "index_castui", "index_cast"}
 
 
@@ -25,7 +38,16 @@ def _scalar(op, values, types, type_, predicate=None):
         if predicate.startswith("s"):
             a, b = (signed(value, types[0]) for value in values)
         relation = predicate if predicate in ("eq", "ne") else predicate[1:]
-        return int({"eq": a == b, "ne": a != b, "lt": a < b, "le": a <= b, "gt": a > b, "ge": a >= b}[relation])
+        return int(
+            {
+                "eq": a == b,
+                "ne": a != b,
+                "lt": a < b,
+                "le": a <= b,
+                "gt": a > b,
+                "ge": a >= b,
+            }[relation]
+        )
     if op == "select":
         return values[1] if values[0] else values[2]
     if op in CASTS:
@@ -139,10 +161,12 @@ class Program:
             return 1
         return row["type"]
 
-    def intern(self, op, *, args=(), type_=None, value=None, axis=None, predicate=None):
+    def intern(self, op, *, args=(), type_=None, value=None, axis=None, word=None, predicate=None):
         row = {"op": op}
         if op == "axis":
             row["axis"] = axis
+        elif op == "word":
+            row.update(type=type_, word=word)
         else:
             if op != "cmpi":
                 row["type"] = type_
@@ -152,7 +176,7 @@ class Program:
                 row["args"] = list(args)
             if op == "cmpi":
                 row["predicate"] = predicate
-        if op not in ("axis", "const") and all(self.nodes[name]["op"] == "const" for name in args):
+        if op not in ("axis", "const", "word") and all(self.nodes[name]["op"] == "const" for name in args):
             try:
                 number = _scalar(
                     op,
@@ -183,7 +207,7 @@ class Program:
             return value
         return self.intern("axis", axis=value)
 
-    def export(self, roots):
+    def export(self, roots, *, word_profile=False):
         self.visits = 0
         result, pending = {}, list(roots)
         while pending:
@@ -193,7 +217,10 @@ class Program:
             self._visit(0)
             result[name] = self.nodes[name]
             pending.extend(self.nodes[name].get("args", []))
-        return {"schema": SCHEMA, "nodes": result}
+        return {
+            "schema": WORD_SCHEMA if word_profile or any(row["op"] == "word" for row in result.values()) else SCHEMA,
+            "nodes": result,
+        }
 
     def evaluate(self, name, axes, depth=0):
         if depth == 0:
@@ -205,6 +232,10 @@ class Program:
         op = row["op"]
         if op == "axis":
             result = axes[row["axis"]]
+        elif op == "word":
+            result = axes[row["word"]]
+            if type(result) is not int or not 0 <= result < 1 << row["type"]:
+                raise ValueError("runtime size word is outside its actual source storage type")
         elif op == "const":
             result = row["value"]
         elif op == "select":
@@ -214,7 +245,13 @@ class Program:
         else:
             args = row["args"]
             values = [self.evaluate(item, axes, depth + 1) for item in args]
-            result = _scalar(op, values, [self.type(item) for item in args], self.type(name), row.get("predicate"))
+            result = _scalar(
+                op,
+                values,
+                [self.type(item) for item in args],
+                self.type(name),
+                row.get("predicate"),
+            )
         self._values[name] = result
         return result
 
@@ -223,7 +260,10 @@ class Program:
             self.visits, self._ranges = 0, {}
         self._visit(depth)
         restrictions = restrictions or {}
-        key = name, tuple(sorted((node, tuple(intervals)) for node, intervals in restrictions.items()))
+        key = (
+            name,
+            tuple(sorted((node, tuple(intervals)) for node, intervals in restrictions.items())),
+        )
         if key in self._ranges:
             return self._ranges[key]
         row, result = self.nodes[name], None
@@ -231,6 +271,9 @@ class Program:
         if op == "axis":
             interval = axis_bounds(row["axis"])
             result = None if interval is None else [tuple(interval)]
+        elif op == "word":
+            result = axis_bounds(row["word"])
+            result = None if result is None else _join(result)
         elif op == "const":
             result = [(row["value"], row["value"])]
         elif op == "select":
@@ -291,8 +334,15 @@ class Program:
                 "ugt": "ule",
                 "uge": "ult",
             }[predicate]
-        allowed = _allowed(predicate, self.nodes[right]["value"], 64 if self.type(left) == "index" else self.type(left))
-        return {**restrictions, left: _intersect(restrictions[left], allowed) if left in restrictions else allowed}
+        allowed = _allowed(
+            predicate,
+            self.nodes[right]["value"],
+            64 if self.type(left) == "index" else self.type(left),
+        )
+        return {
+            **restrictions,
+            left: _intersect(restrictions[left], allowed) if left in restrictions else allowed,
+        }
 
     def _operation_bounds(self, row, intervals, types):
         op, type_ = row["op"], 1 if row["op"] == "cmpi" else row["type"]
@@ -311,16 +361,25 @@ class Program:
             predicate = row["predicate"]
             if predicate not in ("eq", "ne"):
                 if predicate.startswith("s"):
-                    a, b = _signed_intervals(a, types[0]), _signed_intervals(b, types[0])
+                    a, b = (
+                        _signed_intervals(a, types[0]),
+                        _signed_intervals(b, types[0]),
+                    )
                 if a and b:
                     low_a, high_a, low_b, high_b = a[0][0], a[-1][1], b[0][0], b[-1][1]
                     relation = predicate[1:]
-                    true = {"lt": high_a < low_b, "le": high_a <= low_b, "gt": low_a > high_b, "ge": low_a >= high_b}[
-                        relation
-                    ]
-                    false = {"lt": low_a >= high_b, "le": low_a > high_b, "gt": high_a <= low_b, "ge": high_a < low_b}[
-                        relation
-                    ]
+                    true = {
+                        "lt": high_a < low_b,
+                        "le": high_a <= low_b,
+                        "gt": low_a > high_b,
+                        "ge": low_a >= high_b,
+                    }[relation]
+                    false = {
+                        "lt": low_a >= high_b,
+                        "le": low_a > high_b,
+                        "gt": high_a <= low_b,
+                        "ge": high_a < low_b,
+                    }[relation]
                     if true or false:
                         return [(int(true), int(true))]
             return [(0, 1)]
@@ -333,7 +392,10 @@ class Program:
             return _join(piece for low, high in source for piece in _wrap(low, high, type_))
         left, right = intervals
         if op in ("addi", "subi", "muli", "divsi", "floordivsi", "remsi"):
-            left, right = _signed_intervals(left, type_), _signed_intervals(right, type_)
+            left, right = (
+                _signed_intervals(left, type_),
+                _signed_intervals(right, type_),
+            )
         result = []
         for a, b in left:
             for c, d in right:
@@ -342,7 +404,10 @@ class Program:
                 elif op == "subi":
                     low, high = a - d, b - c
                 elif op == "muli":
-                    low, high = min(a * c, a * d, b * c, b * d), max(a * c, a * d, b * c, b * d)
+                    low, high = (
+                        min(a * c, a * d, b * c, b * d),
+                        max(a * c, a * d, b * c, b * d),
+                    )
                 elif op in ("divui", "divsi", "floordivsi", "remui", "remsi"):
                     if c <= 0 <= d or op in ("divsi", "floordivsi") and a <= -(1 << (type_ - 1)) <= b and c <= -1 <= d:
                         return None
@@ -352,7 +417,12 @@ class Program:
                         low, high = -max(abs(c), abs(d)) + 1, max(abs(c), abs(d)) - 1
                     else:
                         values = [
-                            _scalar(op, [x % (1 << type_), y % (1 << type_)], [type_, type_], type_)
+                            _scalar(
+                                op,
+                                [x % (1 << type_), y % (1 << type_)],
+                                [type_, type_],
+                                type_,
+                            )
                             for x in (a, b)
                             for y in (c, d)
                         ]
@@ -367,11 +437,11 @@ class Program:
         return _join(result)
 
     @classmethod
-    def load(cls, program, axes, roots):
+    def load(cls, program, axes, roots, *, words=None):
         if (
             not isinstance(program, dict)
             or set(program) != {"schema", "nodes"}
-            or program["schema"] != SCHEMA
+            or program["schema"] not in ((SCHEMA,) if words is None else (WORD_SCHEMA,))
             or not isinstance(program["nodes"], dict)
             or len(program["nodes"]) > 4096
         ):
@@ -391,11 +461,15 @@ class Program:
                 raise ValueError("shape expression needs a complete typed operation")
             op = row["op"]
             expected = (
-                {"op", "axis"}
-                if op == "axis"
-                else {"op", "type", "value"}
-                if op == "const"
-                else ({"op", "predicate", "args"} if op == "cmpi" else {"op", "type", "args"})
+                {"op", "type", "word"}
+                if op == "word"
+                else (
+                    {"op", "axis"}
+                    if op == "axis"
+                    else {"op", "type", "value"}
+                    if op == "const"
+                    else ({"op", "predicate", "args"} if op == "cmpi" else {"op", "type", "args"})
+                )
             )
             if set(row) != expected:
                 raise ValueError("shape expression has unknown or missing semantic fields")
@@ -405,6 +479,15 @@ class Program:
             if op == "axis":
                 if not isinstance(row["axis"], str) or row["axis"] not in axes:
                     raise ValueError("shape expression axis lacks its public input binding")
+            elif op == "word":
+                if (
+                    words is None
+                    or not isinstance(row["word"], str)
+                    or row["word"] not in words
+                    or type_ == "index"
+                    or words[row["word"]] != type_
+                ):
+                    raise ValueError("shape expression word lacks its actual typed public input binding")
             elif op == "const":
                 if type(row["value"]) is not int or not 0 <= row["value"] <= (
                     MAX_SIZE if type_ == "index" else (1 << type_) - 1
@@ -497,6 +580,17 @@ class Program:
                     bounds = axis_bounds(axis) or (0, MAX_SIZE)
                     solver.add(z3.UGE(axes[axis], bounds[0]), z3.ULE(axes[axis], bounds[1]))
                 value = axes[axis]
+            elif op == "word":
+                name = row["word"]
+                key = "word", name
+                if key not in axes:
+                    axes[key] = z3.BitVec("input_word_" + name, width)
+                    intervals = axis_bounds(name)
+                    if intervals is not None:
+                        solver.add(
+                            z3.Or(*[z3.And(z3.UGE(axes[key], low), z3.ULE(axes[key], high)) for low, high in intervals])
+                        )
+                value = axes[key]
             elif op == "const":
                 value = z3.BitVecVal(row["value"], width)
             else:
@@ -506,7 +600,10 @@ class Program:
                 if op == "select":
                     condition = values[0] != 0
                     value = z3.If(condition, values[1], values[2])
-                    valid = z3.And(arguments[0][1], z3.If(condition, arguments[1][1], arguments[2][1]))
+                    valid = z3.And(
+                        arguments[0][1],
+                        z3.If(condition, arguments[1][1], arguments[2][1]),
+                    )
                 elif op in CASTS:
                     value = cast(values[0], width, op in ("extsi", "index_cast"))
                     if type_ == "index":

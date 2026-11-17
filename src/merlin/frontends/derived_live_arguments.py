@@ -11,6 +11,7 @@ from xdsl.dialects import arith, builtin, tensor
 
 PROFILE = "t2m.live-runtime-arguments.v1"
 RANGE_PROFILE = "t2m.checked-index-runtime-arguments.v1"
+WORD_RANGE_PROFILE = "t2m.checked-word-runtime-arguments.v1"
 
 
 def binding_profile(calls):
@@ -20,6 +21,8 @@ def binding_profile(calls):
         if not isinstance(bindings, dict) or any(not isinstance(binding, dict) for binding in bindings.values()):
             raise ValueError("derived live runtime operand bindings must be dictionaries")
         live.extend(bindings.values())
+    if any(binding.get("adapter") == "checked-size-scalar" for binding in live):
+        return WORD_RANGE_PROFILE
     if any(binding.get("adapter") == "checked-index-castui" for binding in live):
         return RANGE_PROFILE
     return PROFILE if live else None
@@ -46,7 +49,9 @@ def _integer(value, depth=0):
     return None
 
 
-def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_indices=False, shape_facts=None):
+def checked_live_operand(
+    scalar, record, by_name, *, source_point=None, checked_indices=False, checked_words=False, shape_facts=None
+):
     def refuse():
         raise ValueError("derived live runtime scalar disagrees with original parent SSA/types")
 
@@ -80,6 +85,17 @@ def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_
         adapter = "singleton-tensor-extract"
     elif value.type == target:
         adapter = "exact-scalar"
+        if (
+            checked_words
+            and shape_facts is not None
+            and shape_facts.data_words
+            and isinstance(target, builtin.IntegerType)
+            and record.get("adapter") == "checked-size-scalar"
+        ):
+            enclosure = shape_facts.range_at(value, source_point)
+            if enclosure is None or not 0 <= enclosure[0] <= enclosure[1] < 1 << (target.bitwidth - 1):
+                refuse()
+            adapter = "checked-size-scalar"
     elif isinstance(value.type, builtin.IndexType) and dtype in ("i8", "i16", "i32", "i64"):
         width = target.bitwidth
         if type(fact) is int and -(1 << (width - 1)) <= fact < 1 << (width - 1):
@@ -103,7 +119,7 @@ def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_
     if fact is not None:
         expected["constant_integer"] = fact
     if enclosure is not None:
-        expected["unsigned_integer_range"] = list(enclosure)
+        expected["integer_range" if adapter == "checked-size-scalar" else "unsigned_integer_range"] = list(enclosure)
     if record != expected:
         refuse()
     return fact

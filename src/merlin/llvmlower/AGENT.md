@@ -88,6 +88,13 @@ no physical alias, numeric, effect, mutation or target implementation permission
 
 The selected runtime signature also admits an actual void entry. Keep its
 result roster empty; no placeholder tensor or output allocation is permitted.
+Signature v5 additionally binds actual public singleton/native integer source
+words to typed size-program leaves. Independently prove source reads/guards and
+the complete body's result relationships before reading invocation values or
+allocating. Values never specialize the compiler program. Keep exact storage
+types, signed casts, source guards and early negative-size refusal explicit;
+this grants no alias, effect, mutation, numeric or target permission.
+
 Runtime archives bind exact argument ordinals and require a complete input
 manifest; legacy model-name aliases must not redirect these arguments.
 Optional `observe_effects` brackets the real typed source call only after
