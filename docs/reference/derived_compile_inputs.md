@@ -3,12 +3,13 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-11
+last_verified: 2026-11-16
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
   - src/merlin/frontends/derived_compile_inputs.py
   - src/merlin/frontends/derived_runtime_arguments.py
+  - src/merlin/frontends/derived_live_arguments.py
   - src/merlin/frontends/derived_source_views.py
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/frontends/kernel_shape_abi.py
@@ -16,6 +17,8 @@ code_refs:
   - src/merlin/xdsl_dialects/standard_bufferization.py
   - src/merlin/xdsl_dialects/standard_memref.py
   - merlin/tests/ir/test_derived_compile_inputs.py
+  - merlin/tests/ir/test_derived_live_arguments.py
+  - merlin/tests/ir/test_derived_runtime_arguments.py
   - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
   - merlin/tests/ir/test_standard_bufferization.py
@@ -56,6 +59,26 @@ Dense row-major value reshapes retain their existing optional profile alongside
 these source views. The public model ABI stays unchanged; logical relationships
 grant no physical alias, mutation, numeric or target permission. Evaluator
 archives/digests never supply view or scalar facts.
+
+The additive `t2m.live-runtime-arguments.v1` argument profile retains actual
+original scalar SSA operands and singleton-tensor elements in model calls.
+`derived_live_arguments` checks the exact i1/i8/i16/i32/i64/f32/f64 type,
+unencoded singleton shape, standard adapter and complete per-call record.
+An index conversion additionally needs a representable original SSA constant
+or static dimension fact. Source integer facts come only from standard integer
+constants, static `tensor.dim` with a known axis, and singleton
+`tensor.from_elements`, under a finite inspection bound. No saved input or
+weight value supplies a compiler fact. Captured attributes and live operands
+partition the source scalar formals; complete schema accounting remains.
+
+Unknown live data may control executable computation but cannot supply a
+tensor dimension or scratch cost. Reopen the original parent before any
+producer inlining; do not treat a prior opaque kernel's eventual literal result
+as an original shape fact. Every named tensor extent still needs an actual
+parent SSA/type fact, and declared scalar bounds retain their own executable
+guards. A changed fact/type/adapter or downgraded profile refuses. The public
+model signature remains static and unchanged. These custody/interface checks
+grant no source equivalence, numeric, alias, mutation, effect or target proof.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
 multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible

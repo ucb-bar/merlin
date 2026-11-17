@@ -82,7 +82,8 @@ def checked_source_layout_call(parent_module, provenance, record, profile):
         refuse()
 
 
-def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False, source_views=False, provenance=None):
+def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False, source_views=False, provenance=None,
+                               live_operands=False):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
 
@@ -106,7 +107,7 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
     call = parent_calls[ordinal]
     identity, attributes, operands = (call.attributes.get(name) for name in
         ("prov.kernel", "prov.kernel_args", "prov.kernel_operands"))
-    if attributes is None and not scalars:
+    if attributes is None and (not scalars or live_operands):
         attributes = DictionaryAttr({})
     declarations = {op.sym_name.data: op for op in parent_module.ops if isinstance(op, FuncOp)}
     callee = call.callee.root_reference.data
@@ -123,13 +124,25 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
     if len(set(schema_names)) != len(schema_names) or record.get("schema_operands") != schema_names:
         refuse()
     bindings = record.get("runtime_scalar_bindings")
-    if not isinstance(bindings, dict) or set(bindings) != {s["name"] for s in scalars}:
+    live = record.get("runtime_operand_bindings", {})
+    if (not isinstance(live, dict) or live and not live_operands or not isinstance(bindings, dict)
+            or set(bindings) & set(live) or set(bindings) | set(live) != {s["name"] for s in scalars}):
         refuse()
+    by_name = dict(zip(schema_names, call.arguments, strict=True))
     values = {}
     for scalar in scalars:
         if (set(scalar) != {"name", "dtype", "source_arg"} | ({"bounds"} if "bounds" in scalar else set())
                 or not isinstance(scalar["name"], str) or not scalar["name"].isidentifier()):
             refuse()
+        if scalar["name"] in live:
+            from .derived_live_arguments import checked_live_operand
+            binding = live[scalar["name"]]
+            if isinstance(binding, dict) and binding.get("schema_operand") in attributes.data:
+                refuse()
+            fact = checked_live_operand(scalar, binding, by_name)
+            if fact is not None:
+                values[scalar["name"]] = fact
+            continue
         binding = bindings[scalar["name"]]
         if not isinstance(binding, dict) or set(binding) != {"schema_argument", "attribute"}:
             refuse()
@@ -162,6 +175,8 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
             refuse()
         values[scalar["name"]] = value
     validate_dimensions(spec, buffers, scalars)
+    if {dimension for buffer in buffers for dimension in buffer["shape"] if isinstance(dimension, str)} - set(values):
+        refuse()
     shapes = {buffer["name"]: [values[n] if isinstance(n, str) else n for n in buffer["shape"]]
               for buffer in buffers}
     inputs = [buffer for buffer in buffers if buffer["effect"] != "write"]
@@ -173,7 +188,8 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
     view_names = set(view_records or {})
     if (not isinstance(mapping, dict) or set(mapping) != {b["name"] for b in inputs}
             or any(not isinstance(name, str) for name in mapping.values())
-            or len(set(mapping.values())) != len(mapping) or set(mapping.values()) | view_names != set(schema_names)
+            or len(set(mapping.values())) != len(mapping) or set(mapping.values()) | view_names
+            | {item["schema_operand"] for item in live.values()} != set(schema_names)
             or not isinstance(result_order, list) or len(result_order) != len(outputs)
             or set(result_order) != set(outputs) or len(call.results) != len(outputs)):
         refuse()

@@ -33,6 +33,14 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.
+  `derived_live_arguments.py` independently checks the explicit
+  `t2m.live-runtime-arguments.v1` profile against original typed parent calls.
+  Exact scalar SSA and unencoded singleton tensors stay live; index casts need
+  representable source constants/static dimensions. Captured and live scalars
+  partition the source formals. Unknown runtime data cannot supply tensor
+  extent/scratch facts, and earlier kernel inlining cannot invent original
+  parent facts. Keep complete schema mappings, static public model types and
+  evaluator exclusion; this grants no numeric/effect/alias or target proof.
   `kernel_allocation_evidence.py` independently validates optional allocation
   source capsules: original TTIR, native-normalized/generic input, original
   argument bindings and source-only stage fingerprints. Copy only their exact
