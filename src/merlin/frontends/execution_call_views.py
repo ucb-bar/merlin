@@ -14,21 +14,29 @@ from .derived_source_views import PROFILE as SOURCE_PROFILE
 from .derived_source_views import checked_source_views
 from .execution_runtime_views import POLICY as RUNTIME_POLICY
 from .execution_runtime_views import PROFILE as RUNTIME_PROFILE
+from .execution_source_coordinates import BINDING_PROFILE as COORDINATE_PROFILE
+from .execution_source_coordinates import POLICY as SOURCE_POLICY
+from .execution_source_coordinates import PROFILE as RUNTIME_SOURCE_PROFILE
+from .execution_source_coordinates import SourceCoordinates
 
 PROFILE = "t2m.execution-checked-call-views.v1"
 POLICY = "dense-row-major-v1"
-FIELDS = {"tensor_views", "source_tensor_views"}
+FIELDS = {"tensor_views", "source_tensor_views", "source_view_policy"}
 
 
 def validate(bindings):
     records = bindings["calls"]
     present = any(FIELDS & set(record) for record in records)
-    required = RUNTIME_PROFILE if any(record.get("tensor_views") == RUNTIME_POLICY for record in records) else PROFILE
+    required = (COORDINATE_PROFILE if any("source_view_policy" in record for record in records) else
+                RUNTIME_PROFILE if any(record.get("tensor_views") == RUNTIME_POLICY for record in records) else PROFILE)
     if present != ("execution_view_binding_profile" in bindings) or (
         present and bindings["execution_view_binding_profile"] != required
     ):
         raise ValueError("executed views require their explicit source-checked binding profile")
     for record in records:
+        if "source_view_policy" in record and (record["source_view_policy"] != SOURCE_POLICY
+                                               or not record.get("source_tensor_views")):
+            raise ValueError("runtime source coordinates require the explicit policy and actual source views")
         if "tensor_views" in record and record["tensor_views"] not in (POLICY, RUNTIME_POLICY):
             raise ValueError("executed tensor view has an unknown policy")
         if "source_tensor_views" in record and (
@@ -45,9 +53,13 @@ def captured(record, attributes):
     }
 
 
-def source_views(record, by_name, attributes, provenance):
+def source_views(record, by_name, attributes, provenance, *, scalars=None, append=None):
     views = record.get("source_tensor_views")
     if views is not None:
+        if record.get("source_view_policy") == SOURCE_POLICY:
+            return SourceCoordinates(append).check_views(
+                views, record["source_operand_bindings"], by_name, scalars, provenance
+            )
         checked_source_views(
             views, record["source_operand_bindings"], by_name, captured(record, attributes), provenance
         )
@@ -109,7 +121,8 @@ def reshape(value, target, append, *, role):
     return value
 
 
-def mark(cloned, views):
+def mark(cloned, views, policy=None):
     if views:
-        cloned.attributes["prov.kernel_source_view_profile"] = builtin.StringAttr(SOURCE_PROFILE)
+        cloned.attributes["prov.kernel_source_view_profile"] = builtin.StringAttr(
+            RUNTIME_SOURCE_PROFILE if policy == SOURCE_POLICY else SOURCE_PROFILE)
         cloned.attributes["prov.kernel_view_arguments"] = builtin.ArrayAttr(builtin.StringAttr(name) for name in views)

@@ -254,7 +254,9 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             spec, function, record, dict(zip((n.data for n in names), call.operands, strict=True)), attributes
         )
         checked_views = source_views(
-            record, dict(zip((n.data for n in names), call.operands, strict=True)), attributes, retained
+            record, dict(zip((n.data for n in names), call.operands, strict=True)), attributes, retained,
+            scalars={scalar["name"]: value for scalar, value in
+                     zip(spec.get("runtime_scalars", []), arguments[len(input_buffers):], strict=True)}, append=append
         )
         mapper = dict(zip(function.body.block.args, arguments, strict=True))
         for source in function.body.block.ops:
@@ -262,7 +264,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
                 returned = [mapper[value] for value in source.arguments]
                 break
             cloned = source.clone(value_mapper=mapper)
-            mark(cloned, checked_views)
+            mark(cloned, checked_views, record.get("source_view_policy"))
             for op in cloned.walk():
                 op.attributes.update(
                     {

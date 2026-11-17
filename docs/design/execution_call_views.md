@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [execution_owned_results]
-code_refs: [src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_runtime_arguments.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py, merlin/tests/ir/test_execution_source_layouts.py]
+code_refs: [src/merlin/frontends/execution_source_coordinates.py, merlin/tests/ir/test_execution_source_coordinates.py, src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_runtime_arguments.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py, merlin/tests/ir/test_execution_source_layouts.py]
 ---
 
 # Source views in execution-owned model binding
@@ -79,6 +79,40 @@ or substituted dimensions refuse even after outer hashes are repaired. V1 static
 adapters retain their original behavior. Versioned source fingerprints also bind
 `execution_runtime_views.py`; actual native and applicable target execution remain
 separate gates.
+
+## Runtime source coordinates
+
+Per-call `source_view_policy: runtime-logical-coordinates-v1` selects execution
+view profile v3. The independent reader derives logical dense-root strides,
+transpose permutations and rank-preserving positive slice offsets from actual
+parent SSA. Checked dimensions, extended products and nonnegative additions
+retain index representability. Every resulting shape, stride and offset must
+equal its actual checked kernel scalar operand and the original executable
+allocation-root pointer binding. The root ABI keeps independently dynamic axes;
+a flattened count never supplies their geometry.
+
+Empty slice refinement accepts only a standard `scf.if` with exactly an
+extraction/yield branch and an empty/yield branch, equal result types, equal
+dynamic sizes and dominating source coordinates. The branch condition must
+equal the conjunction of actual positive sizes. This avoids executing clipped
+boundary extractions; arbitrary branches and effects cannot claim a view.
+The original conditional and every surrounding operation remain in the model.
+
+Records use `t2m.runtime-source-coordinates.v1`; cloned kernels retain
+`t2m.runtime-source-tensor-views.v1`. Both describe logical value coordinates,
+without public physical alias or mutation permission. Complete SSA/type/location
+comparison, source guards, bounds, initialization, ownership and lifetime checks
+remain required. Unknown/downgraded policies or forged records refuse; old v4
+readers reject the explicit fields. Public model types, receipt v2 and signature
+v6 retain their existing schemas. The selected consumer fingerprint additionally
+binds `execution_source_coordinates.py`.
+
+Independent native tests cover exact wide-i64 words, empty boundary/root shapes,
+actual coordinate/condition aborts and impure or falsified-record refusals.
+External frontend integration separately qualifies i64/f32 dynamic-matrix models
+with three actual Triton view updates and all nine snapshots/results. This does
+not establish negative/rank-reduced slices, arbitrary runtime strides,
+physical/mutating aliases, general effects or accelerator performance.
 
 ## Semantic source layouts
 

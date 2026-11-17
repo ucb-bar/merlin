@@ -52,6 +52,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   standard collapse/expand. Same-rank dynamic types do not prove geometry.
   Empty domains must bypass product overflow; reject ambiguous output axes.
   Never guess coordinates from evaluator values or grant physical aliases.
+  `execution_source_coordinates.py` independently reconstructs explicit v3
+  runtime source-view paths and logical shape/stride/offset guards. Reopen
+  actual transpose/slice/cast SSA and original allocation pointer bindings.
+  Conditional empty slices require exact pure extract/empty branches, common
+  dominating coordinates and an executable nonempty-condition check. Preserve
+  complete model SSA and locations; records grant no physical alias or mutation.
   Reopen original calls, retained located kernel bodies and every scalar/
   dimension/cast guard; compare the entire parent expansion and source locations.
   Located artifacts must also reproduce the retained unlocated implementation
