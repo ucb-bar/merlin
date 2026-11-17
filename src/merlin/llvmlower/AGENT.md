@@ -10,8 +10,14 @@ Release tracked owners once, never arbitrary descriptor pointers. Independent
 allocation-product guards must precede index/byte arithmetic, with actual
 runtime byte/count budgets still enforced. This grants no shape-prediction,
 source-equivalence, mutating/alias, target or dynamic-loop ownership permission.
-The default staged/out-parameter consumers remain unchanged until an explicit
-joint package/signature contract admits this separate result mode.
+The default staged/out-parameter consumers retain their original contracts;
+the separate result mode requires explicit staged selection.
+The explicit signature v6 selection now reaches the staged host worker.
+`owned_result_program` persists only fixed compiler products and implementation
+identities, never invocation arrays or serialized foreign paths. Reconstruct
+source/bridge types on reopening, preserve original input restrictions, and
+keep compilation out of repeated invocation. This does not admit arbitrary
+producer/binding shapes, generated C runtimes or target harnesses automatically.
 Optional native stages may dispatch pipeline fragments without the allocation
 marker. Forward all callbacks unchanged there; require exactly one guard-marker
 consumption across the complete dispatch before translating the final module.

@@ -212,6 +212,7 @@ def compile_owned_results(
     max_bytes=64 << 20,
     max_allocations=4096,
     max_output_bytes=64 << 20,
+    allow_existing_workdir=False,
 ):
     """Compile actual execution-sized results through normal Merlin ownership."""
     from merlin.common.paths import runtime_dir
@@ -226,7 +227,13 @@ def compile_owned_results(
     _limits(max_bytes, max_allocations, max_output_bytes)
     prepared, inputs, outputs = prepare(source, entry=entry)
     work = Path(workdir).resolve()
-    work.mkdir(parents=True, exist_ok=False)
+    if type(allow_existing_workdir) is not bool:
+        raise ValueError("owned result build-directory selection requires an explicit bool")
+    if allow_existing_workdir and work.exists():
+        if not work.is_dir() or any(work.iterdir()):
+            raise ValueError("owned result compiler directory must be empty")
+    else:
+        work.mkdir(parents=True, exist_ok=False)
     original = work / "source.mlir"
     original.write_text(source)
     (work / "prepared.mlir").write_text(prepared)

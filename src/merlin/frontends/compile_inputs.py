@@ -2,7 +2,7 @@
 
 This host-owned boundary is deliberately narrower than a capture bundle. The
 compiler receives parsed IR, external weights, source correspondence, and a
-static signature. Runtime inputs and reference outputs stay with the evaluator.
+declared signature. Runtime inputs and reference outputs stay with the evaluator.
 The capture producer's receipt establishes byte identity for copied members;
 it does not establish source closure or numerical equivalence.
 """
@@ -19,7 +19,6 @@ from pathlib import Path
 from xdsl.dialects.builtin import StringAttr
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.xdsl_dialects._common import text as module_text
 
 _COPIED = ("weights.safetensors", "weights.safetensors.manifest.json", "frontend-trace.json")
 _SOURCE = "model.mlir"
@@ -46,13 +45,18 @@ def _checked_member(directory: Path, receipt: dict, name: str) -> bytes:
     return raw
 
 
-def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> dict:
+def stage_compile_inputs(capture_dir: str | Path, destination: str | Path, *, result_mode=None) -> dict:
     """Publish a new, immutable compiler-only directory for one captured model.
 
     The destination must be absent. The caller owns capture permission and the
     evaluator's separate runtime bundle. This function never reads the runtime
     input or golden members, even if the producer receipt lists them.
+    Explicit ``result_mode='execution-owned'`` selects signature v6's executed
+    descriptors while retaining original input and source-package validation.
     """
+    from .execution_result_signature import program_text, select_signature, selected_manifest, validate_mode
+
+    validate_mode(result_mode)
     source = Path(capture_dir).absolute()
     target = Path(destination).absolute()
     if (
@@ -69,11 +73,11 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
     if receipt.get("schema") in ("t2m.capture-receipt.v2", "t2m.effect-kernel-receipt.v1"):
         from .kernel_compile_inputs import _stage_kernel_inputs
 
-        return _stage_kernel_inputs(source, target, receipt, receipt_raw)
+        return _stage_kernel_inputs(source, target, receipt, receipt_raw, result_mode=result_mode)
     if receipt.get("schema") == "t2m.bound-model-receipt.v1":
         from .derived_compile_inputs import _stage_bound_model_inputs
 
-        return _stage_bound_model_inputs(source, target, receipt, receipt_raw)
+        return _stage_bound_model_inputs(source, target, receipt, receipt_raw, result_mode=result_mode)
     if receipt.get("schema") != "m2m.capture-receipt.v1":
         raise ValueError("unsupported capture receipt")
     materialized_abi = receipt.get("materialized_abi") or {}
@@ -100,7 +104,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
         raise ValueError("parsed IR weights reference differs from capture metadata")
     module.attributes["prov.weights_file"] = StringAttr("weights.safetensors")
     module.verify()
-    staged_text = module_text(module, generic=True)
+    staged_text = program_text(module, result_mode)
     parsed = parse_mlir_text(staged_text)
     parsed.verify()
     if parsed.attributes.get("prov.weights_file") != StringAttr("weights.safetensors"):
@@ -121,6 +125,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
         or materialized_abi.get("inputs") != len(signature["inputs"])
     ):
         raise ValueError("capture has an incomplete invocation signature")
+    signature = select_signature(module, signature, result_mode)
     signature_raw = (json.dumps(signature, sort_keys=True, indent=2) + "\n").encode()
     manifest = {
         "schema": "merlin.compile-inputs.v1",
@@ -136,6 +141,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path) -> di
         },
         "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz"],
     }
+    selected_manifest(manifest, result_mode)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

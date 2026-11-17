@@ -250,6 +250,14 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
 
 ## Invariants
 
+- Explicit `stage_compile_inputs(..., result_mode="execution-owned")` selects
+  signature v6 after the original capture/kernel/model validations. Reconstruct
+  actual public types and static dimensions; null dynamic result dimensions
+  are observed after execution, never predicted from evaluator metadata. Keep
+  original input restrictions, source locations and evaluator exclusion. Recheck
+  v6 independently before compilation/invocation and reject older-profile
+  reinterpretation. This grants no arithmetic, effect, alias or lifetime facts.
+
 - Parse the **full** model artifact, not `sections/*.mlir`: the model2MLIR section splitter currently emits use-before-def SSA references (invalid SSACFG IR; e.g. `%2034` in `sections/smolvla.model.mlir`). Fix upstream before relying on sections.
 - `PAREN_RESULTS` exists because xDSL 0.65's linalg parser rejects `} -> (T1, T2)`; remove it once xDSL accepts the parenthesized multi-result form.
 - The integer pipeline executes a layer's **i8 deployment GEMM** with the real (M,K,N); the capture dtype is preserved as provenance, never silently claimed as executed.

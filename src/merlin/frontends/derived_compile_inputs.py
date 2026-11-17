@@ -24,7 +24,6 @@ from merlin.frontends.kernel_allocation_evidence import checked_allocation_sourc
 from merlin.frontends.kernel_cfg_evidence import checked_control_flow_sources
 from merlin.frontends.kernel_compile_inputs import _checked_memory_members, _checked_word_intent
 from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.xdsl_dialects._common import text as module_text
 
 
 def _sha(raw: bytes) -> str:
@@ -42,7 +41,11 @@ def _relative(name: str) -> Path:
     return path
 
 
-def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
+def _stage_bound_model_inputs(
+    source: Path, target: Path, receipt: dict, receipt_raw: bytes, *, result_mode=None
+) -> dict:
+    from .execution_result_signature import program_text, select_signature, selected_manifest
+
     artifacts = receipt.get("artifacts")
     if not isinstance(artifacts, dict) or receipt.get("materialized_abi") != "unchanged-from-parent":
         raise ValueError("derived capture has an incomplete ABI/artifact inventory")
@@ -345,7 +348,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
         DictionaryAttr({**attributes.data, "bufferization.writable": IntegerAttr(0, i1)})
         for attributes in argument_attributes
     )
-    staged = module_text(module, generic=True).encode()
+    staged = program_text(module, result_mode).encode()
     parse_mlir_text(staged.decode()).verify()
     signature = {
         "schema": "merlin.compile-signature.v1",
@@ -393,6 +396,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             signature["guard_storage_scope"] = "sum-of-source-shape-upper-bounds"
     elif contract is not None or "guard_storage_bytes" in bindings:
         raise ValueError("derived model has an unbound guard storage declaration")
+    signature = select_signature(module, signature, result_mode)
     correspondence = {
         "schema": "merlin.derived-source-correspondence.v1",
         "producer": "triton2MLIR",
@@ -432,6 +436,7 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     }
     if symbolic_model is not None:
         manifest["scope"] = "compiler_only_symbolic_capture; source_closure_and_numerical_admission_unverified"
+    selected_manifest(manifest, result_mode)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:

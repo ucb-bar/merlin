@@ -17,9 +17,38 @@ original computation runs once. This supports dimensions computed from vector
 contents without a separate shape-prediction invocation or a source expression
 restricted to public axes and singleton words.
 
-The ordinary out-parameter pipeline, staged compile signatures and existing
-model/runtime consumers remain unchanged. This is a separate generic consumer
-mechanism, not automatic triton2MLIR package admission or target qualification.
+`stage_compile_inputs(..., result_mode="execution-owned")` explicitly selects
+`merlin.compile-signature.v6` for ordinary captures, standalone kernels and
+bound models after their existing package/source checks. The default result
+mode and signatures v1--v5 retain their original behavior. Triton2MLIR's selected
+host workers now compile and invoke this mode; native evaluator, generated C
+runtime and target harness integration remain separate requirements.
+
+## Compiler staging and repeated invocation
+
+Signature v6 reconstructs every public input/result rank, storage type and
+static dimension from actual typed source. Unknown result extents remain null;
+no evaluator value or captured result size predicts them. Existing input
+dimension/scalar relationships and scalar bounds remain explicit invocation
+restrictions. They supply no output prediction or numerical/effect permission.
+The signature separately fixes the selected allocation limits and native width.
+Changed/rehashed result declarations, extra size programs, resource policies
+and invalid axis coordinates refuse independent source reconstruction. Older
+preallocated runtime readers refuse this version.
+
+Staging reads only the original compiler members and preserves source locations.
+The selected capture interface reports that C runtime generation was not
+performed; result descriptors belong to the later host invocation. Compiler
+workers receive no invocation-array or reference arguments. The original parent
+archives, weights, kernel correspondence and executable payload remain intact.
+
+`owned_result_program.save/load` retains the source, prepared module, LLVM,
+bridge and library identities, selected limits and implementation identities in
+`merlin.owned-result-program.v1`. Readers open fixed local compiler filenames,
+never serialized paths, and independently reconstruct prepared source/bridge
+types. The runtime reopens that program without compilation; complete result
+arrays and actual allocation observations stay with the evaluator. These
+records establish product custody, not source equivalence or hermetic closure.
 
 ## Ownership and ABI
 
@@ -96,10 +125,12 @@ positive static trip counts with one final same-block release. Runtime/zero-trip
 generation state and conditional or returned ownership need a separate closed
 proof. The transport does not disable that check to obtain a successful run.
 
-Further work must connect this mode to independently staged compiler signatures,
-triton2MLIR result/binding contracts and its native/target evaluators. Existing
-input-axis and source-proved size programs remain useful for preallocated
-interfaces; they do not silently acquire execution-derived extents. No full
+The selected staging/host interface now qualifies complete input-count models
+with two dependent Triton calls in tensor, buffer and guarded-buffer profiles.
+Further work must extend the producer/binding contracts to arbitrary internally
+computed sizes and connect native/target evaluators and qualification receipts.
+Existing input-axis and source-proved size programs remain useful for
+preallocated interfaces; they do not silently acquire execution-derived extents. No full
 arbitrary-TTIR, GPU correspondence, accelerator or performance claim follows.
 
 The upstream contracts and reused implementation are documented in

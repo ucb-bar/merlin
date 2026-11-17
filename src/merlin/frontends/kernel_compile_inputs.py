@@ -19,7 +19,6 @@ from merlin.frontends.kernel_allocation_evidence import checked_allocation_sourc
 from merlin.frontends.kernel_cfg_evidence import checked_control_flow_sources
 from merlin.frontends.kernel_shape_abi import validate_dimensions
 from merlin.frontends.kernel_typed_storage import checked_guard_costs, storage_spec
-from merlin.xdsl_dialects._common import text
 
 
 def _guard_layout(spec, version2, *, atomics=False):
@@ -131,7 +130,9 @@ def _checked_word_intent(entry, members):
             raise ValueError("atomic kernel lacks its private-invocation effect intent")
 
 
-def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes) -> dict:
+def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes, *, result_mode=None) -> dict:
+    from .execution_result_signature import program_text, select_signature, selected_manifest
+
     observable = receipt.get("schema") == "t2m.effect-kernel-receipt.v1"
     def digest(raw):
         return hashlib.sha256(raw).hexdigest()
@@ -264,7 +265,8 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     entry.properties["arg_attrs"] = ArrayAttr(DictionaryAttr({**a.data, **(
         {"bufferization.writable": IntegerAttr(0, i1)} if isinstance(t, TensorType) else {})})
         for a, t in zip(attrs, entry.function_type.inputs, strict=True))
-    staged = text(module, generic=True).encode()
+    signature = select_signature(module, signature, result_mode)
+    staged = program_text(module, result_mode).encode()
     parse_mlir_text(staged.decode()).verify()
     # Project compiler provenance, excluding numeric admission/evaluator reports.
     fields = ("schema", "profile", "abi_difference", "correspondence", "emitted_operations", "intent", "memory",
@@ -287,6 +289,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
                 "members": {name: digest(data) for name, data in members.items()},
                 "excluded_evaluator_members": ["inputs.npz", "golden.npy", "extra.npz", "execution.json",
                     *(["reference.json", "reference.npz", "native/"] if observable else [])]}
+    selected_manifest(manifest, result_mode)
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:
