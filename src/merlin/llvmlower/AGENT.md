@@ -79,6 +79,13 @@ Its complete positional model archive includes parameters/buffers/constants;
 stored weight arguments must match the original container bytes, while normal
 weight-blob transport remains intact. Parameter stubs require another explicit
 storage contract. No saved invocation size specializes the compiler program.
+Signature v4 additionally retains typed source-derived size programs. Independently
+reconstruct and prove their relationship to the actual standard body before
+allocating results; a content-bound DAG alone supplies no shape authority.
+Evaluate actual input axes without specializing the public ABI. Keep integer
+widths/signedness, source guards and bounded proof failures explicit. This grants
+no physical alias, numeric, effect, mutation or target implementation permission.
+
 The selected runtime signature also admits an actual void entry. Keep its
 result roster empty; no placeholder tensor or output allocation is permitted.
 Runtime archives bind exact argument ordinals and require a complete input

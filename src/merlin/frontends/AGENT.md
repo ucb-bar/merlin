@@ -58,6 +58,15 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   profiles, false axes/body/range records and reordered dependencies refuse.
   General derived/data-dependent dimensions and physical/mutating views remain
   separate work; shape proofs grant no numeric, effect, alias or target permission.
+  `t2m.symbolic-model-shapes.v2` separately admits typed derived size programs
+  (`t2m.runtime-shapes.v3`, `logical-size-program.v1`). `shape_expression_ir`
+  reopens actual source scalar/tensor operations and dominating assertions;
+  `shape_expressions` preserves word widths, signedness and conditional values.
+  Source-bound equality needs an actual bounded UNSAT proof when syntax differs.
+  Missing/inconclusive solvers refuse. Signature v4 publishes that checked DAG;
+  runtime allocation rechecks the complete body. Never import producer analyses
+  or let a rehashed canonical program replace source proof. General runtime views,
+  data-dependent allocation, resizing and effects retain their own obligations.
   `kernel_allocation_evidence.py` independently validates optional allocation
   source capsules: original TTIR, native-normalized/generic input, original
   argument bindings and source-only stage fingerprints. Copy only their exact

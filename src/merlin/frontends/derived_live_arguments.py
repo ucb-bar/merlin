@@ -34,8 +34,11 @@ def _integer(value, depth=0):
     if isinstance(operation, tensor.DimOp):
         source, axis = operation.operands
         axis = _integer(axis, depth + 1)
-        if (isinstance(source.type, builtin.TensorType) and type(axis) is int
-                and 0 <= axis < len(source.type.get_shape())):
+        if (
+            isinstance(source.type, builtin.TensorType)
+            and type(axis) is int
+            and 0 <= axis < len(source.type.get_shape())
+        ):
             extent = source.type.get_shape()[axis]
             return extent if extent >= 0 else None
     if isinstance(operation, tensor.FromElementsOp) and len(operation.operands) == 1:
@@ -43,7 +46,7 @@ def _integer(value, depth=0):
     return None
 
 
-def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_indices=False):
+def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_indices=False, shape_facts=None):
     def refuse():
         raise ValueError("derived live runtime scalar disagrees with original parent SSA/types")
 
@@ -55,8 +58,9 @@ def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_
         if dtype not in ("i8", "i16", "i32", "i64") or not isinstance(bounds, list) or len(bounds) != 2:
             refuse()
         width = target.bitwidth
-        if (any(type(n) is not int for n in bounds)
-                or not -(1 << (width - 1)) <= bounds[0] <= bounds[1] < 1 << (width - 1)):
+        if any(type(n) is not int for n in bounds) or not -(1 << (width - 1)) <= bounds[0] <= bounds[1] < 1 << (
+            width - 1
+        ):
             refuse()
     if not isinstance(record, dict) or not isinstance(record.get("schema_operand"), str):
         refuse()
@@ -67,8 +71,11 @@ def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_
     fact = _integer(value)
     enclosure = None
     if isinstance(value.type, builtin.TensorType):
-        if (not isinstance(value.type.encoding, builtin.NoneAttr) or value.type.element_type != target
-                or any(extent != 1 for extent in value.type.get_shape())):
+        if (
+            not isinstance(value.type.encoding, builtin.NoneAttr)
+            or value.type.element_type != target
+            or any(extent != 1 for extent in value.type.get_shape())
+        ):
             refuse()
         adapter = "singleton-tensor-extract"
     elif value.type == target:
@@ -81,6 +88,8 @@ def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_
             from .source_index_ranges import unsigned_index_range
 
             enclosure = unsigned_index_range(value, source_point)
+            if enclosure is None and shape_facts is not None and shape_facts.expressions:
+                enclosure = shape_facts.range_at(value, source_point)
             if enclosure is None or not 0 <= enclosure[0] <= enclosure[1] < 1 << (width - 1):
                 refuse()
             adapter = "checked-index-castui"

@@ -13,6 +13,8 @@ code_refs:
   - src/merlin/frontends/source_index_ranges.py
   - src/merlin/frontends/derived_symbolic_shapes.py
   - src/merlin/frontends/model_shape_facts.py
+  - src/merlin/frontends/shape_expression_ir.py
+  - src/merlin/frontends/shape_expressions.py
   - src/merlin/llvmlower/runtime_invocation.py
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/frontends/derived_source_views.py
@@ -26,6 +28,8 @@ code_refs:
   - merlin/tests/ir/test_derived_live_arguments.py
   - merlin/tests/ir/test_derived_symbolic_shapes.py
   - merlin/tests/runtime/test_runtime_input_axes.py
+  - merlin/tests/runtime/test_derived_size_invocation.py
+  - merlin/tests/ir/test_derived_size_sources.py
   - merlin/tests/ir/test_derived_runtime_arguments.py
   - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
@@ -140,6 +144,43 @@ against the original weight container, retaining its ordinary blob transport.
 This grants no parameter-update protocol, source-equivalence, alias, effect or
 target implementation. Broader dimension expressions, dynamic views, resizing
 state and data-dependent results remain separate work.
+
+### Derived and conditional dimensions
+
+`t2m.symbolic-model-shapes.v2` additionally selects `t2m.runtime-shapes.v3` and
+the explicit `logical-size-program.v1` typed DAG. The compiler publishes
+`merlin.compile-signature.v4`, with `shape_scope: source-proved-derived-dimensions`
+and the checked `shape_program`. V1 model profiles/signature v3 retain their
+original input-axis scope; older signatures refuse the new program field.
+Public argument/result types, parent artifacts and receipt schemas are unchanged.
+
+`shape_expression_ir` reconstructs actual scalar constants, fixed-width word
+arithmetic/casts, comparisons and selections, plus rank-preserving slice sizes.
+Widths, modular behavior and signed interpretation stay explicit. Index selection
+and unsigned comparison choose no native index width. Only actual dominating
+assertions transfer bounds between injectively transported input dimensions;
+late, sibling-region and truncated-word equalities supply no such proof.
+
+`shape_expressions` validates complete typed dependencies, content-bound node
+identifiers and the exact reachable program. Source-derived expressions must
+agree with actual kernel arguments/results and the complete inlined body.
+When their syntax differs, bounded Z3 bit-vector queries prove equality over
+original source assertions/enclosures. Only UNSAT admits the relationship;
+missing or inconclusive solvers refuse. The optional `shape-proofs` extra declares
+the solver dependency. Native workers need only pure program evaluation.
+Programs have 4,096-node, 64-level, 16,384-visit and 4,096-bit-word budgets;
+each proof has two seconds, one million resource units and 128 MiB. These limits
+are resource refusals, not hardware facts or universal shape coverage.
+
+Before allocating results, runtime invocation independently reconstructs the
+actual standard body and checks the supplied expression contract. Canonical
+but false replacement programs and rehashed result declarations refuse. Actual
+input axes then size descriptors without changing compiler arguments or payload.
+Conditional dimensions retain the original selections, and guarded scratch
+still follows checked source upper bounds. These logical proofs grant no
+physical alias, public mutation, effect, numeric policy or target implementation.
+Runtime-supplied slice bounds, data-dependent sizes, resizing state and broader
+model/effect compositions remain separate obligations.
 
 Standard parallel tensor operations have explicit xDSL bindings, including
 multi-axis/dynamic-bound syntax. Standard buffer materialization retains compatible

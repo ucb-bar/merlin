@@ -63,14 +63,19 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     weights = {name: checked(name) for name in ("weights.safetensors", "weights.safetensors.manifest.json")}
     bindings_raw = checked("kernel-bindings.json")
     bindings = json.loads(bindings_raw)
-    if (bindings.get("schema") not in ("t2m.model-kernel-binding.v1", "t2m.model-kernel-binding.v2", "t2m.model-kernel-binding.v3")
-            or bindings.get("mlir_sha256") != _sha(raw)):
+    if bindings.get("schema") not in (
+        "t2m.model-kernel-binding.v1",
+        "t2m.model-kernel-binding.v2",
+        "t2m.model-kernel-binding.v3",
+    ) or bindings.get("mlir_sha256") != _sha(raw):
         raise ValueError("derived source correspondence does not bind the current model")
     parent_raw = checked("parent/capture_receipt.json")
     parent = json.loads(parent_raw)
-    if (receipt.get("parent_receipt") != {"bytes": len(parent_raw), "sha256": _sha(parent_raw)}
-            or parent.get("schema") != "m2m.capture-receipt.v1"
-            or (parent.get("materialized_abi") or {}).get("complete") is not True):
+    if (
+        receipt.get("parent_receipt") != {"bytes": len(parent_raw), "sha256": _sha(parent_raw)}
+        or parent.get("schema") != "m2m.capture-receipt.v1"
+        or (parent.get("materialized_abi") or {}).get("complete") is not True
+    ):
         raise ValueError("derived capture lacks a bound complete parent ABI")
     copied = {}
     parent_members = receipt.get("parent_artifact_bindings")
@@ -89,36 +94,60 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             copied["source/parent/" + name] = data
     parent_model = copied["source/parent/model.mlir"]
     parent_trace = json.loads(copied["source/parent/frontend-trace.json"])
-    if (bindings.get("input_model_sha256") != _sha(parent_model)
-            or parent_trace.get("status") != "complete"
-            or (parent_trace.get("mlir") or {}).get("sha256") != _sha(parent_model)):
+    if (
+        bindings.get("input_model_sha256") != _sha(parent_model)
+        or parent_trace.get("status") != "complete"
+        or (parent_trace.get("mlir") or {}).get("sha256") != _sha(parent_model)
+    ):
         raise ValueError("derived correspondence does not bind the original parent graph")
     parent_module = parse_mlir_text(parent_model.decode())
     parent_module.verify()
     from .compiler_constants import checked_compiler_constants
-    constants = checked_compiler_constants(parent, weights["weights.safetensors.manifest.json"], weights["weights.safetensors"],
-                                           parent_module, parent_trace)
+
+    constants = checked_compiler_constants(
+        parent,
+        weights["weights.safetensors.manifest.json"],
+        weights["weights.safetensors"],
+        parent_module,
+        parent_trace,
+    )
     if constants is not None:
         copied["compiler-constants.json"] = _json(constants)
-    copied["source/parent/compiler-artifacts.json"] = _json({
-        "schema": "merlin.capture-compiler-projection.v1", "original_receipt_sha256": _sha(parent_raw),
-        "artifacts": {name: parent["artifacts"][name] for name in
-                      ("model.mlir", "frontend-trace.json", "weights.safetensors", "weights.safetensors.manifest.json")}})
+    copied["source/parent/compiler-artifacts.json"] = _json(
+        {
+            "schema": "merlin.capture-compiler-projection.v1",
+            "original_receipt_sha256": _sha(parent_raw),
+            "artifacts": {
+                name: parent["artifacts"][name]
+                for name in (
+                    "model.mlir",
+                    "frontend-trace.json",
+                    "weights.safetensors",
+                    "weights.safetensors.manifest.json",
+                )
+            },
+        }
+    )
     implementations = receipt.get("kernel_artifacts")
     if not isinstance(implementations, dict) or set(implementations) != set(bindings.get("kernels", {})):
         raise ValueError("derived kernel implementation inventory differs from correspondence")
     calls = bindings.get("calls")
-    if (not isinstance(calls, list)
-            or {call.get("implementation_sha256") for call in calls} != set(implementations)
-            or len({call.get("id") for call in calls}) != len(calls)):
+    if (
+        not isinstance(calls, list)
+        or {call.get("implementation_sha256") for call in calls} != set(implementations)
+        or len({call.get("id") for call in calls}) != len(calls)
+    ):
         raise ValueError("derived kernel call correspondence is incomplete or ambiguous")
     module = parse_mlir_text(raw.decode())
     module.verify()
     from .derived_symbolic_shapes import checked_model_shapes
 
     interfaces = {}
-    if ("model_shape_profile" in bindings or "runtime_shape_contract" in bindings
-            or any("symbolic_tensor_shapes" in call for call in calls)):
+    if (
+        "model_shape_profile" in bindings
+        or "runtime_shape_contract" in bindings
+        or any("symbolic_tensor_shapes" in call for call in calls)
+    ):
         for digest, directory in implementations.items():
             body = parse_mlir_text(checked(directory + "/model.mlir").decode())
             body.verify()
@@ -129,47 +158,79 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     symbolic_model = checked_model_shapes(parent_module, module, bindings, interfaces)
     from .derived_live_arguments import PROFILE as LIVE_PROFILE
     from .derived_live_arguments import RANGE_PROFILE, binding_profile
+
     expected_profile = binding_profile(calls)
-    if (expected_profile is not None and bindings.get("argument_binding_profile") != expected_profile
-            or expected_profile is None and bindings.get("argument_binding_profile") in (LIVE_PROFILE, RANGE_PROFILE)):
+    if (
+        expected_profile is not None
+        and bindings.get("argument_binding_profile") != expected_profile
+        or expected_profile is None
+        and bindings.get("argument_binding_profile") in (LIVE_PROFILE, RANGE_PROFILE)
+    ):
         raise ValueError("derived live runtime operands require their explicit binding profile")
     source_views = bindings["schema"] == "t2m.model-kernel-binding.v3"
-    if (source_views != any("source_tensor_views" in call for call in calls)
-            or source_views != ("source_tensor_view_binding_profile" in bindings)
-            or source_views and bindings["source_tensor_view_binding_profile"] != "t2m.captured-source-tensor-views.v1"):
+    if (
+        source_views != any("source_tensor_views" in call for call in calls)
+        or source_views != ("source_tensor_view_binding_profile" in bindings)
+        or source_views
+        and bindings["source_tensor_view_binding_profile"] != "t2m.captured-source-tensor-views.v1"
+    ):
         raise ValueError("derived source tensor views require the explicit v3 binding profile")
-    tensor_views = bindings["schema"] == "t2m.model-kernel-binding.v2" or source_views and "tensor_view_binding_profile" in bindings
-    if (tensor_views and (bindings.get("tensor_view_binding_profile") != "t2m.captured-dense-tensor-views.v1"
-                        or not any(call.get("tensor_views") == "dense-row-major-v1" for call in calls))
-            or not tensor_views and ("tensor_view_binding_profile" in bindings
-                                     or any("tensor_views" in call for call in calls))
-            or any(call.get("tensor_views") not in (None,"dense-row-major-v1") for call in calls)):
+    tensor_views = (
+        bindings["schema"] == "t2m.model-kernel-binding.v2"
+        or source_views
+        and "tensor_view_binding_profile" in bindings
+    )
+    if (
+        tensor_views
+        and (
+            bindings.get("tensor_view_binding_profile") != "t2m.captured-dense-tensor-views.v1"
+            or not any(call.get("tensor_views") == "dense-row-major-v1" for call in calls)
+        )
+        or not tensor_views
+        and ("tensor_view_binding_profile" in bindings or any("tensor_views" in call for call in calls))
+        or any(call.get("tensor_views") not in (None, "dense-row-major-v1") for call in calls)
+    ):
         raise ValueError("derived tensor views require the explicit v2 binding and known view policy")
     guard_storage, runtime_ordinals = 0, set()
     source_layout_profile = bindings.get("source_layout_binding_profile")
     source_layout_present = any("source_layout_specialization" in kernel for kernel in bindings["kernels"].values())
-    if ((source_layout_present and source_layout_profile != "t2m.captured-source-layout.v1")
-            or not source_layout_present and "source_layout_binding_profile" in bindings):
+    if (
+        (source_layout_present and source_layout_profile != "t2m.captured-source-layout.v1")
+        or not source_layout_present
+        and "source_layout_binding_profile" in bindings
+    ):
         raise ValueError("derived source layouts require the explicit captured source-layout profile")
     for digest, directory in implementations.items():
         relative = _relative(directory)
         if len(relative.parts) != 2 or relative.parts[0] != "kernels":
             raise ValueError("derived kernel artifacts need their own kernel directory")
-        kernel = {name: checked(directory + "/" + name)
-                  for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")}
+        kernel = {
+            name: checked(directory + "/" + name)
+            for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")
+        }
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))
-        kernel.update(checked_allocation_sources(lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"]))
-        kernel.update(checked_control_flow_sources(lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"]))
+        kernel.update(
+            checked_allocation_sources(lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"])
+        )
+        kernel.update(
+            checked_control_flow_sources(
+                lambda name: checked(directory + "/" + name), provenance, kernel["source.ttir"]
+            )
+        )
         runtime_shapes = []
         selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
         for call in selected_calls:
             checked_source_layout_call(parent_module, provenance, call, source_layout_profile)
-        if spec.get("runtime_scalars") or any(call.get("tensor_views") or call.get("source_tensor_views")
-                                              or call.get("runtime_operand_bindings") for call in selected_calls):
-            if (spec.get("runtime_scalars")
-                    and bindings.get("argument_binding_profile") not in (
-                        "t2m.captured-runtime-arguments.v1", LIVE_PROFILE, RANGE_PROFILE)):
+        if spec.get("runtime_scalars") or any(
+            call.get("tensor_views") or call.get("source_tensor_views") or call.get("runtime_operand_bindings")
+            for call in selected_calls
+        ):
+            if spec.get("runtime_scalars") and bindings.get("argument_binding_profile") not in (
+                "t2m.captured-runtime-arguments.v1",
+                LIVE_PROFILE,
+                RANGE_PROFILE,
+            ):
                 raise ValueError("derived runtime kernel arguments require their explicit binding profile")
             for call in selected_calls:
                 ordinal = call.get("parent_call_ordinal")
@@ -179,15 +240,23 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
                 if symbolic_model is not None:
                     runtime_shapes.append(symbolic_model["maximum_shapes"][ordinal])
                 else:
-                    runtime_shapes.append(checked_runtime_call_shapes(
-                                          parent_module, spec, call, tensor_views=tensor_views,
-                                          source_views=source_views, provenance=provenance,
-                                          live_operands=bindings.get("argument_binding_profile")
-                                          in (LIVE_PROFILE, RANGE_PROFILE),
-                                          checked_indices=bindings.get("argument_binding_profile") == RANGE_PROFILE))
+                    runtime_shapes.append(
+                        checked_runtime_call_shapes(
+                            parent_module,
+                            spec,
+                            call,
+                            tensor_views=tensor_views,
+                            source_views=source_views,
+                            provenance=provenance,
+                            live_operands=bindings.get("argument_binding_profile") in (LIVE_PROFILE, RANGE_PROFILE),
+                            checked_indices=bindings.get("argument_binding_profile") == RANGE_PROFILE,
+                        )
+                    )
         if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
-            if not runtime_shapes and any(not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs):
+            if not runtime_shapes and any(
+                not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs
+            ):
                 raise ValueError("guarded derived kernels require static positive scratch dimensions")
             kernel_module = parse_mlir_text(kernel["model.mlir"].decode())
             kernel_module.verify()
@@ -199,24 +268,44 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
             types = list(entries[0].function_type.outputs)
             cost = json.loads(kernel["memory-admission.json"])["guard_storage_bytes_per_output_element"]
             from merlin.frontends.kernel_typed_storage import checked_guard_costs
+
             costs = checked_guard_costs(entries[0], provenance, cost)
-            if (len(types) != len(outputs)
-                    or any(not isinstance(t, TensorType) or len(t.get_shape()) != len(b["shape"])
-                           or any((actual >= 0 if isinstance(expected, str) else actual != expected)
-                                  for actual, expected in zip(t.get_shape(), b["shape"], strict=True))
-                           or str(t.get_element_type()) != b["dtype"] for t, b in zip(types, outputs))):
+            if len(types) != len(outputs) or any(
+                not isinstance(t, TensorType)
+                or len(t.get_shape()) != len(b["shape"])
+                or any(
+                    (actual >= 0 if isinstance(expected, str) else actual != expected)
+                    for actual, expected in zip(t.get_shape(), b["shape"], strict=True)
+                )
+                or str(t.get_element_type()) != b["dtype"]
+                for t, b in zip(types, outputs)
+            ):
                 raise ValueError("guarded derived kernel scratch differs from its typed results")
-            guard_storage += (sum(cost * math.prod(shape[b["name"]]) for shape in runtime_shapes for cost, b in zip(costs, outputs, strict=True))
-                if runtime_shapes else sum(cost * math.prod(b["shape"]) for cost, b in zip(costs, outputs, strict=True)) * sum(
-                    call["implementation_sha256"] == digest for call in calls))
+            guard_storage += (
+                sum(
+                    cost * math.prod(shape[b["name"]])
+                    for shape in runtime_shapes
+                    for cost, b in zip(costs, outputs, strict=True)
+                )
+                if runtime_shapes
+                else sum(cost * math.prod(b["shape"]) for cost, b in zip(costs, outputs, strict=True))
+                * sum(call["implementation_sha256"] == digest for call in calls)
+            )
             if not 0 <= guard_storage < 2**63:
                 raise ValueError("guarded derived kernel scratch exceeds its i64 domain")
-        if (digest != _sha(kernel["model.mlir"]) or provenance.get("mlir_sha256") != digest
-                or provenance.get("source_sha256") != _sha(kernel["source.ttir"])
-                or provenance.get("spec") != spec or provenance != bindings["kernels"][digest]):
+        if (
+            digest != _sha(kernel["model.mlir"])
+            or provenance.get("mlir_sha256") != digest
+            or provenance.get("source_sha256") != _sha(kernel["source.ttir"])
+            or provenance.get("spec") != spec
+            or provenance != bindings["kernels"][digest]
+        ):
             raise ValueError("derived kernel source/ABI/provenance relation failed")
-        if any(call.get("source_sha256") != provenance["source_sha256"]
-               for call in calls if call["implementation_sha256"] == digest):
+        if any(
+            call.get("source_sha256") != provenance["source_sha256"]
+            for call in calls
+            if call["implementation_sha256"] == digest
+        ):
             raise ValueError("derived kernel call does not bind its original TTIR")
         copied.update(("source/" + directory + "/" + name, data) for name, data in kernel.items())
     module = parse_mlir_text(raw.decode())
@@ -246,43 +335,93 @@ def _stage_bound_model_inputs(source: Path, target: Path, receipt: dict, receipt
     # bufferization otherwise treats entry arguments as writable by default.
     # Keep this ABI premise explicit instead of allowing destination reuse to
     # mutate model parameters or runtime inputs across invocations.
-    argument_attributes = list(entry.arg_attrs) if entry.arg_attrs is not None else [DictionaryAttr({}) for _ in entry.function_type.inputs]
-    entry.properties["arg_attrs"] = ArrayAttr(DictionaryAttr({**attributes.data, "bufferization.writable": IntegerAttr(0, i1)})
-                                             for attributes in argument_attributes)
+    argument_attributes = (
+        list(entry.arg_attrs)
+        if entry.arg_attrs is not None
+        else [DictionaryAttr({}) for _ in entry.function_type.inputs]
+    )
+    entry.properties["arg_attrs"] = ArrayAttr(
+        DictionaryAttr({**attributes.data, "bufferization.writable": IntegerAttr(0, i1)})
+        for attributes in argument_attributes
+    )
     staged = module_text(module, generic=True).encode()
     parse_mlir_text(staged.decode()).verify()
-    signature = {"schema": "merlin.compile-signature.v1", "entry": entry.sym_name.data,
-                 "inputs": (symbolic_model["contract"]["inputs"] if symbolic_model is not None
-                            else abi(entry.function_type.inputs)),
-                 "outputs": (symbolic_model["contract"]["outputs"] if symbolic_model is not None
-                             else abi(entry.function_type.outputs)),
-                 "shape_scope": "static_captured_signature", "capture_dtype": "typed-per-argument",
-                 "input_mutability": "borrowed-immutable-tensors"}
+    signature = {
+        "schema": "merlin.compile-signature.v1",
+        "entry": entry.sym_name.data,
+        "inputs": (
+            symbolic_model["contract"]["inputs"] if symbolic_model is not None else abi(entry.function_type.inputs)
+        ),
+        "outputs": (
+            symbolic_model["contract"]["outputs"] if symbolic_model is not None else abi(entry.function_type.outputs)
+        ),
+        "shape_scope": "static_captured_signature",
+        "capture_dtype": "typed-per-argument",
+        "input_mutability": "borrowed-immutable-tensors",
+    }
     if symbolic_model is not None:
-        signature.update(schema="merlin.compile-signature.v3", shape_scope="source-proved-input-axes",
-                         dimension_bindings=symbolic_model["contract"]["dimension_bindings"],
-                         model_shape_profile=bindings["model_shape_profile"])
+        signature.update(
+            schema="merlin.compile-signature.v3",
+            shape_scope="source-proved-input-axes",
+            dimension_bindings=symbolic_model["contract"]["dimension_bindings"],
+            model_shape_profile=bindings["model_shape_profile"],
+        )
+        if symbolic_model["contract"]["schema"] == "t2m.runtime-shapes.v3":
+            signature.update(
+                schema="merlin.compile-signature.v4",
+                shape_scope="source-proved-derived-dimensions",
+                shape_program=symbolic_model["contract"]["shape_program"],
+            )
     contract = entry.attributes.get("prov.memory_guard_scratch_bytes")
     if guard_storage:
-        if (not isinstance(contract, IntegerAttr) or contract.value.data != guard_storage
-                or bindings.get("guard_storage_bytes") != guard_storage):
+        if (
+            not isinstance(contract, IntegerAttr)
+            or contract.value.data != guard_storage
+            or bindings.get("guard_storage_bytes") != guard_storage
+        ):
             raise ValueError("guarded derived scratch declaration differs from kernel call storage")
         signature["guard_storage_bytes"] = guard_storage
         if symbolic_model is not None:
             signature["guard_storage_scope"] = "sum-of-source-shape-upper-bounds"
     elif contract is not None or "guard_storage_bytes" in bindings:
         raise ValueError("derived model has an unbound guard storage declaration")
-    correspondence = {"schema": "merlin.derived-source-correspondence.v1", "producer": "triton2MLIR",
-                      "input_model_sha256": _sha(raw), "staged_model_sha256": _sha(staged),
-                      "derivation": bindings, "scope": "byte-bound-lineage; semantic-admission-unverified"}
-    members = {"program.mlir": staged, "signature.json": _json(signature), **weights, **copied,
-               "source-correspondence.json": _json(correspondence)}
-    manifest = {"schema": "merlin.compile-inputs.v1", "source_profile": "derived-tensor-model",
-                "scope": "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
-                "source": {"capture_receipt_sha256": _sha(receipt_raw), "model_mlir_sha256": _sha(raw),
-                           "capture_schema": receipt["schema"], "correspondence": "source-correspondence.json"},
-                "members": {name: _sha(data) for name, data in members.items()},
-                "excluded_evaluator_members": ["inputs.npz", "inputs.json", "golden.npy", "goldens.npz", "tensor_words.npz", "golden.json", "extra.npz", "execution.json"]}
+    correspondence = {
+        "schema": "merlin.derived-source-correspondence.v1",
+        "producer": "triton2MLIR",
+        "input_model_sha256": _sha(raw),
+        "staged_model_sha256": _sha(staged),
+        "derivation": bindings,
+        "scope": "byte-bound-lineage; semantic-admission-unverified",
+    }
+    members = {
+        "program.mlir": staged,
+        "signature.json": _json(signature),
+        **weights,
+        **copied,
+        "source-correspondence.json": _json(correspondence),
+    }
+    manifest = {
+        "schema": "merlin.compile-inputs.v1",
+        "source_profile": "derived-tensor-model",
+        "scope": "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
+        "source": {
+            "capture_receipt_sha256": _sha(receipt_raw),
+            "model_mlir_sha256": _sha(raw),
+            "capture_schema": receipt["schema"],
+            "correspondence": "source-correspondence.json",
+        },
+        "members": {name: _sha(data) for name, data in members.items()},
+        "excluded_evaluator_members": [
+            "inputs.npz",
+            "inputs.json",
+            "golden.npy",
+            "goldens.npz",
+            "tensor_words.npz",
+            "golden.json",
+            "extra.npz",
+            "execution.json",
+        ],
+    }
     if symbolic_model is not None:
         manifest["scope"] = "compiler_only_symbolic_capture; source_closure_and_numerical_admission_unverified"
     target.parent.mkdir(parents=True, exist_ok=True)

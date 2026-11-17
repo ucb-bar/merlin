@@ -6,7 +6,7 @@ arrays, references and producer implementation imports are excluded.
 
 from xdsl.dialects import builtin, func
 
-from .model_shape_facts import PROFILE, ShapeFacts
+from .model_shape_facts import EXPRESSION_PROFILE, PROFILE, ShapeFacts
 
 
 def bind_kernel_shapes(facts, function, spec, shapes, dimensions, call, results):
@@ -19,7 +19,8 @@ def bind_kernel_shapes(facts, function, spec, shapes, dimensions, call, results)
         outputs
     ):
         raise ValueError("symbolic kernel public argument/result roster differs from its ABI")
-    local = ShapeFacts()
+    local = ShapeFacts(expressions=facts.expressions)
+    facts.copy_context(local, call)
     for argument, buffer in zip(function.body.block.args[: len(inputs)], inputs, strict=True):
         if not _buffer_type(argument.type, buffer):
             raise ValueError("symbolic kernel argument type differs from its source ABI")
@@ -35,9 +36,10 @@ def bind_kernel_shapes(facts, function, spec, shapes, dimensions, call, results)
     ):
         raise ValueError("symbolic kernel result types differ from its source ABI")
     terminal = function.body.block.last_op
-    if not isinstance(terminal, func.ReturnOp) or [local.shape(value) for value in terminal.operands] != [
-        tuple(shapes[b["name"]]) for b in outputs
-    ]:
+    if not isinstance(terminal, func.ReturnOp) or any(
+        not local.same_shape(local.shape(value), tuple(shapes[buffer["name"]]), terminal)
+        for value, buffer in zip(terminal.operands, outputs, strict=True)
+    ):
         raise ValueError("symbolic kernel result dimensions lack an executable standard-MLIR proof")
     for value, name in zip(call.results, results, strict=True):
         facts.tensors[value] = tuple(shapes[name])
@@ -69,14 +71,14 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
     present = dynamic or any("symbolic_tensor_shapes" in call for call in calls) or "runtime_shape_contract" in bindings
     if selected is None and not present:
         return None
-    if selected != PROFILE or len(entries) != 1:
+    if selected not in (PROFILE, EXPRESSION_PROFILE) or len(entries) != 1:
         raise ValueError("derived symbolic model shapes require their explicit profile")
     original_ordinals = [call.get("parent_call_ordinal") for call in calls]
     if any(type(n) is not int for n in original_ordinals) or original_ordinals != sorted(set(original_ordinals)):
         raise ValueError("derived symbolic model calls require original source order")
     from .derived_runtime_arguments import checked_runtime_call_shapes
 
-    facts = ShapeFacts.entry(entries[0])
+    facts = ShapeFacts.entry(entries[0], expressions=selected == EXPRESSION_PROFILE)
     call_shapes, maximum = {}, {}
     for record in calls:
         digest = record["implementation_sha256"]
@@ -96,7 +98,7 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
             maximum_shapes=limits,
         )
         maximum[record["parent_call_ordinal"]] = limits
-    contract = facts.contract(entries[0])
+    contract = facts.contract(entries[0], force_expressions=selected == EXPRESSION_PROFILE)
     bound_entries = [
         op for op in bound.ops if isinstance(op, func.FuncOp) and op.sym_name.data == "forward" and op.body.blocks
     ]
@@ -104,9 +106,11 @@ def checked_model_shapes(parent, bound, bindings, interfaces):
         len(bound_entries) != 1
         or bound_entries[0].function_type != entries[0].function_type
         or bindings.get("runtime_shape_contract") != contract
-        or ShapeFacts.entry(bound_entries[0]).contract(bound_entries[0]) != contract
     ):
         raise ValueError("derived symbolic model contract differs from the original and executable public interfaces")
+    ShapeFacts.entry(bound_entries[0], expressions=selected == EXPRESSION_PROFILE).check_contract(
+        bound_entries[0], contract
+    )
     if (
         ("guard_storage_bytes" in bindings) != ("guard_storage_scope" in bindings)
         or "guard_storage_scope" in bindings
