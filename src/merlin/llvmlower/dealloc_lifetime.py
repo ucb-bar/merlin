@@ -1,13 +1,15 @@
 """Native deallocation placement and iteration-sensitive ownership checks.
 
-The proof is deliberately closed: positive static serial loops, fresh direct
-allocations, false entry/true backedge ownership, synchronous intrinsic uses,
-and one final same-block release. Calls and unknown effects remain barriers.
+The proof is deliberately closed: fresh direct serial-loop allocations,
+false entry/true backedge ownership and synchronous intrinsic uses. Positive
+static loops retain local final releases; runtime/zero-trip loops require a
+separate materialized-copy and returned-owner proof. Unknown effects remain barriers.
 This checks allocation generations; it neither moves storage nor admits arena
 reuse for allocation cycles. The native runner and public checker share it.
 """
 
 from .atomic_compare_exchange import SUPPORT as _COMPARE_EXCHANGE_SUPPORT
+from .dealloc_promotions import PRELUDE as _PROMOTED_PRELUDE
 
 RUNNER_PRELUDE = _COMPARE_EXCHANGE_SUPPORT + r"""
 _OBL_CALL_ROSTER = ()
@@ -313,7 +315,10 @@ def _obl_alias_uses(value):
 
 
 def _obl_release_value(op, aliases):
-    return (op.name == 'memref.dealloc' and len(op.operands) == 1
+    if op.name == 'memref.dealloc':
+        return len(op.operands) == 1 and aliases.get(op.operands[0], False)
+    return (op.name == 'bufferization.dealloc' and not op.results and len(op.operands) == 2
+            and tuple(ir.DenseI32ArrayAttr(op.attributes['operandSegmentSizes'])) == (1, 1, 0)
             and aliases.get(op.operands[0], False))
 
 
@@ -337,7 +342,7 @@ def _obl_scalar_loop(op):
     op.verify()
 
 
-def _obl_prove(loop, calls):
+def _obl_prove(loop, calls, *, promotion=False):
     loop = loop.operation
     body = loop.regions[0].blocks[0]
     operations = tuple(op.operation for op in body.operations)
@@ -352,7 +357,7 @@ def _obl_prove(loop, calls):
     if any(_memref_typed(v) for v in terminal.operands) and terminal.operation.name != 'scf.yield':
         raise ValueError('unsupported loop terminator')
     lo, hi, step = (_obl_constant(v) for v in loop.operands[:3])
-    if lo is None or hi is None or step is None or step <= 0 or hi <= lo:
+    if step is None or step <= 0 or not promotion and (lo is None or hi is None or hi <= lo):
         raise ValueError('fresh carried ownership requires a statically positive serial trip count')
     fresh = {}
     for i in changed:
@@ -373,6 +378,11 @@ def _obl_prove(loop, calls):
     all_inside = {op.operation: op for op in _obl_ops(loop)}
     guards = {}
     for op in operations:
+        if op.name == 'bufferization.dealloc':
+            if (op.operands and _obl_release_value(op, {op.operands[0]: True}) and op.operands[1] in flags):
+                guards[op.operation] = op
+                continue
+            raise ValueError('previous dealloc requires its original ownership condition and no retained aliases')
         if op.operation.name != 'scf.if':
             continue
         if op.results or len(op.operands) != 1 or op.operands[0] not in flags:
@@ -391,7 +401,7 @@ def _obl_prove(loop, calls):
     releases = set()
     for i in changed:
         aliases, uses = _obl_alias_uses(carried[i])
-        frees = [op for op in uses if op.name == 'memref.dealloc']
+        frees = [op for op in uses if op.name in ('memref.dealloc', 'bufferization.dealloc')]
         if len(frees) != 1 or not _obl_release_value(frees[0], aliases):
             raise ValueError('each previous buffer requires exactly one owner release')
         release = frees[0]
@@ -440,7 +450,7 @@ def _obl_prove(loop, calls):
             continue
         if name == 'scf.if' and op.block == body:
             continue
-        if name == 'memref.dealloc':
+        if name in ('memref.dealloc', 'bufferization.dealloc'):
             if op.operation in releases:
                 continue
             value = op.operands[0]
@@ -449,6 +459,8 @@ def _obl_prove(loop, calls):
                     and value.owner.operation not in {a.operation for a in fresh.values()}):
                 continue
         raise ValueError('unknown or unsupported loop effect: ' + name)
+    if promotion:
+        return fresh
     # The final generation must have one local release after all synchronous
     # observations. Returning ownership or conditional release needs another proof.
     outer = tuple(loop.block.operations)
@@ -483,7 +495,9 @@ def _owned_buffer_loops(order, calls):
         if loop.operation.name != 'scf.for':
             continue
         try:
-            fact = _obl_prove(loop, calls)
+            fact = _obl_promoted_loop(loop, calls, normalize=False)
+            if fact is None:
+                fact = _obl_prove(loop, calls)
             if fact:
                 proved[loop.operation] = fact
         except ValueError as error:
@@ -491,7 +505,7 @@ def _owned_buffer_loops(order, calls):
             # allocation-site union to accidentally produce a diagnostic.
             violations.append('loop-carried buffer ownership: ' + str(error))
     return proved, violations
-"""
+""" + _PROMOTED_PRELUDE
 
 
 # --- The use-after-free check that guards the sinking stage ---------------------------------
@@ -650,3 +664,42 @@ def _dealloc_placement_violations(module):
     return violations, len(roots), sunk
 """
 )
+
+
+DEALLOC_CHECK_RUNNER = r"""
+_ORIG_RUN_STAGES = _run_stages
+_SINK_MARK = 'optimize-allocation-liveness'
+
+
+def _run_stages(ctx, module, pipeline, erase, mid=(), late=(), post_openmp=(),
+                pre_generalize=()):
+    passes = [p for p in pipeline.split(',') if p]
+    k = next((i for i, p in enumerate(passes) if _SINK_MARK in p), -1)
+    if k < 0:
+        return _ORIG_RUN_STAGES(ctx, module, pipeline, erase, mid, late, post_openmp,
+                                pre_generalize)
+    head, tail = passes[:k + 1], passes[k + 1:]
+    # `erase`/`mid` open their window after buffer-loop-hoisting, and `late` opens its own before
+    # convert-scf-to-openmp; hand each to whichever half contains its anchor, or it would be
+    # accepted here and silently never run. A `late` whose anchor is in neither half goes to the
+    # tail, where the wrapped runner still applies it at the end rather than dropping it.
+    hoist_head = any('buffer-loop-hoisting' in p for p in head)
+    late_head = any('convert-scf-to-openmp' in p for p in head)
+    post_head = late_head
+    _ORIG_RUN_STAGES(ctx, module, ','.join(head[:-1]),
+                     erase if hoist_head else 0, mid if hoist_head else (),
+                     late if late_head else (), post_openmp if post_head else (),
+                     pre_generalize)
+    _protect_promoted_seed_releases(ctx, module)
+    _ORIG_RUN_STAGES(ctx, module, head[-1], 0, (), (), (), ())
+    bad, n_alloc, n_sunk = _dealloc_placement_violations(module)
+    _obl_write_observation(module, bad)
+    print('OK dealloc_placement', n_alloc, 'allocations', n_sunk, 'sunk', len(bad), 'violations')
+    if bad:
+        raise RuntimeError('post-deallocation lifetime verification failed '
+                           '(' + str(len(bad)) + ' violations):\n  ' + '\n  '.join(bad[:20]))
+    if tail:
+        _ORIG_RUN_STAGES(ctx, module, ','.join(tail),
+                         0 if hoist_head else erase, () if hoist_head else mid,
+                         () if late_head else late, () if post_head else post_openmp, ())
+"""

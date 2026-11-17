@@ -92,6 +92,7 @@ def lower_owned_results(
     llvm_path.write_text(lowered)
     dependencies = (Path(__file__), Path(__file__).with_name("owned_result_abi.py"),
                     Path(__file__).with_name("owned_result_c.py"),
+                    Path(__file__).with_name("dealloc_lifetime.py"), Path(__file__).with_name("dealloc_promotions.py"),
                     Path(__file__).with_name("owned_result_allocations.py"))
     result = OwnedResultLowering(
         original, prepared_path, llvm_path, bridge_path, inputs, outputs, entry,

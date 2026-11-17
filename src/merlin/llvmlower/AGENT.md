@@ -1,5 +1,15 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`dealloc_promotions` proves fresh returned loop generations for runtime/zero-trip
+serial bounds. Close actual previous/fresh/initial/result uses, ownership flags
+and tuple coordinates before edits. Clone spelling grants no freshness: first
+materialize the actual ranked alloc/dimension/copy implementation. Shield only
+proved seed releases from the upstream conservative-alias liveness bug with
+typed identity views; the independent checker must follow them afterward.
+Keep every callback, allocation/lifetime gate, source loop and numeric/effect
+contract. Unknown aliases, hidden calls, branch/while owners or dynamic steps
+remain separate proofs. Never use provenance to choose or authorize this path.
+
 `owned_result_driver` generates typed signature-v6 calls and a separate bounded
 little-endian invocation blob. Reconstruct source types/input restrictions before
 publication and on reopening; runtime values never rewrite MLIR or predict

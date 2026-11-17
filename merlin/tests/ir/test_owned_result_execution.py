@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from owned_result_fixture import COMPACT
+from owned_result_fixture import COMPACT, RESIZE
 
 from merlin.llvmlower import toolchain
 from merlin.llvmlower.abi import ScalarArg
@@ -15,34 +15,6 @@ from merlin.llvmlower.owned_result_abi import TensorSlot, pipeline, prepare
 from merlin.llvmlower.owned_results import _view, compile_owned_results
 
 pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
-
-RESIZE = """module {
-func.func @forward(%x:tensor<?xi32> {bufferization.writable=false}, %steps:i32)
- -> tensor<?xi32> {
- %z=arith.constant 0:index
- %one=arith.constant 1:index
- %limit=arith.index_cast %steps:i32 to index
- %zero=arith.constant 0:i32
- %valid=arith.cmpi sge,%steps,%zero:i32
- cf.assert %valid,"source guard"
- %result=scf.for %i=%z to %limit step %one
-   iter_args(%state=%x)->(tensor<?xi32>) {
-   %size=tensor.dim %state,%z:tensor<?xi32>
-   %empty=arith.cmpi eq,%size,%z:index
-   %decreased=arith.subi %size,%one:index
-   %nextsize=arith.select %empty,%z,%decreased:index
-   %fresh=tensor.empty(%nextsize):tensor<?xi32>
-   %next=linalg.generic {indexing_maps=[affine_map<(d0)->(d0)>],iterator_types=["parallel"]}
-      outs(%fresh:tensor<?xi32>) {
-     ^bb0(%unused:i32):
-       %index=linalg.index 0:index
-       %value=tensor.extract %state[%index]:tensor<?xi32>
-       linalg.yield %value:i32
-   } -> tensor<?xi32>
-   scf.yield %next:tensor<?xi32>
- }
- return %result:tensor<?xi32>
-}}"""
 
 
 @pytest.fixture(scope="module")
@@ -65,13 +37,17 @@ def test_original_computation_discovers_all_result_extents(compact, words):
     np.testing.assert_array_equal(x, snapshot)
 
 
-def test_resizing_loop_keeps_the_existing_generation_proof_refusal(tmp_path):
-    from merlin.llvmlower.pipeline import PipelineError
-
-    # Descriptor transport alone must not disable the independent lifetime
-    # checker. Dynamic/zero-trip generation ownership needs a separate proof.
-    with pytest.raises(PipelineError, match="statically positive serial trip count"):
-        compile_owned_results(RESIZE, workdir=tmp_path / "build", timeout=30)
+def test_runtime_resizing_preserves_zero_trip_empty_and_repeated_invocations(tmp_path):
+    program = compile_owned_results(RESIZE, workdir=tmp_path / "build", timeout=30)
+    for words in ([], [7], [-(1 << 31), (1 << 31)-1, 4, -9, 0, 11, -1]):
+        x = np.asarray(words, np.int32)
+        before = x.tobytes()
+        for steps in (0, 1, 2, 7, 19):
+            (actual,), report = program.execute((x, ScalarArg(steps, "i32")))
+            wanted = x[:max(0, x.size-steps)]
+            assert (actual.shape, actual.dtype, actual.tobytes()) == (wanted.shape, wanted.dtype, wanted.tobytes())
+            assert x.tobytes() == before and not np.shares_memory(actual, x)
+            assert report["source_calls"] == 1 and report["owned_allocations"] == 1
 
 
 def test_rank_zero_and_native_scalar_arguments_preserve_exact_words(tmp_path):

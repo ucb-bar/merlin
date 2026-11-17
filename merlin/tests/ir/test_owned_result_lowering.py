@@ -54,14 +54,14 @@ def test_incompatible_or_missing_layout_contracts_refuse_before_products(tmp_pat
     assert not output.exists()
 
 
-def test_separate_lowering_retains_zero_trip_generation_refusal(tmp_path):
-    from merlin.llvmlower.pipeline import PipelineError
-
-    with pytest.raises(PipelineError, match="statically positive serial trip count"):
-        lower_owned_results(
-            RESIZE, workdir=tmp_path / "refused", data_layout=of(toolchain.clang(), ("-O2", "-fPIC")),
-            index_bits=64, timeout=30,
-        )
+def test_separate_lowering_proves_zero_trip_returned_generations(tmp_path):
+    lowered = lower_owned_results(
+        RESIZE, workdir=tmp_path / "resizing", data_layout=of(toolchain.clang(), ("-O2", "-fPIC")),
+        index_bits=64, timeout=30,
+    )
+    lowered.verify()
+    assert lowered.outputs[0].shape == (-1,)
+    assert "_mlir_memref_to_llvm_alloc" in lowered.llvm.read_text()
 
 
 def test_actual_cross_compiler_consumes_observed_returned_descriptor_abi(tmp_path):

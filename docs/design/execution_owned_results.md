@@ -313,11 +313,13 @@ descriptors, output budgets, native negative/overflowing allocation products and
 source/build substitutions. `test_owned_result_allocator.py` executes alignment,
 zero allocation, byte/count limits and invalid release paths.
 
-A fresh resizing-loop experiment remains an explicit refusal: the independent
-generation checker currently separates replaced carried owners only for
-positive static trip counts with one final same-block release. Runtime/zero-trip
-generation state and conditional or returned ownership need a separate closed
-proof. The transport does not disable that check to obtain a successful run.
+[Returned loop ownership](promoted_loop_ownership.md) now separately proves
+fresh direct generations for runtime and zero-trip serial loops. Actual ownership
+flags, materialized zero-trip copies, closed initial uses and complete returned
+coordinates establish the lifetime; the checker remains enabled. Native/saved/C
+and actual target tests retain changing/empty results and source guards.
+Arbitrary branch/while/nested ownership, retained aliases and other final
+consumers still need further proofs. No transport flag disables the check.
 
 The selected staging/host interface now qualifies complete input-count models
 with two dependent Triton calls in tensor, buffer and guarded-buffer profiles.

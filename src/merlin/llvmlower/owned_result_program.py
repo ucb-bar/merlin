@@ -29,6 +29,8 @@ def _implementations():
         "owned_result_c.py": root / "owned_result_c.py",
         "owned_result_lowering.py": root / "owned_result_lowering.py",
         "owned_result_allocations.py": root / "owned_result_allocations.py",
+        "dealloc_lifetime.py": root / "dealloc_lifetime.py",
+        "dealloc_promotions.py": root / "dealloc_promotions.py",
         "owned_result_program.py": Path(__file__),
         "owned_results.c": runtime_dir() / "abi/owned_results.c",
         "owned_result_views.c": runtime_dir() / "abi/owned_result_views.c",

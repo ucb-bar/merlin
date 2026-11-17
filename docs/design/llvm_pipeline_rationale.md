@@ -3,9 +3,9 @@ title: "LLVM lowering pipeline rationale"
 kind: design
 status: current
 owner: core
-last_verified: 2026-10-16
+last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/pipeline.py]
+code_refs: [src/merlin/llvmlower/pipeline.py, src/merlin/llvmlower/dealloc_promotions.py]
 ---
 
 # LLVM lowering pipeline rationale
@@ -14,6 +14,15 @@ The named functions in `src/merlin/llvmlower/pipeline.py` implement these choice
 The text below retains their detailed rationale alongside the public pipeline code.
 
 ## `_dealloc_passes`
+
+Runtime/zero-trip fresh generations now have an independent
+[returned-owner proof](promoted_loop_ownership.md). It retains upstream's
+ownership flag, materializes the actual zero-trip copy and simplifies only
+proved seed/final-owner deallocation. Closing seed frees receive a typed view
+before liveness to avoid the pinned pass moving them past `return` through its
+conservative alias union. The post-pass checker follows those views and keeps
+every ordinary lifetime/allocation guard. Other allocations retain normal
+liveness optimization; unsupported generation forms still refuse.
 
 Free the buffers ``one-shot-bufferize`` allocates.
 
