@@ -11,6 +11,15 @@ The **Merlin C runtime**: a generic, data-driven driver that executes a compiled
 
 ## What belongs here
 
+- `owned_result_driver.{h,c}` controls explicitly selected returned-result
+  invocations. Invoke once, validate/copy every output before callbacks, release
+  tracked source owners once and clean up after allocation/observer failures.
+  A busy context belongs to its original caller. `owned_result_readback.{h,c}`
+  emits complete shape/payload companions through a caller-supplied byte sink;
+  zero-size payloads require no access. The hosted main reads separate bounded
+  invocation bytes and emits DONE only after full success. Target memory/console
+  adapters stay under baremetal; neither references nor size prediction belong here.
+
 - `fixed_decimal.h` formats IEEE binary64 words as exact nearest-even fixed-six
   diagnostics, including signed zero, subnormals, extrema and signed NaNs.
   Integer scaling and division change no source arithmetic or FP environment.

@@ -74,7 +74,7 @@ def _checksum(payload: bytes) -> int:
 
 
 def _parse_binary_console(
-    data: bytes, *, decode_values: bool = True, require_done: bool = True,
+    data: bytes, *, decode_values: bool = True, require_done: bool = True, payloads: dict[str, bytes] | None = None,
 ) -> tuple[dict[str, list[list[int]]], dict[str, int], dict[str, BinaryFrame], bytes]:
     if type(data) is not bytes:
         raise OutBinError("OUT_BIN requires raw console bytes")
@@ -116,7 +116,10 @@ def _parse_binary_console(
                 raise OutBinError("OUT_BIN payload has no valid END")
             if int(footer_parts[2], 16) != _checksum(payload):
                 raise OutBinError("OUT_BIN payload checksum differs")
-            if decode_values:
+            if payloads is not None:
+                payloads[name] = payload
+                outputs[name] = []
+            elif decode_values:
                 words = [
                     int.from_bytes(payload[index : index + width], "little", signed=signed)
                     for index in range(0, count, width)
@@ -187,3 +190,12 @@ def parse_binary_console(data: bytes) -> tuple[dict[str, list[list[int]]], dict[
 
     outputs, metrics, _frames = parse_binary_console_details(data)
     return outputs, metrics
+
+
+def parse_binary_console_payloads(data: bytes, *, require_done: bool = True):
+    """Validate the same strict frames and retain bytes without Python word lists."""
+    payloads = {}
+    _outputs, metrics, frames, _external = _parse_binary_console(
+        data, decode_values=False, require_done=require_done, payloads=payloads,
+    )
+    return payloads, metrics, frames

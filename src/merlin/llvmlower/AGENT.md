@@ -1,5 +1,14 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`owned_result_driver` generates typed signature-v6 calls and a separate bounded
+little-endian invocation blob. Reconstruct source types/input restrictions before
+publication and on reopening; runtime values never rewrite MLIR or predict
+results. Drivers fix input shapes but retain executable scalar/dimension/Boolean
+checks for changed data. Pin the complete local artifact inventory and selected
+implementations, without following serialized paths. The generic C controller
+copies every checked result and releases source owners before observation.
+Target layout, linking, resource maps and qualification remain executor duties.
+
 `owned_result_lowering` prepares original source, lowers the complete ordinary
 owned-result pipeline and emits checked bridge/LLVM products without selecting
 or linking a runtime. Layout/index values are explicit caller contracts; actual

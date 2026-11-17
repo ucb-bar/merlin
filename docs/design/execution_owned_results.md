@@ -5,10 +5,49 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_driver.py, src/merlin/runtime/owned_result_readback.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/c/owned_result_driver.c, merlin/runtime/c/owned_result_readback.c, merlin/runtime/c/owned_result_host_main.c, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
 ---
 
 # Results sized during execution
+
+## Generated invocation and observed-shape readback
+
+`owned_result_driver.generate` reconstructs signature-v6 source/input contracts
+and emits `model_owned.c`, a separate `invocation.bin`, `signature.json` and a
+versioned driver record. Reopening reconstructs all four members and selected
+implementation identities from current source and actual invocation arrays.
+Serialized paths cannot redirect inputs. The bounded little-endian transport
+fixes input shapes for that driver; data and native scalars may change without
+recompiling its model or driver. Scalar bounds, dimension equalities, alignment,
+blob length and canonical Boolean storage remain executable checks on each call.
+No invocation value or result reference enters source-only compiler staging.
+
+The reusable C controller begins one source invocation and calls the checked
+bridge exactly once. It copies every validated result into independent storage
+before releasing tracked source owners or invoking any observer. Duplicate
+results retain separate logical copies. Allocation/descriptor failures publish
+no result; callback failures stop publication and free private copies. A failed
+begin does not release another caller's active context. The hosted adapter reads
+the separate bounded blob and writes DONE only after all observations succeed.
+
+The explicitly selected `merlin.execution-owned-readback.v1` profile reuses
+OUT_BIN v1 framing with paired `inN_shape`/`inN` and `outN_shape`/`outN` frames.
+Shape payloads are unsigned little-endian 64-bit dimensions; rank-zero shapes
+have zero payload bytes. Value payloads retain exact flat storage words, with
+signed integer framing and unsigned IEEE/BF16/FP8 storage framing. The complete
+source-typed decoder independently checks ranks/static extents, actual input
+shapes and bytes, output product/byte limits, canonical Booleans and the complete
+frame roster before returning arrays. Dynamic output dimensions come from
+execution alone. Raw-payload parsing avoids per-word Python integer lists while
+retaining the ordinary strict checksum/framing parser and existing APIs.
+
+Checks cover real compiled content-derived results, native scalars, rank-zero
+IEEE words, empty/duplicate results, changed inputs and cleanup failures. The
+frontend additionally links the actual three-kernel TTIR model LLVM with the
+production hosted driver and decoder. This API is explicit runtime transport;
+it does not yet integrate normal target staging/build/readback, grant source
+effects, or qualify accelerator execution. Numerical qualification still needs
+complete independent references and the actual successful process outcome.
 
 ## Lowering before runtime selection
 

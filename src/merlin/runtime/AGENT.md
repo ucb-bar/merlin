@@ -12,6 +12,13 @@ the per-backend adapters under `backends/`.
 
 ## What belongs here
 
+- `owned_result_readback` independently reconstructs signature-v6 source ranks,
+  storage/static dimensions and actual input restrictions. Its explicitly selected
+  shape-companion OUT_BIN profile requires every input/result, exact input words,
+  bounded output products, canonical Boolean bytes and DONE. Dynamic output sizes
+  come only from observed descriptors. Preserve BF16/FP8/IEEE words; transport
+  validation supplies no source equivalence, numeric or target verdict.
+
 - `effect_observation` decodes an explicitly selected invocation/outcome and a
   complete source-stdout byte frame separately from tensor/input frames. Source
   bytes cannot impersonate control markers. A returning call requires DONE;
