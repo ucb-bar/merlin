@@ -12,6 +12,7 @@ from io import StringIO
 from xdsl.dialects import builtin, func
 from xdsl.printer import Printer
 
+from .derived_runtime_arguments import checked_source_layout_call
 from .execution_call_contracts import CallContracts, scalar_attribute
 from .execution_call_views import FIELDS as VIEW_FIELDS
 from .execution_call_views import mark, source_views
@@ -137,6 +138,15 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
     if not isinstance(located, dict) or set(located) != set(interfaces):
         raise ValueError("executed correspondence lacks its complete located kernel inventory")
     validate_views(bindings)
+    layout_profile = bindings.get("source_layout_binding_profile")
+    specialized = any("source_layout_specialization" in kernel for kernel in bindings["kernels"].values())
+    if (
+        specialized
+        and layout_profile != "t2m.captured-source-layout.v1"
+        or not specialized
+        and "source_layout_binding_profile" in bindings
+    ):
+        raise ValueError("executed source layouts require their explicit captured source-layout profile")
     checked_interfaces = {}
     for digest, (spec, source) in interfaces.items():
         raw = source.encode()
@@ -159,7 +169,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
     declarations = {op.sym_name.data: op for op in expected.ops if isinstance(op, func.FuncOp)}
     used = set()
     for ordinal, (call, record) in enumerate(zip(calls, records, strict=True)):
-        if not isinstance(record, dict) or set(record) - VIEW_FIELDS != _CALL_FIELDS:
+        if not isinstance(record, dict) or set(record) - VIEW_FIELDS - {"source_layout_bindings"} != _CALL_FIELDS:
             raise ValueError("executed call has an unknown or incomplete correspondence record")
         symbol = call.callee.root_reference.data
         declaration = declarations.get(symbol)
@@ -189,12 +199,25 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             != attributes
         ):
             raise ValueError("executed correspondence changes the original typed model call")
-        if record["source_layout_arguments"]:
-            raise ValueError("executed source layouts need their separately checked correspondence extension")
         spec, function = checked_interfaces[record["implementation_sha256"]]
         retained = bindings["kernels"][record["implementation_sha256"]]
         if spec != retained.get("spec") or record["source_sha256"] != retained.get("source_sha256"):
             raise ValueError("executed call changes the retained kernel source or ABI")
+        layout_arguments = record["source_layout_arguments"]
+        layout_bindings = record.get("source_layout_bindings")
+        if (
+            not isinstance(layout_arguments, dict)
+            or "source_layout_specialization" in retained
+            and (
+                not isinstance(layout_bindings, dict)
+                or any(not isinstance(item, dict) for item in layout_bindings.values())
+                or layout_arguments != {key: item.get("schema_argument") for key, item in layout_bindings.items()}
+            )
+            or "source_layout_specialization" not in retained
+            and (layout_arguments or "source_layout_bindings" in record)
+        ):
+            raise ValueError("executed source layout arguments differ from their checked captured bindings")
+        checked_source_layout_call(parent, retained, record, layout_profile)
         input_buffers, output_buffers = _interface(spec, function)
         mapping, live = record["source_operand_bindings"], record["runtime_operand_arguments"]
         views = record.get("source_tensor_views", {})

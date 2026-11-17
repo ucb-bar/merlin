@@ -40,7 +40,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   source-coordinate/root proofs. Account for every view operand and check
   captured dimensions before reshape; compare complete emitted SSA and source
   locations. Missing profiles or forged coordinates refuse. No public physical
-  alias/mutation, fully dynamic reshape or source-layout permission follows.
+  alias/mutation or source-layout permission follows.
+  Optional source-layout bindings reuse `t2m.captured-source-layout.v1` under
+  v4: bind every source option to its distinct exact original scalar attribute,
+  independently recheck the existing source-call contract, and require the
+  serialized argument mapping to match. Missing profiles, unselected claims and
+  changed source geometry refuse. Complete SSA/locations and lifetime checks
+  still apply; source packing geometry grants no consumer hardware placement.
   `execution_runtime_views.py` independently reconstructs explicit v2 runtime
   dense views. Use actual kernel dimension SSA, guarded element products and
   standard collapse/expand. Same-rank dynamic types do not prove geometry.

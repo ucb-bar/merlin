@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [execution_owned_results]
-code_refs: [src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py]
+code_refs: [src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_runtime_arguments.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py, merlin/tests/ir/test_execution_source_layouts.py]
 ---
 
 # Source views in execution-owned model binding
@@ -51,7 +51,8 @@ source views feeding content-sized count/scan/scatter. These are separate from
 arbitrary source equivalence and accelerator execution/performance requirements.
 Runtime dense adapters have the separate v2 contract below. Rank-reducing/negative source slices,
 encoded or width-changing model views, physical/mutating public views and
-general source-layout/ownership/effect compositions remain separate work.
+general ownership/effect compositions remain separate work. Source-layout binding
+has the separately checked extension below.
 
 ## Checked runtime dense views
 
@@ -78,3 +79,22 @@ or substituted dimensions refuse even after outer hashes are repaired. V1 static
 adapters retain their original behavior. Versioned source fingerprints also bind
 `execution_runtime_views.py`; actual native and applicable target execution remain
 separate gates.
+
+## Semantic source layouts
+
+V4 additionally reuses `source_layout_binding_profile:
+t2m.captured-source-layout.v1`. A packed source map can depend on the original
+target and warp/thread/CTA options: these determine source grouping, not where
+the consumer must execute the operation. Every selected option must bind to a
+distinct exact scalar attribute of the original typed model call. The serialized
+`source_layout_arguments` and `source_layout_bindings` must agree completely.
+
+The consumer reuses its existing `checked_source_layout_call` proof and then
+checks the full original parent/kernel/adapter SSA and locations. The profile
+is present exactly when a retained kernel has a source-layout specialization.
+Unknown profiles, incomplete selections, unrelated arguments and claims on
+unspecialized kernels refuse. Older v4 readers reject the additional call fields.
+This extends binding while keeping public model types, receipt v2 and signature
+v6 unchanged. The executable grouping, effects, numeric policies, allocation and
+lifetime checks retain their existing independent obligations. Source geometry
+does not authorize consumer placement, physical aliases or GPU equivalence.
