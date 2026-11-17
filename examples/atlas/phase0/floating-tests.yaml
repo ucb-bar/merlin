@@ -1,0 +1,12 @@
+# Optional public source tests; this is not a reviewed hardware capability grant.
+# Logical source sizes deliberately exercise non-square tensors and short reductions.
+schema: merlin.floating_test_suite.v1
+operand_dtype: fp8_e4m3
+accumulator_dtype: bf16
+shape: [3, 5, 7]
+pointwise_compute_dtype: f32
+pointwise_rounding: rtz
+required_oracle_tiers: [L0, L1, L2, L3]
+reference_budget:
+  max_reference_work: 1000000
+  max_materialized_elements: 100000

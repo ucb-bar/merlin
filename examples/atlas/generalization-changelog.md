@@ -5,6 +5,26 @@ Atlas work on `feat/generalized-tinyllama-layer`. Validation is scoped to these
 three models. Other model families encountered during discovery are not part of
 this validation task. No OOT compiler-generation loop is run.
 
+## Floating component test generation
+
+The [floating test design](../../docs/design/floating_component_tests.md) extends
+the existing component DAG and writer with an explicit finite floating policy,
+per-operation rounding, ReLU and conversions. Integer programs retain their
+existing schema and evaluator. An independent rational reference checks each
+rounding step, and source-derived work budgets precede input allocation.
+
+The optional [source suite](phase0/floating-tests.yaml) adds eight public cases,
+combining contraction, residual/fan-out, independent work, reuse, logical mutation
+and observable rounding/movement boundaries. Other formats and shapes are
+repository regressions, not extra OOT-agent cases. Generated capsules validate
+against the normal schema and retain required oracle tiers. Their source-only
+manifest does not establish hardware/runtime or physical scheduling qualification.
+
+Validation covers upstream parsing, CPU execution of all eight programs under a
+second FP16/FP32 policy, and numerical agreement with the selected Atlas model on
+the finite E4M3/BF16 inputs. These checks do not execute a generated Atlas compiler
+or establish DMA timing, full-chip RTL correctness or full-model readiness.
+
 ## Changes already required for the TinyLlama integration
 
 | Change | Shared mechanism / target-specific part | Reason and validation |

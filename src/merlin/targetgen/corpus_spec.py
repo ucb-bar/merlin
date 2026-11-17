@@ -358,6 +358,10 @@ def entry_binding(entry: dict, binding: CorpusBinding) -> tuple[str, CorpusBindi
     tok = entry.get("operand_dtype") or binding.operand_dtype
     regime = regime_for_dtype(tok)
     acc = {"mx": "bf16", "simt": "f32"}.get(regime, binding.accum_dtype)
+    if entry.get("op") == "component_program" and "floating_point" in (entry.get("program") or {}):
+        # Only the explicit floating source schema owns node-level accumulation.
+        # Preserve the historical SIMT/MX reference choices for all other entries.
+        acc = entry.get("accum_dtype", binding.accum_dtype)
     eb = dataclasses.replace(
         binding,
         operand_dtype=tok,

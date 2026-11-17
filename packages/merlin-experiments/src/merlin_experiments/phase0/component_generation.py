@@ -170,6 +170,7 @@ def bind_entries(
             module_source_path(name)
             for name in (
                 "merlin.targetgen.component_program",
+                "merlin.targetgen.component_float",
                 "merlin.targetgen.component_sources",
                 "merlin.targetgen.capsule_results",
                 "merlin.targetgen.capsule_golden",

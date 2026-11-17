@@ -37,6 +37,12 @@ def validate(policy):
 
 
 def _bits(dtype):
+    from merlin.targetgen.component_float import FORMATS
+
+    if dtype in FORMATS:
+        from merlin.runtime.fp8_formats import storage_bits
+
+        return storage_bits(dtype)
     if not isinstance(dtype, str) or not dtype.startswith("i") or not dtype[1:].isdigit() or int(dtype[1:]) < 1:
         raise ValueError("execution budget has no independent cost for this scalar format")
     return int(dtype[1:])
@@ -64,6 +70,17 @@ def measure(source):
     elements = sum(_extent(row["shape"]) for row in inputs)
     payload = sum(_extent(row["shape"]) * ((_bits(row["dtype"]) + 7) // 8) for row in inputs)
     scalar_bits = max(_bits(row["dtype"]) for row in inputs + nodes + outputs)
+    rational_bits = 0
+    if "floating_point" in program:
+        from merlin.runtime.fp8_formats import float_format_params
+
+        # Exact arithmetic aligns exponents before rounding. Storage width alone
+        # does not bound its Fraction numerator/denominator.
+        rational_bits = max(
+            2 * ((1 << exponent) + mantissa + 1)
+            for exponent, mantissa, _, _ in (float_format_params(row["dtype"]) for row in inputs + nodes + outputs)
+        )
+        scalar_bits = max(scalar_bits, rational_bits)
     work = elements * (2 if kind == "component_program" else 1)
     for node in nodes:
         count, bits = _extent(node["shape"]), _bits(node["dtype"])
@@ -82,6 +99,7 @@ def measure(source):
             work += 3 * count
             if node["op"] in {"add", "update"}:
                 raw_bits += 1
+        raw_bits = max(raw_bits, rational_bits)
         scalar_bits = max(scalar_bits, raw_bits)
         elements += 2 * count
         payload += count * (((raw_bits + 7) // 8) + ((bits + 7) // 8))
@@ -116,7 +134,9 @@ def source_for_entry(entry, *, binding):
     if binding.tile_dim is None and entry.get("op") != "component_program":
         raise ValueError("source-only execution budget supports explicit tensor DAGs without hardware geometry")
     regime, selected = corpus_spec.entry_binding(entry, binding)
-    if regime != "int":
+    if regime != "int" and not (
+        entry.get("op") == "component_program" and "floating_point" in (entry.get("program") or {})
+    ):
         raise ValueError("execution budget has no independent cost for this numerical engine")
     operand, accumulator = (
         selected.mlir_dtype(selected.operand_dtype),

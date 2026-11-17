@@ -40,12 +40,22 @@ def _integer_dtype(value, *, operand_dtype, accumulator_dtype):
 
 def analyze(program, *, operand_dtype, accumulator_dtype):
     """Check a finite typed DAG and derive source effects, uses and live outputs."""
+    from . import component_float as floating
+
+    is_float = isinstance(program, dict) and "floating_point" in program
     v3 = isinstance(program, dict) and program.get("schema") == SCHEMA_V3
     v2 = isinstance(program, dict) and program.get("schema") in {SCHEMA_V2, SCHEMA_V3}
     logical_io = isinstance(program, dict) and program.get("logical_io") == LOGICAL_IO_V1
-    if not isinstance(program, dict) or set(program) != {"inputs", "nodes", "outputs"} | ({"schema"} if v2 else set()) | ({"logical_io"} if logical_io else set()):
+    if not isinstance(program, dict) or set(program) != {"inputs", "nodes", "outputs"} | ({"floating_point"} if is_float else set()) | ({"schema"} if v2 else set()) | ({"logical_io"} if logical_io else set()):
         raise ValueError("component program requires exactly inputs, nodes and outputs")
-    _integer_dtype(accumulator_dtype, operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+    if is_float:
+        if v2 or logical_io:
+            raise ValueError("floating components do not support integer schema or logical IO extensions")
+        floating.validate_policy(program["floating_point"])
+        if operand_dtype not in floating.FORMATS or accumulator_dtype not in {"bf16", "f16", "f32"}:
+            raise ValueError("floating component requires supported operand and accumulator formats")
+    else:
+        _integer_dtype(accumulator_dtype, operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
     if not isinstance(program["inputs"], list) or not program["inputs"]:
         raise ValueError("component program requires explicit inputs")
     types, inputs, aliases, storage, current, uses = {}, [], {}, {}, {}, {}
@@ -53,11 +63,14 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         if not isinstance(row, dict) or set(row) != {"name", "role", "shape", "dtype"}:
             raise ValueError("component input requires exactly name, role, shape and dtype")
         name, shape = row["name"], row["shape"]
-        dtype = _integer_dtype(row["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype)
+        dtype = ({"operand": operand_dtype, "accumulator": accumulator_dtype}.get(row["dtype"], row["dtype"])
+                 if is_float else _integer_dtype(row["dtype"], operand_dtype=operand_dtype, accumulator_dtype=accumulator_dtype))
         if not _name(name) or name in types or row["role"] not in {"input", "weight", "bias"}:
             raise ValueError("component input name/role is invalid or duplicated")
         if not isinstance(shape, list) or len(shape) != 2 or any(type(dim) is not int or dim < 1 for dim in shape):
             raise ValueError("component programs require positive rank-two input shapes")
+        if is_float and dtype not in floating.FORMATS:
+            raise ValueError("floating component input has unsupported storage")
         types[name] = ValueType(tuple(shape), dtype)
         storage[name] = name
         current[name] = name
@@ -85,8 +98,8 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         )
         supported = {"matmul", "add", "copy", "transpose", "alias", "update"} | (
             {"cast", "reduce_sum", "reshape"} if v2 else set()
-        ) | ({"extract_slice", "concat"} if v3 else set())
-        if set(node) != {"name", "op", "inputs"} | extra or op not in supported:
+        ) | ({"extract_slice", "concat"} if v3 else set()) | ({"relu", "convert"} if is_float else set())
+        if (not is_float and set(node) != {"name", "op", "inputs"} | extra) or op not in supported:
             raise ValueError("unsupported component node; use explicit supported generic tensor operations")
         arity = 2 if op in {"matmul", "add", "update"} else 1
         if (not isinstance(args, list) or (len(args) < 2 if op == "concat" else len(args) != arity)
@@ -101,7 +114,17 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
             rhs = selected[1]
             if lhs.shape[1] != rhs.shape[0]:
                 raise ValueError("component matmul reduction extents differ")
-            if max(int(lhs.dtype[1:]), int(rhs.dtype[1:])) > int(accumulator_dtype[1:]):
+            if is_float:
+                if lhs.dtype != operand_dtype or rhs.dtype != operand_dtype:
+                    raise ValueError("floating matmul inputs require explicit conversion to selected operand storage")
+                from merlin.runtime.fp8_formats import storage_bits
+
+                if storage_bits(operand_dtype) > storage_bits(accumulator_dtype) or (
+                    storage_bits(operand_dtype) == storage_bits(accumulator_dtype)
+                    and operand_dtype != accumulator_dtype
+                ):
+                    raise ValueError("floating matmul requires matching or widening accumulator storage")
+            elif max(int(lhs.dtype[1:]), int(rhs.dtype[1:])) > int(accumulator_dtype[1:]):
                 raise ValueError("component matmul operands exceed selected accumulator width")
             result = ValueType((lhs.shape[0], rhs.shape[1]), accumulator_dtype)
         elif op in {"add", "update"}:
@@ -147,8 +170,12 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
                 if int(lhs.dtype[1:]) > int(dtype[1:]):
                     raise ValueError("component sum requires a result at least as wide as its input")
             result = ValueType(tuple(shape), dtype)
+        elif op == "convert":
+            result = ValueType(lhs.shape, node.get("dtype"))
         else:
             result = lhs
+        if is_float:
+            floating.validate_node(node, result_dtype=result.dtype, accumulator_dtype=accumulator_dtype)
         types[name] = result
         uses[name] = 0
         if op in {"alias", "update"}:
@@ -194,6 +221,7 @@ def analyze(program, *, operand_dtype, accumulator_dtype):
         effects.add("immutable_reuse")
     effects.add("output_publication")
     result = {
+        **({"floating_point": copy.deepcopy(program["floating_point"])} if is_float else {}),
         "inputs": inputs,
         "nodes": nodes,
         "outputs": out,
@@ -220,7 +248,9 @@ def render(program, *, operand_dtype, accumulator_dtype):
     Numerical domains, target legality and candidate lowering remain separate.
     """
     accumulator = accumulator_dtype
-    if not isinstance(accumulator, str) or not accumulator.startswith("i") or not accumulator[1:].isdigit():
+    if "floating_point" not in (program or {}) and (
+        not isinstance(accumulator, str) or not accumulator.startswith("i") or not accumulator[1:].isdigit()
+    ):
         raise ValueError("component DAG requires a signed integer accumulator")
     program = analyze(program, operand_dtype=operand_dtype, accumulator_dtype=accumulator)
     types = {row["name"]: ValueType(tuple(row["shape"]), row["dtype"]) for row in program["inputs"] + program["nodes"]}
@@ -347,6 +377,11 @@ def render(program, *, operand_dtype, accumulator_dtype):
                     f"    %{name} = tensor.expand_shape {output_name} [[0, 1]] "
                     f"output_shape [{result.shape[0]}, {result.shape[1]}] : {inner.mlir} into {result.mlir}"
                 )
+            continue
+        if "floating_point" in program:
+            from .component_float import render_region
+
+            lines.extend(render_region(node, types, values))
             continue
         if op == "matmul":
             maps = [

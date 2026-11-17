@@ -946,10 +946,16 @@ def _emit_micro_model_loader(entry: dict, target: str, out_root, *, capture_dtyp
 
 def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, capture=None):
     regime, eb = CS.entry_binding(entry, binding)
-    if CS.entry_component_program(entry, eb) is not None:
-        from .component_integer_bounds import preflight_entry
+    component = CS.entry_component_program(entry, eb)
+    if component is not None:
+        if "floating_point" in component:
+            from .component_float_numerics import preflight
 
-        preflight_entry(entry, binding=binding)
+            preflight(entry, binding=binding)
+        else:
+            from .component_integer_bounds import preflight_entry
+
+            preflight_entry(entry, binding=binding)
     if entry.get("input_palette") is not None and regime == "mx":
         raise ValueError("component input palettes require separately declared typed block-scale inputs on MX")
     # Whole-model capsule: a small representative network lowered end-to-end via model2MLIR, graded vs its
@@ -1054,7 +1060,25 @@ def _write_capsule_inner(entry, binding, out_root, facts_sha: str = "", *, captu
     (d / "expected_instruction_coverage.yaml").write_text(
         yaml.safe_dump(cap["expected"], sort_keys=False), encoding="utf-8"
     )
-    if regime == "int":
+    if "floating_point" in (cap.get("component_program") or {}):
+        from . import component_float_numerics
+
+        outputs, inputs = component_float_numerics.evaluate(cap)
+        GS.write_golden(
+            d,
+            {
+                "golden_source": "independent_rational_component_float_v1",
+                "oracle_provenance": {
+                    "engine": "exact rational arithmetic with explicit format rounding",
+                    "source_identity": component_float_numerics.source_identity(),
+                    "datapath": cap["component_program"]["floating_point"],
+                    "inputs": inputs,
+                    "qualification": "finite source reference; target arithmetic and execution unverified",
+                },
+                "outputs": outputs,
+            },
+        )
+    elif regime == "int":
         bound = _integer_reference_bound(entry, cap)
         cap["integer_partial_sum_bound"] = bound
         (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")

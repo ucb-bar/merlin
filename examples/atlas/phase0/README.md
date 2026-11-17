@@ -96,8 +96,7 @@ independent comparator and is not a substitute for Merlin-generated signatures
 and verifiers. Keep the ledger and generated compiler outside this example
 directory.
 
-The current descriptor selects `AtlasRocketConfig`. If the campaign instead
-targets `EE290SimConfig`, create a new selected source bundle and Phase 0 run
+The current descriptor selects `EE290SimConfig`. Create a new selected source bundle and Phase 0 run
 with that exact elaboration and simulator identity. Existing receipts must not
 be relabeled as evidence for the new SoC configuration.
 For that new campaign, use the generic
@@ -227,3 +226,30 @@ Changing a status field cannot qualify old artifacts. New inputs require newly
 frozen runs; preserve old outputs unchanged. See [the artifact map](../artifacts/README.md)
 and [whole-model walkthrough](../whole-model/README.md) for member MLIR, external
 tensors and intermediate lowering snapshots.
+
+## Optional floating component source tests
+
+The [floating test design](../../../docs/design/floating_component_tests.md) adds
+**eight public source cases**, selected by [floating-tests.yaml](floating-tests.yaml).
+They reuse the component builder, input palettes and normal golden writer. The
+suite includes ordered contraction, ReLU, residual fan-out, independent work,
+shared weights, explicit conversion between contractions, logical mutation, and
+rounding/movement boundaries. Extra format variants live in repository tests and
+do not multiply the agent's case count.
+
+From the repository root, with the experiments package available:
+
+```sh
+python -m merlin_experiments.phase0.floating_suite \
+  --config examples/atlas/phase0/floating-tests.yaml \
+  --out out/build/atlas-floating-sources
+```
+
+The destination must be fresh. The output contains eight MLIR/capsule/golden
+directories, reusable abstract entries, and a manifest explicitly marked
+`source_only`, `hardware_qualified: false`, `phase1_admitted: false`. Logical
+shapes are source choices; they are not assertions about hardware tile geometry.
+The selected finite policy does not cover overflow, flush-to-zero or approximate
+transcendentals. Corpus admission still requires selected operation/numeric
+contracts, qualified runtime and timing controls, and the normal frozen release.
+This diagnostic command neither seals a campaign nor launches an OOT agent.
