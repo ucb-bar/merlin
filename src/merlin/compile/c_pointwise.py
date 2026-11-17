@@ -7,7 +7,8 @@ from math import prod
 from merlin.semantic_compiler.pointwise_tiling import PointwiseTiling
 
 
-def render_pointwise_c(plan: PointwiseTiling, prefix: str) -> str:
+def render_pointwise_c(plan: PointwiseTiling, prefix: str, *, output_element_bytes: int | None = None) -> str:
+    """Pack source operands and assemble result tiles with independent byte widths."""
     if (
         not isinstance(plan, PointwiseTiling)
         or not prefix
@@ -19,7 +20,11 @@ def render_pointwise_c(plan: PointwiseTiling, prefix: str) -> str:
     m, n = plan.shape
     tm, tn = plan.tile_shape
     width = plan.element_bytes
-    largest = max(plan.packed_bytes, *(prod(node.type.shape) * width for node in plan.source.nodes))
+    output_width = width if output_element_bytes is None else output_element_bytes
+    if type(output_width) is not int or output_width <= 0:
+        raise ValueError("pointwise output element width must be a positive integer")
+    largest = max(plan.packed_bytes, prod(plan.tile_counts) * tm * tn * output_width,
+                  *(prod(node.type.shape) * width for node in plan.source.nodes))
     if largest > 2**63 - 1:
         raise ValueError("pointwise buffers exceed the supported signed index domain")
     helpers = [
@@ -64,8 +69,8 @@ def render_pointwise_c(plan: PointwiseTiling, prefix: str) -> str:
 """)
     helpers.append(f"""static void {prefix}_assemble(uint8_t *out,const uint8_t *tiles) {{
   for (size_t row=0;row<{m}u;++row) for (size_t col=0;col<{n}u;++col) {{
-    size_t at=(((row/{tm}u)*{plan.tile_counts[1]}u+col/{tn}u)*{tm * tn}u+(row%{tm}u)*{tn}u+col%{tn}u)*{width}u;
-    __builtin_memcpy(out+(row*{n}u+col)*{width}u,tiles+at,{width}u);
+    size_t at=(((row/{tm}u)*{plan.tile_counts[1]}u+col/{tn}u)*{tm * tn}u+(row%{tm}u)*{tn}u+col%{tn}u)*{output_width}u;
+    __builtin_memcpy(out+(row*{n}u+col)*{output_width}u,tiles+at,{output_width}u);
   }}
 }}
 """)
