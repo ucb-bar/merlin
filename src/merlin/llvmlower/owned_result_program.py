@@ -26,9 +26,12 @@ def _implementations():
     return {
         "owned_results.py": root / "owned_results.py",
         "owned_result_abi.py": root / "owned_result_abi.py",
+        "owned_result_c.py": root / "owned_result_c.py",
         "owned_result_allocations.py": root / "owned_result_allocations.py",
         "owned_result_program.py": Path(__file__),
         "owned_results.c": runtime_dir() / "abi/owned_results.c",
+        "owned_result_views.c": runtime_dir() / "abi/owned_result_views.c",
+        "owned_result_views.h": runtime_dir() / "abi/owned_result_views.h",
     }
 
 

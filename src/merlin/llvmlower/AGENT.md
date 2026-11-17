@@ -1,5 +1,14 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`owned_result_c` appends a checked C invocation to the official aggregate
+bridge. It executes the original call once, then validates all returned views
+against live allocation records before payload access. Keep compiler-derived
+rank/storage/static dimensions, exact native scalar transport, empty zero-access
+views and complete owner closure. C copies must preserve signed-stride element
+order and use independent caller storage. The existing Python validator remains
+independent; no generated-C or target mode may bypass ordinary lifetime gates.
+Pin the generator and C implementation/header in saved compiler products.
+
 `owned_results` explicitly selects execution-produced result descriptors for
 the serial native host. Preserve the ordinary bufferization, ownership and
 lifetime gates; upstream clone lowering follows ownership. The generated C

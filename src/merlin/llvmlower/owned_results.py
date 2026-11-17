@@ -266,8 +266,11 @@ def compile_owned_results(
         source_bridge,
         Path(__file__),
         Path(__file__).with_name("owned_result_abi.py"),
+        Path(__file__).with_name("owned_result_c.py"),
         Path(__file__).with_name("owned_result_allocations.py"),
         runtime_dir() / "abi/owned_results.c",
+        runtime_dir() / "abi/owned_result_views.c",
+        runtime_dir() / "abi/owned_result_views.h",
     )
     program = OwnedResultProgram(
         original,

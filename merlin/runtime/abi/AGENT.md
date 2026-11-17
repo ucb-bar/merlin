@@ -6,6 +6,14 @@ Merlin-owned C implementations of the MLIR runtime symbols the lowered model cal
 
 ## What belongs here
 
+- `owned_result_views.{h,c}` validate returned logical memref views against
+  the selected invocation allocator, before payload reads. Preserve negative
+  strides, zero-access empty views, exact static extents, overflow and byte
+  bounds, complete returned-owner closure and independent copy destinations.
+  This is reusable C descriptor validation, not a model driver or a target
+  placement policy. Caller metadata is compiler-owned; returned addresses and
+  extents are untrusted. Allocation context and target linking remain explicit.
+
 - `mlir_runtime.c` — `memrefCopy` (the strided copy `memref.copy` lowers to) plus the non-standard math symbols the libm lowering needs (`rsqrtf`/`rsqrt`). Pure, freestanding C; no target assumptions.
 - `owned_results.c` is an explicitly selected host allocation runtime for
   returned memref results. Its thread-local synchronous invocation records

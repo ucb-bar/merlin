@@ -156,4 +156,6 @@ def bridge(inputs, outputs, *, entry="forward"):
     lines.append("size_t merlin_owned_result_descriptor_bytes(size_t rank) { switch(rank) {")
     lines.extend(f"case {rank}: return sizeof(D{rank});" for rank in ranks)
     lines.extend(("default: return 0;}}", ""))
-    return "\n".join(lines)
+    from .owned_result_c import checked_bridge
+
+    return "\n".join(lines) + checked_bridge(inputs, outputs)

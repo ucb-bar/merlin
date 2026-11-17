@@ -5,10 +5,45 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
 ---
 
 # Results sized during execution
+
+## Checked generated-C calls
+
+The ordinary returned-descriptor bridge now also exports
+`merlin_owned_result_invoke_checked`. Within an explicitly begun invocation it
+executes the original entry once, then validates every returned result using
+`owned_result_views`. Caller-generated rank, storage and static extents remain
+fixed. Actual descriptors determine dynamic extents; no output-size predictor
+or evaluator value enters the bridge.
+
+Validation checks actual live owners, alignment, complete signed-stride byte
+footprints, shape/product overflow, total logical output bytes and exact closure
+of returned owners. Every descriptor is checked before copying any payload.
+An invalid result clears all output views and returns a diagnostic status;
+the caller must release the recorded invocation even after a failure. Empty
+views retain their owners but evaluate no inactive address arithmetic.
+The generic C helper requires matching `size_t`/address widths; the selected
+bridge retains its existing explicit 64-bit C ABI assertions.
+
+`merlin_owned_result_copy` rechecks live source ownership and metadata before
+copying row-major logical words through original signed strides. Destinations
+must be valid independent caller storage; overlapping source-owner storage
+refuses. Copies remain valid after invocation cleanup. Duplicate results retain
+their full logical byte charge but share source owner cleanup. The original
+Python descriptor validator remains an independent execution path.
+
+The C generator and runtime implementation/header join the existing saved
+program implementation pins and build-input closure. Native C executables
+exercise actual compiled content-derived compaction, empty/duplicate/borrowed
+results and repeated calls. Separate corrupt-descriptor tests run optimized
+and undefined-arithmetic-trapping C builds. A calling-contract fixture checks
+one original call and exact by-value scalar transport; it is not a numerical
+source-equivalence oracle. This implements the reusable checked C call/copy
+seam. Staged generated model drivers, target allocator context, target linking
+and dynamic-result readback remain separate integration requirements.
 
 `compile_owned_results` explicitly selects `merlin.execution-owned-results.v1`
 for serial host execution. Ranks and storage types come from the original

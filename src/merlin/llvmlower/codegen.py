@@ -219,11 +219,14 @@ def build_host_shared(
     result_objects = ()
     if owned_result_bridge is not None:
         result_runtime = runtime.with_name("owned_results.c")
-        result_objects = (out_so.with_name("owned_results.o"), out_so.with_name("owned_result_bridge.o"))
-        for source, output in zip((result_runtime, owned_result_bridge), result_objects, strict=True):
+        result_views = runtime.with_name("owned_result_views.c")
+        result_header = runtime.with_name("owned_result_views.h")
+        result_objects = tuple(out_so.with_name(name) for name in
+                               ("owned_results.o", "owned_result_views.o", "owned_result_bridge.o"))
+        for source, output in zip((result_runtime, result_views, owned_result_bridge), result_objects, strict=True):
             run(
-                [host_cc, "-std=c11", "-O2", "-fPIC", "-c", source, "-o", output],
-                inputs=(source,),
+                [host_cc, "-std=c11", "-O2", "-fPIC", "-I", runtime.parent, "-c", source, "-o", output],
+                inputs=(source, result_header),
                 outputs=(output,),
                 stage="runtime_object",
             )
