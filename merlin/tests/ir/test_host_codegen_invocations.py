@@ -23,6 +23,7 @@ def selected(tmp_path, monkeypatch, *, llc):
     source, runtime = tmp_path / "source.ll", tmp_path / "runtime.c"
     source.write_text("diagnostic LLVM source\n")
     runtime.write_text("diagnostic runtime source\n")
+    runtime.with_name("half_extend.h").write_text("diagnostic compiler-runtime header\n")
     monkeypatch.setattr(codegen, "clang", lambda: str(tools / "clang"))
     monkeypatch.setattr(codegen, "host_llc", lambda: str(tools / "llc") if llc else None)
     monkeypatch.setattr(codegen, "mlir_runtime_c", lambda: runtime)
@@ -53,7 +54,7 @@ def test_exact_original_three_child_boundaries_and_input_product_roles(tmp_path,
     model, runtime_object = tmp_path / "model.o", tmp_path / "mlir_runtime_host.o"
     roles = {
         "object": ((source,), (model,)),
-        "runtime_object": ((runtime,), (runtime_object,)),
+        "runtime_object": ((runtime, runtime.with_name("half_extend.h")), (runtime_object,)),
         "link": ((model, runtime_object), (result,)),
     }
     for stage, (inputs, outputs) in roles.items():
