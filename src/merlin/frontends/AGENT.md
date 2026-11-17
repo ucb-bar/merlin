@@ -41,6 +41,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   extent/scratch facts, and earlier kernel inlining cannot invent original
   parent facts. Keep complete schema mappings, static public model types and
   evaluator exclusion; this grants no numeric/effect/alias or target proof.
+  `t2m.checked-index-runtime-arguments.v1` additionally requires the original
+  dominating unsigned index round trip and fixed-width comparison assertions.
+  `source_index_ranges.py` reconstructs word enclosures without target index
+  width, messages or tags; signed/unsigned extensions stay distinct. Check the
+  exact adapter/range record and preserve executable guards. Range enclosures
+  grant no concrete tensor extent, result-allocation or scratch fact. Older
+  profiles refuse; public dynamic model signatures remain separate work.
   `kernel_allocation_evidence.py` independently validates optional allocation
   source capsules: original TTIR, native-normalized/generic input, original
   argument bindings and source-only stage fingerprints. Copy only their exact

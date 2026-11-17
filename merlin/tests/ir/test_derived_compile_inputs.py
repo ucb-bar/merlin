@@ -308,3 +308,83 @@ def test_rehashed_runtime_guard_claim_never_replaces_parent_call_evidence(tmp_pa
     with pytest.raises(ValueError):
         stage_compile_inputs(source, target)
     assert not target.exists()
+
+
+def checked_index_fixture(root, *, profile="t2m.checked-index-runtime-arguments.v1", changed_range=False):
+    """Compiler-lineage fixture; this supplies no numeric qualification."""
+    from io import StringIO
+
+    from test_derived_live_arguments import checked_index_example
+    from xdsl.dialects.builtin import StringAttr
+    from xdsl.dialects.func import CallOp
+    from xdsl.printer import Printer
+
+    def serialize(module):
+        stream = StringIO()
+        Printer(stream=stream, print_generic_format=True).print_op(module)
+        return stream.getvalue().encode()
+
+    receipt = capture_fixture(root)
+    parent_module, spec, call_record = checked_index_example(tensor_control=True)
+    parent_module.attributes["prov.weights_file"] = StringAttr("weights.safetensors")
+    parent_model = serialize(parent_module)
+    module = parent_module.clone()
+    call = next(op for op in module.walk() if isinstance(op, CallOp))
+    call.results[0].replace_all_uses_with(call.operands[0])
+    call.parent.erase_op(call)
+    module.body.block.erase_op(list(module.ops)[1])
+    model = serialize(module)
+    kernel = b'''module {func.func @source(%x:tensor<7xi32>,%control:i32)->tensor<7xi32> {
+      return %x:tensor<7xi32>}}'''
+    ttir = (root / "kernels/0/source.ttir").read_bytes()
+    digest = record(kernel)["sha256"]
+    provenance = {"schema": "t2m.shared-tensor-provenance.v1", "spec": spec,
+                  "mlir_sha256": digest, "source_sha256": record(ttir)["sha256"]}
+    call_record.update(id="call.0", implementation_sha256=digest, source_sha256=provenance["source_sha256"])
+    if changed_range:
+        call_record["runtime_operand_bindings"]["control"]["unsigned_integer_range"] = [2, 30]
+    bindings = {"schema": "t2m.model-kernel-binding.v1", "mlir_sha256": record(model)["sha256"],
+        "input_model_sha256": record(parent_model)["sha256"], "kernels": {digest: provenance},
+        "calls": [call_record], "argument_binding_profile": profile}
+    parent_trace = encoded({"status": "complete", "mlir": record(parent_model)})
+    parent_receipt = json.loads((root / "parent/capture_receipt.json").read_text())
+    parent_receipt["artifacts"].update({
+        "model.mlir": record(parent_model), "frontend-trace.json": record(parent_trace)})
+    parent_raw = encoded(parent_receipt)
+    files = {"model.mlir": model, "parent/model.mlir": parent_model, "parent/frontend-trace.json": parent_trace,
+        "parent/capture_receipt.json": parent_raw, "kernel-bindings.json": encoded(bindings),
+        "kernels/0/model.mlir": kernel, "kernels/0/spec.json": encoded(spec),
+        "kernels/0/provenance.json": encoded(provenance)}
+    for name, raw in files.items():
+        (root / name).write_bytes(raw)
+        receipt["artifacts"][name] = record(raw)
+    receipt.update(parent_receipt=record(parent_raw), kernel_artifacts={digest: "kernels/0"})
+    (root / "capture_receipt.json").write_bytes(encoded(receipt))
+
+
+def test_checked_index_profile_stages_original_proofs_without_evaluator_reads(tmp_path, monkeypatch):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    checked_index_fixture(source)
+    read = Path.read_bytes
+
+    def checked_read(path):
+        if path.name in ("inputs.npz", "golden.npy", "goldens.npz", "execution.json", "tensor_words.npz"):
+            raise AssertionError("checked-index staging accessed evaluator data")
+        return read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", checked_read)
+    stage_compile_inputs(source, target)
+    assert json.loads((target / "signature.json").read_text())["inputs"] == [
+        {"shape": [7], "dtype": "i32"}, {"shape": [1], "dtype": "i64"}]
+    correspondence = json.loads((target / "source-correspondence.json").read_text())
+    assert correspondence["derivation"]["argument_binding_profile"] == "t2m.checked-index-runtime-arguments.v1"
+
+
+@pytest.mark.parametrize("options", [{"profile": None}, {"profile": "t2m.live-runtime-arguments.v1"},
+                                     {"profile": "unknown"}, {"changed_range": True}])
+def test_rehashed_checked_index_profile_or_range_cannot_replace_source_proofs(tmp_path, options):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    checked_index_fixture(source, **options)
+    with pytest.raises(ValueError):
+        stage_compile_inputs(source, target)
+    assert not target.exists()

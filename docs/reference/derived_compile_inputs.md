@@ -10,6 +10,7 @@ code_refs:
   - src/merlin/frontends/derived_compile_inputs.py
   - src/merlin/frontends/derived_runtime_arguments.py
   - src/merlin/frontends/derived_live_arguments.py
+  - src/merlin/frontends/source_index_ranges.py
   - src/merlin/frontends/derived_source_views.py
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/frontends/kernel_shape_abi.py
@@ -72,6 +73,24 @@ constants, static `tensor.dim` with a known axis, and singleton
 `tensor.from_elements`, under a finite inspection bound. No saved input or
 weight value supplies a compiler fact. Captured attributes and live operands
 partition the source scalar formals; complete schema accounting remains.
+
+`t2m.checked-index-runtime-arguments.v1` additionally admits an index enclosure
+proved by original dominating executable assertions. The source must check an
+unsigned index/integer/index round trip. Signed/unsigned comparisons and typed
+extended literals constrain the fixed-width integer words; only a nonnegative
+enclosure representable by the declared signed kernel type admits the standard
+`arith.index_castui` adapter. No native index width or `nonNeg` promise is
+invented. The separate `source_index_ranges` reader uses actual SSA and constant
+tensor axes, never messages, tags, samples or producer analysis imports.
+
+Check `unsigned_integer_range` and the exact adapter against the original parent
+before staging. Assertions in sibling regions or after the call supply no proof;
+downgraded profiles, altered intervals and invented constants refuse. Bounds
+remain executable. Per-query budgets limit predecessors/condition visits to
+4,096, enclosing blocks to 64, constant inspection depth to 16 and integer width
+to 4,096 bits. Arithmetic/CFG/loop-carried closure remains separate. These ranges
+do not provide concrete tensor dimensions, dynamic result allocation or scratch
+costs; the static public signature boundary remains unchanged.
 
 Unknown live data may control executable computation but cannot supply a
 tensor dimension or scratch cost. Reopen the original parent before any

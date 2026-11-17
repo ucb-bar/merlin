@@ -83,7 +83,7 @@ def checked_source_layout_call(parent_module, provenance, record, profile):
 
 
 def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=False, source_views=False, provenance=None,
-                               live_operands=False):
+                               live_operands=False, checked_indices=False):
     def refuse():
         raise ValueError("derived runtime kernel binding disagrees with its original typed call")
 
@@ -139,7 +139,7 @@ def checked_runtime_call_shapes(parent_module, spec, record, *, tensor_views=Fal
             binding = live[scalar["name"]]
             if isinstance(binding, dict) and binding.get("schema_operand") in attributes.data:
                 refuse()
-            fact = checked_live_operand(scalar, binding, by_name)
+            fact = checked_live_operand(scalar, binding, by_name, source_point=call, checked_indices=checked_indices)
             if fact is not None:
                 values[scalar["name"]] = fact
             continue

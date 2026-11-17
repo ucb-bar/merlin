@@ -92,3 +92,81 @@ def test_live_runtime_claims_cannot_override_source_scalar_shape_or_profile(dama
     with pytest.raises(ValueError):
         checked_runtime_call_shapes(module, spec, record, live_operands=enabled)
     assert str(module) == before
+
+
+def checked_index_example(*, upper=31, delay=False, signed=False, tensor_control=False):
+    cast = "arith.index_cast" if signed else "arith.index_castui"
+    guard = 'cf.assert %valid,"arbitrary source message"'
+    argument = "%source:tensor<1xi64>" if tensor_control else "%control:index"
+    definitions = '''%zero=arith.constant 0:index
+        %raw=tensor.extract %source[%zero]:tensor<1xi64>
+        %control=arith.index_castui %raw:i64 to index''' if tensor_control else ""
+    module = parse_mlir_text(f'''module {{
+      func.func @forward(%x:tensor<7xi32>,{argument})->tensor<7xi32> {{
+        {definitions}
+        %word={cast} %control:index to i64
+        %back={cast} %word:i64 to index
+        %same=arith.cmpi eq,%back,%control:index
+        cf.assert %same,"checked round trip"
+        %two=arith.constant 2:i4
+        %low=arith.extsi %two:i4 to i64
+        %high=arith.constant {upper}:i64
+        %minimum=arith.cmpi sle,%low,%word:i64
+        %maximum=arith.cmpi uge,%high,%word:i64
+        %valid=arith.andi %minimum,%maximum:i1
+        {'' if delay else guard}
+        %out=func.call @kernel(%x,%control) {{prov.kernel="test::checked",prov.kernel_operands=["input","control"]}}:
+          (tensor<7xi32>,index)->tensor<7xi32>
+        {guard if delay else ''}
+        return %out:tensor<7xi32>
+      }}
+      func.func private @kernel(tensor<7xi32>,index)->tensor<7xi32> attributes {{prov.kernel="test::checked"}}
+    }}''')
+    module.verify()
+    call = next(op for op in module.walk() if isinstance(op, CallOp))
+    spec = {"schema": "t2m.shared-tensor-abi.v3", "entry": "source", "buffers": [
+        {"name": "x", "shape": [7], "dtype": "i32", "effect": "read"},
+        {"name": "out", "shape": [7], "dtype": "i32", "effect": "write"}],
+        "runtime_scalars": [{"name": "control", "dtype": "i32", "source_arg": 1}]}
+    record = {"parent_call_ordinal": 0, "kernel": "test::checked", "callee": "kernel",
+        "schema_operands": ["input", "control"], "source_operand_bindings": {"x": "input"},
+        "source_result_order": ["out"], "runtime_scalar_bindings": {},
+        "runtime_operand_bindings": {"control": {"schema_operand": "control", "caller_type": "index",
+            "kernel_type": "i32", "adapter": "checked-index-castui", "unsigned_integer_range": [2, upper]}},
+        "model_call_attributes": {key: str(value) for key, value in call.attributes.items()}}
+    return module, spec, record
+
+
+def test_checked_index_call_reconstructs_the_original_assertions_and_explicit_profile():
+    module, spec, record = checked_index_example()
+    assert checked_runtime_call_shapes(module, spec, record, live_operands=True, checked_indices=True) == {
+        "x": [7], "out": [7]}
+    with pytest.raises(ValueError):
+        checked_runtime_call_shapes(module, spec, record, live_operands=True)
+
+
+@pytest.mark.parametrize("damage", ["range", "constant", "adapter", "extra", "missing", "delay", "signed",
+                                    "destination-width", "dimension"])
+def test_checked_index_claims_cannot_override_original_words_dominance_or_dimensions(damage):
+    module, spec, record = checked_index_example(upper=(1 << 31) if damage == "destination-width" else 31,
+                                               delay=damage == "delay", signed=damage == "signed")
+    live = record["runtime_operand_bindings"]["control"]
+    if damage == "range":
+        live["unsigned_integer_range"] = [2, 30]
+    elif damage == "constant":
+        live["constant_integer"] = 7
+    elif damage == "adapter":
+        live["adapter"] = "proved-index-cast"
+    elif damage == "extra":
+        live["shape_permission"] = True
+    elif damage == "missing":
+        live.pop("unsigned_integer_range")
+    elif damage == "dimension":
+        spec["schema"] = "t2m.shared-tensor-abi.v5"
+        spec["runtime_scalars"][0]["bounds"] = [0, 31]
+        for buffer in spec["buffers"]:
+            buffer["shape"] = ["control"]
+    before = str(module)
+    with pytest.raises(ValueError):
+        checked_runtime_call_shapes(module, spec, record, live_operands=True, checked_indices=True)
+    assert str(module) == before

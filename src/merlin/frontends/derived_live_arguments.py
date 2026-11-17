@@ -3,11 +3,26 @@
 Singleton element reads and proved static tensor dimensions have standard MLIR
 semantics. No producer import, evaluator input, weight value or provenance tag
 supplies a scalar value, range or shape fact here.
+Checked unsigned index adapters reopen original dominating source assertions;
+their enclosures grant no concrete tensor dimension or scratch fact.
 """
 
 from xdsl.dialects import arith, builtin, tensor
 
 PROFILE = "t2m.live-runtime-arguments.v1"
+RANGE_PROFILE = "t2m.checked-index-runtime-arguments.v1"
+
+
+def binding_profile(calls):
+    live = []
+    for call in calls:
+        bindings = call.get("runtime_operand_bindings", {})
+        if not isinstance(bindings, dict) or any(not isinstance(binding, dict) for binding in bindings.values()):
+            raise ValueError("derived live runtime operand bindings must be dictionaries")
+        live.extend(bindings.values())
+    if any(binding.get("adapter") == "checked-index-castui" for binding in live):
+        return RANGE_PROFILE
+    return PROFILE if live else None
 
 
 def _integer(value, depth=0):
@@ -28,7 +43,7 @@ def _integer(value, depth=0):
     return None
 
 
-def checked_live_operand(scalar, record, by_name):
+def checked_live_operand(scalar, record, by_name, *, source_point=None, checked_indices=False):
     def refuse():
         raise ValueError("derived live runtime scalar disagrees with original parent SSA/types")
 
@@ -50,6 +65,7 @@ def checked_live_operand(scalar, record, by_name):
         refuse()
     value = by_name[name]
     fact = _integer(value)
+    enclosure = None
     if isinstance(value.type, builtin.TensorType):
         if (not isinstance(value.type.encoding, builtin.NoneAttr) or value.type.element_type != target
                 or any(extent != 1 for extent in value.type.get_shape())):
@@ -59,9 +75,17 @@ def checked_live_operand(scalar, record, by_name):
         adapter = "exact-scalar"
     elif isinstance(value.type, builtin.IndexType) and dtype in ("i8", "i16", "i32", "i64"):
         width = target.bitwidth
-        if type(fact) is not int or not -(1 << (width - 1)) <= fact < 1 << (width - 1):
+        if type(fact) is int and -(1 << (width - 1)) <= fact < 1 << (width - 1):
+            adapter = "proved-index-cast"
+        elif fact is None and checked_indices and source_point is not None:
+            from .source_index_ranges import unsigned_index_range
+
+            enclosure = unsigned_index_range(value, source_point)
+            if enclosure is None or not 0 <= enclosure[0] <= enclosure[1] < 1 << (width - 1):
+                refuse()
+            adapter = "checked-index-castui"
+        else:
             refuse()
-        adapter = "proved-index-cast"
     else:
         refuse()
     if bounds is not None and fact is not None and not bounds[0] <= fact <= bounds[1]:
@@ -69,6 +93,8 @@ def checked_live_operand(scalar, record, by_name):
     expected = {"schema_operand": name, "caller_type": str(value.type), "kernel_type": str(target), "adapter": adapter}
     if fact is not None:
         expected["constant_integer"] = fact
+    if enclosure is not None:
+        expected["unsigned_integer_range"] = list(enclosure)
     if record != expected:
         refuse()
     return fact
