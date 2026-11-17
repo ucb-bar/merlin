@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, merlin/runtime/abi/owned_results.c]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c]
 ---
 
 # Results sized during execution
@@ -110,6 +110,30 @@ unchanged program objects reuse their loaded image. These checks retain build
 correspondence, not a proof of arbitrary source equivalence or a hermetic
 dependency closure.
 
+## Executed model call correspondence
+
+The separate `checked_execution_model` frontend primitive independently
+reconstructs explicit `t2m.model-kernel-binding.v4` /
+`t2m.execution-checked-calls.v1`. Its inputs are the original parsed parent,
+the bound module, the binding record and retained located kernel text/ABIs.
+It imports no producer frontend or evaluator and executes no size predictor.
+Every original typed call, scalar/dimension/narrowing guard and complete kernel
+body must reproduce the entire bound SSA graph, including ordinary surrounding
+computation and source locations. Rehashed declarations cannot authorize a
+changed operation, missing guard, reordered call or substituted source mapping.
+
+Original unlocated kernel artifacts omit source locations. V4 additionally
+binds the actual located bytes in `located_implementations`; stripping locations
+must reproduce the retained unlocated implementation digest. This supplies
+byte/expansion correspondence, not TTIR numeric/effect equivalence, shape
+prediction, ownership or target permission. Existing downstream lifetime and
+resource checks remain mandatory.
+
+This primitive is implemented and tested against handwritten fixtures and
+actual count-producing Triton models. It is not yet connected to derived
+package staging: old receipt/binding readers continue refusing v4 until its
+located artifact retention and independent reconstruction are integrated.
+
 ## Validation boundary and remaining integration
 
 `test_owned_result_execution.py` executes positive-value compaction with
@@ -127,8 +151,11 @@ proof. The transport does not disable that check to obtain a successful run.
 
 The selected staging/host interface now qualifies complete input-count models
 with two dependent Triton calls in tensor, buffer and guarded-buffer profiles.
-Further work must extend the producer/binding contracts to arbitrary internally
-computed sizes and connect native/target evaluators and qualification receipts.
+Explicit v4 producer binding now directly executes a real internally computed
+count feeding two later Triton allocations. The consumer correspondence
+primitive preserves its full graph. Further work must connect retained v4
+artifacts and reconstruction to staging and extend producer/qualification,
+native/target evaluators and remaining internally computed shape compositions.
 Existing input-axis and source-proved size programs remain useful for
 preallocated interfaces; they do not silently acquire execution-derived extents. No full
 arbitrary-TTIR, GPU correspondence, accelerator or performance claim follows.

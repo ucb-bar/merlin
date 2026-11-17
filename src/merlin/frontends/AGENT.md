@@ -33,6 +33,14 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   `derived_compile_inputs.py` keeps parent FX and normalized TTIR correspondence separate,
   checks receipt-bound compiler members, and excludes evaluator values and digests from its staged view.
   Staging grants byte custody only, never source equivalence or numeric admission.
+  `execution_model_correspondence.py` and `execution_call_contracts.py` own
+  independent complete-SSA reconstruction of explicit v4 executed call binding.
+  Reopen original calls, retained located kernel bodies and every scalar/
+  dimension/cast guard; compare the entire parent expansion and source locations.
+  Located artifacts must also reproduce the retained unlocated implementation
+  digest. No producer analysis, sample or result program supplies a fact.
+  This is a correspondence primitive; package staging has not yet admitted v4.
+  It grants no TTIR equivalence, numeric/effect, ownership or target permission.
   `derived_live_arguments.py` independently checks the explicit
   `t2m.live-runtime-arguments.v1` profile against original typed parent calls.
   Exact scalar SSA and unencoded singleton tensors stay live; index casts need
