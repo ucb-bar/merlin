@@ -8,6 +8,9 @@ checks for changed data. Pin the complete local artifact inventory and selected
 implementations, without following serialized paths. The generic C controller
 copies every checked result and releases source owners before observation.
 Target layout, linking, resource maps and qualification remain executor duties.
+`load_arguments` validates the complete bounded positional NPZ roster and NPY
+headers before allocating arrays. Object/Fortran storage, duplicate/extra members,
+excessive shape products and incomplete payloads refuse before source invocation.
 
 `owned_result_lowering` prepares original source, lowers the complete ordinary
 owned-result pipeline and emits checked bridge/LLVM products without selecting

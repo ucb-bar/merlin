@@ -1,11 +1,16 @@
 #include "owned_result_readback.h"
-#include <string.h>
 
 static int bytes(MerlinOwnedReadback *sink, const void *p, size_t n) {
   return n ? sink->write(sink->context, p, n) : 0;
 }
 static int text(MerlinOwnedReadback *sink, const char *value) {
-  return bytes(sink, value, strlen(value));
+  size_t length = 0;
+  while (value[length]) ++length;
+  return bytes(sink, value, length);
+}
+static int same(const char *left, const char *right) {
+  while (*left && *left == *right) {++left; ++right;}
+  return *left == *right;
 }
 static int number(MerlinOwnedReadback *sink, uint64_t value) {
   char data[20]; size_t n=0;
@@ -33,16 +38,16 @@ int merlin_owned_readback_observe(void *context, int kind, size_t index, const c
   if(!sink || !sink->write || !dtype || rank>MERLIN_OWNED_RESULT_MAX_RANK ||
      (rank && !shape) || (n && !data) || (kind!=MERLIN_OWNED_INPUT && kind!=MERLIN_OWNED_OUTPUT)) return 1;
   size_t width=0; int signed_words=0;
-  if(!strcmp(dtype,"i1")) width=1;
-  else if(!strcmp(dtype,"i8")) {width=1;signed_words=1;}
-  else if(!strcmp(dtype,"i16")) {width=2;signed_words=1;}
-  else if(!strcmp(dtype,"i32")) {width=4;signed_words=1;}
-  else if(!strcmp(dtype,"i64")) {width=8;signed_words=1;}
-  else if(!strcmp(dtype,"f16") || !strcmp(dtype,"bf16")) width=2;
-  else if(!strcmp(dtype,"f32")) width=4;
-  else if(!strcmp(dtype,"f64")) width=8;
-  else if(!strcmp(dtype,"f8E4M3FN") || !strcmp(dtype,"f8E4M3FNUZ") ||
-          !strcmp(dtype,"f8E5M2") || !strcmp(dtype,"f8E5M2FNUZ")) width=1;
+  if(same(dtype,"i1")) width=1;
+  else if(same(dtype,"i8")) {width=1;signed_words=1;}
+  else if(same(dtype,"i16")) {width=2;signed_words=1;}
+  else if(same(dtype,"i32")) {width=4;signed_words=1;}
+  else if(same(dtype,"i64")) {width=8;signed_words=1;}
+  else if(same(dtype,"f16") || same(dtype,"bf16")) width=2;
+  else if(same(dtype,"f32")) width=4;
+  else if(same(dtype,"f64")) width=8;
+  else if(same(dtype,"f8E4M3FN") || same(dtype,"f8E4M3FNUZ") ||
+          same(dtype,"f8E5M2") || same(dtype,"f8E5M2FNUZ")) width=1;
   if(!width || n%width) return 1;
   uint64_t dimensions[MERLIN_OWNED_RESULT_MAX_RANK];
   size_t count=1; int empty=0;

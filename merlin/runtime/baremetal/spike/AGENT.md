@@ -6,6 +6,13 @@ Merlin-owned bare-metal harness for running command buffers on **spike** as a mu
 
 ## What belongs here
 
+- `owned_result_main.c` adapts the shared signature-v6 driver/readback to the
+  existing console and exit ABI. Input placement/extent must be supplied by the
+  actual builder; no default address exists. Select one nonconcurrent allocator
+  context, preserve raw byte writes across newline-valued payloads and emit DONE
+  only after complete success. Failure diagnostics and encoded guest exits are
+  retained; host exit code zero alone is never evidence of success.
+
 - Machine-mode startup, HTIF protocol, linker script, and RVV kernel library `.S` files consumed by `merlin/python/merlin/runtime/backends/spike.py`.
 
 ## What does not belong here

@@ -6,6 +6,16 @@ Merlin runtime **execution backends**: run the same Merlin command buffers the P
 
 ## What belongs here
 
+- `owned_result_model` selects signature v6 through the ordinary whole-model
+  build API. Reuse the observed compiler/index plan, bounded memory layout,
+  shared source-only lowerer and exact linked math archive. Generate a separate
+  positional input blob and complete shape/payload readback; no reference value
+  or output predictor enters lowering. The current executor is explicitly serial
+  with complete input observation. Refuse every unimplemented nondefault build
+  option instead of silently dropping device, numeric, profiling or effect choices.
+  Verify loaded image/stack/allocator disjointness and selected decoded-map
+  admission when supplied. Actual target execution and references remain separate.
+
 - `rvv_codegen.py` — command buffer → C driver around the hand-written RVV kernel.
 - `spike.py` — compile (chipyard riscv gcc) + run (`spike --isa=rv64gcv_zfh_zvfh -pN`) + parse + normalize metrics.
 - `vcs.py` — replay the same ELF on `MERLIN_SATURN_SIMV` (never builds RTL).

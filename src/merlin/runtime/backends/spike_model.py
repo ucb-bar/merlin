@@ -370,6 +370,12 @@ def build(
     one routing for rewriting and shim objects; ``matrix_scalar_tile`` diagnoses
     packing/ABI with scalar instructions and does not qualify a device datapath.
     """
+    if runtime_signature is not None:
+        from .owned_result_model import build_if_selected
+
+        owned_result = build_if_selected(locals())
+        if owned_result is not None:
+            return owned_result
     recomputation_check = None
     if source_recomputation is not None:
         from ..source_recomputation_build import freeze_source_recomputation

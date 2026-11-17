@@ -5,10 +5,45 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_driver.py, src/merlin/runtime/owned_result_readback.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/c/owned_result_driver.c, merlin/runtime/c/owned_result_readback.c, merlin/runtime/c/owned_result_host_main.c, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_driver.py, src/merlin/runtime/owned_result_readback.py, src/merlin/runtime/backends/owned_result_model.py, merlin/runtime/baremetal/spike/owned_result_main.c, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/c/owned_result_driver.c, merlin/runtime/c/owned_result_readback.c, merlin/runtime/c/owned_result_host_main.c, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
 ---
 
 # Results sized during execution
+
+## Ordinary serial target images
+
+The ordinary `runtime.backends.spike_model.build` API now selects the returned
+result path only for an explicit signature v6, positional invocation archive,
+complete readback and complete original input observation. Earlier signatures
+retain their original builder. Unsupported nondefault numeric, device,
+transformation, profiling, console or effect options refuse before building;
+none are silently discarded. The current selection is a serial HTIF executor.
+
+`owned_result_model` reuses the observed compiler/index plan, shared source-only
+lowerer, exact typed driver, existing bounded allocator/startup/linker/console
+and explicitly resolved linked math archive. Runtime arrays become a separate
+blob, including exact parameter/scalar words. Zero-input functions use a physical
+sentinel without inventing a logical argument. Actual ELF intervals, stack and
+allocator must be disjoint inside the declared span; an optional provider-decoded
+map keeps its ordinary admission requirements. Simulator backing memory itself
+does not establish a board's decoded map. Compilation records bind preparation,
+actual compile/link commands and the completed image.
+
+The bare-metal adapter takes input placement and size exclusively from the
+builder. Shared readback preserves binary payloads through the existing console.
+Success requires complete independently decoded shapes, payloads, inputs and
+DONE as well as the actual process outcome. A guest allocator failure's encoded
+status may truncate to host exit code zero; missing completion still refuses.
+Source assertions, allocation/arena failures and arbitrary traps cannot become
+successful tensor qualification.
+
+Production builder checks execute dynamic empty/sparse/integer-extreme results,
+zero-input functions and actual arena exhaustion. Triton2MLIR's explicit
+`--result-mode execution-owned` target qualifier additionally stages the real
+three-kernel model, compares every original PyTorch result and replays complete
+independent source staging when verifying retained observations. This extends
+functional serial target execution; source effects, arbitrary views/resizing,
+numeric combinations, accelerators and performance remain separately qualified.
 
 ## Generated invocation and observed-shape readback
 
@@ -65,9 +100,9 @@ serial runtime objects with the existing startup, bounded allocator and console.
 One unchanged image handles content-derived, empty, duplicate and input-snapshot
 results; a separate allocation-budget selection fails before result publication.
 Tests retain image, compiler, simulator, harness/source and output identities.
-This is execution evidence for the runtime seam with standard-MLIR source; it
-does not qualify production v6 package staging, generated model drivers or
-dynamic-result readback. Those integration steps remain required.
+This initial standard-MLIR fixture retains its original runtime-seam scope.
+The ordinary serial target integration above has its own generated-driver,
+staging, readback and complete-model execution checks.
 
 `lower_owned_results` emits source/prepared MLIR, LLVM and the source-typed C
 bridge without host linking or invocation data. Its immutable lowering object
@@ -122,8 +157,8 @@ results and repeated calls. Separate corrupt-descriptor tests run optimized
 and undefined-arithmetic-trapping C builds. A calling-contract fixture checks
 one original call and exact by-value scalar transport; it is not a numerical
 source-equivalence oracle. This implements the reusable checked C call/copy
-seam. Staged generated model drivers, target allocator context, target linking
-and dynamic-result readback remain separate integration requirements.
+seam. The generated driver and ordinary serial target selection above add their
+own complete invocation, linking and observed-shape requirements.
 
 `compile_owned_results` explicitly selects `merlin.execution-owned-results.v1`
 for serial host execution. Ranks and storage types come from the original
@@ -136,8 +171,9 @@ restricted to public axes and singleton words.
 `merlin.compile-signature.v6` for ordinary captures, standalone kernels and
 bound models after their existing package/source checks. The default result
 mode and signatures v1--v5 retain their original behavior. Triton2MLIR's selected
-host workers now compile and invoke this mode; native evaluator, generated C
-runtime and target harness integration remain separate requirements.
+host workers now compile and invoke this mode; its explicitly selected serial
+target qualifier adds separate image execution. A second native evaluator and
+broader target/effect/shape compositions remain separate requirements.
 
 ## Compiler staging and repeated invocation
 

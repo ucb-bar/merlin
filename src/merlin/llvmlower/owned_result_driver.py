@@ -7,6 +7,7 @@ MLIR, predict result extents or enter the source-only compiler staging view.
 import hashlib
 import json
 import math
+import zipfile
 from pathlib import Path
 
 import numpy as np
@@ -21,6 +22,44 @@ from .owned_result_abi import bridge, prepare
 from .runtime_invocation import SCALAR_C
 
 SCHEMA = "merlin.owned-result-driver.v1"
+
+
+def load_arguments(source, signature, path, *, max_input_bytes=64 << 20):
+    """Load the complete positional runtime roster after bounded NPY headers."""
+    signature = validate_signature(parse_mlir_text(source), signature)
+    if type(max_input_bytes) is not int or not 0 < max_input_bytes <= 64 << 20:
+        raise ValueError("owned driver input budget must be in 1..64 MiB")
+    count = len(signature["inputs"])
+    if count > 64:
+        raise ValueError("owned driver has too many input arguments")
+    path = Path(path)
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > max_input_bytes + 65536 * (count + 1):
+        raise ValueError("owned driver input archive exceeds its bounded storage profile")
+    total = 0
+    with zipfile.ZipFile(path) as archive:
+        members = archive.infolist()
+        if len(members) != count or {row.filename for row in members} != {f"in{i}.npy" for i in range(count)}:
+            raise ValueError("owned driver input archive changes its complete positional roster")
+        for member in members:
+            with archive.open(member) as stream:
+                version = np.lib.format.read_magic(stream)
+                reader = {(1, 0): np.lib.format.read_array_header_1_0,
+                          (2, 0): np.lib.format.read_array_header_2_0}.get(version)
+                if reader is None:
+                    raise ValueError("owned driver input archive has an unsupported NPY header")
+                shape, fortran, dtype = reader(stream)
+                if (len(shape) > 16 or any(type(size) is not int or size < 0 for size in shape)
+                        or fortran or dtype.hasobject or dtype.fields is not None
+                        or dtype.itemsize not in (1, 2, 4, 8)):
+                    raise ValueError("owned driver input archive requires dense native numeric storage")
+                size = math.prod(shape) * dtype.itemsize
+                total += size
+                if total > max_input_bytes or member.file_size != stream.tell() + size:
+                    raise ValueError("owned driver input archive has an excessive or incomplete payload")
+        with np.load(path, allow_pickle=False) as values:
+            arrays = tuple(values[f"in{i}"] for i in range(count))
+    resolve(source, signature, arrays)
+    return arrays
 
 
 def _record(raw):
