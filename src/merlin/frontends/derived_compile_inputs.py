@@ -66,10 +66,22 @@ def _stage_bound_model_inputs(
     weights = {name: checked(name) for name in ("weights.safetensors", "weights.safetensors.manifest.json")}
     bindings_raw = checked("kernel-bindings.json")
     bindings = json.loads(bindings_raw)
+    executed_model = receipt.get("schema") == "t2m.bound-model-receipt.v2"
+    if executed_model:
+        from .execution_model_correspondence import SCHEMA as EXECUTED_SCHEMA
+
+        if (
+            result_mode != "execution-owned"
+            or bindings.get("schema") != EXECUTED_SCHEMA
+            or receipt.get("result_profile") != "merlin.execution-owned-results.v1"
+            or receipt.get("qualification") not in ("source-only-unqualified", "qualified")
+        ):
+            raise ValueError("executed model receipt requires its explicit binding and result selection")
     if bindings.get("schema") not in (
         "t2m.model-kernel-binding.v1",
         "t2m.model-kernel-binding.v2",
         "t2m.model-kernel-binding.v3",
+        *(("t2m.model-kernel-binding.v4",) if executed_model else ()),
     ) or bindings.get("mlir_sha256") != _sha(raw):
         raise ValueError("derived source correspondence does not bind the current model")
     parent_raw = checked("parent/capture_receipt.json")
@@ -147,18 +159,25 @@ def _stage_bound_model_inputs(
 
     interfaces = {}
     if (
-        "model_shape_profile" in bindings
+        executed_model
+        or "model_shape_profile" in bindings
         or "runtime_shape_contract" in bindings
         or any("symbolic_tensor_shapes" in call for call in calls)
     ):
         for digest, directory in implementations.items():
+            if executed_model:
+                interfaces[digest] = (
+                    json.loads(checked(directory + "/spec.json")),
+                    checked(directory + "/located.mlir").decode(),
+                )
+                continue
             body = parse_mlir_text(checked(directory + "/model.mlir").decode())
             body.verify()
             functions = [op for op in body.ops if isinstance(op, FuncOp) and op.body.blocks]
             if len(functions) != 1:
                 raise ValueError("derived symbolic implementation requires one executable function")
             interfaces[digest] = (json.loads(checked(directory + "/spec.json")), functions[0])
-    symbolic_model = checked_model_shapes(parent_module, module, bindings, interfaces)
+    symbolic_model = None if executed_model else checked_model_shapes(parent_module, module, bindings, interfaces)
     from .derived_live_arguments import PROFILE as LIVE_PROFILE
     from .derived_live_arguments import RANGE_PROFILE, WORD_RANGE_PROFILE, binding_profile
 
@@ -225,9 +244,12 @@ def _stage_bound_model_inputs(
         selected_calls = [call for call in calls if call["implementation_sha256"] == digest]
         for call in selected_calls:
             checked_source_layout_call(parent_module, provenance, call, source_layout_profile)
-        if spec.get("runtime_scalars") or any(
-            call.get("tensor_views") or call.get("source_tensor_views") or call.get("runtime_operand_bindings")
-            for call in selected_calls
+        if not executed_model and (
+            spec.get("runtime_scalars")
+            or any(
+                call.get("tensor_views") or call.get("source_tensor_views") or call.get("runtime_operand_bindings")
+                for call in selected_calls
+            )
         ):
             if spec.get("runtime_scalars") and bindings.get("argument_binding_profile") not in (
                 "t2m.captured-runtime-arguments.v1",
@@ -256,7 +278,10 @@ def _stage_bound_model_inputs(
                             checked_indices=bindings.get("argument_binding_profile") == RANGE_PROFILE,
                         )
                     )
-        if provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
+        if executed_model and provenance.get("profile") == "shared-source-word-buffer":
+            located_module = parse_mlir_text(interfaces[digest][1])
+            _checked_word_intent(next(iter(located_module.ops)), kernel)
+        if not executed_model and provenance.get("profile") in ("shared-guarded-buffer", "shared-source-word-buffer"):
             outputs = [b for b in spec["buffers"] if b["effect"] != "read"]
             if not runtime_shapes and any(
                 not b.get("shape") or any(type(n) is not int or n <= 0 for n in b["shape"]) for b in outputs
@@ -312,6 +337,13 @@ def _stage_bound_model_inputs(
         ):
             raise ValueError("derived kernel call does not bind its original TTIR")
         copied.update(("source/" + directory + "/" + name, data) for name, data in kernel.items())
+        if executed_model:
+            copied["source/" + directory + "/located.mlir"] = checked(directory + "/located.mlir")
+    execution_correspondence = None
+    if executed_model:
+        from .execution_model_correspondence import checked_execution_model
+
+        execution_correspondence = checked_execution_model(parent_module, module, bindings, interfaces)
     module = parse_mlir_text(raw.decode())
     module.verify()
     functions = [op for op in module.ops if isinstance(op, FuncOp)]
@@ -354,15 +386,27 @@ def _stage_bound_model_inputs(
         "schema": "merlin.compile-signature.v1",
         "entry": entry.sym_name.data,
         "inputs": (
-            symbolic_model["contract"]["inputs"] if symbolic_model is not None else abi(entry.function_type.inputs)
+            symbolic_model["contract"]["inputs"]
+            if symbolic_model is not None
+            else []
+            if executed_model
+            else abi(entry.function_type.inputs)
         ),
         "outputs": (
-            symbolic_model["contract"]["outputs"] if symbolic_model is not None else abi(entry.function_type.outputs)
+            symbolic_model["contract"]["outputs"]
+            if symbolic_model is not None
+            else []
+            if executed_model
+            else abi(entry.function_type.outputs)
         ),
         "shape_scope": "static_captured_signature",
         "capture_dtype": "typed-per-argument",
         "input_mutability": "borrowed-immutable-tensors",
     }
+    if executed_model:
+        from .execution_model_correspondence import input_contract
+
+        signature.update(input_contract(entry))
     if symbolic_model is not None:
         signature.update(
             schema="merlin.compile-signature.v3",
@@ -398,13 +442,18 @@ def _stage_bound_model_inputs(
         raise ValueError("derived model has an unbound guard storage declaration")
     signature = select_signature(module, signature, result_mode)
     correspondence = {
-        "schema": "merlin.derived-source-correspondence.v1",
+        "schema": "merlin.derived-source-correspondence.v2"
+        if executed_model
+        else "merlin.derived-source-correspondence.v1",
         "producer": "triton2MLIR",
         "input_model_sha256": _sha(raw),
         "staged_model_sha256": _sha(staged),
         "derivation": bindings,
         "scope": "byte-bound-lineage; semantic-admission-unverified",
     }
+    if execution_correspondence is not None:
+        correspondence["execution_binding"] = execution_correspondence
+        correspondence["scope"] = "byte-and-complete-SSA-expansion-bound; TTIR-semantic-admission-unverified"
     members = {
         "program.mlir": staged,
         "signature.json": _json(signature),

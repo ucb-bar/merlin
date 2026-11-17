@@ -74,7 +74,7 @@ def stage_compile_inputs(capture_dir: str | Path, destination: str | Path, *, re
         from .kernel_compile_inputs import _stage_kernel_inputs
 
         return _stage_kernel_inputs(source, target, receipt, receipt_raw, result_mode=result_mode)
-    if receipt.get("schema") == "t2m.bound-model-receipt.v1":
+    if receipt.get("schema") in ("t2m.bound-model-receipt.v1", "t2m.bound-model-receipt.v2"):
         from .derived_compile_inputs import _stage_bound_model_inputs
 
         return _stage_bound_model_inputs(source, target, receipt, receipt_raw, result_mode=result_mode)

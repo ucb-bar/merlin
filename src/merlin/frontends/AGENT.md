@@ -39,8 +39,15 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   dimension/cast guard; compare the entire parent expansion and source locations.
   Located artifacts must also reproduce the retained unlocated implementation
   digest. No producer analysis, sample or result program supplies a fact.
-  This is a correspondence primitive; package staging has not yet admitted v4.
-  It grants no TTIR equivalence, numeric/effect, ownership or target permission.
+  Derived receipt v2 now requires explicit execution-owned result selection and
+  v4 binding. Stage the extra `kernels/<ordinal>/located.mlir` member only after
+  ordinary source/memory custody checks and complete independent reconstruction.
+  Public input axes come from actual types; original source-domain guards remain
+  executable. No output-size program or static scratch estimate is substituted
+  for the selected owned allocator. A source-only unqualified candidate may enter
+  compilation; staging never reads its evaluator/qualification report and grants
+  no execution verdict. Old receipt/default readers reject this selection.
+  Correspondence grants no TTIR equivalence, numeric/effect, ownership or target permission.
   `derived_live_arguments.py` independently checks the explicit
   `t2m.live-runtime-arguments.v1` profile against original typed parent calls.
   Exact scalar SSA and unencoded singleton tensors stay live; index casts need

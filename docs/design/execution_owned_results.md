@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c]
 ---
 
 # Results sized during execution
@@ -129,10 +129,29 @@ byte/expansion correspondence, not TTIR numeric/effect equivalence, shape
 prediction, ownership or target permission. Existing downstream lifetime and
 resource checks remain mandatory.
 
-This primitive is implemented and tested against handwritten fixtures and
-actual count-producing Triton models. It is not yet connected to derived
-package staging: old receipt/binding readers continue refusing v4 until its
-located artifact retention and independent reconstruction are integrated.
+Derived `t2m.bound-model-receipt.v2` now explicitly selects this v4 binding and
+requires `stage_compile_inputs(..., result_mode="execution-owned")`. Ordinary
+parent/kernel compiler-member, memory and source-capsule checks still run.
+The additional located kernel bytes are retained alongside their original
+unlocated payloads. Complete independent reconstruction precedes borrowed-input
+annotation and signature v6 selection. Default mode, receipt downgrades, unknown
+profiles, missing located artifacts and changed original SSA or types refuse.
+The source correspondence is explicitly versioned
+`merlin.derived-source-correspondence.v2` and records the checked expansion.
+
+Public input dimensions are bound only to their actual source axes. Original
+source-domain guards remain in the full executable body. Result dimensions
+are discovered after execution; no public-axis/word prediction or static
+guard-scratch estimate grants admission for internal sizes. The selected native
+allocation policy accounts for actual private and result allocations.
+
+A v2 source-only unqualified candidate can enter compiler staging before its
+producer observes results. Staging also accepts the final qualified receipt,
+but never opens evaluator arrays, reference archives, metadata or qualification
+reports and supplies no execution verdict from the receipt's status. The
+producer publishes its qualified package only after actual host execution and
+complete original reference comparison. This explicit qualification backend
+does not constitute a second independent native compiler implementation.
 
 ## Validation boundary and remaining integration
 
@@ -152,10 +171,11 @@ proof. The transport does not disable that check to obtain a successful run.
 The selected staging/host interface now qualifies complete input-count models
 with two dependent Triton calls in tensor, buffer and guarded-buffer profiles.
 Explicit v4 producer binding now directly executes a real internally computed
-count feeding two later Triton allocations. The consumer correspondence
-primitive preserves its full graph. Further work must connect retained v4
-artifacts and reconstruction to staging and extend producer/qualification,
-native/target evaluators and remaining internally computed shape compositions.
+count feeding two later Triton allocations. The consumer correspondence reader
+and derived v2 staging preserve its full graph through the packaged interface.
+Further work includes the separate native evaluator, target harnesses and
+remaining internally computed shape, view/effect and resizing ownership
+compositions.
 Existing input-axis and source-proved size programs remain useful for
 preallocated interfaces; they do not silently acquire execution-derived extents. No full
 arbitrary-TTIR, GPU correspondence, accelerator or performance claim follows.

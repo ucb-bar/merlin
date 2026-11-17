@@ -36,6 +36,29 @@ _CALL_FIELDS = {
 }
 
 
+def input_contract(entry):
+    """Bind only actual public input axes; original executable guards remain.
+
+    This does not infer result extents or recover runtime bounds from samples.
+    Complete expansion checking preserves the original source-domain guards.
+    """
+    inputs, axes = [], {}
+    for ordinal, typ in enumerate(entry.function_type.inputs):
+        if isinstance(typ, builtin.TensorType):
+            shape = []
+            for axis, size in enumerate(typ.get_shape()):
+                if size == builtin.DYNAMIC_INDEX:
+                    name = f"d{ordinal}_{axis}"
+                    axes[name] = {"argument": ordinal, "axis": axis}
+                    shape.append(name)
+                else:
+                    shape.append(size)
+            inputs.append({"kind": "tensor", "dtype": str(typ.element_type), "shape": shape})
+        else:
+            inputs.append({"kind": "scalar", "dtype": str(typ), "shape": []})
+    return {"inputs": inputs, "dimension_bindings": axes}
+
+
 def _interface(spec, function):
     buffers, scalars = spec["buffers"], spec.get("runtime_scalars", [])
     if any(buffer["effect"] not in ("read", "write", "readwrite") for buffer in buffers) or any(
