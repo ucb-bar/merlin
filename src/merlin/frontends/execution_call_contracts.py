@@ -77,6 +77,18 @@ class CallContracts:
                 same = self.append(arith.CmpiOp(actual, dimensions[extent], "eq"), "call-dimension-binding")
                 self.check(same, "tensor dimension differs from scalar: " + buffer["name"])
 
+    def view(self, value, target, buffer, record, attributes, *, role):
+        if _compatible(value.type, target):
+            return self.tensor(value, target)
+        from .execution_call_views import POLICY, concrete, reshape
+
+        if record.get("tensor_views") != POLICY:
+            raise ValueError("executed call needs an explicit dense tensor view policy")
+        logical = concrete(buffer, record, attributes, value.type.element_type)
+        if role == "caller-to-kernel-view":
+            return self.tensor(reshape(value, logical, self.append, role=role), target)
+        return reshape(self.tensor(value, logical), target, self.append, role=role)
+
     def arguments(self, spec, function, record, by_name, attributes):
         scalars = spec.get("runtime_scalars", [])
         live, captured = record["runtime_operand_arguments"], record["runtime_scalar_arguments"]
@@ -152,6 +164,8 @@ class CallContracts:
         arguments = []
         for source, target in zip(tensor_inputs, function.function_type.inputs, strict=False):
             value = by_name[record["source_operand_bindings"][source["name"]]]
+            if not _compatible(value.type, target):
+                value = self.view(value, target, source, record, attributes, role="caller-to-kernel-view")
             self.dimensions(value, source, dimensions)
             arguments.append(self.tensor(value, target))
         arguments.extend(values[s["name"]] for s in scalars)

@@ -280,6 +280,12 @@ byte/expansion correspondence, not TTIR numeric/effect equivalence, shape
 prediction, ownership or target permission. Existing downstream lifetime and
 resource checks remain mandatory.
 
+[Executed call views](execution_call_views.md) additionally connect checked
+dense adapters and static source-coordinate/root proofs through their explicit
+v4 extension profile. All original schema operands and complete emitted SSA
+remain accounted for. Fully runtime reshape and public physical/mutating view
+contracts remain separate requirements.
+
 Derived `t2m.bound-model-receipt.v2` now explicitly selects this v4 binding and
 requires `stage_compile_inputs(..., result_mode="execution-owned")`. Ordinary
 parent/kernel compiler-member, memory and source-capsule checks still run.

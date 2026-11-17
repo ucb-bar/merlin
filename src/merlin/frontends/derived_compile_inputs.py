@@ -190,7 +190,7 @@ def _stage_bound_model_inputs(
     ):
         raise ValueError("derived live runtime operands require their explicit binding profile")
     source_views = bindings["schema"] == "t2m.model-kernel-binding.v3"
-    if (
+    if not executed_model and (
         source_views != any("source_tensor_views" in call for call in calls)
         or source_views != ("source_tensor_view_binding_profile" in bindings)
         or source_views
@@ -202,7 +202,7 @@ def _stage_bound_model_inputs(
         or source_views
         and "tensor_view_binding_profile" in bindings
     )
-    if (
+    if not executed_model and (
         tensor_views
         and (
             bindings.get("tensor_view_binding_profile") != "t2m.captured-dense-tensor-views.v1"

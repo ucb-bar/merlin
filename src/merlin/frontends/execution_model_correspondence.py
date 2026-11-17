@@ -13,6 +13,9 @@ from xdsl.dialects import builtin, func
 from xdsl.printer import Printer
 
 from .execution_call_contracts import CallContracts, scalar_attribute
+from .execution_call_views import FIELDS as VIEW_FIELDS
+from .execution_call_views import mark, source_views
+from .execution_call_views import validate as validate_views
 from .kernel_shape_abi import validate_dimensions
 from .linalg_mlir import parse_mlir_text
 
@@ -133,6 +136,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
     located = bindings.get("located_implementations")
     if not isinstance(located, dict) or set(located) != set(interfaces):
         raise ValueError("executed correspondence lacks its complete located kernel inventory")
+    validate_views(bindings)
     checked_interfaces = {}
     for digest, (spec, source) in interfaces.items():
         raw = source.encode()
@@ -155,7 +159,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
     declarations = {op.sym_name.data: op for op in expected.ops if isinstance(op, func.FuncOp)}
     used = set()
     for ordinal, (call, record) in enumerate(zip(calls, records, strict=True)):
-        if not isinstance(record, dict) or set(record) != _CALL_FIELDS:
+        if not isinstance(record, dict) or set(record) - VIEW_FIELDS != _CALL_FIELDS:
             raise ValueError("executed call has an unknown or incomplete correspondence record")
         symbol = call.callee.root_reference.data
         declaration = declarations.get(symbol)
@@ -193,10 +197,11 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             raise ValueError("executed call changes the retained kernel source or ABI")
         input_buffers, output_buffers = _interface(spec, function)
         mapping, live = record["source_operand_bindings"], record["runtime_operand_arguments"]
+        views = record.get("source_tensor_views", {})
         if (
             set(mapping) != {b["name"] for b in input_buffers}
             or len(set(mapping.values())) != len(mapping)
-            or set(mapping.values()) | set(live.values()) != {n.data for n in names}
+            or set(mapping.values()) | set(live.values()) | set(views) != {n.data for n in names}
             or len(record["source_result_order"]) != len(output_buffers)
             or set(record["source_result_order"]) != {b["name"] for b in output_buffers}
             or len(call.results) != len(output_buffers)
@@ -225,12 +230,16 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
         arguments, dimensions = contracts.arguments(
             spec, function, record, dict(zip((n.data for n in names), call.operands, strict=True)), attributes
         )
+        checked_views = source_views(
+            record, dict(zip((n.data for n in names), call.operands, strict=True)), attributes, retained
+        )
         mapper = dict(zip(function.body.block.args, arguments, strict=True))
         for source in function.body.block.ops:
             if isinstance(source, func.ReturnOp):
                 returned = [mapper[value] for value in source.arguments]
                 break
             cloned = source.clone(value_mapper=mapper)
+            mark(cloned, checked_views)
             for op in cloned.walk():
                 op.attributes.update(
                     {
@@ -248,7 +257,14 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             contracts.dimensions(value, buffer, dimensions)
             results[buffer["name"]] = value
         replacement = [
-            contracts.tensor(results[name], old.type)
+            contracts.view(
+                results[name],
+                old.type,
+                next(b for b in output_buffers if b["name"] == name),
+                record,
+                attributes,
+                role="kernel-to-caller-view",
+            )
             for name, old in zip(record["source_result_order"], call.results, strict=True)
         ]
         call.parent.insert_ops_before(emitted, call)

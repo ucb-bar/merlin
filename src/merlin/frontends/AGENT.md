@@ -35,6 +35,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Staging grants byte custody only, never source equivalence or numeric admission.
   `execution_model_correspondence.py` and `execution_call_contracts.py` own
   independent complete-SSA reconstruction of explicit v4 executed call binding.
+  `execution_call_views.py` additionally checks the explicit execution view
+  profile, reconstructs dense value adapters and reuses original static
+  source-coordinate/root proofs. Account for every view operand and check
+  captured dimensions before reshape; compare complete emitted SSA and source
+  locations. Missing profiles or forged coordinates refuse. No public physical
+  alias/mutation, fully dynamic reshape or source-layout permission follows.
   Reopen original calls, retained located kernel bodies and every scalar/
   dimension/cast guard; compare the entire parent expansion and source locations.
   Located artifacts must also reproduce the retained unlocated implementation
