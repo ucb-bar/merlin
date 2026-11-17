@@ -12,6 +12,9 @@ runtime byte/count budgets still enforced. This grants no shape-prediction,
 source-equivalence, mutating/alias, target or dynamic-loop ownership permission.
 The default staged/out-parameter consumers remain unchanged until an explicit
 joint package/signature contract admits this separate result mode.
+Optional native stages may dispatch pipeline fragments without the allocation
+marker. Forward all callbacks unchanged there; require exactly one guard-marker
+consumption across the complete dispatch before translating the final module.
 
 `fusion_guard` preserves effectful tensor producer evaluation before upstream
 elementwise fusion. Tensor operands alone do not prove scalar-region purity:

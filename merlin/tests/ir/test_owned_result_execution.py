@@ -207,6 +207,18 @@ def test_checked_allocation_products_preserve_valid_and_empty_invocations(alloca
         np.testing.assert_array_equal(out, np.full(n, 7, dtype=np.int32))
 
 
+def test_allocation_guard_is_consumed_once_across_destination_planning_stages(tmp_path):
+    program = compile_owned_results(
+        COMPACT, workdir=tmp_path / "build", timeout=30, features=frozenset({"reuse_loop_tensor_destinations"})
+    )
+    x = np.array([0, -1, 7, 3], dtype=np.int32)
+    outputs, report = program.execute((x,))
+    for out, expected in zip(outputs, (x[x > 0], x[x > 0], x), strict=True):
+        np.testing.assert_array_equal(out, expected)
+    assert report["source_calls"] == 1
+    assert "owned allocation: byte product exceeds budget" in (program.source.parent / "model.ll").read_text()
+
+
 def test_repeated_calls_keep_copied_results_alive_and_release_native_owners(compact):
     saved = []
     for i in range(12):

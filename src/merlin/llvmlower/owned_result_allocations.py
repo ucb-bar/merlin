@@ -5,6 +5,7 @@ Guard the actual memref extents before that arithmetic can wrap. This is an
 explicit resource profile, never a source-shape or ownership proof.
 """
 
+import ast
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,23 @@ def bind_runner(source, policy):
     anchor = "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]"
     if source.count(anchor) != 1:
         raise ValueError("owned allocation checks require the ordinary native source seam")
+    calls = [
+        node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_run_stages"
+    ]
+    if len(calls) != 1:
+        raise ValueError("owned allocation checks require one complete native dispatch")
+    lines = source.splitlines(keepends=True)
+    end = calls[0].end_lineno
+    source = (
+        "".join(lines[:end])
+        + "if not _OA_CONSUMED: raise ValueError('owned allocation guard was not consumed')\n"
+        + "".join(lines[end:])
+    )
     return source.replace(anchor, f"_OWNED_ALLOCATION_LIMIT = {policy.max_bytes}\n" + RUNNER + "\n" + anchor)
 
 
@@ -99,11 +117,15 @@ def _owned_allocation_guards(ctx, module):
 
 
 _OA_ORIGINAL_RUN_STAGES = _run_stages
+_OA_CONSUMED = False
 def _run_stages(ctx,module,pipeline,erase,mid=(),late=(),post_openmp=(),pre_generalize=()):
+    global _OA_CONSUMED
     passes = [p for p in pipeline.split(',') if p]
     marker = '__merlin_owned_result_allocations__'
     if marker not in passes:
-        raise ValueError('owned allocation policy was not consumed by its selected pipeline')
+        return _OA_ORIGINAL_RUN_STAGES(ctx,module,pipeline,erase,mid,late,post_openmp,pre_generalize)
+    if _OA_CONSUMED:
+        raise ValueError('owned allocation guard was consumed more than once')
     if passes.count(marker) != 1 or 'convert-scf-to-cf' not in passes:
         raise ValueError('owned allocation guard seam is missing or duplicated')
     cut = passes.index(marker)
@@ -111,5 +133,6 @@ def _run_stages(ctx,module,pipeline,erase,mid=(),late=(),post_openmp=(),pre_gene
         raise ValueError('owned allocation guards must precede control/index conversion')
     _OA_ORIGINAL_RUN_STAGES(ctx,module,','.join(passes[:cut]),erase,mid,(),(),pre_generalize)
     print('OK owned_allocation_guards',_owned_allocation_guards(ctx,module))
+    _OA_CONSUMED = True
     _OA_ORIGINAL_RUN_STAGES(ctx,module,','.join(passes[cut+1:]),0,(),late,post_openmp,())
 """
