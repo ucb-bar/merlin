@@ -218,66 +218,38 @@ def compile_owned_results(
     from merlin.common.paths import runtime_dir
 
     from .codegen import build_host_shared
-    from .owned_result_abi import bridge, pipeline, prepare
-    from .owned_result_allocations import OwnedAllocationPolicy
-    from .pipeline import lower_to_llvm_ir
+    from .owned_result_lowering import lower_owned_results
     from .target_data_layout import of as data_layout_of
     from .toolchain import clang
 
     _limits(max_bytes, max_allocations, max_output_bytes)
-    prepared, inputs, outputs = prepare(source, entry=entry)
-    work = Path(workdir).resolve()
-    if type(allow_existing_workdir) is not bool:
-        raise ValueError("owned result build-directory selection requires an explicit bool")
-    if allow_existing_workdir and work.exists():
-        if not work.is_dir() or any(work.iterdir()):
-            raise ValueError("owned result compiler directory must be empty")
-    else:
-        work.mkdir(parents=True, exist_ok=False)
-    original = work / "source.mlir"
-    original.write_text(source)
-    (work / "prepared.mlir").write_text(prepared)
     # This transport explicitly selects native 64-bit indices. The bridge's
     # C static assertions verify pointer/intptr width with the selected compiler;
     # valid LLVM layouts may omit their default pointer-width entry entirely.
     layout = data_layout_of(clang(), ("-O2", "-fPIC"))
     if ctypes.sizeof(ctypes.c_void_p) != 8:
         raise ValueError("owned results require the selected native 64-bit host ABI")
-    source_bridge = work / "owned_result_bridge.c"
-    source_bridge.write_text(bridge(inputs, outputs, entry=entry))
-    llvm = lower_to_llvm_ir(
-        prepared,
-        workdir=work / "lowering",
-        timeout=timeout,
-        pipeline=pipeline(features=features, index_bits=64),
-        features=features,
-        data_layout=layout,
-        retain_llvm_dialect=True,
-        owned_result_allocations=OwnedAllocationPolicy(max_bytes),
+    lowered = lower_owned_results(
+        source, workdir=workdir, data_layout=layout, index_bits=64, entry=entry,
+        features=features, timeout=timeout, max_bytes=max_bytes,
+        allow_existing_workdir=allow_existing_workdir,
     )
-    ll = work / "model.ll"
-    ll.write_text(llvm)
-    library = build_host_shared(ll, work / "model.so", owned_result_bridge=source_bridge).resolve()
+    work = lowered.source.parent
+    library = build_host_shared(lowered.llvm, work / "model.so", owned_result_bridge=lowered.bridge).resolve()
+    lowered.verify()
     paths = (
-        original,
-        work / "prepared.mlir",
-        ll,
         library,
-        source_bridge,
         Path(__file__),
-        Path(__file__).with_name("owned_result_abi.py"),
-        Path(__file__).with_name("owned_result_c.py"),
-        Path(__file__).with_name("owned_result_allocations.py"),
         runtime_dir() / "abi/owned_results.c",
         runtime_dir() / "abi/owned_result_views.c",
         runtime_dir() / "abi/owned_result_views.h",
     )
     program = OwnedResultProgram(
-        original,
+        lowered.source,
         library,
-        inputs,
-        outputs,
-        tuple(_pin(p) for p in paths),
+        lowered.inputs,
+        lowered.outputs,
+        (*lowered.pins, *(_pin(p) for p in paths)),
         max_bytes,
         max_allocations,
         max_output_bytes,

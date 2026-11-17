@@ -5,10 +5,33 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [runtime]
-code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
 ---
 
 # Results sized during execution
+
+## Lowering before runtime selection
+
+`lower_owned_results` emits source/prepared MLIR, LLVM and the source-typed C
+bridge without host linking or invocation data. Its immutable lowering object
+rechecks original input/result types, prepared/bridge reconstruction, selected
+LLVM layout and product/implementation digests. The ordinary host compiler now
+delegates to this seam before its existing shared-library link and execution.
+Saved host programs additionally pin the common lowerer.
+
+The caller supplies the actual selected layout/index contract. Explicit default
+pointer fields must agree with the descriptor width; the current bridge requires
+64-bit indices and independently asserts C pointer/integer layout at compilation.
+The lowerer does not observe target hardware or grant a target verdict. A target
+builder must separately observe/bind its compiler selection, allocator context,
+resource map, linked runtime and actual execution.
+
+Tests consume this seam with the actual observed cross-compiler contract and
+compile both model and descriptor-bridge objects. These are object-level build
+checks, not a linked or executed target image. Missing/incompatible layouts,
+changed products and runtime/zero-trip ownership generations retain their
+existing refusals. Native execution, checked-C calls and saved programs continue
+through the same ordinary ownership and allocation gates.
 
 ## Checked generated-C calls
 

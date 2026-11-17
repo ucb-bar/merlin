@@ -1,5 +1,13 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`owned_result_lowering` prepares original source, lowers the complete ordinary
+owned-result pipeline and emits checked bridge/LLVM products without selecting
+or linking a runtime. Layout/index values are explicit caller contracts; actual
+target compilers must be observed and bound independently. Keep original types,
+locations, allocation guards, lifetime refusals and byte-bound products. The
+current C descriptor profile requires 64-bit indices/pointers. Lowering success
+does not qualify allocator context, target linking or execution.
+
 `owned_result_c` appends a checked C invocation to the official aggregate
 bridge. It executes the original call once, then validates all returned views
 against live allocation records before payload access. Keep compiler-derived
