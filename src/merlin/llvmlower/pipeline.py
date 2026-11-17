@@ -30,6 +30,8 @@ from merlin.common import compile_trace
 from .dealloc_lifetime import DEALLOC_CHECK_PRELUDE as DEALLOC_CHECK_PRELUDE
 from .llvm_dialect_product import _residual_vector_dialect_ops as _residual_vector_dialect_ops
 from .llvm_dialect_product import run_translation, select_retention
+from .owned_result_allocations import bind_runner as _bind_owned_result_allocations
+from .owned_result_allocations import source_dependency as _owned_result_source_dependency
 from .sliced_elementwise_output import PRELUDE as SLICED_OUTPUT_PRELUDE
 from .sliced_elementwise_output import RUNNER as SLICED_OUTPUT_RUNNER
 from .source_scalar_carrier_binding import host_admitted
@@ -1463,6 +1465,7 @@ def lower_to_llvm_ir(
     retain_llvm_dialect: bool = False,
     borrowed_buffer_calls=None,
     borrowed_arena_lifetimes=None,
+    owned_result_allocations=None,
 ) -> str:
     """Lower upstream-MLIR text to LLVM IR text via the m2m venv. Returns .ll text.
 
@@ -1511,6 +1514,10 @@ def lower_to_llvm_ir(
         "loop_ownership_checker": Path(__file__).with_name("dealloc_lifetime.py"),
         "translation_transport": Path(__file__).with_name("llvm_dialect_product.py"),
     }
+    if owned_result_allocations is not None:
+        recipe_sources["owned_result_allocations"] = _owned_result_source_dependency(
+            owned_result_allocations, vectorize=vectorize, transform_schedule=transform_schedule,
+            parallel=parallel, parallel_harts=parallel_harts)
     from .impr_features import apply_schedule, normalize
 
     # `normalize` REJECTS an unregistered name, and the lowering runs in forked/child processes that
@@ -1616,6 +1623,7 @@ def lower_to_llvm_ir(
                 "source_scalar_carrier": source_scalar_carrier is not None,
                 "retain_llvm_dialect": retain_llvm_dialect,
                 "borrowed_buffer_calls": borrowed_buffer_calls is not None,
+                "owned_result_allocations": owned_result_allocations is not None,
             },
         )
     from .llvm_loop_outline import (
@@ -1762,6 +1770,8 @@ def lower_to_llvm_ir(
             max_response_bytes=source_scalar_carrier.max_response_bytes,
             timeout=timeout,
         )
+    if owned_result_allocations is not None:
+        runner_src = _bind_owned_result_allocations(runner_src, owned_result_allocations)
     if borrowed_buffer_calls is not None:
         from .borrowed_buffer_calls import prepare_native
 

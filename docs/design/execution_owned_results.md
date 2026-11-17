@@ -1,0 +1,108 @@
+---
+title: "Results sized during execution"
+kind: design
+status: current
+owner: core
+last_verified: 2026-11-17
+related: [runtime]
+code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_allocations.py, merlin/runtime/abi/owned_results.c]
+---
+
+# Results sized during execution
+
+`compile_owned_results` explicitly selects `merlin.execution-owned-results.v1`
+for serial host execution. Ranks and storage types come from the original
+public function. Result extents come from its executed descriptors, after the
+original computation runs once. This supports dimensions computed from vector
+contents without a separate shape-prediction invocation or a source expression
+restricted to public axes and singleton words.
+
+The ordinary out-parameter pipeline, staged compile signatures and existing
+model/runtime consumers remain unchanged. This is a separate generic consumer
+mechanism, not automatic triton2MLIR package admission or target qualification.
+
+## Ownership and ABI
+
+The selection reuses upstream bufferization and every ordinary ownership,
+deallocation and lifetime gate. It omits `buffer-results-to-out-params`, retains
+function result descriptors, and lowers ownership-created clones through the
+official `convert-bufferization-to-memref` pass. That pass follows ownership;
+it does not establish ownership on its own.
+
+Upstream ownership semantics borrow argument buffers and transfer returned
+allocations to the caller. A returned view of an argument therefore requires
+a copy. The official C interface places a returned descriptor, or aggregate of
+descriptors, behind the first pointer argument. A generated C bridge delegates
+aggregate offsets to the selected C compiler; Python does not guess tuple
+offsets. All public MLIR tensor/scalar types and original computation stay
+intact. Source locations and provenance are retained, without acquiring numeric,
+alias or lifetime authority.
+
+The initial transport explicitly selects native 64-bit indices. C static
+assertions verify pointer and `intptr_t` widths with the selected compiler, and
+actual descriptor sizes are compared before invocation. Supported inputs are
+ranked unencoded dense tensor storage and the existing native scalar carriers;
+results are 1..64 ranked tensors with ranks at most 16. FP8 and BF16 use their
+declared raw-word storage. Arithmetic legalization remains a separate feature
+selection. Scalar results, non-native widths, public memref/encoded/unranked
+types and source-provider combinations need separate contracts.
+
+## Allocation and observation
+
+The selected MemRefToLLVM pass uses its official generic allocation functions.
+An invocation-local host runtime records actual allocations, capacities, peak
+charged bytes and allocation count. Empty allocations receive one owned byte;
+alignment padding and tracking headers count toward the byte budget. Hidden
+callback definitions and locally bound function definitions keep another loaded
+model from substituting its allocator or entry. Runtime state is thread local;
+the synchronous invocation may not reenter the same state.
+
+Before MemRefToLLVM computes byte sizes, native checks retain each actual
+allocation dimension, reject negative sizes, and bound multiplication by guarded
+division. An overflowing element product cannot become a small allocator
+request. Empty products retain zero-access semantics. The initial allocation
+profile checks identity-layout heap allocations in supported scalar storage
+types; stack and nonidentity allocation layouts need further resource contracts.
+The allocator separately enforces actual byte/count budgets and rejects unknown
+or repeated frees. Resource failures abort the native process, like source
+assertions; callers needing failure isolation use a bounded worker.
+
+Every returned descriptor must name a live allocation in that invocation.
+Static extents, signed-stride footprints, alignment, accessible bytes and total
+logical output bytes are checked before any payload copy. Empty views perform
+no payload access. Unreturned live allocations refuse as leaked owners.
+Repeated result owners are copied independently and released once. Cleanup
+frees only the runtime's tracked owners, including when observation refuses;
+it never frees a pointer merely because a descriptor supplied it.
+
+The source, prepared program, LLVM, bridge, library and implementation bytes
+are checked across execution. Loading uses the existing private-image helper;
+unchanged program objects reuse their loaded image. These checks retain build
+correspondence, not a proof of arbitrary source equivalence or a hermetic
+dependency closure.
+
+## Validation boundary and remaining integration
+
+`test_owned_result_execution.py` executes positive-value compaction with
+content-derived sizes, empty and duplicate results, borrowed snapshots, mixed
+ranks, scalar inputs and exact floating words. It also exercises corrupted
+descriptors, output budgets, native negative/overflowing allocation products and
+source/build substitutions. `test_owned_result_allocator.py` executes alignment,
+zero allocation, byte/count limits and invalid release paths.
+
+A fresh resizing-loop experiment remains an explicit refusal: the independent
+generation checker currently separates replaced carried owners only for
+positive static trip counts with one final same-block release. Runtime/zero-trip
+generation state and conditional or returned ownership need a separate closed
+proof. The transport does not disable that check to obtain a successful run.
+
+Further work must connect this mode to independently staged compiler signatures,
+triton2MLIR result/binding contracts and its native/target evaluators. Existing
+input-axis and source-proved size programs remain useful for preallocated
+interfaces; they do not silently acquire execution-derived extents. No full
+arbitrary-TTIR, GPU correspondence, accelerator or performance claim follows.
+
+The upstream contracts and reused implementation are documented in
+[Ownership-based Buffer Deallocation](https://mlir.llvm.org/docs/OwnershipBasedBufferDeallocation/),
+[LLVM IR Target](https://mlir.llvm.org/docs/TargetLLVMIR/), and the pinned
+[clone conversion and its tests](https://github.com/llvm/llvm-project/tree/a47bddccec30255619bb8c37fa59700e661d4e66/mlir/test/Conversion/BufferizationToMemRef).

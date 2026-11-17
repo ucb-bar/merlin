@@ -1,5 +1,18 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`owned_results` explicitly selects execution-produced result descriptors for
+the serial native host. Preserve the ordinary bufferization, ownership and
+lifetime gates; upstream clone lowering follows ownership. The generated C
+bridge owns aggregate layout, and the private-image loader retains actual
+library bytes. Validate every descriptor against a live invocation allocation
+before payload reads; retain signed strides and zero-access empty views.
+Release tracked owners once, never arbitrary descriptor pointers. Independent
+allocation-product guards must precede index/byte arithmetic, with actual
+runtime byte/count budgets still enforced. This grants no shape-prediction,
+source-equivalence, mutating/alias, target or dynamic-loop ownership permission.
+The default staged/out-parameter consumers remain unchanged until an explicit
+joint package/signature contract admits this separate result mode.
+
 `fusion_guard` preserves effectful tensor producer evaluation before upstream
 elementwise fusion. Tensor operands alone do not prove scalar-region purity:
 captured mutable reads must finish before a following overlapping store. Inspect

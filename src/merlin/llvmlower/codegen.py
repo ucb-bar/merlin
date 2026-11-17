@@ -148,13 +148,17 @@ def compile_ll(
     return Path(out_obj)
 
 
-def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowering=None) -> Path:
+def build_host_shared(
+    ll_path: str | Path, out_so: str | Path, *, source_lowering=None, owned_result_bridge: Path | None = None
+) -> Path:
     """Host .so (ctypes execution on x86), with the MLIR C-runtime shim.
 
     The runtime shim uses ``__bf16``. Use the same selected clang as the model
     object by default, so an older system ``cc`` cannot break host references;
     an explicit ``$CC`` remains an operator selection.
     """
+    if owned_result_bridge is not None and source_lowering is not None:
+        raise ValueError("owned result transport and source-provider linking require a joint contract")
     out_so = Path(out_so)
     model_o = out_so.with_suffix(".o")
     rt_o = out_so.with_name("mlir_runtime_host.o")
@@ -212,8 +216,23 @@ def build_host_shared(ll_path: str | Path, out_so: str | Path, *, source_lowerin
             stage="runtime_object",
         )
         guarded_objects = (helper_o,)
-    objects = (model_o, rt_o, *provider_objects, *guarded_objects)
-    native_flags = ("-nostartfiles", "-Wl,-z,defs") if source_lowering is not None else ()
+    result_objects = ()
+    if owned_result_bridge is not None:
+        result_runtime = runtime.with_name("owned_results.c")
+        result_objects = (out_so.with_name("owned_results.o"), out_so.with_name("owned_result_bridge.o"))
+        for source, output in zip((result_runtime, owned_result_bridge), result_objects, strict=True):
+            run(
+                [host_cc, "-std=c11", "-O2", "-fPIC", "-c", source, "-o", output],
+                inputs=(source,),
+                outputs=(output,),
+                stage="runtime_object",
+            )
+    objects = (model_o, rt_o, *provider_objects, *guarded_objects, *result_objects)
+    native_flags = (
+        ("-nostartfiles", "-Wl,-z,defs")
+        if source_lowering is not None
+        else (("-Wl,-z,defs", "-Wl,-Bsymbolic-functions") if owned_result_bridge is not None else ())
+    )
     run(
         [host_cc, "-shared", *native_flags, *objects, "-lm", "-o", out_so],
         inputs=objects,
