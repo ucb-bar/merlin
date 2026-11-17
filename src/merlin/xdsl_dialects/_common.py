@@ -47,6 +47,8 @@ if HAS_XDSL:
         ctx.load_dialect(Func)
         for d in dialects:
             ctx.load_dialect(d)
+        from .standard_arith import register_unsigned_index_cast
+        register_unsigned_index_cast(ctx)
         return ctx
 
     def text(module, *, generic: bool = False) -> str:

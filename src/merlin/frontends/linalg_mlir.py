@@ -147,6 +147,8 @@ def make_context():
     from ..xdsl_dialects.standard_tensor import register_parallel_tensor_ops
 
     register_parallel_tensor_ops(ctx)
+    from ..xdsl_dialects.standard_arith import register_unsigned_index_cast
+    register_unsigned_index_cast(ctx)
     return ctx
 
 

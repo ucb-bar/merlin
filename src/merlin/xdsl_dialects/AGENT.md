@@ -17,6 +17,12 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
 - `standard_tensor.py` binds standard `scf.forall`, `scf.forall.in_parallel` and
   `tensor.parallel_insert_slice` when upstream xDSL lacks them. These are standard
   operations, not target mapping or new Merlin semantics; native lowering owns complete legality.
+- `standard_arith.py` binds scalar `arith.index_castui` where the pinned reader
+  lacks it. Preserve zero-extension/truncation and the native optional `nonNeg`
+  poison promise through both frontend and common contexts. Check exactly one
+  index type and one nonzero signless integer. Registration supplies no range,
+  source equivalence, physical index width or target proof; native lowering
+  remains authoritative. Shaped casts keep their own unsupported boundary.
 - `standard_linalg.py` retains the standard named-matmul signed/unsigned cast
   property and enum missing from the partial Python reader. Native MLIR owns
   implicit mixed-type regions; this binding grants no new arithmetic policy or

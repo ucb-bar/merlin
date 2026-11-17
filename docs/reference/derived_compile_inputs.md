@@ -3,7 +3,7 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-16
+last_verified: 2026-11-17
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
@@ -14,6 +14,7 @@ code_refs:
   - src/merlin/frontends/kernel_compile_inputs.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
+  - src/merlin/xdsl_dialects/standard_arith.py
   - src/merlin/xdsl_dialects/standard_bufferization.py
   - src/merlin/xdsl_dialects/standard_memref.py
   - merlin/tests/ir/test_derived_compile_inputs.py
@@ -23,6 +24,7 @@ code_refs:
   - merlin/tests/ir/test_kernel_compile_inputs.py
   - merlin/tests/ir/test_standard_bufferization.py
   - merlin/tests/ir/test_standard_memref.py
+  - merlin/tests/ir/test_standard_arith.py
 ---
 
 # Derived tensor compiler inputs
@@ -85,6 +87,14 @@ multi-axis/dynamic-bound syntax. Standard buffer materialization retains compati
 shapes/element types independently of memref layout and checks its result and
 writable/restrict attributes against native MLIR's rules. These bindings grant
 no aliasing, ownership, numerical or target-execution proof.
+
+Scalar standard `arith.index_castui` additionally has a registered binding in
+the frontend and shared contexts. Retain the zero-extension/truncation operation
+and optional native `nonNeg` promise rather than substituting a signed cast.
+Exactly one side is index and the other a nonzero signless integer. Native
+MLIR supplies execution semantics; parsing grants no source range, index-width
+or symbolic public-model admission. Shaped unsigned casts remain separately
+unsupported by this scalar binding.
 
 The current derived
 staging profile requires static tensor entry arguments/results. Runtime scalar/
