@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-11-17
 related: [execution_owned_results]
-code_refs: [src/merlin/frontends/execution_source_coordinates.py, merlin/tests/ir/test_execution_source_coordinates.py, src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_runtime_arguments.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py, merlin/tests/ir/test_execution_source_layouts.py]
+code_refs: [merlin/tests/ir/test_execution_rank_views.py, src/merlin/frontends/execution_source_coordinates.py, merlin/tests/ir/test_execution_source_coordinates.py, src/merlin/frontends/execution_runtime_views.py, merlin/tests/ir/test_execution_runtime_views.py, src/merlin/frontends/execution_call_views.py, src/merlin/frontends/execution_call_contracts.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/derived_source_views.py, src/merlin/frontends/derived_runtime_arguments.py, src/merlin/frontends/derived_compile_inputs.py, merlin/tests/ir/test_execution_call_views.py, merlin/tests/ir/test_execution_source_layouts.py]
 ---
 
 # Source views in execution-owned model binding
@@ -91,6 +91,21 @@ equal its actual checked kernel scalar operand and the original executable
 allocation-root pointer binding. The root ABI keeps independently dynamic axes;
 a flattened count never supplies their geometry.
 
+Rank-reducing extraction additionally projects only statically unit axes.
+The reader reconstructs TensorOps.cpp's reverse axis matching from actual mixed
+sizes and result types. `retained_axes` appears in the corresponding step record
+only when rank changes; original rank-preserving records keep their meaning.
+Full source-coordinate bounds and offset contributions remain checked before
+projecting shape and strides. Retained unit axes keep their original logical
+strides; they cannot be confused with the selected axis. Scalar results retain
+the complete owning-root offset with an empty axis list.
+
+This is an additive form within execution view profile v3 and coordinate schema
+v1. Consumers lacking rank reduction reject it. It grants no physical public
+alias, mutation or arbitrary reshape permission. A kernel's one-element ranked
+result can separately use the existing checked dense adapter to preserve the
+original scalar model result; exact element counts remain executable.
+
 Empty slice refinement accepts only a standard `scf.if` with exactly an
 extraction/yield branch and an empty/yield branch, equal result types, equal
 dynamic sizes and dominating source coordinates. The branch condition must
@@ -111,7 +126,7 @@ Independent native tests cover exact wide-i64 words, empty boundary/root shapes,
 actual coordinate/condition aborts and impure or falsified-record refusals.
 External frontend integration separately qualifies i64/f32 dynamic-matrix models
 with three actual Triton view updates and all nine snapshots/results. This does
-not establish negative/rank-reduced slices, arbitrary runtime strides,
+not establish negative slices, arbitrary runtime strides,
 physical/mutating aliases, general effects or accelerator performance.
 
 ## Semantic source layouts

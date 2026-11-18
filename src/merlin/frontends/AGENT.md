@@ -58,6 +58,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Conditional empty slices require exact pure extract/empty branches, common
   dominating coordinates and an executable nonempty-condition check. Preserve
   complete model SSA and locations; records grant no physical alias or mutation.
+  Rank-reducing slices follow standard reverse axis matching: only static unit
+  sizes may vanish. Derive retained axes from mixed sizes and result types;
+  never trust a serialized axis map. Preserve full offset contributions before
+  projecting shape/strides, including scalar results and retained unit strides.
   Reopen original calls, retained located kernel bodies and every scalar/
   dimension/cast guard; compare the entire parent expansion and source locations.
   Located artifacts must also reproduce the retained unlocated implementation

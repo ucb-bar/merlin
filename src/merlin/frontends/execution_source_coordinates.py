@@ -78,7 +78,7 @@ def _chain(value, root):
         extract = _extraction(operation)
         parent = extract.source if extract is not None else operation.operands[0]
         source, target = _axes(parent), _axes(value)
-        if len(source) != len(target):
+        if extract is None and len(source) != len(target):
             raise ValueError("runtime source view changes rank")
         if extract is not None:
             for name in ("offsets", "sizes", "strides"):
@@ -89,6 +89,7 @@ def _chain(value, root):
                     or any(n < 0 and n != builtin.DYNAMIC_INDEX for n in coordinates)
                 ):
                     raise ValueError("runtime source slice has inconsistent mixed operands")
+            _retained_axes(extract)
         elif operation.name == "linalg.transpose":
             permutation = _field(operation, "permutation")
             if (
@@ -116,6 +117,25 @@ def _chain(value, root):
         chain.append((operation, extract))
         value = parent
     return list(reversed(chain))
+
+
+def _retained_axes(extract):
+    sizes, reduced = _field(extract, "static_sizes"), list(_axes(extract.result))
+    axes = []
+    # The standard operation matches from the last result axis. A static one
+    # survives only opposite a result static one; dynamic sizes never vanish.
+    for axis, size in reversed(list(enumerate(sizes))):
+        if size == 1 and (not reduced or reduced[-1] != 1):
+            continue
+        if not reduced:
+            raise ValueError("runtime source slice discards a nonunit dimension")
+        wanted = reduced.pop()
+        if size >= 0 and wanted >= 0 and size != wanted:
+            raise ValueError("runtime source slice changes a retained dimension")
+        axes.insert(0, axis)
+    if reduced:
+        raise ValueError("runtime source slice has unmatched result axes")
+    return axes
 
 
 class SourceCoordinates(RuntimeViewContracts):
@@ -200,12 +220,15 @@ class SourceCoordinates(RuntimeViewContracts):
                 strides = [
                     self.elements([stride, increment]) for stride, increment in zip(strides, increments, strict=True)
                 ]
-                expected = sizes
+                retained = _retained_axes(extraction)
+                expected = [sizes[axis] for axis in retained]
+                strides = [strides[axis] for axis in retained]
                 steps.append(
                     {
                         "op": operation.name,
                         "result_type": str(operation.results[0].type),
                         **{field: _field(extraction, "static_" + field) for field in ("offsets", "sizes", "strides")},
+                        **({"retained_axes": retained} if len(retained) != len(sizes) else {}),
                     }
                 )
             else:
