@@ -11,7 +11,7 @@ import tempfile
 from types import SimpleNamespace
 import unittest
 
-from merlin.compile.application_deployment import adapter_c, place, publish, selected
+from merlin.compile.application_deployment import adapter_c, place, platform_files, publish, selected
 from merlin.semantic_compiler.codegen import CodegenOptions, codegen_options
 from merlin.semantic_compiler.model import KernelRequest, SemanticNode, TensorType
 
@@ -63,6 +63,14 @@ class DeploymentTest(unittest.TestCase):
     def placement(self):
         with codegen_options(self.options):
             return place(self.source, self.adapter, self.regions, self.interface, self.root)
+
+    def host_abi_provider(self):
+        provider = deepcopy(self.provider)
+        provider["host_allocation"].update(usable_bytes=61440, declared_reservations=[
+            dict(name=name, bytes=size) for name, size in
+            (("code", 36864), ("data", 8192), ("context", 4096), ("stack", 12288), ("heap", 4096))])
+        provider["sys_clk_freq_hz"] = 30000000
+        return provider
 
     def test_default_preserves_interface_and_does_not_call_provider(self):
         self.adapter.deployment_requirements = lambda *_: self.fail("default provider call")
@@ -131,6 +139,84 @@ class DeploymentTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "provider runtime " + key + " must be explicit"):
                     self.placement()
                 self.provider["runtime"][key] = value
+
+    def test_publish_emits_host_abi_platform_files_without_invocation_payload(self):
+        self.provider = self.host_abi_provider()
+        deployment = self.placement()
+        readme = b"Existing handoff instructions.\n"
+        files = {"handoff/README.md": readme}
+        publish(deployment, self.interface, files, self.root)
+        record = json.loads(files["deployment.json"])
+        expected = platform_files(record)
+        self.assertEqual(set(expected), {"handoff/chip.ld", "handoff/window.S", "handoff/platform-cflags.txt", "handoff/harness_sha256.h", "handoff/platform-requirements.json"})
+        for member, payload in expected.items():
+            with self.subTest(member=member):
+                self.assertEqual(files[member], payload)
+        self.assertNotIn("handoff/window.bin", files)
+        self.assertEqual(record["host_allocation"]["usable_bytes"], 61440)
+        self.assertEqual(record["provider"]["host_allocation"]["usable_bytes"], 61440)
+        self.assertEqual(record["provider"]["sys_clk_freq_hz"], 30000000)
+        self.assertTrue(files["handoff/README.md"].startswith(readme))
+        self.assertIn(b"Deployment provides chip.ld, window.S and platform-cflags.txt.", files["handoff/README.md"])
+        self.assertIn(b"platform-cflags.txt to all platform sources, including drivers.", files["handoff/README.md"])
+
+    def test_publish_vcs_map_sha_helper_and_platform_requirements(self):
+        from merlin.common.paths import data_path
+        self.provider = self.host_abi_provider()
+        files = {}
+        publish(self.placement(), self.interface, files, self.root)
+        record = json.loads(files["deployment.json"])
+        self.assertNotIn("vcs_linker_map", record["provider"])
+        self.assertNotIn("handoff/vcs.ld", files)
+        vcs_linker_map = dict(host_address=0x80000000, window_address=0x81000000)
+        vcs = platform_files(record, vcs_linker_map=vcs_linker_map)["handoff/vcs.ld"]
+        self.assertIn(b"ORIGIN  =  2147483648, LENGTH  =  65536", vcs)
+        self.assertIn(b"ORIGIN  =  2164260864", vcs)
+        self.assertIn(b"__stack_end <= ORIGIN(HOST)+LENGTH(HOST)", vcs)
+        self.assertEqual(files["handoff/harness_sha256.h"],
+                         data_path("runtime", "baremetal", "spike", "output_sha256.h").read_bytes())
+        requirements = json.loads(files["handoff/platform-requirements.json"])
+        self.assertEqual(requirements["SYS_CLK_FREQ"]["value"], 30000000)
+        self.assertEqual(requirements["SP5_LINKER"]["value"], "handoff/chip.ld")
+        self.assertEqual(requirements["VCS_LINKER_MAP"], {
+            "value": None, "owner": "platform-owned",
+            "source": "platform DRAM link map (Kit A used 0x80000000/0x81000000)"})
+        for key, row in requirements.items():
+            self.assertTrue(row["source"])
+            self.assertIn(row["owner"], ("compiler-required", "platform-owned"))
+            if row["owner"] == "platform-owned":
+                self.assertIsNone(row["value"], key)
+        self.assertNotIn("handoff/window.bin", files)
+        vcs_linker_map["host_address"] = -1
+        with self.assertRaisesRegex(RuntimeError, "deployment_provider_contract"):
+            platform_files(record, vcs_linker_map=vcs_linker_map)
+
+        # A historical/edited provider field is never an implicit platform input.
+        record["provider"]["vcs_linker_map"] = vcs_linker_map
+        self.assertNotIn("handoff/vcs.ld", platform_files(record))
+
+    def test_publish_without_host_abi_preserves_handoff_readme(self):
+        readme = b"Existing handoff instructions.\n"
+        files = {"handoff/README.md": readme}
+        publish(self.placement(), self.interface, files, self.root)
+        self.assertEqual(files["handoff/README.md"], readme)
+        for member in ("chip.ld", "vcs.ld", "harness_sha256.h", "platform-requirements.json", "window.S", "platform-cflags.txt", "window.bin"):
+            with self.subTest(member=member):
+                self.assertNotIn("handoff/" + member, files)
+
+    def test_place_refuses_host_abi_stack_and_heap_overflow(self):
+        self.provider = self.host_abi_provider()
+        self.provider["host_allocation"].update(usable_bytes=32768, declared_reservations=[
+            dict(name=name, bytes=size) for name, size in
+            (("code", 8192), ("data", 4096), ("context", 4096), ("stack", 24576), ("heap", 24576))])
+        with self.assertRaisesRegex(RuntimeError, "deployment_host_overflow.*stack and heap"):
+            self.placement()
+
+    def test_place_refuses_host_abi_without_clock(self):
+        self.provider = self.host_abi_provider()
+        del self.provider["sys_clk_freq_hz"]
+        with self.assertRaisesRegex(RuntimeError, "deployment_clock_contract"):
+            self.placement()
 
     def test_provider_geometry_drives_generic_adapter(self):
         base, size = 0x90000000, 65536

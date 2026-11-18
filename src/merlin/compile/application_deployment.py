@@ -7,6 +7,7 @@ them without aliasing; execution and image changes stay in generated runtime C.
 from __future__ import annotations
 
 import json
+import re
 from hashlib import sha256
 from math import prod
 from pathlib import Path
@@ -97,6 +98,8 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
         _refuse("deployment_provider_contract", "provider host reservations exceed or differ from declared capacity")
     if host_reservations.get("context", 0) < provider["host_context_reservation_bytes"]:
         _refuse("deployment_provider_contract", "provider context budget exceeds its host reservation")
+    if "usable_bytes" in host_allocation or "sys_clk_freq_hz" in provider:
+        _host_abi(provider)
     published_regions = provider.get("regions")
     if not isinstance(published_regions, list) or len(published_regions) != len(regions):
         _refuse("deployment_provider_contract", "provider must publish every region launch count")
@@ -344,6 +347,24 @@ def publish(deployment, interface, files, native_root):
     if deployment.get("paging"):
         files["handoff/refill-mailbox.bin"] = bytes(deployment["paging"]["mailbox"]["bytes"])
         record = _paged_record(record)
+    if "sys_clk_freq_hz" in record["provider"]:
+        files.update(platform_files(record))
+        files["handoff/README.md"] = files.get("handoff/README.md", b"") + b"""
+Deployment provides chip.ld, window.S and platform-cflags.txt. Apply
+platform-cflags.txt to all platform sources, including drivers.
+Also provided: harness_sha256.h and platform-requirements.json. Binding emits
+optional vcs.ld only with a caller-supplied vcs_linker_map platform input.
+Null platform-owned values must be supplied
+by the platform; this record does not configure a platform build.
+"""
+    if "sys_clk_freq_hz" in record["provider"] and not record.get("paging"):
+        files["handoff/README.md"] += b"""
+Bind explicit
+invocation bytes with merlin.compile.application_handoff.bind_deployment_payloads
+to emit window.bin; inputs are caller-owned and are never replaced with
+fabricated values. Write the returned members outside the verified application/
+directory, in a separate handoff/ directory beside application/.
+"""
     files["deployment.json"] = (json.dumps(record, sort_keys=True, indent=2, allow_nan=False) + "\n").encode()
     header = ("#pragma once\n#include \"" + Path(interface["header"]).name + "\"\n"
               f"#define MERLIN_DEPLOYMENT_WINDOW_BASE UINT64_C({deployment['window']['address']})\n"
@@ -503,3 +524,140 @@ def handoff_interface(interface):
         return {**interface, "model_parameters": {**parameters["source_blob"],
                 "placement": "../deployment.json#/paging"}}
     return interface
+
+
+def _host_abi(provider):
+    """Physical section ceilings and usable aggregate capacity are distinct."""
+    host = provider["host_allocation"]
+    usable = _integer(host.get("usable_bytes"), "usable host bytes", positive=True)
+    clock = provider.get("sys_clk_freq_hz")
+    if type(clock) is not int or clock <= 0:
+        _refuse("deployment_clock_contract", "system clock Hz must be a positive integer")
+    if usable > host["bytes"]:
+        _refuse("deployment_host_overflow", "usable host region exceeds physical capacity")
+    sizes = {row["name"]: row["bytes"] for row in host["declared_reservations"]}
+    for name in ("code", "data", "context", "stack", "heap"):
+        if name not in sizes:
+            _refuse("deployment_provider_contract", "linker requires host reservation " + name)
+        _integer(sizes[name], "host " + name + " bytes")
+        if sizes[name] > usable:
+            _refuse("deployment_host_overflow", "host section exceeds usable capacity: " + name)
+    # Stack and heap consume fixed space; code/data/context are section ceilings.
+    if sizes["stack"] + sizes["heap"] > usable:
+        _refuse("deployment_host_overflow", "stack and heap exceed usable host capacity")
+    return host, sizes, usable, clock
+
+
+def _platform_linker(base, window, host_bytes, window_bytes, sizes, host_end):
+    text=f'''OUTPUT_ARCH("riscv")
+ENTRY(_start)
+PHDRS {{ host PT_LOAD FLAGS(7); window PT_LOAD FLAGS(6); }}
+MEMORY {{ HOST (rwx) : ORIGIN = {base}, LENGTH = {host_bytes}
+ WINDOW (rw) : ORIGIN = {window}, LENGTH = {window_bytes} }}
+SECTIONS {{
+ __boot_hart = 0; __stack_size = {sizes['stack']}; __heap_size = {sizes['heap']};
+ .text : ALIGN(16) {{ __text_start=.; *(.text.init) *(.text.trap_vector) *(.text .text.*) __text_end=.; }} >HOST :host
+ __text_load_start=LOADADDR(.text);
+ .rodata : ALIGN(16) {{ *(.rodata .rodata.* .srodata .srodata.*) }} >HOST :host
+ ASSERT(. - ORIGIN(HOST) <= {sizes['code']}, "deployment code reservation exceeded")
+ .data : ALIGN(16) {{ __data_start=.; *(.data .data.*) __global_pointer$=.+0x800; *(.sdata .sdata.*) *(.htif) }} >HOST :host
+ .tdata : ALIGN(16) {{ __tdata_start=.; *(.tdata .tdata.*) __tdata_end=.; __data_end=.; }} >HOST :host
+ __data_load_start=LOADADDR(.data); __tdata_size=SIZEOF(.tdata);
+ .bss (NOLOAD) : ALIGN(16) {{ __bss_start=.; __tbss_start=.; *(.tbss .tbss.*) __tbss_end=.; *(.sbss .sbss.* .bss .bss.*) *(COMMON) . = ALIGN(16); __bss_end=.; }} >HOST :host
+ __tbss_size=__tbss_end-__tbss_start; __tbss_offset=0;
+ ASSERT(__bss_end - __data_start <= {sizes['data']+sizes['context']}, "deployment data/context reservation exceeded")
+ __end=.;
+ .heap (NOLOAD) : ALIGN(16) {{ __heap_start=.; . += __heap_size; __heap_end=.; }} >HOST :host
+ .stack (NOLOAD) : ALIGN(16) {{ __stack_start=.; . += __stack_size; __stack_end=.; __sp=.; }} >HOST :host
+ __stack_shift=LOG2CEIL(__stack_size);
+ ASSERT(__stack_end <= {host_end}, "deployment host budget exceeded")
+ .window : {{ KEEP(*(.sp5_window)) }} >WINDOW :window
+ /DISCARD/ : {{ *(.eh_frame .eh_frame.* .comment) }}
+}}
+'''
+    linker = re.sub(r'(?<![<>=!+])=(?!=)', ' = ', text)
+    return linker.encode()
+
+
+def platform_files(deployment, payloads=None, vcs_linker_map=None):
+    """Emit linker/assembly and, with explicit invocation bytes, the window.
+
+    payloads maps deployment-relative input and parameter paths to bytes. None
+    leaves the invocation unbound; missing inputs are never synthesized. This
+    function reads only the packaged SHA helper, never payload paths, and can
+    also bind a saved deployment. vcs_linker_map is an optional caller-owned
+    platform map with host_address and window_address, never a device property.
+    """
+    host, sizes, usable, clock = _host_abi(deployment["provider"])
+    if host != deployment["host_allocation"]:
+        _refuse("deployment_provider_contract", "host allocation differs from provider")
+    base = host["address"]
+    window = deployment["window"]["address"]
+    linker = _platform_linker(base, window, usable, deployment["window"]["bytes"],
+                              sizes, f"{base + usable:#010x}")
+    # Reproduce the whitespace of the historical build_kits.py regex patch.
+    linker = linker.replace(f"LENGTH  =  {usable}\n".encode(), f"LENGTH = {usable}\n".encode())
+    output = {
+        "handoff/chip.ld": linker,
+        "handoff/window.S": b'.section .sp5_window,"aw",@progbits\n.global sp5_window_start,sp5_window_end\nsp5_window_start:\n.incbin "window.bin"\nsp5_window_end:\n',
+        "handoff/platform-cflags.txt": f"-DSYS_CLK_FREQ={clock}\n".encode(),
+    }
+    from merlin.common.paths import data_path
+    output["handoff/harness_sha256.h"] = data_path("runtime", "baremetal", "spike", "output_sha256.h").read_bytes()
+    vcs = vcs_linker_map
+    if vcs is not None:
+        vcs_base = _integer(vcs.get("host_address"), "VCS host address")
+        vcs_window = _integer(vcs.get("window_address"), "VCS window address")
+        output["handoff/vcs.ld"] = _platform_linker(
+            vcs_base, vcs_window, host["bytes"], deployment["window"]["bytes"],
+            sizes, "ORIGIN(HOST)+LENGTH(HOST)")
+    requirements = {
+        "SYS_CLK_FREQ": {"value": clock, "owner": "compiler-required",
+                         "source": "deployment.json:provider.sys_clk_freq_hz",
+                         "scope": "all platform translation units, including drivers"},
+        "SP5_LINKER": {"value": "handoff/chip.ld", "owner": "compiler-required",
+                       "source": "generated chip.ld; platform resolves its installed path"},
+        "SP5_BUNDLE": {"value": None, "owner": "platform-owned",
+                       "source": "platform location of the application and bound handoff"},
+        "VCS_LINKER_MAP": {"value": None, "owner": "platform-owned",
+                           "source": "platform DRAM link map (Kit A used 0x80000000/0x81000000)"},
+    }
+    for name in ("CHIP", "PLATFORM", "RVV_TYPE", "PENGUIN26_EXIT_TOHOST",
+                 "PENGUIN26_UART_BAUDRATE", "CMAKE_TOOLCHAIN_FILE", "CMAKE_PROJECT_INCLUDE",
+                 "SP5_ROOT", "SP5_MAP"):
+        requirements[name] = {"value": None, "owner": "platform-owned",
+                              "source": "platform build configuration; not defined by deployment.json"}
+    output["handoff/platform-requirements.json"] = (
+        json.dumps(requirements, sort_keys=True, indent=2) + "\n").encode()
+    if payloads is None:
+        return output
+    if deployment.get("paging"):
+        _refuse("deployment_paging_contract", "paged deployments bind through refill segments, not window.bin")
+    required = _integer(deployment["window_required_bytes"], "window required bytes")
+    if required > deployment["window"]["bytes"]:
+        _refuse("deployment_window_overflow", "payload exceeds deployment window")
+    payload = bytearray(required)
+    occupied = []
+
+    def write(row, data):
+        offset = row["address"] - window
+        size = row["bytes"]
+        if offset < 0 or size < 0 or offset + size > required:
+            _refuse("deployment_window_overflow", "payload range outside window")
+        if any(offset < end and start < offset + size for start, end in occupied):
+            _refuse("deployment_payload_contract", "overlapping payload ranges")
+        occupied.append((offset, offset + size))
+        if not isinstance(data, bytes) or len(data) != size:
+            _refuse("deployment_payload_contract", "payload byte count differs")
+        if "sha256" in row and sha256(data).hexdigest() != row["sha256"]:
+            _refuse("deployment_payload_contract", "payload digest differs")
+        payload[offset:offset + size] = data
+
+    for row in [*deployment["inputs"], *([deployment["parameters"]] if deployment["parameters"] else [])]:
+        if row["path"] not in payloads:
+            _refuse("deployment_payload_missing", "explicit invocation bytes required: " + row["path"])
+        write(row, payloads[row["path"]])
+    for row in deployment["outputs"]:
+        write(row, b"\xa5" * row["bytes"])
+    output["handoff/window.bin"] = bytes(payload)
+    return output

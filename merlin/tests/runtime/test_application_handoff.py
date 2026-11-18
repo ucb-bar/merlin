@@ -63,6 +63,10 @@ class ApplicationHandoffLaunchCountTest(unittest.TestCase):
         abi = self.emit([self.region('old')])
         self.assertNotIn('launches_per_call', abi['calls'][0])
         self.assertEqual(abi['programs'][0]['execution']['streaming']['launch_count'], 9)
+        files = application_handoff(self.source, self.interface, [self.region('old')], self.files, self.root)
+        readme = files['handoff/README.md']
+        self.assertIn(b"Keep the platform's startup, linker script, drivers and host executable build.", readme)
+        self.assertNotIn(b'platform-cflags.txt', readme)
 
 
 if __name__ == '__main__':
