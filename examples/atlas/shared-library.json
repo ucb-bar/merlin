@@ -7,6 +7,8 @@
     "merlin.frontends.linalg_text",
     "merlin.transforms.ordered_float_dense",
     "merlin.transforms.dense_planning",
+    "merlin.compile.scheduling.block_schedule",
+    "merlin.compile.scheduling.memory_effects",
     "merlin.compile.scheduling.compact_dense",
     "merlin.compile.scheduling.dense_tile_ir",
     "merlin.compile.scheduling.timed_schedule",

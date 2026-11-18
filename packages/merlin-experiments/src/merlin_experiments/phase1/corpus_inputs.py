@@ -66,6 +66,11 @@ def require_reviewed_bundle(te, authored_path: Path, bundle: dict) -> None:
     from ..corpus.publication import require_public_capsules
 
     require_public_capsules(te, te.graded_roots())
+
+    if "shared_passes" in bundle.get("tools", ()):
+        archive = te.path.parent / "input_bundles/shared-passes.zip"
+        if bundle.get("selected_shared_pass_archive") != str(archive.absolute()):
+            raise ValueError("reviewed shared_passes bundle must select the release's authoring archive")
     from ..phase0.coverage_commitment import read_inputs
 
     coverage_inputs = read_inputs(te.capsule_corpus.parent)

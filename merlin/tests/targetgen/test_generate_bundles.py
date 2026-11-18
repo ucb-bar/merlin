@@ -115,6 +115,17 @@ def test_selected_phase0_facts_replace_cache_grants_and_feed_prompt(tmp_path, mo
         generate_bundles(te, rtl_facts_root=selected)
 
 
+def test_optional_shared_passes_on_an_unselected_target():
+    te = _te()
+    with pytest.raises(ValueError, match="shared_pass_selection"):
+        generate_bundles(te, arms=("merlin_rtlchecks",), add_tools=("shared_passes",))
+    with pytest.raises(ValueError, match="granted and withheld"):
+        generate_bundles(te, arms=("merlin_rtlchecks",), add_tools=("shared_passes",), drop_tools=("shared_passes",))
+    (omitted,) = generate_bundles(te, arms=("merlin_rtlchecks",), drop_tools=("shared_passes",)).values()
+    allowed, denied = _sets(omitted)
+    assert te.shared_pass_pin in denied - allowed
+
+
 def test_retains_historical_grants_without_reintroducing_broad_contract_access():
     """Old manifests remain frozen; new bundles narrow the public ABI and use example-owned tasks."""
     gen = generate_bundles(_te())
@@ -123,7 +134,19 @@ def test_retains_historical_grants_without_reintroducing_broad_contract_access()
         hand = yaml.safe_load((B / bid / "input_bundle_manifest.yaml").read_text())
         ga, gd = _sets(gm)
         ha, hd = _sets(hand)
-        retired = {"merlin/contract/", "experiments/capsule_bench/targets/gemmini/task/"}
+        # The fresh descriptor retired the reference implementation and the
+        # unrelated RVV host lane. Reintroducing either changes the treatment.
+        old_hw = "experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0"
+        retired = {
+            "merlin/contract/",
+            "experiments/capsule_bench/targets/gemmini/task/",
+            old_hw,
+            old_hw + "/isa_include/gemmini.h",
+            old_hw + "/isa_include/gemmini_params.h",
+            "out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/",
+        }
+        assert not ga.intersection(retired)
+        assert _te().host_lane.read_only[0] in ga
         assert ha - retired <= ga, f"{bid} lost a historical non-retired grant: {ha - retired - ga}"
         assert "merlin/contract/" not in ga
         assert "merlin/contract/schemas/" in ga

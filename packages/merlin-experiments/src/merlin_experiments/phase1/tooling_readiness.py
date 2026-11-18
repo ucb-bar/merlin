@@ -260,6 +260,15 @@ def _grant_checks(te, bundle: dict, tools: tuple[str, ...]) -> list[dict]:
                                  component[1].manifest_sha256))
             continue
         spec = TR.spec(name)
+        if name == "shared_passes":
+            archive = bundle.get("selected_shared_pass_archive")
+            granted = any(
+                isinstance(row, dict) and row.get("path") == archive and row.get("mode") == "ro"
+                for row in bundle.get("allowed", ())
+            )
+            valid = isinstance(archive, str) and Path(archive).is_absolute() and granted
+            checks.append(_check("grant:shared_passes", valid, f"selected={archive!r}"))
+            continue
         for logical in (*spec.bundle_paths, *(str(getattr(te, attr)) for attr in spec.derived_paths)):
             if coverage is not None and logical.startswith("merlin/python/merlin/"):
                 # A seeded coverage profile stages the current reviewed full compiler in the
@@ -422,6 +431,7 @@ def _sandbox_probe(
     common_modules: tuple[str, ...] | None = None,
     withheld_cca: bool = False,
     projected_source: bool = False,
+    shared_pass_archive: str | None = None,
 ) -> str:
     from .feedback import snapshot_execution
 
@@ -470,6 +480,19 @@ def _sandbox_probe(
             "from merlin.verify import lean_cli, lean_export, lean_checker",
             "assert callable(lean_cli.main)",
         ]
+    if "shared_passes" in has:
+        # The ordinary kit and the standalone library have separate merlin
+        # namespaces. Exercise the same isolated import the author will use.
+        check_imports = (
+            "import importlib, json, sys, zipfile\n"
+            "path = sys.argv[1]\nsys.path.insert(0, path)\n"
+            "with zipfile.ZipFile(path) as archive:\n"
+            "    modules = json.loads(archive.read('compiler-library.json'))['public_modules']\n"
+            "assert modules\n"
+            "for name in modules:\n"
+            "    assert importlib.import_module(name).__file__.startswith(path + '/')"
+        )
+        lines.append(f"subprocess.run([sys.executable, '-c', {check_imports!r}, {shared_pass_archive!r}], check=True)")
     if "xdsl_kit" in has:
         lines += [
             "from merlin.targetgen.evidence.store import Evidence",
@@ -624,6 +647,7 @@ def public_probe_session(
             common_modules=tuple((bundle.get("compiler_tool_profile") or {}).get("common_public_modules", ())) or None,
             withheld_cca=_cca_withheld(bundle),
             projected_source=fresh10,
+            shared_pass_archive=bundle.get("selected_shared_pass_archive"),
         )
     finally:
         for channel in channels:

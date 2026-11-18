@@ -81,6 +81,11 @@ source format can represent them; matching source/destination precision exercise
 exact conversion instead. All palettes must be representable in their actual
 input storage before reference evaluation.
 
+For small logical shapes, truncate each palette to the number of elements its
+selected axis can visit. A four-term contraction retains the large/small/negative
+large/small cancellation prefix. Smaller pointwise tensors exercise only the
+corresponding prefix, not every conversion boundary in the full default case.
+
 ## Scheduling evidence
 
 These source programs expose dependencies, independent work, reuse, mutation and
@@ -115,3 +120,41 @@ Target-specific campaign work still includes reviewed operation placement,
 compatible source/model pins, actual evaluator selection, structured ISA domains,
 DMA/CFG integration, and whole-model host/device receipts. Test generation must
 retain those gaps instead of declaring a campaign ready because eight files exist.
+
+### Required connections before fresh authoring
+
+The independent component experiment consumes these eight cases through its own
+coverage and runtime qualification. The ordinary EL4 capsule-bench experiment
+uses the selected Phase 0 corpus and its existing admission procedure. Its
+optional shared-pass bundle is documented in the
+[Atlas Phase 1 guide](../../examples/atlas/phase1/README.md#shared-passes-in-the-el4-authoring-bundle).
+
+1. **Source selection and numerical replay.** Select the floating families from
+   the independent software/numeric declaration, bind aggregate execution budgets,
+   and dispatch coverage verification to an explicit floating source proof.
+   `component_coverage.finalize` and its concrete replay currently call
+   `component_integer_bounds.verify_selected_capsule` for every component DAG.
+   Source preparation must also carry the selected float formats and reference
+   budget. Do not invent an integer proof or skip numerical replay to admit floats.
+   Require negative tests for changed arithmetic, changed inputs/goldens, missing
+   outputs and over-budget members, with legacy integer admission unchanged.
+2. **Ordinary source recognition is implemented.** The shared tensor reader
+   follows the explicit widen, multiply and add operations, their scalar
+   operands and types, the conversion path, and all graph return slots. It
+   distinguishes a BF16 bit chop from `arith.truncf`. The numerical policy for
+   fusion or a particular reduction order still belongs to the selected target.
+3. **Target realization and independent grading.** OOT supplies instruction
+   selection, physical packing/layout, DMA/CFG handling and timing/effect decoding.
+   Execute emitted programs with all published outputs, not just individual model
+   arithmetic operations. Qualify positive and deliberately corrupted programs
+   for waits, overlap hazards, reuse and drain using the existing runtime controls.
+4. **One consistent authoring setup.** Build the source corpus, library contract,
+   compiler view, compile roster, runtime and grading context from matching pinned
+   inputs. Select them through `FreshPhase1Inputs`, then run its existing readiness
+   checks before authoring. A historical capsule-bench bundle does not acquire the
+   exported library or eight floating cases automatically.
+
+Completion means one fresh, independently admitted setup can consume these eight
+cases and grade an emitted program. Passing parser, reference, logical schedule
+or library-export tests alone does not establish that outcome. Full-model
+placement and the selected precision/quality policy remain separate obligations.

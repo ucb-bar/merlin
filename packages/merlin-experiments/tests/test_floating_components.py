@@ -15,6 +15,8 @@ from merlin_experiments.phase0 import floating_suite as suite
 from merlin_experiments.phase0.writer import _write_capsule_inner
 
 from merlin.common.paths import repo_root
+from merlin.frontends.linalg_tensor_graph import read_tensor_graph
+from merlin.semantic_compiler.model import KernelRequest
 from merlin.targetgen import component_program, corpus_spec, golden_store
 
 
@@ -51,6 +53,8 @@ def binding(configuration):
     [
         {},
         {"shape": [2, 7, 4]},
+        {"shape": [1, 4, 1]},
+        {"shape": [2, 6, 3]},
         {"operand_dtype": "fp8_e5m2"},
         {"operand_dtype": "fp16", "accumulator_dtype": "f32", "pointwise_rounding": "rne"},
         {"operand_dtype": "fp8_e4m3", "accumulator_dtype": "f32", "pointwise_rounding": "rne"},
@@ -74,9 +78,60 @@ def test_eight_cases_materialize_complete_goldens_for_distinct_format_contracts(
         assert capsule["numeric_policy"]["atol"] == capsule["numeric_policy"]["rtol"] == 0
         for row in outputs:
             assert np.asarray(golden["outputs"][row["name"]]).shape == tuple(row["shape"])
-        assert (root / "capsule.interface.mlir").is_file()
+        # Exercise the same source-only API the backend author sees. Follow actual
+        # SSA aliases and all return slots, including multiple slots for one value.
+        graph = read_tensor_graph(
+            (root / "capsule.interface.mlir").read_text(), entry="forward", target_identity="test"
+        )
+        assert KernelRequest.from_record(graph.record()) == graph
+        program = capsule["component_program"]
+        value_ids = {row["name"]: node.id for row, node in zip(program["inputs"], graph.nodes)}
+        emitted = iter(graph.nodes[len(value_ids) :])
+        for row in program["nodes"]:
+            if row["op"] == "alias":
+                value_ids[row["name"]] = value_ids[row["actual_inputs"][0]]
+                continue
+            node = next(emitted)
+            matched_kind = {
+                "matmul": {"matmul", "widening_matmul"},
+                "update": {"add", "mixed_add"},
+                "add": {"add", "mixed_add"},
+            }.get(row["op"], {row["op"]})
+            assert node.op in matched_kind
+            assert (node.type.dtype, node.type.shape) == (row["dtype"], tuple(row["shape"]))
+            if node.op == "widening_matmul":
+                assert dict(node.attrs) == dict(
+                    accumulator_first=True, compute_dtype=row["dtype"], reduction_order="source-unspecified"
+                )
+            assert node.inputs == tuple(value_ids[v] for v in row["actual_inputs"])
+            if node.op == "mixed_add":
+                assert dict(node.attrs)["compute_dtype"] == row["compute_dtype"]
+                assert dict(node.attrs)["narrowing"] == ("bf16_high_bits" if row["rounding"] == "rtz" else "truncf")
+            value_ids[row["name"]] = node.id
+        assert next(emitted, None) is None
+        assert graph.outputs == tuple(value_ids[row["actual_value"]] for row in program["outputs"])
     with pytest.raises(ValueError, match="fresh"):
         suite.materialize(selected, tmp_path / "corpus")
+
+
+@pytest.mark.parametrize(
+    "index,old,new",
+    [
+        (0, "arith.mulf %lhs_wide, %rhs_wide", "arith.mulf %lhs_wide, %lhs_wide"),
+        (0, "arith.addf %old, %product", "arith.addf %product, %product"),
+        (0, "arith.addf %old, %product :", "arith.addf %old, %product fastmath<fast> :"),
+        (-1, "arith.constant 16 : i32", "arith.constant 15 : i32"),
+        (-1, "arith.shrui %bits, %shift", "arith.shrui %shift, %bits"),
+        (-1, "linalg.yield %rounded", "linalg.yield %old"),
+    ],
+)
+def test_changed_source_arithmetic_is_not_recognized(tmp_path, index, old, new):
+    selected = config()
+    root = _write_capsule_inner(suite.entries(selected)[index], binding(selected), tmp_path)
+    source = (root / "capsule.interface.mlir").read_text()
+    assert old in source
+    with pytest.raises(ValueError):
+        read_tensor_graph(source.replace(old, new, 1), entry="forward", target_identity="any")
 
 
 def test_rounding_case_detects_wrong_vector_policy_and_conversion(tmp_path):
@@ -128,8 +183,9 @@ def test_alias_publication_and_fanout_are_observable():
     [(operand, accumulator) for operand in ("fp8_e4m3", "fp8_e5m2") for accumulator in ("bf16", "fp16", "f32")]
     + [("bf16", "bf16"), ("bf16", "f32"), ("fp16", "fp16"), ("fp16", "f32"), ("f32", "f32")],
 )
-def test_ordered_witness_remains_sensitive_to_reassociation(operand, accumulator):
-    selected = config(operand_dtype=operand, accumulator_dtype=accumulator, pointwise_rounding="rne")
+@pytest.mark.parametrize("shape", [[3, 5, 7], [1, 4, 1]])
+def test_ordered_witness_remains_sensitive_to_reassociation(operand, accumulator, shape):
+    selected = config(operand_dtype=operand, accumulator_dtype=accumulator, pointwise_rounding="rne", shape=shape)
     entry = suite.entries(selected)[0]
     capsule, _ = corpus_spec.build(entry, binding(selected))
     outputs, inputs = reference.evaluate(capsule)

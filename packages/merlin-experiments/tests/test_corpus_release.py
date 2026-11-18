@@ -1297,6 +1297,64 @@ def test_reviewed_phase1_refuses_missing_or_different_phase0_contract(tmp_path, 
         require_reviewed_bundle(load_target_experiment(descriptor), manifest, bundle)
 
 
+def test_prepared_shared_pass_tool_is_release_local_and_opt_in(release_fixture, capsys):
+    from merlin.common.paths import python_source_dir
+
+    root = release_fixture["root"]
+    selection = root / "shared-library.json"
+    # Exercise the installed Python source selection using a real, standalone pass.
+    selection.write_text(
+        json.dumps(
+            dict(
+                schema="merlin.compiler_library_selection.v1",
+                review_id="test-source",
+                public_modules=["merlin.transforms.dense_planning"],
+                empty_namespaces=["merlin", "merlin.transforms"],
+                sources=[
+                    dict(module="merlin.transforms.dense_planning", path="src/merlin/transforms/dense_planning.py")
+                ],
+            )
+        )
+    )
+    descriptor = root / "source-experiment/target_experiment.yaml"
+    definition = yaml.safe_load(descriptor.read_bytes())
+    definition["shared_pass_selection"] = str(selection)
+    descriptor.write_text(yaml.safe_dump(definition))
+    _prepare(release_fixture, capsys)
+    promoted = release_fixture["release"] / "payload/experiment"
+    bundles = promoted / "input_bundles"
+    archive = bundles / "shared-passes.zip"
+    assert archive.is_file()
+    for manifest in bundles.glob("*/input_bundle_manifest.yaml"):
+        doc = yaml.safe_load(manifest.read_bytes())
+        selected = "shared_passes" in doc["tools"]
+        assert selected == (doc["bundle_id"] == "merlin_assisted_rtlchecks_public_v0+shared_passes")
+        assert selected == any(e["path"] == str(archive) and e["mode"] == "ro" for e in doc["allowed"])
+        if selected:
+            from merlin_experiments.phase1 import tooling_readiness
+            from merlin_experiments.phase1.corpus_inputs import require_reviewed_bundle
+
+            from merlin.targetgen.target_experiment import load_target_experiment
+
+            te = load_target_experiment(promoted / "target_experiment.yaml")
+            require_reviewed_bundle(te, manifest, doc)
+            assert all(c["ok"] for c in tooling_readiness._grant_checks(te, doc, tuple(doc["tools"])))
+            probe = tooling_readiness._sandbox_probe("test", ("shared_passes",), "", shared_pass_archive=str(archive))
+            subprocess.run([sys.executable, "-c", probe], check=True)
+            doc["selected_shared_pass_archive"] = str(root / "other.zip")
+            with pytest.raises(ValueError, match="release's authoring archive"):
+                require_reviewed_bundle(te, manifest, doc)
+    from zipfile import ZipFile
+
+    with ZipFile(archive) as zip_file:
+        assert (
+            zip_file.read("merlin/transforms/dense_planning.py")
+            == (python_source_dir() / "merlin/transforms/dense_planning.py").read_bytes()
+        )
+    selection.unlink()
+    assert Path(yaml.safe_load((promoted / "target_experiment.yaml").read_bytes())["shared_pass_selection"]).is_file()
+
+
 def test_prepared_release_materializes_declared_hardware_links(release_fixture, capsys):
     fixture = release_fixture
     root = fixture["root"]

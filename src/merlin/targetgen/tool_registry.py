@@ -229,6 +229,16 @@ TOOLS: dict[str, ToolSpec] = {
         note="ALLOWED tool: xDSL kit / CCA spine",
         ablatable=False,
     ),
+    "shared_passes": ToolSpec(
+        "shared_passes",
+        "The selected standalone compiler passes for authoring. In a separate Python process with xDSL installed, "
+        "put the granted ZIP first on sys.path. Read compiler-library.json in the ZIP for the public APIs. "
+        "Use read_tensor_graph for floating Linalg, dense_planning for tiling, and schedule_fixed_block with "
+        "your target's resource and memory effects. The ordinary submission remains self-contained. "
+        "The standard-library dense_planning and block_schedule modules support byte-for-byte vendoring.",
+        derived_paths=("shared_pass_pin",),
+        note="ALLOWED authoring tool: standalone shared compiler passes",
+    ),
     "xdsl_kit": ToolSpec(
         "xdsl_kit",
         "The xDSL authoring kit: dialect synthesis, the generators, the dialect definitions, the "

@@ -85,7 +85,8 @@ import importlib.util, sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 from merlin.compile.scheduling.static_schedule import schedule_fixed_block, materialize_timing_plan
-from merlin.compile.scheduling.timed_schedule import TimedEffects
+from merlin.compile.scheduling.memory_effects import EncodedAccess
+from merlin.compile.scheduling.timed_schedule import ResourceUse, TimedAccess, TimedEffects, verify_timing_plan
 from merlin.compile.scheduling.completion_schedule import make_completion_plan, apply_completion_plan
 from merlin.llvmlower.floating_contractions import outline_floating_matmuls, static_tensor_signature, callback_bridge
 from merlin.sched.ir.kernel import Call, Kernel, Loop
@@ -112,6 +113,17 @@ options = dict(project=project, issue_gap=gap, capacities={}, model_identity="se
 plan = schedule_fixed_block(kernel, **options)
 result = materialize_timing_plan(kernel, plan, delay=lambda n: (Call("delay", (("cycles", Const(n)),)),), **options)
 assert len(result.kernel.body) == 2
+calls = Kernel("pipeline", (), tuple(Call(name, ()) for name in ("write", "other", "read")))
+effects = {
+    "write": TimedEffects("write", 5, (TimedAccess(EncodedAccess("scratch", 0, 8, True), 0, 5),),
+                           (ResourceUse("port", 0, 2),)),
+    "other": TimedEffects("other", 4, resources=(ResourceUse("port", 0, 2),)),
+    "read": TimedEffects("read", 1, (TimedAccess(EncodedAccess("scratch", 4, 4), 0, 1),)),
+}
+checks = dict(project=lambda c: effects[c.instr], capacities={"port": 1}, model_identity="selected", clock="core")
+for mode, expected in (("serial", (0, 5, 9)), ("overlap", (0, 2, 5))):
+    plan = schedule_fixed_block(calls, mode=mode, issue_gap=lambda c: 1, **checks)
+    assert verify_timing_plan(calls, plan, **checks)[0] == expected
 async_kernel = Kernel("async", (), (Loop("i", 5, (Call("launch", (), produces="done"),)),))
 completed = apply_completion_plan(async_kernel, make_completion_plan(async_kernel),
                                  wait=lambda c: Call("join", (), awaits=(c.produces,)))
@@ -138,3 +150,18 @@ assert all(Path(module.__file__).is_relative_to(root) for name, module in sys.mo
 
     assert _py_imports_merlin(script, compiler_library=contract) is None
     subprocess.run([sys.executable, "-I", "-c", script, str(root)], check=True, cwd=tmp_path)
+    from merlin.targetgen.compiler_library_export import authoring_archive
+
+    archive = tmp_path / "shared-passes.zip"
+    authoring_archive(selected, repo_root(), archive)
+    subprocess.run([sys.executable, "-I", "-c", script, str(archive)], check=True, cwd=tmp_path)
+    original = archive.read_bytes()
+    authoring_archive(selected, repo_root(), archive)
+    assert archive.read_bytes() == original
+    mislabeled = selection()
+    mislabeled["sources"][0]["path"] = "src/merlin/runtime/reference.py"
+    with pytest.raises(ValueError, match="import identity"):
+        authoring_archive(mislabeled, repo_root(), tmp_path / "mislabeled.zip")
+    archive.write_bytes(b"stale")
+    with pytest.raises(ValueError, match="fresh bundle"):
+        authoring_archive(selected, repo_root(), archive)

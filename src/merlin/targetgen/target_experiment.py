@@ -558,6 +558,8 @@ class TargetExperiment:
     declared_contract: str | None = None
     # Authored recipe carrying the complete declared numerical regime, not hardware evidence.
     numeric_profile: str | None = None
+    # Optional host-selected authoring tool, frozen with a new corpus release.
+    shared_pass_selection: str | None = None
     # Explicit authored resource ownership, independent of the descriptor's location.
     # None preserves historical sibling resources, including standalone frozen releases.
     resources_root: Path | None = None
@@ -804,6 +806,10 @@ class TargetExperiment:
         return str(d).rstrip("/") if d else f"merlin/targets/{self.target}"
 
     @property
+    def shared_pass_pin(self) -> str:
+        return str(self.resource_path("input_bundles/shared-passes.zip").absolute())
+
+    @property
     def rtl_facts_pin(self) -> str:
         return f"{self.backend_package}/contracts/rtl_facts/"
 
@@ -1034,6 +1040,11 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
     doc = yaml.safe_load(descriptor_bytes.decode("utf-8"))
     if not isinstance(doc, dict) or not doc.get("target"):
         raise ValueError(f"{p}: not a target-experiment descriptor (missing 'target')")
+    selection = doc.get("shared_pass_selection")
+    if selection is not None and (
+        not isinstance(selection, str) or Path(selection).suffix != ".json" or ".." in Path(selection).parts
+    ):
+        raise ValueError(f"{p}: shared_pass_selection must name a JSON file without parent traversal")
     numeric_profile = doc.get("numeric_profile")
     if numeric_profile is not None and (
         not isinstance(numeric_profile, str)
@@ -1303,6 +1314,7 @@ def load_target_experiment(descriptor: str | Path, *, source_root: Path | None =
         preflight_capability_probes=capability_probes,
         declared_contract=(lambda s: str(s) if s else None)(hw.get("target_contract")),
         numeric_profile=numeric_profile,
+        shared_pass_selection=selection,
         resources_root=declared_resources_root(doc, root=root),
         task_root=declared_task_root(doc, root=root),
         contracts_root=declared_contracts_root(doc, root=root),

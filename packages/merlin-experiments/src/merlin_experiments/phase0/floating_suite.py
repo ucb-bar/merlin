@@ -153,6 +153,11 @@ def entries(config):
                     if row["name"] == "A"
                     else [3 * 2.0 ** (-acc_mantissa - 2)]
                 )
+            # Literal shapes may be smaller than a full stimulus pattern. Only
+            # declare values that this input can visit; the four-term ordered
+            # prefix still contains cancellation and a nonzero final addend.
+            extent = math.prod(row["shape"]) if axis == "linear" else row["shape"][axis]
+            values = values[:extent]
             palette.append(
                 {
                     "name": row["name"],

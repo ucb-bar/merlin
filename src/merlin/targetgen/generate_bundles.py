@@ -216,6 +216,10 @@ def _arm_manifest(
     still reaches the tool it claims to have removed is a silently void measurement.
     """
     tools = TR.arm_tools(arm, add=add_tools, drop=drop_tools)
+    if "shared_passes" in add_tools and "shared_passes" in drop_tools:
+        raise ValueError("shared_passes cannot be granted and withheld in the same bundle")
+    if "shared_passes" in tools and not te.shared_pass_selection:
+        raise ValueError("shared_passes requires a descriptor-selected shared_pass_selection")
     info = te.information_set(variant)
     allow = _shared_allow(te, variant)
     deny = _shared_deny(te, variant)
@@ -296,6 +300,7 @@ def _arm_manifest(
             ),
             *numerical_inputs,
         ],
+        **({"selected_shared_pass_archive": te.shared_pass_pin} if "shared_passes" in tools else {}),
         "tools": list(tools),
         "integrity_required": True,
     }
@@ -842,6 +847,18 @@ def materialize_bundles(
         return observed_facts(te.target, selected_facts[1], selected_facts[0] / "facts.json")
 
     dest = Path(dest)
+    archive = None
+    if "shared_passes" in add_tools and "shared_passes" not in drop_tools:
+        from .compiler_library_export import authoring_archive
+
+        if not te.shared_pass_selection:
+            raise ValueError("shared_passes requires a descriptor-selected shared_pass_selection")
+        root = te._source_root()
+        selection = json.loads((root / te.shared_pass_selection).read_text())
+        archive = authoring_archive(
+            selection, root, dest.absolute() / "shared-passes.zip", python_source_root=python_source_root
+        )
+
     # The capability manifest (needed to render STARTER_PROMPT.md) is target-level; load it once and
     # degrade honestly if unavailable (e.g. mlc absent) — manifests + grant files are still written.
     with observation():
@@ -863,7 +880,7 @@ def materialize_bundles(
                 f"  note: capability manifest for {te.target!r} unavailable ({type(e).__name__}: {e}); "
                 f"STARTER_PROMPT.md not rendered (manifests + grant files still written)."
             )
-    written: list[Path] = []
+    written: list[Path] = [archive] if archive else []
     for variant in variants:
         bundles = generate_bundles(
             te,
@@ -882,6 +899,11 @@ def materialize_bundles(
             public_codegen_resource_policy=public_codegen_resource_policy,
         )
         for bundle_id, manifest in bundles.items():
+            if archive is not None:
+                manifest["selected_shared_pass_archive"] = str(archive)
+                for grant in manifest["allowed"]:
+                    if grant["path"] == te.shared_pass_pin:
+                        grant["path"] = str(archive)
             bdir = dest / bundle_id
             bdir.mkdir(parents=True, exist_ok=True)
             out = bdir / "input_bundle_manifest.yaml"

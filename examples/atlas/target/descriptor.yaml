@@ -3,6 +3,7 @@
 target: atlas
 resources_root: merlin/experiments/capsule_bench/targets/atlas
 numeric_profile: examples/atlas/phase0/recipe.yaml
+shared_pass_selection: examples/atlas/shared-library.json
 
 rtl:
   via: mlc            # ISA/memory/DIM DERIVED from atlas's RTL via mlc discovery

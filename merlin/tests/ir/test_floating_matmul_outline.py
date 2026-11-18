@@ -156,6 +156,25 @@ def generic_source(batch=None, *, splat=True, acc_first=True):
     return original
 
 
+@pytest.mark.parametrize("acc_first", [False, True])
+def test_batched_mixed_precision_preserves_individual_operands_and_callback_abi(acc_first):
+    # Widen just the left input. The right input is already in the compute format.
+    source = generic_source(3, splat=False, acc_first=acc_first).replace("3x3x5xf32", "3x3x5xf16")
+    source = source.replace("%x:f32", "%x:f16").replace(
+        "%p=arith.mulf %x,%y", "%wide=arith.extf %x : f16 to f32\n          %p=arith.mulf %wide,%y"
+    )
+    graph = read_tensor_graph(source, entry="compute", target_identity="another-accelerator")
+    result = graph.nodes[-1]
+    assert result.op == "widening_batch_matmul"
+    assert tuple(n.type.dtype for n in graph.nodes) == ("f16", "f32", "f32")
+    assert dict(result.attrs) == dict(
+        accumulator_first=acc_first, compute_dtype="f32", reduction_order="source-unspecified"
+    )
+    assert graph.outputs == (result.id, "input0")
+    with pytest.raises(ValueError, match="requires f32"):
+        outline_floating_matmuls(source, entry="compute", numerical_policy="explicit")
+
+
 @pytest.mark.parametrize("batch", [None, 3])
 @pytest.mark.parametrize("splat", [False, True])
 @pytest.mark.parametrize("acc_first", [False, True])

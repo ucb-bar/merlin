@@ -7,35 +7,23 @@ from .linalg_errors import InvalidLinalgPattern
 
 def _recognize_bf16_f32_chop_binary(op, *, subtract: bool) -> tuple[object, object, object, str, str]:
     """Check the exact scalar program; leave its pairwise domain as a premise."""
-    from xdsl.dialects.arith import (
-        AddfOp,
-        BitcastOp,
-        ConstantOp,
-        ExtFOp,
-        ShRUIOp,
-        SubfOp,
-        TruncIOp,
-    )
     from xdsl.dialects.builtin import (
         AffineMapAttr,
         ArrayAttr,
         BFloat16Type,
         DenseArrayBase,
-        Float32Type,
-        IntegerAttr,
-        IntegerType,
         NoneAttr,
         StringAttr,
         TensorType,
     )
     from xdsl.dialects.linalg.attrs import IteratorType, IteratorTypeAttr
-    from xdsl.dialects.linalg.ops import GenericOp, YieldOp
+    from xdsl.dialects.linalg.ops import GenericOp
     from xdsl.ir.affine import AffineDimExpr, AffineMap
 
     mode = "subtract" if subtract else "add"
-    arithmetic_op = SubfOp if subtract else AddfOp
-    admitted_domain = ("finite-normal-exact-fp32-difference-or-zero-v1" if subtract
-                       else "finite-normal-exact-fp32-sum-v1")
+    admitted_domain = (
+        "finite-normal-exact-fp32-difference-or-zero-v1" if subtract else "finite-normal-exact-fp32-sum-v1"
+    )
     if type(op) is not GenericOp or len(op.inputs) != 2 or len(op.outputs) != 1 or len(op.results) != 1:
         raise InvalidLinalgPattern(f"BF16 {mode} needs two inputs and one tensor result")
     if op.successors or set(op.properties) != {"indexing_maps", "iterator_types", "operandSegmentSizes"}:
@@ -89,6 +77,22 @@ def _recognize_bf16_f32_chop_binary(op, *, subtract: bool) -> tuple[object, obje
         or tuple(iterator.data for iterator in op.iterator_types) != (IteratorType.PARALLEL,) * 2
     ):
         raise InvalidLinalgPattern(f"BF16 {mode} needs parallel identity index maps")
+    check_bf16_chop_binary_body(op, subtract=subtract)
+    try:
+        op.verify()
+    except Exception as exc:  # noqa: BLE001 - parsed untrusted IR must refuse
+        raise InvalidLinalgPattern(f"BF16 {mode} Linalg operation does not verify") from exc
+    return op.inputs[0], op.inputs[1], op.outputs[0], policy.data, domain.data
+
+
+def check_bf16_chop_binary_body(op, *, subtract=False):
+    """Check scalar SSA and types only. Callers own geometry and target-domain checks."""
+    from xdsl.dialects.arith import AddfOp, BitcastOp, ConstantOp, ExtFOp, ShRUIOp, SubfOp, TruncIOp
+    from xdsl.dialects.builtin import BFloat16Type, Float32Type, IntegerAttr, IntegerType
+    from xdsl.dialects.linalg.ops import YieldOp
+
+    mode = "subtract" if subtract else "add"
+    arithmetic_op = SubfOp if subtract else AddfOp
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise InvalidLinalgPattern(f"BF16 {mode} needs one scalar body")
     block = op.regions[0].block
@@ -140,11 +144,6 @@ def _recognize_bf16_f32_chop_binary(op, *, subtract: bool) -> tuple[object, obje
         or not isinstance(chopped.results[0].type, BFloat16Type)
     ):
         raise InvalidLinalgPattern(f"BF16 {mode} does not yield an unflagged FP32 result with BF16 bit chop")
-    try:
-        op.verify()
-    except Exception as exc:  # noqa: BLE001 - parsed untrusted IR must refuse
-        raise InvalidLinalgPattern(f"BF16 {mode} Linalg operation does not verify") from exc
-    return op.inputs[0], op.inputs[1], op.outputs[0], policy.data, domain.data
 
 
 def recognize_bf16_f32_chop_add(op) -> tuple[object, object, object, str, str]:

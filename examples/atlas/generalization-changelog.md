@@ -105,8 +105,8 @@ This proves the initial mixed host/device compilation path for the stated
 fixtures, not unrestricted full-model support or OOT-authoring admission.
 Production transport, dynamic shapes/control flow, complete pretrained models,
 KV-cache decoding and an application-approved quantization policy remain work.
-The isolated compiler-library export remains tested; the whole-host outlining
-helper is not yet admitted into the compiler-authoring source closure. No OOT
+The isolated compiler-library export includes the pure outlining helper; its
+installed host build driver remains outside the compiler-authoring closure. No OOT
 compiler-generation or optimization-agent loop was started.
 
 ## Static scheduling and authoring-library extension
@@ -130,3 +130,59 @@ compiler-generation or optimization-agent loop was started.
   full-model scheduler or qualify whole-model OOT authoring by itself.
 
 See the [design and API contract](../../docs/design/static_scheduling.md).
+
+## Floating test boundary review
+
+- Kept the public suite at eight cases. Palettes now fit short input axes,
+  including four-term reductions and one-element pointwise tensors, without
+  changing the default Atlas inputs. Cancellation remains observable across
+  all eleven tested operand/accumulator pairs.
+- Made contraction mismatch tests independent of whether the installed xDSL
+  verifier already rejects the malformed scalar types. The direct recognizer
+  must still reject them itself.
+- Documented source recognition and the remaining floating coverage-admission,
+  physical execution and fresh-authoring connections in the
+  [floating test design](../../docs/design/floating_component_tests.md#required-connections-before-fresh-authoring).
+  The source-only suite does not establish a ready generation campaign.
+
+## Mixed-precision sources and the standard Phase 1 driver
+
+- The tensor-graph reader recognizes separate multiply/add contractions with
+  explicit operand widening for FP8, BF16 and other supported floating types.
+  It preserves arithmetic precision, checks the accumulator and SSA edges,
+  and records the source's unspecified reduction order.
+- Floating pointwise operations preserve the intermediate precision and the
+  actual narrowing instruction. BF16 high-bit truncation reuses the existing
+  checked scalar-body recognizer. Same-type `linalg.copy`, aliases and multiple
+  returns preserve the source graph.
+- The standalone library exposes the byte-access and block-schedule types an
+  OOT encoder needs to describe memory hazards and resource reservations.
+- The ordinary EL4 authoring driver can grant the same source closure in a
+  deterministic ZIP. Release preparation stages the selected roster, builds
+  that archive from the selected installation, and emits a separate bundle.
+  Source selection, target instruction encoding and target timing remain
+  independent. [Phase 1 commands](phase1/README.md#shared-passes-in-the-el4-authoring-bundle).
+
+Fresh execution through the handwritten Atlas backend reproduced the following
+device-cycle totals with synthetic weights. Both schedules returned exactly
+the same output bytes for each workload. Counts sum the pinned model's device
+tile cycles and exclude host execution and data transfer.
+
+| Workload | Outlined contractions | Executed tiles | Source-order cycles | Optimized cycles |
+| --- | ---: | ---: | ---: | ---: |
+| One full-width TinyLlama layer, sequence 32 | 9 | 656 | 77,091,152 | 74,111,184 |
+| Reduced SmolVLA prefix/expert step | 28 | 37 | 165,181 | 160,245 |
+| ResNet-50, 32×32 input | 54 | 924 | 45,974,812 | 44,227,900 |
+
+Every device tile matched the selected arithmetic bit for bit. TinyLlama
+matched the Torch replay at the actual contraction boundaries on all three
+outputs. The maximum absolute difference against free-running Torch remained
+54.00003 on the first output. SmolVLA and ResNet-50 matched the host image
+using independent software contractions. Their maximum absolute differences
+from the original f32 outputs were 0.09625 and 8.08252, respectively.
+
+The generated EL4 bundle's ZIP also passed an isolated import and source
+recognition check for all eight floating programs. The graph and attention
+harnesses ran 24 and 16 successful simulations using that archive. These
+measurements use the existing Atlas compiler. A newly authored backend will
+need its own correctness and timing results.

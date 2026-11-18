@@ -1000,6 +1000,14 @@ def scaffold(
                 cohort[field] += len(operator_public_members)
         if te.graded_include:
             grading["search_cohort"]["include_capsules"].extend(Path(member).name for member in operator_public_members)
+
+    if te.shared_pass_selection:
+        source = te._source_root() / te.shared_pass_selection
+        if not source.is_file() or source.is_symlink():
+            raise SpecError(f"missing shared-pass selection: {source}")
+        staged = experiment / "authoring/shared-library.json"
+        inputs["shared_pass_selection"] = {"path": str(source), "sha256": copy_input(source, staged)}
+        document["shared_pass_selection"] = str(staged)
     if phase1_gates is not None:
         document["phase1_gates"] = copy.deepcopy(phase1_gates)
     # A release owns the resources copied below; never retain a pointer to live authored inputs.
@@ -1167,10 +1175,7 @@ def scaffold(
     # in the private preparation record, never the public inspect response.
     diagnostics = io.StringIO()
     with redirect_stdout(diagnostics), observed_experiment_contract(promoted):
-        materialize_bundles(
-            promoted,
-            experiment / "input_bundles",
-            variants=variants,
+        bundle_inputs = dict(
             host_inputs=(
                 str(private),
                 *checker_inputs,
@@ -1182,7 +1187,6 @@ def scaffold(
             common_substrate=substrate,
             lean_toolchain_manifest=lean_toolchain_manifest,
             host_index_bits=host_index_bits,
-            arms=arms,
             **(
                 {"public_inputs": tuple([
                     *([str(Path(public_scalability["path"]) / "public_sources")]
@@ -1192,6 +1196,22 @@ def scaffold(
                 if public_scalability is not None or program_view is not None else {}
             ),
         )
+        materialize_bundles(
+            promoted,
+            experiment / "input_bundles",
+            variants=variants,
+            arms=arms,
+            **bundle_inputs,
+        )
+        if promoted.shared_pass_selection and "merlin_rtlchecks" in arms and "public_v0" in variants:
+            materialize_bundles(
+                promoted,
+                experiment / "input_bundles",
+                variants=("public_v0",),
+                arms=("merlin_rtlchecks",),
+                add_tools=("shared_passes",),
+                **bundle_inputs,
+            )
     inputs["bundle_generation"] = {"diagnostics": diagnostics.getvalue()}
     if author_profile:
         from merlin_experiments.phase1.author_profiles import stage_release_bundles

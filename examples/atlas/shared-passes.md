@@ -40,7 +40,7 @@ two operations with matching shapes can be numerically fused.
 ## Isolated compiler library
 
 [shared-library.json](shared-library.json) explicitly selects 46 source/namespace
-members and 19 public leaf modules. Pure parsing and instruction contract types
+members and 21 public leaf modules. Pure parsing and instruction contract types
 are separated from capture, backend discovery and reference evaluation. The
 export uses the existing `CompilerLibraryContract` hash, namespace and import
 closure checks. It includes no Atlas compiler, reference output, model or grader.
@@ -70,6 +70,11 @@ FP8/BF16 dense scheduling, static timing, completion waits and host outlining in
 an isolated process and checks those imports against the candidate policy. Z3
 is required for dense schedule verification; the `semantic-search` extra supplies
 it together with xDSL and the schema validator.
+
+The ordinary Gemmini-style EL4 driver can grant this library for authoring
+through its optional `shared_passes` tool. The Atlas descriptor selects the
+roster. The [Phase 1 guide](phase1/README.md#shared-passes-in-the-el4-authoring-bundle)
+shows the exact bundle generation and preflight commands.
 
 For a fresh component-authoring experiment, the existing integration entry is
 `merlin_experiments.phase1.component_origin.run_fresh_component_phase1`. Its
