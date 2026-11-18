@@ -10,6 +10,37 @@ code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_re
 
 # Results sized during execution
 
+## Explicit functional mutation results
+
+Executed model binding may explicitly select `t2m.functional-kernel-binding.v1`.
+The original model2MLIR call retains `m2m.functional-kernel-bases.v1`: original
+schema text, complete mutated argument names, typed operand/base/result ties and
+every raw tuple slot. Ordinary observations precede updated bases; only a void
+source op may account for an unused None tuple slot.
+
+`execution_functional_state.py` independently checks the original call against
+the retained translated memory ABI. Each tie must consume and return the same
+readwrite source buffer at its actual schema operand and updated-result ordinal.
+An equally typed fresh output cannot replace that state. All bases, slots and
+source readwrite effects must be accounted for. Missing/unknown profiles and
+incomplete or changed ties refuse before complete-SSA reconstruction. No producer
+implementation or evaluator array is imported by this reader.
+
+Public input or buffer state additionally has the original
+`m2m.functional-state-results.v1` entry contract. Complete state-result/input
+ties and ordered user results retain exact types. These are explicit returned
+state values: staging continues to mark every borrowed entry tensor readonly.
+Public physical aliases, automatic caller copyback and target synchronization
+semantics require separate invocation/consumer support. The normal bufferization,
+allocation, result-descriptor and lifetime checks stay active. Parent archives,
+receipt v2 and compile-signature v6 retain their schemas.
+
+The independent functional-state tests construct original SSA/ABI directly and
+reject fresh-output substitution, readonly source substitution, missing/changed
+profiles, invalid base/operand indices, wrong integer types, changed tuple slots
+and malformed entry result roles. Whole-model source expansion and execution
+remain separate gates.
+
 ## Ordinary serial target images
 
 The ordinary `runtime.backends.spike_model.build` API now selects the returned

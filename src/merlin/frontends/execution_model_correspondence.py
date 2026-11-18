@@ -17,6 +17,9 @@ from .execution_call_contracts import CallContracts, scalar_attribute
 from .execution_call_views import FIELDS as VIEW_FIELDS
 from .execution_call_views import mark, source_views
 from .execution_call_views import validate as validate_views
+from .execution_functional_state import PROFILE as FUNCTIONAL_PROFILE
+from .execution_functional_state import call as checked_mutation
+from .execution_functional_state import entry as checked_state
 from .kernel_shape_abi import validate_dimensions
 from .linalg_mlir import parse_mlir_text
 
@@ -128,6 +131,11 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
     ):
         raise ValueError("executed model requires its explicit call/result/resource profile")
     records = bindings.get("calls")
+    entries = [op for op in parent.ops if isinstance(op, func.FuncOp)
+               and op.sym_name.data == "forward" and op.body.blocks]
+    if len(entries) != 1:
+        raise ValueError("executed model requires one original functional entry")
+    functional = checked_state(entries[0])
     if (
         set(interfaces) != set(bindings.get("kernels", {}))
         or not isinstance(records, list)
@@ -230,6 +238,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             or len(call.results) != len(output_buffers)
         ):
             raise ValueError("executed correspondence loses original operands or results")
+        functional = checked_mutation(call, spec, record) or functional
         emitted = []
         callsite = record["id"]
 
@@ -314,6 +323,9 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
         for op in expected.walk()
     ):
         raise ValueError("executed expansion retains an unresolved source dependency")
+    if (bindings.get("functional_kernel_binding_profile") != FUNCTIONAL_PROFILE if functional
+            else "functional_kernel_binding_profile" in bindings):
+        raise ValueError("executed functional mutation requires its explicit binding profile")
     expected.verify()
     if not expected.is_structurally_equivalent(bound):
         raise ValueError("executed model body differs from original SSA, kernel bodies or executable call guards")

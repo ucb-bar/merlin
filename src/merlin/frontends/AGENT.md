@@ -35,6 +35,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   Staging grants byte custody only, never source equivalence or numeric admission.
   `execution_model_correspondence.py` and `execution_call_contracts.py` own
   independent complete-SSA reconstruction of explicit v4 executed call binding.
+  `execution_functional_state.py` checks the explicit functional mutation
+  extension against original parent calls and actual retained readwrite buffers.
+  Preserve complete ordinary/base slots, operand/result ties and entry state/
+  user-result roles. Equal types cannot substitute a fresh output for state.
+  Borrowed entry tensors remain readonly; state ports grant no physical public
+  alias or automatic caller copyback. Never replace lifetime checks with tags.
   `execution_call_views.py` additionally checks the explicit execution view
   profile, reconstructs dense value adapters and reuses original static
   source-coordinate/root proofs. Account for every view operand and check
