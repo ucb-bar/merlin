@@ -145,6 +145,8 @@ def recognize_ordered_float_dense(dot, *, policy: OrderedFloatPolicy):
     ), "iterator order differs")
     _require(len(dot.body.blocks) == 1, "one scalar body required")
     body = dot.body.block
+    _require(tuple(arg.type for arg in body.args) == tuple(v.type.element_type for v in dot.operands),
+             "contraction scalar types differ from tensor operands")
     scalar = tuple(body.ops)
     _require(tuple(type(op) for op in scalar) == (arith.ExtFOp, arith.ExtFOp, math.FmaOp, YieldOp),
              "scalar recurrence must be extf, extf, fma, yield")

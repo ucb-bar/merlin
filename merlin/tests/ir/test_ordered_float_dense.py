@@ -106,3 +106,22 @@ def test_fill_scalar_types_must_match_tensor_operands(argument, reader):
             read_ordered_float_dense(changed, entry="dense", policy=POLICY)
         else:
             read_float_graph(changed, entry="dense", target_identity="test", ordered_policies=(POLICY,))
+
+
+@pytest.mark.parametrize("argument", ["av", "bv"])
+@pytest.mark.parametrize("reader", ["dense", "graph"])
+def test_contraction_scalar_types_must_match_tensor_operands(argument, reader):
+    from merlin.frontends.linalg_float_graph import read_float_graph
+    from merlin.frontends.linalg_text import parse_mlir_text
+
+    changed = source().replace(f"%{argument}: f8E4M3FN", f"%{argument}: f8E5M2").replace(
+        f"extf %{argument} : f8E4M3FN", f"extf %{argument} : f8E5M2"
+    )
+    # xDSL accepts this scalar program even though its enclosing tensors use
+    # another FP8 format. Both public readers must independently close that gap.
+    parse_mlir_text(changed).verify()
+    with pytest.raises(ValueError, match="contraction scalar types"):
+        if reader == "dense":
+            read_ordered_float_dense(changed, entry="dense", policy=POLICY)
+        else:
+            read_float_graph(changed, entry="dense", target_identity="test", ordered_policies=(POLICY,))
