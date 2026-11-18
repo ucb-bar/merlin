@@ -10,14 +10,14 @@ import yaml
 from merlin import api
 from merlin.common.paths import repo_root
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.lower.model.offload_plan import bind_source
-from merlin.compiler.pipeline import PlannedCompiler, RegionBackend
-from merlin.compiler.planning.execution import select_execution
-from merlin.compiler.planning.fusion import discover_fusion_candidates
+from merlin.compiler.lower.device.plan import bind_source
+from merlin.compiler.planning.cover_selection import select_execution
+from merlin.compiler.planning.fusion_admission import discover_fusion_candidates
+from merlin.compiler.system import PlannedCompiler, RegionBackend
 from merlin.compiler.transforms.certificates import ir_text
 from merlin.compiler.transforms.pipeline_state import PipelineContext
-from merlin.development.targetgen.target_registry import TargetInfo
-from merlin.target.system.topology import select_topology
+from merlin.target.registry.identity import TargetInfo
+from merlin.target.system import select_topology
 
 
 def _provider():
@@ -110,7 +110,7 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
 
     def independent_compute_check(current, proposal):
         from merlin.compiler.ir.contraction_shapes import contraction_extents
-        from merlin.development.targetgen.operation_numerics import integer_partial_sum_bound
+        from merlin.target.capabilities.semantic_families import integer_partial_sum_bound
 
         extents = contraction_extents(current.module)
         for index in proposal.alternative.nodes:
@@ -152,10 +152,9 @@ def test_actual_oot_fused_and_bare_offers_survive_to_selection_and_lowering(tmp_
     assert plan["execution_verified"] is False
     assert result.metadata["execution_verified"] is False
     assert plan["selection"]["source_sha256"] == source.stamp.source_sha256
-    from merlin.compiler.artifact import Compilation
-    from merlin.compiler.backend.selected import LoweringTicket
+    from merlin.compiler.backend.source_proposals import LoweringTicket
+    from merlin.compiler.compilation import Compilation, CompileOptions, CompileRequest, Source
     from merlin.compiler.partition.regions import partition_execution
-    from merlin.compiler.request import CompileOptions, CompileRequest, Source
 
     row = plan["regions"][0]
     assert row["lowering_binding"] == "selected_offer"

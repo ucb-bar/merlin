@@ -60,7 +60,7 @@ answer_surfaces:
 # `branch` is informational: branches move, and the same branch name on a fork and on upstream are
 # different histories. `requires_paths` names the files whose PRESENCE is what the lane actually is, so
 # a checkout that is the right repo on a plausible branch and missing the schedule is caught.
-# THE HOST THIS TARGET'S LANE COMPILES FOR, a key of merlin.runtime.boards.
+# THE HOST THIS TARGET'S LANE COMPILES FOR, a key of merlin.runtime.boards.catalog.
 #
 # Declared because nothing derives it: the board is a fact about the SoC the accelerator sits in, not
 # about the accelerator. Its absence was silent -- `system_for` yields host=None, `place.host_units`

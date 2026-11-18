@@ -31,11 +31,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from merlin.common import strict_json
+from merlin.common import record_formats as strict_json
+
+# ---- runtime_store -----------------------------------------------------------------------------
 
 
 def _identity(plan: dict[str, Any]) -> str:
-    from .sealed_static import _digest, _json
+    from merlin.experiments.capture_execution.sealed_static import _digest, _json
 
     trees = plan["selected_trees"]
     return _digest(
@@ -123,7 +125,7 @@ def verified_cached_entry(
     rechecks the token immediately before and after linking; a discounted issue
     must never silently fall back to a fresh runtime copy.
     """
-    from .sealed_static import _canonical_path
+    from merlin.experiments.capture_execution.sealed_static import _canonical_path
 
     try:
         root = _canonical_path(_store_root(), exists=False)
@@ -147,7 +149,7 @@ def _verified_cached_entry(
     selected_system_libraries: list[dict[str, Any]] | None,
     root: Path,
 ) -> VerifiedRuntimeCache | None:
-    from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+    from merlin.experiments.capture_execution.sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
 
     try:
         entry = root / _identity(plan)
@@ -269,7 +271,7 @@ def verify_effective_rows(plan, rows, *, selected_system_libraries=None):
     This grants no cache ownership or issuance authority. Read-only composition
     callers independently bind every source byte, namespace member and overlay.
     """
-    from .sealed_static import _digest, _file_digest, _json
+    from merlin.experiments.capture_execution.sealed_static import _digest, _file_digest, _json
 
     prefixes = {"venv": "opt/capture-venv", "base": Path(plan["base"]).relative_to("/").as_posix()}
     allowed, total = {"."}, 0
@@ -313,8 +315,9 @@ def verify_effective_rows(plan, rows, *, selected_system_libraries=None):
 
 
 def _build(plan: dict[str, Any], destination: Path) -> None:
-    from .sealed_m2m import SealedM2MError, _snapshot_tree
-    from .sealed_static import _file_digest
+    from merlin.experiments.capture_execution.m2m_plan import _snapshot_tree
+    from merlin.experiments.capture_execution.m2m_sandbox import SealedM2MError
+    from merlin.experiments.capture_execution.sealed_static import _file_digest
 
     venv = Path(plan["venv"])
     venv_copy = destination / "opt/capture-venv"
@@ -384,7 +387,7 @@ def link_runtime(
     selected_system_libraries: list[dict[str, Any]] | None = None,
 ) -> None:
     """Hard-link the plan's stored runtime into ``runtime`` with the stored directory modes."""
-    from .sealed_m2m import SealedM2MError
+    from merlin.experiments.capture_execution.m2m_sandbox import SealedM2MError
 
     if verified_cache is None:
         entry = store_entry(plan)

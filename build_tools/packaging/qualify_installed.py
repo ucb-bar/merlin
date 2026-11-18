@@ -64,7 +64,7 @@ SUITES = {
         "support_files": (),
         "source_inputs": (),
         "core_extras": ("semantic-search",),
-        "probe_modules": ("merlin.api", "merlin.compiler.backend.composition", "merlin.runtime.service"),
+        "probe_modules": ("merlin.api", "merlin.compiler.backend.providers", "merlin.runtime.execution.service"),
         "required_modules": ("numpy", "yaml", "xdsl", "jsonschema", "z3"),
         "guarded_tests": False,
     }

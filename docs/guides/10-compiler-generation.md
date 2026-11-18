@@ -3,9 +3,9 @@ title: 10. Generate a backend
 kind: guide
 status: current
 owner: development
-last_verified: 2026-11-09
+last_verified: 2026-11-17
 related: [09-verification, 11-optimization, 12-experiments]
-code_refs: [src/merlin/development/testgen, src/merlin/development/backend, src/merlin/experiments/adapters.py, src/merlin/compiler/schedule, src/merlin/evaluation/capsule, examples/compiler-generation]
+code_refs: [src/merlin/development/testgen, src/merlin/development/backend, src/merlin/development/targetgen/generation/generated_target.py, src/merlin/development/targetgen/generation/plans.py, src/merlin/experiments/runs/adapters.py, src/merlin/compiler/schedule, src/merlin/evaluation/capsule, examples/compiler-generation]
 ---
 
 # 10. Generate a backend
@@ -17,7 +17,7 @@ the selected target specification, reviewed tests and compiler tools, then check
 the compiler it writes. Correctness and performance development share one native
 backend-generation session.
 
-There are two workflows:
+The two generation workflows are:
 
 | Workflow | Produces | Source owner |
 | --- | --- | --- |
@@ -75,7 +75,8 @@ evaluation. The operator supplies the reviewed policy and timing authority.
 
 The agent can compose existing passes, modify them or add a transformation.
 Shared IR rewrites, tiling, operand retention, transfer merging and command
-ordering live in Merlin's libraries. The OOT backend supplies resource descriptions,
+ordering live in Merlin's libraries. Selected hardware facts constrain resource
+geometry and capacities. The OOT backend supplies target-specific operations,
 command effects, instruction selection and encoders. See
 [transformations](05-transformations.md) and [optimization/CCA](11-optimization.md).
 
@@ -94,12 +95,25 @@ The source ownership is:
 
 | Work | Open first |
 | --- | --- |
-| Test construction and source declarations | [`development/testgen/generation.py`](../../src/merlin/development/testgen/generation.py) |
-| Native authoring lifecycle | [`development/backend/authoring.py`](../../src/merlin/development/backend/authoring.py) |
-| Joint policy | [`development/backend/joint_control.py`](../../src/merlin/development/backend/joint_control.py) |
-| Agent task and permissions | [`development/backend/task_staging.py`](../../src/merlin/development/backend/task_staging.py) |
+| Generated-target loading, schema checks and structural reports | [`generation/generated_target.py`](../../src/merlin/development/targetgen/generation/generated_target.py) |
+| Runtime, Zephyr and LLVM deployment plans | [`generation/plans.py`](../../src/merlin/development/targetgen/generation/plans.py) |
+| Test construction and source declarations | [`testgen/generation/entry_planning.py`](../../src/merlin/development/testgen/generation/entry_planning.py) |
+| Native authoring lifecycle | [`backend/authoring/session.py`](../../src/merlin/development/backend/authoring/session.py) |
+| Joint policy | [`backend/campaign/control.py`](../../src/merlin/development/backend/campaign/control.py) |
+| Agent task and permissions | [`backend/authoring/task_staging.py`](../../src/merlin/development/backend/authoring/task_staging.py) |
+| Candidate self-check client and its declared sidecars | [`backend/tools/`](../../src/merlin/development/backend/tools/AGENT.md) |
 | Specialized optimization mechanisms | [`development/backend/optimization/`](../../src/merlin/development/backend/optimization/) |
 | Independent capsule assessment | [`evaluation/capsule/`](../../src/merlin/evaluation/capsule/) |
+| Recorded verdicts and execution/evidence counts | [`backend/feedback/verdicts.py`](../../src/merlin/development/backend/feedback/verdicts.py) |
+| Author brief construction and refresh | [`backend/feedback/grading/brief.py`](../../src/merlin/development/backend/feedback/grading/brief.py) |
+| Protected completion journal and request queue | [`backend/feedback/grading/completions.py`](../../src/merlin/development/backend/feedback/grading/completions.py) |
 
 Older records retain their schema identifiers and recorded paths for exact replay.
 They do not define separate stages in the current workflow.
+
+The copied self-check client separates argument validation, request submission,
+shared protocol helpers and advisory sweeps. It uses only the standard library
+and its declared sidecars. The host broker owns grading and private answers.
+
+Deployment plans remain proposals for review. Their presence and successful
+schema validation do not establish numerical correctness or platform support.

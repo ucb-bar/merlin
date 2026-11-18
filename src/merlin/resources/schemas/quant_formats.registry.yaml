@@ -1,7 +1,7 @@
 # Canonical quantization/numeric FORMAT registry — the single, target-agnostic source of truth.
 #
 # Each entry validates against src/merlin/resources/schemas/quant_format.schema.yaml and is loaded by
-# merlin.common.quant_formats. A format describes WHAT the numbers are (element encoding, packing,
+# merlin.common.target_data. A format describes WHAT the numbers are (element encoding, packing,
 # scale); it never states WHICH hardware runs it — that datatype -> compute-unit mapping lives in a
 # target contract's `compute_units`. To add a format, add an entry here (or point
 # MERLIN_QUANT_FORMATS at an overlay file); no code change is required.

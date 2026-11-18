@@ -7,12 +7,12 @@ from corefixtures.dense_retained_reduction import chosen, inputs
 
 from merlin.compiler.kernel_ir.ir import Call, concretize, instances
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
-from merlin.compiler.schedule.dense_array_retention import (
+from merlin.compiler.schedule.panels.array_retention import (
     DenseArrayRetentionAdmission,
     propose_dense_array_retention,
     verify_dense_array_retention,
 )
-from merlin.compiler.schedule.dense_panel_pipeline import DRAIN
+from merlin.compiler.schedule.panels.pipeline import DRAIN
 
 
 def encode(op):
@@ -118,7 +118,7 @@ def test_actual_counted_first_and_remaining_preserve_tails_products_and_completi
     )
     from corefixtures.scf_commands import record
 
-    from merlin.compiler.schedule.scf_commands import materialize_scf_commands
+    from merlin.compiler.schedule.loops.scf_commands import materialize_scf_commands
 
     actual = materialize_scf_commands(proposal.kernel)
     actual.verify()

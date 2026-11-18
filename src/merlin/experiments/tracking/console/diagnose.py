@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
+# ---- diagnose ----------------------------------------------------------------------------------
+
 SEVERITY_ORDER = {"error": 0, "warn": 1, "info": 2}
 
 
@@ -411,8 +413,7 @@ def _wall_time(snapshot, s):
             impact_s=share / 100 * window,
         )
     blocked = overlap.get("lead_blocked_on_sim_s")
-    if (overlap.get("causal_wait_verified") is True
-            and isinstance(blocked, int | float) and blocked / window >= 0.15):
+    if overlap.get("causal_wait_verified") is True and isinstance(blocked, int | float) and blocked / window >= 0.15:
         yield _finding(
             "SIM_ON_CRITICAL_PATH",
             "warn",
@@ -787,4 +788,9 @@ RULES = (
     _insights,
 )
 
-__all__ = ["RULES", "SEVERITY_ORDER", "diagnose"]
+
+__all__ = [
+    "RULES",
+    "SEVERITY_ORDER",
+    "diagnose",
+]

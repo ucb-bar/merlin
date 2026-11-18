@@ -2,8 +2,9 @@
 
 import pytest
 
-from merlin.development.targetgen import rtl_checks, target_registry
-from merlin.development.targetgen.plugins import resolve_support
+from merlin.target.isa.rocc import rtl_checks
+from merlin.target.registry import identity as target_registry
+from merlin.target.registry.plugins import resolve_support
 
 if target_registry.explicit_targets().get("gemmini") is None:
     pytest.skip("requires explicit Gemmini support on MERLIN_TARGET_PATH", allow_module_level=True)

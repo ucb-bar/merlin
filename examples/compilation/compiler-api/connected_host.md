@@ -1,6 +1,6 @@
 # Shared connected C host execution
 
-`merlin.compiler.lower.connectedhost.emit_connected_host_c` consumes the checked
+`merlin.compiler.lower.connected.emit_connected_host_c` consumes the checked
 `ConnectedProgram` returned by `compile_connected_region`. Both an offline
 compiler and an automatic author can call this API. See
 [`connected_composition.py`](connected_composition.py) for the entrypoint.

@@ -257,6 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     # 1. The registry itself.
     try:
         from merlin.common import provenance as P
+        from merlin.common.provenance_claims import load_artifacts, load_lost, verify_artifact
 
         pins = P.load_pins()
     except Exception as exc:  # noqa: BLE001 — any failure is fatal here
@@ -267,7 +268,7 @@ def main(argv: list[str] | None = None) -> int:
     # 1b. Bytes recorded as UNRECOVERABLE, surfaced on every run (not only under --verify-pins): the
     # artifacts citing them never re-hash, so this is the only place anyone is told.
     try:
-        lost = P.load_lost()
+        lost = load_lost()
     except Exception as exc:  # noqa: BLE001 — an unreadable account of a loss is not an account
         print(f"provenance: FAILED — loss registry unusable: {exc}", file=sys.stderr)
         return _hook_result(stop_hook, f"provenance: loss registry unusable: {exc}")
@@ -345,12 +346,12 @@ def main(argv: list[str] | None = None) -> int:
         # verified by CONTENT. An artifact present with no declared digest is reported as a gap rather than
         # passing quietly -- one that verifies against nothing certifies itself.
         try:
-            arts = P.load_artifacts()
+            arts = load_artifacts()
         except Exception as exc:  # noqa: BLE001 — a malformed section is fatal
             print(f"provenance: FAILED — artifact registry unusable: {exc}", file=sys.stderr)
             return _hook_result(stop_hook, f"provenance: artifact registry unusable: {exc}")
         for name in sorted(arts):
-            got = P.verify_artifact(name)
+            got = verify_artifact(name)
             if got.ok:
                 notes.append(f"artifact {name}: ok ({got.digest[:12]})")
             else:

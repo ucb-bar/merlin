@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+# ---- codex_permissions -------------------------------------------------------------------------
+
 _CANDIDATE_PERMISSION_PROFILE = "merlin-candidate"
 
 

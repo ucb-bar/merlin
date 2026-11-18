@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from merlin.runtime.backends.zephyr_model import _gate
+from merlin.runtime.backends.zephyr.execution import _gate
 
 
 def _ramp(n=512, seed=0):

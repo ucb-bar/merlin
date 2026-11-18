@@ -20,7 +20,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from merlin.common.paths import repo_root  # noqa: E402
-from merlin.development.targetgen import capsule_common, capsule_golden, numeric_falsifiability  # noqa: E402
+from merlin.development.targetgen.corpus import capsule_io as capsule_common
+from merlin.development.targetgen.grading import (
+    golden as capsule_golden,
+)  # noqa: E402
+from merlin.development.targetgen.grading import (
+    golden_inputs as numeric_falsifiability,
+)
 
 
 def capsule_root() -> Path:

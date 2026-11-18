@@ -82,6 +82,8 @@ TOKENS is ``{input, fresh_input, cache_read, cache_write, output, reasoning, tot
 
 from __future__ import annotations
 
+# ---- sources -----------------------------------------------------------------------------------
+
 SERIES_POINTS = 240
 KINDS = ("agent", "L2", "L3", "build", "verify", "calibration", "host", "unknown", "idle")
 LANES = ("setup", "build", "L2", "L3", "verify", "calibration", "queue")
@@ -102,4 +104,12 @@ def empty_tokens() -> dict:
     return {name: None for name in TOKEN_FIELDS}
 
 
-__all__ = ["KINDS", "LANES", "SERIES_POINTS", "STAGE_STATES", "TOKEN_FIELDS", "downsample", "empty_tokens"]
+__all__ = [
+    "KINDS",
+    "LANES",
+    "SERIES_POINTS",
+    "STAGE_STATES",
+    "TOKEN_FIELDS",
+    "downsample",
+    "empty_tokens",
+]

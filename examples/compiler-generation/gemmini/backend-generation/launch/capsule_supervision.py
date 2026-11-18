@@ -24,7 +24,7 @@ def save(path: Path, value: object) -> None:
 
 
 def verify_handoff(run_dir: Path, descriptor: Path) -> dict:
-    from merlin.development.backend.feedback import capsule_certification
+    from merlin.development.backend.feedback.certification import capsule_certification
 
     return capsule_certification.verify_phase2_handoff(run_dir, descriptor=descriptor)
 

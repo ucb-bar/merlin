@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """In-sandbox BLOCKING WAIT for the next harness grade — staged as ``<ws>/await_verdict.py``.
 
 Under the continuous schedule the harness re-grades a snapshot of the workspace every
@@ -36,16 +35,10 @@ import sys
 import time
 from pathlib import Path
 
-#: How often to look. The grade interval is minutes; this only bounds how late the return is.
+# ---- await_verdict -----------------------------------------------------------------------------
+
 _POLL_S = 2.0
 
-#: Default ceiling. Deliberately longer than the default grade interval (900 s) so an ordinary wait
-#: succeeds rather than reporting a timeout the agent would then have to interpret.
-#: MUST stay under the calling agent's 600s shell ceiling. This was 1200 -- double the ceiling -- so
-#: the one tool offered as the cure for polling was itself killed at its own default, returning nothing
-#: and teaching the caller that the blocking wait "does not work". A timeout here is explicitly not an
-#: error (`waited: "timeout"`), so a short bound costs one cheap turn to re-issue; being killed costs
-#: the whole wait and the lesson.
 _DEFAULT_TIMEOUT_S = 540
 
 

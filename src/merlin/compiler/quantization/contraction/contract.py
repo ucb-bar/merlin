@@ -15,16 +15,17 @@ from hashlib import sha256
 from itertools import product
 from typing import Any
 
-from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
-from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
-
-from .intake import (
+from merlin.compiler.quantization.contraction.intake import (
     SourceValueRef,
     check_source_bound_f32_batched_matmuls,
     check_source_bound_f32_matmuls,
     inventory_source_f32_batched_matmuls,
 )
-from .values import FloatBoundarySpec
+from merlin.compiler.quantization.contraction.values import FloatBoundarySpec
+from merlin.compiler.semantic.linalg.linalg_bridge import LinalgBridgeError
+from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
+
+# ---- contract ----------------------------------------------------------------------------------
 
 _SOURCE_MAPS = (
     ((1, 0, 0), (0, 0, 1)),  # lhs[m, k]

@@ -1,7 +1,7 @@
 """Operator-only comparison of whole-model results against the reference ledger, refusing what is not comparable.
 
 References come from ``src/merlin/resources/contracts/perf_reference_targets.yaml`` through
-:mod:`merlin.analysis.perf.target_reference`; comparability is :func:`merlin.analysis.perf.program_identity.comparability`.
+:mod:`merlin.analysis.perf.search.references`; comparability is :func:`merlin.analysis.perf.search.references.comparability`.
 A candidate here is a whole-model capsule of the run. Its cycles are a Spike-model estimate or a gSIM
 count, never a measurement on a registered device, and it states no program-identity facts -- so a
 comparison is shown side by side with the reason it is refused, and a ratio exists only when both the
@@ -12,13 +12,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..io import clean, obj, positive
+from merlin.experiments.tracking.console.snapshot import clean, obj, positive
 
 LEDGER = "perf_reference_targets.yaml"
 
 
 def _ledger() -> dict[str, Any]:
-    from merlin.analysis.perf.target_reference import load_ledger
+    from merlin.analysis.perf.search.references import load_ledger
 
     return dict(load_ledger())
 
@@ -60,7 +60,12 @@ def _candidates(ctx) -> list[dict[str, Any]]:
 def read(ctx) -> dict[str, Any]:
     if not ctx.operator_private:
         return {"references": [], "comparisons": [], "notes": ["golden references are operator-only"]}
-    from merlin.analysis.perf.program_identity import comparability, declared_identities, identity_of_reference, resolve
+    from merlin.analysis.perf.search.references import (
+        comparability,
+        declared_identities,
+        identity_of_reference,
+        resolve,
+    )
 
     ledger = _ledger()
     refs = references(ledger)

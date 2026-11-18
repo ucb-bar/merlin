@@ -88,7 +88,7 @@ def compile_main(argv: list[str] | None = None) -> int:
 
 def run_main(argv: list[str] | None = None) -> int:
     from merlin.api import Deployment, run
-    from merlin.runtime.service import RunOptions
+    from merlin.runtime.execution.service import RunOptions
 
     parser = argparse.ArgumentParser(
         prog="merlin run", description="Execute an existing admitted ELF, or prepare external execution"

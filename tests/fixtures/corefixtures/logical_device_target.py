@@ -44,12 +44,13 @@ def require_native_tools(*, device=False, host=False):
 
 
 def install(monkeypatch):
-    from merlin.compiler.dialects.lowering import compute_groups
-    from merlin.compiler.selection import mesh as selection_mesh
-    from merlin.development.targetgen import readout_facet
-    from merlin.development.targetgen.corpus_spec import CorpusBinding
-    from merlin.runtime import mesh
-    from merlin.target.system import offload
+    from merlin.compiler.partition.groups import compute_groups
+    from merlin.compiler.selection import kernels as selection_mesh
+    from merlin.development.targetgen.corpus.binding import CorpusBinding
+    from merlin.runtime.dispatch import mesh
+    from merlin.target import system as offload
+    from merlin.target.capabilities import readout_derivation as _merlin_readout_derivation_1
+    from merlin.target.capabilities import readout_facet
 
     readouts = [
         {"selector": "i8", "applies": ["bias_add", "acc_scale", "relu", "maxpool"]},
@@ -70,7 +71,7 @@ def install(monkeypatch):
     def oracle(target, **_kwargs):
         result = Oracle(families=("contraction", "elementwise_map", "reduction"))
         result.target = target
-        result.readout = readout_facet.TargetReadout((facet(target),))
+        result.readout = _merlin_readout_derivation_1.TargetReadout((facet(target),))
         return result
 
     def binding(target, operand_dtype, accum_dtype, requant_output_dtype=None, **_kwargs):
@@ -91,4 +92,6 @@ def install(monkeypatch):
     monkeypatch.setattr(selection_mesh, "_mesh_tile_binding", binding)
     monkeypatch.setattr(offload, "device_dtype_triples", lambda _target: (("i8", "i8", "i32"),))
     monkeypatch.setattr(readout_facet, "for_target", lambda target: (facet(target),))
-    monkeypatch.setattr(readout_facet, "epilogue_readouts", lambda _target: readout_facet.validated_readouts(readouts))
+    monkeypatch.setattr(
+        readout_facet, "epilogue_readouts", lambda _target: _merlin_readout_derivation_1.validated_readouts(readouts)
+    )

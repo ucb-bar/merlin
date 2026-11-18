@@ -19,8 +19,9 @@ check scripts and the `targetgen inspect` command.
 
 ## Interfaces
 
-- Consumes the five plan artifacts via `merlin.verification.validation.load`/`validate` and the shared
-  schemas via `merlin.common.schemas`.
+- Loaders, plan checks, repository checks and report rendering live together in
+  `merlin.development.targetgen.generation.generated_target`; schema validation
+  delegates to `merlin.common.record_formats`.
 - `check_generated_target(repo)` is the entry point used by
   `build_tools/checks/check_generated_target.py`.
 
@@ -29,12 +30,12 @@ check scripts and the `targetgen inspect` command.
 - Validation is read-only and side-effect free.
 - Checks return diagnostics; exit codes are the caller's concern.
 
-## Testing expectations
+## Qualification
 
-- Covered indirectly by `merlin/python/tests/test_targetgen_toy.py` (a freshly generated
-  toy_npu repo must pass `check_generated_target`).
+- A generated repository must pass the actual structural and schema checks.
+  Source review alone does not qualify generated output or hardware execution.
 
 ## Notes for future agents
 
-- Keep `REQUIRED_TARGET_PATHS` in sync with what `merlin.development.targetgen.generate.target_repo`
+- Keep `REQUIRED_TARGET_PATHS` in sync with what `merlin.development.targetgen.generation.target_repo`
   actually emits.

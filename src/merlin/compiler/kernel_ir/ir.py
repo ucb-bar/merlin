@@ -799,7 +799,7 @@ class InstructionSet:
 
 
 def instruction_set(target: str) -> InstructionSet:
-    from merlin.runtime.backends import base
+    from merlin.runtime.backends import registry as base
 
     backend = base.get_backend(target)
     hook = getattr(backend, "sched_instruction_set", None)

@@ -68,7 +68,7 @@ inputs:
   # tree_hash (a reviewed member) reuses unchanged-tree digests through stat_memo, a generic
   # stdlib-only leaf; it is declared here instead of granted implicitly.
   reviewed_modules:
-  - merlin.common.stat_memo
+  - merlin.common.digest
   full_compiler_review_id: fresh-run-complete-compiler-source-${EXPORT_ID}
   # Phase 0 r4 fallback: sealed 10-18 generation + model-derived performance demand (plan 4cf2da2a7a86).
   corpus: ${TASK}/.tmp/corpus-r4/export/out/artifacts/corpus-r4/fallback-source-release
@@ -78,7 +78,7 @@ inputs:
   forbidden_reference_prefixes:
   - measured-exo/
   logical_storage_budget_bytes: 134217728
-  common_substrate: merlin.common_compiler_substrate.v20
+  common_substrate: merlin.common_compiler_substrate.v21
   # Preparation runtime: the campaign environment below with these values replaced.
   environment:
     MERLIN_BUNDLE_CAS: ${OPERATOR_TMP}/prepare-cas

@@ -24,7 +24,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, epoch, is_dir, num, obj, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, epoch, is_dir, num, obj, scan_dir
+
 from . import LANES
 
 #: ``(token, lane)``: first token found in the lower-cased stage name decides the lane.

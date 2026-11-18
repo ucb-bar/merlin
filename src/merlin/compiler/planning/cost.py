@@ -10,6 +10,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+# ---- cost --------------------------------------------------------------------------------------
+
 
 def measured_cost_for(system) -> Callable[[Any, Any], float | None] | None:
     """Read contract-recorded throughput and target tile edges, or return ``None``.
@@ -19,9 +21,9 @@ def measured_cost_for(system) -> Callable[[Any, Any], float | None] | None:
     in declaration order. A registry entry supplies no measured throughput by
     itself. This adapter does not independently qualify measurement provenance.
     """
-    from merlin.development.targetgen import compute_units as _cu
-    from merlin.development.targetgen import routing as _r
-    from merlin.development.targetgen import target_registry as _tr
+    from merlin.target.capabilities import compute_units as _cu
+    from merlin.target.capabilities import routing as _r
+    from merlin.target.registry import identity as _tr
 
     rates: dict[str, float] = {}
     edges: dict[str, int] = {}
@@ -61,7 +63,7 @@ def _declared_rate(unit) -> float | None:
 def _declared_tile_edge(device: str) -> int | None:
     """The device's tile edge from its own RTL facts, or None."""
     try:
-        from merlin.compiler.lower.model.device_shim import tile_edge_for
+        from merlin.compiler.lower.device.shim import tile_edge_for
 
         return tile_edge_for(device)
     except Exception:  # noqa: BLE001

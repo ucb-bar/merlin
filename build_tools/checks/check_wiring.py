@@ -288,8 +288,8 @@ def _generated_prompt_module_commands(imported_by: dict[str, set[Path]], candida
     dormant strings must not make a module appear wired. This does not infer commands from all
     string literals in production code.
     """
-    path = ROOT / "src/merlin/development/targetgen/generate_prompt.py"
-    if not path.is_file() or not imported_by.get("merlin.development.targetgen.generate_prompt"):
+    path = ROOT / "src/merlin/development/targetgen/authoring/prompt_slots.py"
+    if not path.is_file() or not imported_by.get("merlin.development.targetgen.authoring.prompt_slots"):
         return set()
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))

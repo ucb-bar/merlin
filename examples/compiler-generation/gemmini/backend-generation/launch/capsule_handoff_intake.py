@@ -27,12 +27,12 @@ def ordinary_pin(record):
 
 def admit(F, proof_path, proof_sha256, submission, deadline, *, budget_path, budget_sha256):
     """Verify actual capsule proof; this grants no model or numerical pass credit."""
-    from merlin.development.backend.feedback import capsule_certification
+    from merlin.development.backend.feedback.certification import capsule_certification
 
     proof_path = ordinary_pin({"path": str(proof_path), "sha256": proof_sha256})
     original = json.loads(proof_path.read_text())
     descriptor = ordinary_pin(original["descriptor"])
-    from merlin.development.backend.feedback import capsule_qualification_handoff as Q
+    from merlin.development.backend.feedback.certification import capsule_qualification_handoff as Q
 
     qualification = original.get("schema") == Q.SCHEMA
     if qualification:

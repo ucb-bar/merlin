@@ -14,6 +14,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+# ---- contract ----------------------------------------------------------------------------------
+
 CONTRACT_SCHEMA = "target_neutral_quantized_epilogue_contract_v1"
 _GRANULARITIES = frozenset({"per_tensor", "per_axis"})
 _BIAS_DOMAINS = frozenset({"none", "real", "accumulator"})
@@ -28,15 +30,6 @@ _EXECUTABLE_STAGES = frozenset(
         "relu",
     }
 )
-
-__all__ = [
-    "CONTRACT_SCHEMA",
-    "QuantParameter",
-    "QuantizedEpilogueCandidate",
-    "QuantizedEpilogueCapability",
-    "QuantizedEpilogueContract",
-    "canonical_sha256",
-]
 
 
 def canonical_sha256(value: Mapping[str, Any]) -> str:
@@ -341,3 +334,13 @@ class QuantizedEpilogueCapability:
         }
         result["capability_sha256"] = canonical_sha256(result)
         return result
+
+
+__all__ = [
+    "CONTRACT_SCHEMA",
+    "QuantParameter",
+    "QuantizedEpilogueCandidate",
+    "QuantizedEpilogueCapability",
+    "QuantizedEpilogueContract",
+    "canonical_sha256",
+]

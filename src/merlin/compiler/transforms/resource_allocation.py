@@ -16,9 +16,10 @@ from typing import Any
 from xdsl.dialects import builtin, func
 from xdsl.traits import get_effects
 
-from merlin.compiler.transforms.analysis_memory import value_facts
-from merlin.compiler.transforms.analysis_types import IRIndex, operation_name
+from merlin.compiler.transforms.analyses import IRIndex, operation_name, value_facts
 from merlin.compiler.transforms.certificates import ir_digest, ir_text
+
+# ---- resource_allocation -----------------------------------------------------------------------
 
 ATTRIBUTE = "merlin.resource_allocation"
 SCHEMA = "merlin.resource_allocation.v1"
@@ -248,7 +249,7 @@ def allocate_instruction_resources(
     alone cannot qualify them. Effect operands are conservatively retained to
     scope completion. This sequential epoch model makes no latency/overlap claim.
     """
-    from merlin.compiler.semantic.allocate import allocate, live_ranges
+    from merlin.compiler.semantic.search.allocation import allocate, live_ranges
 
     signature = _identity(
         entry, bindings, banks, reservations, instruction_constraints, fixed_inputs, fixed_outputs, index_bits
@@ -348,7 +349,7 @@ def validate_allocated_ir(
     index_bits: int | None = None,
 ) -> None:
     """Check actual emitted assignment independently of the solver and plan object."""
-    from merlin.compiler.semantic.allocate import check_assignment, live_ranges
+    from merlin.compiler.semantic.search.allocation import check_assignment, live_ranges
 
     emitted.verify()
     actual = emitted.attributes.get(ATTRIBUTE)

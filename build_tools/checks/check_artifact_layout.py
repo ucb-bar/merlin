@@ -37,7 +37,7 @@ from yaml import YAMLError
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from merlin.common.artifacts import declared_product_roots  # noqa: E402
-from merlin.common.yaml import load_yaml  # noqa: E402
+from merlin.common.record_formats import load_yaml  # noqa: E402
 
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 # Retired top-level generated roots (consolidated under out/) + legacy forbidden locations.

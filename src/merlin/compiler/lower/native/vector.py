@@ -1,15 +1,18 @@
 """Generic upstream fixed-width vector schedule and native pass assembly.
 
-The historical RVV-named API remains generic; target RVV lowering stays OOT."""
+The historical RVV-named API remains generic; target RVV lowering stays OOT.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from merlin.compiler.lower.llvm.passes import finalization_passes
+from merlin.compiler.lower.native.contract import PipelineError
+from merlin.compiler.lower.native.parallel import PARALLEL_ENTRY
+from merlin.compiler.lower.native.passes import finalization_passes
 from merlin.compiler.lower.native.policy import _fuse_post, _par_residue_parallel, _splice
-from merlin.compiler.passes.contract import PipelineError
-from merlin.compiler.passes.parallel import PARALLEL_ENTRY
+
+# ---- vector ------------------------------------------------------------------------------------
 
 RVV_TRANSFORM_SCHEDULE = """\
 module attributes {transform.with_named_sequence} {
@@ -65,8 +68,11 @@ def _vec_after_specialize() -> bool:
 
 def vec_pre_schedule(features: "frozenset[str]") -> "str | None":
     """Pipeline design rationale: see docs/design/llvm_pipeline_rationale.md."""
-    from merlin.compiler.optimizations.pointwise import ensure_vec_noncontraction, vec_noncontraction_lanes
     from merlin.compiler.optimizations.registry import apply_schedule
+    from merlin.compiler.optimizations.vectorization import (
+        ensure_vec_noncontraction,
+        vec_noncontraction_lanes,
+    )
 
     if _vec_after_specialize():
         return None

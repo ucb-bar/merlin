@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import Callable
 
 # re-exported for callers that used MR.discover_capsules / load_capsule / TierResult
-from merlin.development.targetgen.capsule_common import discover_capsules, load_capsule  # noqa: F401
-from merlin.development.targetgen.runner_config import RunnerConfig
+from merlin.development.targetgen.corpus.capsule_io import discover_capsules, load_capsule  # noqa: F401
 from merlin.evaluation.capsule.runner import OracleUnavailable, TierResult  # noqa: F401
+from merlin.target.registry.identity import RunnerConfig
 
 from .muon import MuonUnavailable  # noqa: F401
 from .muon_oracles import default_adapters, flops_from_cb

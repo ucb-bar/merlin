@@ -16,8 +16,18 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ...terminal_capsules import cohort_rosters
-from ..io import clean, epoch, is_dir, is_file, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import (
+    clean,
+    epoch,
+    is_dir,
+    is_file,
+    num,
+    obj,
+    rows,
+    scan_dir,
+)
+from merlin.experiments.tracking.terminal.metadata import cohort_rosters
+
 from .insight_common import share_rows
 
 TIERS = ("L0", "L1", "L2", "L3")

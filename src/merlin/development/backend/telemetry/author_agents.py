@@ -33,10 +33,15 @@ unavailable, never as zero, and the record says how each attribution was made.
 from __future__ import annotations
 
 import argparse
+import contextvars
+import functools
+import inspect
 import json
 import math
 import os
 import sys
+import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -44,14 +49,13 @@ from merlin.development.backend.telemetry import agent_commands as AC
 from merlin.development.backend.telemetry import agent_requests as AR
 from merlin.development.backend.telemetry import timeline
 
+# ---- author_agents -----------------------------------------------------------------------------
+
 SCHEMA = "merlin.phase1_author_agents.v1"
+
 WINDOW_S = 1800
-#: An open turn with no own record for this long is reported ``open_stale``, not ``active``. A thread
-#: blocked in one long command writes nothing until it completes, so stale is not proof of death.
+
 STALE_S = 900.0
-
-
-# --- small helpers ------------------------------------------------------------------------------
 
 
 def _iso(t: float | None) -> str | None:
@@ -103,9 +107,6 @@ def _environment(run_dir: Path) -> dict:
     return document if isinstance(document, dict) else {}
 
 
-# --- discovery ----------------------------------------------------------------------------------
-
-
 def _round_of(name: str) -> int | None:
     head = name.split(".", 1)[0]
     digits = head.removeprefix("round_")
@@ -155,9 +156,6 @@ def session_roots(run_dir: Path, codex_homes=()) -> list[tuple[int | None, Path]
             seen.add(key)
             unique.append((number, root))
     return unique
-
-
-# --- one rollout --------------------------------------------------------------------------------
 
 
 def read_rollout(path: Path, *, _rows=None) -> dict | None:
@@ -338,9 +336,6 @@ def _tokens(responses: list[dict], fallback: dict | None) -> dict:
     }
 
 
-# --- threads of one run -------------------------------------------------------------------------
-
-
 def threads(run_dir: Path, *, codex_homes=(), _read_rows=None) -> dict:
     """The run's lead threads and all their descendant helpers, one metrics record each."""
     run_dir = Path(run_dir)
@@ -387,9 +382,6 @@ def threads(run_dir: Path, *, codex_homes=(), _read_rows=None) -> dict:
         "missing_leads": sorted(set(leads) - set(records)),
         "missing_subagents": sorted(announced - set(records)),
     }
-
-
-# --- composition --------------------------------------------------------------------------------
 
 
 def _concurrency(intervals_by_thread: dict, window_s: int) -> dict:
@@ -843,3 +835,87 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---- startup -----------------------------------------------------------------------------------
+# Private author startup events; observation only, never admission authority.
+#
+# Unlike capsule setup timelines, this append-only stream must retain an unfinished
+# start across process termination, with the original provider round/turn identity.
+# Only static stage names and exception types are recorded, never call arguments.
+
+_OWNER = contextvars.ContextVar("author_startup_owner", default=None)
+
+_PARENT = contextvars.ContextVar("author_startup_parent", default=None)
+
+
+def observed(function):
+    """Bind one existing provider invocation without changing its signature."""
+    signature = inspect.signature(function)
+
+    @functools.wraps(function)
+    def wrapped(*args, **kwargs):
+        bound = signature.bind(*args, **kwargs)
+        owner = (Path(bound.arguments["run_dir"]), bound.arguments["rnd"], 0)
+        token = _OWNER.set(owner)
+        parent = _PARENT.set(None)
+        try:
+            return function(*args, **kwargs)
+        finally:
+            _PARENT.reset(parent)
+            _OWNER.reset(token)
+
+    return wrapped
+
+
+def turn(index):
+    """Set diagnostic identity only; does not admit or start a provider turn."""
+    owner = _OWNER.get()
+    if owner is not None:
+        _OWNER.set((*owner[:2], index))
+
+
+def _emit(owner, event):
+    # Full disks/unavailable telemetry cannot change the supervised operation.
+    try:
+        path = owner[0] / "rounds" / "author_startup.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "schema": "merlin.author_startup_stage.v1",
+            "round": owner[1],
+            "turn": owner[2],
+            "pid": os.getpid(),
+            "at": datetime.now(UTC).isoformat(),
+            "monotonic_s": time.monotonic(),
+            "authority": "diagnostic_only",
+            **event,
+        }
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(json.dumps(row, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
+def call(stage, function, *args, **kwargs):
+    """Time the original call once, preserving return values and exceptions."""
+    owner = _OWNER.get()
+    if owner is None:
+        return function(*args, **kwargs)
+    identity = uuid.uuid4().hex
+    event = {"stage": stage, "stage_id": identity, "parent_stage_id": _PARENT.get()}
+    started = time.monotonic()
+    _emit(owner, {**event, "event": "start"})
+    parent = _PARENT.set(identity)
+    try:
+        result = function(*args, **kwargs)
+    except BaseException as error:
+        _emit(
+            owner,
+            {**event, "event": "error", "wall_s": time.monotonic() - started, "exception_type": type(error).__name__},
+        )
+        raise
+    else:
+        _emit(owner, {**event, "event": "finish", "wall_s": time.monotonic() - started})
+        return result
+    finally:
+        _PARENT.reset(parent)

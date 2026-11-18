@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..io import clean, num, obj, rows
+from merlin.experiments.tracking.console.snapshot import clean, num, obj, rows
+
 from .insight_common import activity, ago, line, panel, row, table
 from .performance import family
 

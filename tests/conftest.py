@@ -50,7 +50,7 @@ os.environ.setdefault("MERLIN_BOARD_CATALOG", str(_CHECKOUT_ROOT / "examples/boa
 # the operator chose one: a test that needs support selects it (a vendored provider or a fixture),
 # and the tests of the default itself delete the variable (tests/infra/test_example_support.py).
 os.environ.setdefault("MERLIN_TARGET_PATH", "")
-# A seal asks for chattr +i where the host permits it (merlin.common.immutability). A suite run with
+# A seal asks for chattr +i where the host permits it (merlin.experiments.corpus.evidence_custody). A suite run with
 # that privilege would leave tmp trees nobody can delete, so tests opt in explicitly instead.
 os.environ.setdefault("MERLIN_SEAL_IMMUTABLE", "off")
 _REPLAY_ROOT = (

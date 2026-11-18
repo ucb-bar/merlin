@@ -6,19 +6,19 @@ answers, reference runtime or acceptance policy. These SDK owners must not impor
 `merlin.analysis.mining`, experiment engines or graders, even lazily. Candidate staging
 must preserve the explicit selected source closure and withheld identities.
 
-The RV64 observation implementation has separate real owners:
+The source tree separates the evidence and its consumers:
 
-- `riscv_state.py` applies conservative register, private-frame, FP and call effects.
-- `riscv_forms.py` propagates affine forms and frame slots over one loop iteration.
-- `riscv_loops.py` discovers natural loops, proves admitted trip counts and annotates affine facts.
-- `riscv_control.py` counts only complete admitted bounded scalar control and records actual issues.
-- `riscv_machine.py` owns CFG fixed-point observations and function summaries.
+- `observation/` reads artifact bytes, disassembly, instruction roles, command streams and declared engine facets.
+- `perf/` groups bounds, dependency analysis, measurement, claims and performance search. Its lower-level observers preserve explicit unknowns.
+- `programs/` describes programs and their interfaces; `whole_model/` holds whole-model analysis.
+- `kernels/` owns the Common Compute Abstraction and analysis of candidate kernel structure.
+- `mining/` and `optimization/` consume those observations to explore implementation choices; they are not observer SDK exports.
 
 Preserve unknowns and exact refusal conditions. Static sites are not dynamic
 execution counts; observer results do not establish accelerator arithmetic,
 completion, memory visibility, numerical correctness or timing qualification.
 
 
-`dse/` contains research consumers rather than observation SDK components. Its
-scoped instructions allow analysis of compiler/kernel choices without exposing
-that research implementation through the observation source grants.
+Keep research consumers out of the observation source grants. A source move or
+larger dependency closure must preserve withheld identities and the distinction
+between an observation, a compiler decision and an independent acceptance check.

@@ -1,17 +1,21 @@
 """Structural/artifact validation for generated target repos + contract plans.
 
-Reusable predicates and loaders so build_tools check scripts + tests stay declarative:
-- ``generated_target`` — does a generated target repo have its required files?
-- ``load`` / ``validate`` — load and validate the target-contract plan artifacts
-  (``target_contract.yaml``, ``dialect_plan.yaml``, …), merged here from the former
-  ``merlin.contracts``. Pure stdlib + :mod:`merlin.common`.
+The implementation lives in
+``merlin.development.targetgen.generation.generated_target``. This package retains
+the existing public validation exports; generation and inspection use that same
+read-only owner. These checks do not establish numerical or hardware correctness.
 """
 
 from __future__ import annotations
 
-from merlin.verification.validation.generated_target import REQUIRED_TARGET_PATHS, check_generated_target
-from merlin.verification.validation.load import PLAN_FILES, load_all_plans
-from merlin.verification.validation.validate import validate_plan, validate_target_repo
+from merlin.development.targetgen.generation.generated_target import (
+    REQUIRED_TARGET_PATHS,
+    check_generated_target,
+    PLAN_FILES,
+    load_all_plans,
+    validate_plan,
+    validate_target_repo,
+)
 
 __all__ = [
     "check_generated_target",

@@ -4,9 +4,13 @@ Retains model/runtime/provider objects, source transactions, helper runtimes
 and exact link boundaries. Compiler defaults stay with the selecting caller.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
-from merlin.common import compile_trace
+from merlin.compiler.ir import compile_trace
+
+# ---- shared ------------------------------------------------------------------------------------
 
 #: What this module produces from LLVM IR, as compile-trace stages: each object it compiles, and each
 #: program it links.
@@ -74,8 +78,8 @@ def build_shared_library(
             flags=("-O2", "-fPIC"),
             runner=original_run,
         )
-    from merlin.compiler.lower.model.adjacent_exp import runtime_c_for as exp_runtime_c_for
-    from merlin.compiler.lower.model.guarded_zero_contraction import runtime_c_for
+    from merlin.compiler.lower.options.adjacent_exp import runtime_c_for as exp_runtime_c_for
+    from merlin.compiler.lower.options.guarded_zero_contraction import runtime_c_for
 
     selected_runtime = runtime_c_for(Path(ll_path).read_text()) + exp_runtime_c_for(Path(ll_path).read_text())
     guarded_objects = ()

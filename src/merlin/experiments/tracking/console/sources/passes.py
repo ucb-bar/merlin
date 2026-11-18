@@ -21,7 +21,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, is_file, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, is_file, num, obj, rows, scan_dir
 
 CHURN_BYTES = 4 << 20
 PROFILE_NAMES = ("pass_observation.json", "host_pass_profile.json", "pipeline_receipt.json")

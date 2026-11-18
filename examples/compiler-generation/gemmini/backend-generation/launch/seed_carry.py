@@ -34,7 +34,7 @@ from pathlib import Path
 
 VARIANTS_DIR, PERFORMANCE_DIR, TOOLS_DIR, NOTES_DIR = "SEED_VARIANTS", "SEED_PERFORMANCE", "SEED_TOOLS", "SEED_NOTES"
 EXPERIMENTS_DIR, RUN_PRIVATE, INDEX = "SEED_EXPERIMENTS", "RUN_PRIVATE", "SEED_INDEX.md"
-#: Left out of every copied tree, exactly as ``merlin.common.tree_hash`` leaves them out of a digest.
+#: Left out of every copied tree, exactly as ``merlin.common.digest`` leaves them out of a digest.
 SKIP = frozenset({"build", "__pycache__", ".git"})
 #: Workspace-root notes the harness writes for every run; the seed author's own notes are the others.
 HARNESS_NOTES = frozenset({"TASK.md", "ALLOWED_MERLIN_TOOLS.md", "PUBLIC_CAPABILITIES.md", "PREVIOUS_SESSION.md"})
@@ -300,8 +300,8 @@ def calibration_pairs(workspace: Path, run_dir: Path, out: Path) -> dict:
     stream of the executable it timed, from any retained case work tree of the seed run whose
     executable has those bytes (the executable itself, else the digest its readback build recorded:
     retention keeps the decoded stream longer than the executable)."""
-    from merlin.development.backend.feedback import fast_estimate as FE
-    from merlin.development.targetgen.elf_lanes import PACKAGE_ELF_NAME
+    from merlin.development.backend.feedback.performance import fast_estimate as FE
+    from merlin.development.targetgen.grading.elf_lanes import PACKAGE_ELF_NAME
 
     run_dir = Path(run_dir)
     ledger = _json(run_dir / FE.LEDGER) or {}

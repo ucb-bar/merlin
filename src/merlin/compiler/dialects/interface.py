@@ -10,10 +10,12 @@ See docs/core_dialects.md and docs/dialects.md.
 
 from __future__ import annotations
 
-# Importing the fp8 kit installs the parser hook so fp8 capsule interfaces
-# (tensor<...xf8E4M3FN> / f8E5M2) parse without the agent registering the type.
-from merlin.compiler.dialects import fp8 as _fp8  # noqa: F401 - imported for its registration side effect
-from merlin.compiler.dialects._common import HAS_XDSL, Visibility
+from merlin.compiler.dialects.visibility import HAS_XDSL, Visibility
+from merlin.compiler.ir.logical_abi import EPILOGUE_STAGE_SET as KNOWN_EPILOGUE
+
+# ---- interface ---------------------------------------------------------------------------------
+
+# Host parser adapters register optional frontend types before parsing them.
 
 DIALECT_NAME = "interface"
 OPS = [
@@ -36,14 +38,13 @@ OPS = [
 TYPES = ["resident_tensor", "streaming_tile", "accumulator", "committed_tensor", "event", "fifo", "command"]
 
 # Epilogue stages `interface.commit` accepts. DERIVED, not restated: the vocabulary is
-# `merlin.runtime.commandbuffer.EPILOGUE_STAGES`, the single definition the command-buffer ABI, its JSON
+# `merlin.runtime.engine.command_buffer.EPILOGUE_STAGES`, the single definition the command-buffer ABI, its JSON
 # validator and the three engines all read (see that constant for why it is not derived from RTL facts).
 # This module used to carry its own copy, and the copy had drifted in BOTH directions: it admitted
 # `maxpool`, which the JSON validator rejected, and it rejected `acc_scale`, which the validator and both
 # ABI documents admit and every engine implements. Rejecting a stage here that the runtime implements
 # lets a module verify and then compute something the verifier declared impossible; admitting one no
 # engine implements is the mirror defect.
-from merlin.runtime.commandbuffer import EPILOGUE_STAGE_SET as KNOWN_EPILOGUE  # noqa: E402
 
 #: The properties a ``maxpool`` epilogue stage needs to be executable. Checked by NAME on the raw
 #: property dict rather than declared as ``opt_prop_def``s: the op's declared property set is part of
@@ -82,7 +83,7 @@ KNOWN_COMBINES = {"add", "mul"}
 KNOWN_ACTIVATIONS = {"relu"}
 
 if HAS_XDSL:
-    from xdsl.dialects.builtin import ArrayAttr, IntegerAttr, IntegerType, StringAttr, TensorType
+    from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, IntegerType, StringAttr, TensorType
     from xdsl.ir import (
         Attribute,
         Dialect,
@@ -102,6 +103,7 @@ if HAS_XDSL:
         region_def,
         result_def,
         traits_def,
+        var_operand_def,
     )
     from xdsl.traits import NoTerminator
     from xdsl.utils.exceptions import VerifyException
@@ -345,15 +347,18 @@ if HAS_XDSL:
     class CommitOp(IRDLOperation):
         """interface.commit — commits an accumulator to a tensor with an epilogue.
 
-        The ``bias`` property names the bias tensor (the runtime engine references
-        bias by name, not by SSA value). Lowering intent: target commit op then a
-        runtime COMMIT command. Runtime interpretation: epilogue stages run in order,
-        then the output dtype conversion.
+        ``readout`` describes static source arithmetic and ``readout_params``
+        retains its immutable f32 scalar/channel constants as SSA values. The
+        older ``bias`` name belongs to the separate command-engine contract; it
+        cannot be combined with the structured numerical readout. A target may
+        synthesize an integer preload only after proving the original f32 order.
         """
 
         name = "interface.commit"
         acc = operand_def(AccumulatorType)
+        readout_params = var_operand_def()
         epilogue = prop_def(ArrayAttr)
+        readout = opt_prop_def(DictionaryAttr)
         bias = opt_prop_def(StringAttr)
         requant_shift = opt_prop_def(IntegerAttr)
         output_dtype = opt_prop_def(StringAttr)
@@ -361,6 +366,26 @@ if HAS_XDSL:
         out = result_def()
 
         def verify_(self) -> None:
+            if self.readout is not None:
+                from merlin.compiler.ir.readout import readout_parameters
+
+                try:
+                    output_shape = self.out.type.get_shape() if isinstance(self.out.type, TensorType) else None
+                    numerical = readout_parameters(self.readout, tuple(self.readout_params), output_shape=output_shape)
+                    kind, relu = numerical.kind, numerical.relu
+                except ValueError as exc:
+                    raise VerifyException(str(exc)) from exc
+                expected = ["acc_scale"] + (["relu"] if relu else []) if kind == "ordered_f32" else []
+                if (
+                    [getattr(stage, "data", None) for stage in self.epilogue] != expected
+                    or self.output_dtype is None
+                    or self.output_dtype.data != "i8"
+                ):
+                    raise VerifyException("explicit Interface readout disagrees with its stages or i8 output")
+                if self.bias is not None or self.requant_shift is not None:
+                    raise VerifyException("static readout does not carry a bias or integer-shift contract")
+            elif self.readout_params:
+                raise VerifyException("readout parameter operands require an explicit numerical contract")
             stages = []
             for entry in self.epilogue:
                 stage = entry.data if isinstance(entry, StringAttr) else None
@@ -599,7 +624,7 @@ if HAS_XDSL:
                 properties={"visibility": VisibilityAttr(Visibility.SOFTWARE_VISIBLE)},
             )
             cm = CommitOp(
-                operands=[mm.acc],
+                operands=[mm.acc, []],
                 result_types=[Yt],
                 properties={
                     "epilogue": ArrayAttr([StringAttr("bias_add"), StringAttr("requant"), StringAttr("relu")]),

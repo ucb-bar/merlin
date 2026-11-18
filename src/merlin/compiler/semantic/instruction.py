@@ -10,6 +10,8 @@ from typing import Any
 
 from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
 
+# ---- instruction -------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class AddressConstraint:

@@ -8,7 +8,7 @@ C4e zero-padded, C5 reuse) against the three-way gate. Round 0, first attempt. D
 
 
 def generate_driver(cb: dict, *, mode: str = "explicit") -> str:
-    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.engine.command_buffer import materialize_inputs
 
     leaves = materialize_inputs(cb)  # {name: Tensor}; list(t.data) is row-major
     tensors = cb["tensors"]

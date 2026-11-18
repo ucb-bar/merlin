@@ -8,7 +8,7 @@ Checks that a ``merlin-target-<name>/`` repo produced by ``merlin.development.ta
   - the per-layer directories xdsl/ runtime/ zephyr/ llvm/ tests/,
   - AGENT.md coverage in every directory.
 
-Delegates to ``merlin.verification.validation.generated_target.check_generated_target``.
+Delegates to ``merlin.development.targetgen.generation.generated_target.check_generated_target``.
 
 Usage:
     python build_tools/checks/check_generated_target.py <path-to-generated-repo>
@@ -23,7 +23,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, "merlin", "python"))
 
-from merlin.verification.validation.generated_target import check_generated_target  # noqa: E402
+from merlin.development.targetgen.generation.generated_target import check_generated_target  # noqa: E402
 
 
 def main(argv: list[str]) -> int:

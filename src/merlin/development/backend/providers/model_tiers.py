@@ -15,9 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-# alias -> Bedrock inference-profile / model id. Verified invocable on the experiments account (us-east-1,
-# bearer auth) per chia's bedrock_config MODELS registry; mirrored here so the harness resolves aliases
-# without importing chia. Keep this in sync with bedrock_agent._CONVERSE_MODELS (the Converse driver's copy).
+# ---- model_tiers -------------------------------------------------------------------------------
+
 MODELS = {
     # Anthropic (claude CLI on Bedrock). opus-4-8 / sonnet-5 / opus-5 are listed but NOT invocable on the
     # account, so the tiers below use the invocable 4-6 / 4-5 profiles.
@@ -42,7 +41,6 @@ MODELS = {
     "gpt-5.6-sol": "openai.gpt-5.6-sol",
 }
 
-# Aliases that cannot drive an agentic tool loop (the model rejects toolConfig).
 NO_TOOLS = frozenset({"deepseek-r1"})
 
 
@@ -67,7 +65,6 @@ class Tier:
         )
 
 
-# The two default tier mixes (mirror chia's ANTHROPIC_TIER / NON_ANTHROPIC_TIER). Among the non-Anthropic
-# set, glm5 / deepseek are the Sonnet-class reasoners; nova-lite is the Haiku-tier (cheap/mechanical).
 ANTHROPIC_TIER = Tier(primary="opus", subagent="sonnet", background="haiku")
+
 NON_ANTHROPIC_TIER = Tier(primary="glm5", subagent="qwen-coder", background="nova-lite")

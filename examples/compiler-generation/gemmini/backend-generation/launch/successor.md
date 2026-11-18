@@ -40,8 +40,8 @@ does not grant extra tools:
 
 ```python
 from pathlib import Path
-from merlin.development.targetgen.tool_profile_shared import prepare_shared_source_release
-from merlin.development.targetgen.tool_registry import arm_tools
+from merlin.development.targetgen.authoring.shared_sources import prepare_shared_source_release
+from merlin.development.targetgen.authoring.tool_registry import arm_tools
 
 prepare_shared_source_release(
     Path(SDK_SOURCE), python_source_root=Path(REPO) / "src",
@@ -72,7 +72,7 @@ release.prepare(
     phase1_policy_descriptor=Path(PHASE1_POLICY_DESCRIPTOR),
     lean_toolchain_manifest=Path(LEAN_TOOLCHAIN_MANIFEST), host_index_bits=64,
     kernel_timing_selection=(Path(KERNEL_TIMING_CONTRACT), KERNEL_TIMING_SHA256),
-    common_substrate="merlin.common_compiler_substrate.v20",
+    common_substrate="merlin.common_compiler_substrate.v21",
     python_source_root=Path(SDK_SOURCE),
 )
 ```

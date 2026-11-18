@@ -61,7 +61,7 @@ assert Path(merlin.__file__).resolve().is_relative_to(Path(sys.prefix).resolve()
 sd, pd = p.schemas_dir(), p.prompts_dir()
 assert sd.is_dir(), f"schemas_dir missing in wheel: {sd}"
 assert pd.is_dir(), f"prompts_dir missing in wheel: {pd}"
-from merlin.common.schemas import load_schema
+from merlin.common.record_formats import load_schema
 load_schema("kernel_record")                       # exercises the schema-resolve + parse path
 load_schema("instruction_semantics")              # selected instruction records also work from the wheel
 assert (pd / "pass_slot_v1.md").is_file(), "bundled prompt missing"
@@ -103,10 +103,10 @@ retired = sorted(name for name in payload
                  if name.startswith(("merlin_dse/", "merlin_experiments/"))
                  or name in {"merlin_dse.py", "merlin_experiments.py"})
 assert not retired, "retired namespace payload remains installed: " + repr(retired)
-for module in ("merlin.development.targetgen.aet_bridge",
-               "merlin.development.targetgen.experiment_tokens", "merlin.development.targetgen.heavy_oracles",
-               "merlin.analysis.perf.source_program_pair_provider", "merlin.experiments",
-               "merlin.development.targetgen.group_capsules", "merlin.development.targetgen.numeric_falsifiability",
+for module in ("merlin.development.targetgen.grading.run_ledgers",
+               "merlin.development.backend.transcript_tokens", "merlin.development.targetgen.oracles.heavy_oracles",
+               "merlin.analysis.optimization.witnesses.program_pair_provider", "merlin.experiments",
+               "merlin.development.targetgen.corpus.group_capsules", "merlin.development.targetgen.grading.golden_inputs",
                ):
     path = module.replace(".", "/")
     if path + ".py" in payload or path + "/__init__.py" in payload:
@@ -123,7 +123,7 @@ for module in ("merlin.development.targetgen.aet_bridge",
     assert spec is not None and spec.origin is None and spec.loader is None, (module, spec)
     assert tuple(Path(item).resolve() for item in spec.submodule_search_locations or ()) == (directory,), module
     assert all(Path(main.locate_file(name)).is_file() for name in members), module
-from merlin.development.targetgen.contract.matmul_interface import emit_interface_mlir
+from merlin.target.contract.interfaces.matmul import emit_interface_mlir
 assert 'merlin_iface.target = "probe_device"' in emit_interface_mlir(
     lhs="A", weight="W", out="Y", M=2, K=3, N=4, epilogue=[],
     output_dtype="i32", target="probe_device")

@@ -18,11 +18,12 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from merlin.common import invocation_record as I
-from merlin.common.digest import is_sha256, sha256_file
-from merlin.common.jsonio import strict_json_equal, write_pretty_json
+from merlin.common.digest import is_sha256, sha256_file, strict_json_equal, write_pretty_json
+from merlin.common.process import invocation_records as I
 from merlin.compiler.lower.model import codegen_env
 from merlin.compiler.lower.model.link_supplier_trace import observe_link_suppliers, verify_link_suppliers
+
+# ---- compilation_recipe ------------------------------------------------------------------------
 
 FILENAME = "compilation_recipe.json"
 SCHEMA = "merlin.compilation_recipe.v2"
@@ -216,7 +217,7 @@ def _unique_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 def _recheck_weight_preparation(preparation):
     if "weight_prepack" in preparation:
-        from merlin.compiler.lower.model.weight_prepack import revalidate_build_preparation
+        from merlin.compiler.lower.options.weight_prepack import revalidate_build_preparation
 
         revalidate_build_preparation(Path(preparation["weight_prepack"]["path"]))
 

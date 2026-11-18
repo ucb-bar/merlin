@@ -1,0 +1,880 @@
+"""Generate a target's agent task prompt from a shared template + DERIVED slots.
+
+The task prompts are the last surface hardcoded to one target: the deliverable layout, grading model, QA loop,
+integrity rules, and status lines are identical for every target (the EXPERIMENT axis — mode/arm/condition
+— selects which shared blocks compose, and is target-agnostic), while the only target-specific content is
+a small set of slots derived from {the descriptor + the RTL fact bundle + the codegen endpoint}. This
+module computes those slots; the template composition consumes them.
+
+Guiding rule: for a FIXED (experiment, arm, condition), two targets' prompts differ ONLY in these slots.
+Nothing here is hand-authored per target — every slot traces to a descriptor field, an mlc derivation,
+or the endpoint kind.
+"""
+
+from __future__ import annotations
+
+from merlin.development.targetgen.authoring.compiler_contract import GENERAL_COMPILER_CONTRACT_V3
+
+# ---- generate_prompt ---------------------------------------------------------------------------
+
+_ENDPOINT_DESC = {
+    "inline_asm_insn": (
+        "lower your target dialect to an **LLVM-dialect MLIR** module (a `.mlir`, NOT "
+        "textual LLVM-IR) whose command-ISA instructions are `llvm.inline_asm` ops wrapping "
+        "raw `.insn` directives — with opcode/func3/func7 from the discovered ISA facts, "
+        "assembled by STOCK clang/LLVM, no forked toolchain. EVERY operand must be an SSA "
+        "value defined earlier — an immediate as `%c = llvm.mlir.constant(<imm> : i64) : "
+        "i64`, a pointer via `llvm.ptrtoint` of an arg — then passed by name. Canonical:\n"
+        "    %c = llvm.mlir.constant(1441801 : i64) : i64\n"
+        "    %d = llvm.mlir.constant(16 : i64) : i64\n"
+        '    llvm.inline_asm has_side_effects ".insn r <op>, <f3>, <f7>, x0, $0, $1", '
+        '"r,r" %c, %d : (i64, i64) -> ()\n'
+        'NEVER an inline integer literal operand like `... "r,r" (65540, 16)` — that is '
+        "invalid MLIR: it neither assembles NOR decodes, so CONFIG etc. read back as UNKNOWN "
+        "and the instruction class is scored missing. And do NOT emit textual LLVM-IR "
+        '(`call void asm sideeffect "..."`): the runner decodes `llvm.inline_asm` MLIR ops, '
+        "so a `.ll`-style body reads back as an empty instruction trace"
+    ),
+    "upstream_target": (
+        "lower your target dialect to an upstream LLVM target (e.g. RVV / SPIR-V), compiled by stock LLVM"
+    ),
+    "external_backend": (
+        "emit a `kernel.S` of `.word`/`.insn` directives — the target's OWN encoded "
+        "instructions (self-hosted ISA), assembled to IMEM words by STOCK LLVM "
+        "(`llvm-mc`), then run on the target's cosim/RTL; no forked toolchain"
+    ),
+    "command_buffer": (
+        "emit the target's schema-valid command buffer directly — the artifact the "
+        "target's runtime consumes; no `.insn` assembly (the target has no command ISA, "
+        "e.g. a spatial tensor tile driven by one-hot op ports)"
+    ),
+}
+
+
+def _is_simt_mlir(manifest) -> bool:
+    """True when the target's 4th artifact is an LLVM-dialect MLIR module (``lowered.llvm.mlir``) that the
+    oracle compiles FORK-FREE (stock LLVM rv32 + the target's RTL-derived instruction re-encode, no vendor fork) —
+    the thesis path where the agent emits a COMPILER LOWERING, not a hand kernel.
+
+    DERIVED, no target literal: resolve the 4th-output filename EXACTLY as the runner does
+    (:func:`runner_config.runner_config_from_manifest`) — the contract's explicit ``runner.fourth_output_name``
+    if present, else the endpoint-kind default — and key on the ``.mlir`` suffix, so the PROMPT's emit form
+    stays in lockstep with what the ORACLE actually compiles (they must never disagree)."""
+    if getattr(manifest, "endpoint_kind", None) != "external_backend":
+        return False
+    from merlin.target.registry.identity import ENDPOINT_ARTIFACT
+
+    fourth = getattr(manifest, "fourth_output_name", None) or ENDPOINT_ARTIFACT.get(manifest.endpoint_kind, "")
+    return str(fourth or "").endswith(".mlir")
+
+
+def _simt_mlir_emit_framing() -> str:
+    """The 4th-artifact one-liner for a SIMT core graded on the MLIR thesis path: an LLVM-dialect MLIR module
+    (a compiler LOWERING the agent's xDSL passes build), compiled fork-free — NOT C/C++ source, NOT a
+    ``.word``/``.insn`` self-hosted stream."""
+    # Name no ISA here: the re-encode is whatever the TARGET's RTL-derived encoding says, and this
+    # module is shared by every SIMT target. Saying it generically is also more accurate.
+    return (
+        "an LLVM-dialect MLIR module (`builtin.module` with `llvm.func @<kernel>`) — a COMPILER LOWERING "
+        "your xDSL passes produce — which the runner compiles FORK-FREE (stock LLVM rv32 + the target's "
+        "own RTL-derived instruction re-encode, no vendor fork) and runs on the cosim; NOT C/C++ source, "
+        "NOT `.word`/`.insn` assembler, NOT a self-hosted kernel"
+    )
+
+
+def _simt_mlir_grounding(target: str) -> str:
+    """The LLVM-dialect MLIR kernel contract for a SIMT core on the fork-free thesis path (replaces the .word
+    self-hosted grounding). The agent emits ONLY the kernel FUNCTION as verified LLVM-dialect IR: the runner
+    OWNS the harness (embeds the cb operands, calls the kernel, prints OUT/DONE) and the SIMT runtime OWNS the
+    warps/barriers, so the kernel is plain scalar compute over pointer operands. Mirrors the RoCC
+    LLVM-dialect contract (the SAME shared ``llvmlower``→stock-LLVM front), minus the RoCC ``.insn`` — the
+    SIMT target's reference emitter (its support backend's ``emit_kernel_mlir``) emits this shape."""
+    sym = f"{target}_kernel"
+    skeleton = (
+        "module {\n"
+        f"  llvm.func @{sym}(%W: !llvm.ptr, %L: !llvm.ptr, %O: !llvm.ptr) {{\n"
+        "    // O = L @ W  (row-major; M, K, N come from the interface). Emit the loads\n"
+        "    // (llvm.getelementptr + llvm.load), the multiply-accumulate (llvm.fmul / llvm.fadd), and the\n"
+        "    // stores (llvm.store) — or lower scf/arith loops to this. Your xDSL passes BUILD this IR.\n"
+        "    llvm.return\n"
+        "  }\n"
+        "}\n"
+    )
+    return (
+        f"**Your 4th artifact is an LLVM-dialect MLIR module (`submission/lowered.llvm.mlir`) defining "
+        f"`llvm.func @{sym}` — a COMPILER LOWERING, not a hand kernel.** The runner compiles it FORK-FREE via "
+        "the SHARED `llvmlower` front (MLIR → LLVM IR → STOCK clang rv32 object), then re-encodes it to the "
+        "target's own ISA and runs it on the cosim. Contract:\n"
+        f"1. Emit ONE `builtin.module` containing `llvm.func @{sym}(...)`. Every argument is `!llvm.ptr`, in "
+        "the ABI order **[weight] ++ [lhs in command order] ++ [outputs in command order]** (the generic "
+        "kernel_abi); pointees are row-major f32.\n"
+        "2. The function COMPUTES the op (loads → multiply-accumulate → stores into the output pointers) and "
+        "`llvm.return`s. It is plain scalar compute over the pointer operands — the SIMT warps / barriers / "
+        "scheduling are the RUNTIME's (the fork-free BSP spawns warps around your kernel), so you do NOT write "
+        "`mu_schedule`, barriers, or thread-id logic.\n"
+        "3. Emit NO prints, NO `.insn`/`.word`, NO DRAM base map, NO halt — the runner owns the harness (it "
+        "embeds the operands, calls your kernel, and prints the `OUT`/`DONE` protocol) and the BSP owns "
+        "boot/halt. A kernel that writes its output pointers and returns is complete.\n"
+        "4. BUILD the module with your xDSL pass pipeline (typed IR, `verify()`-checked) — NEVER by string "
+        "assembly and NEVER with regex; this is checked on your submission.\n"
+        "\nThe module skeleton (structure is mandatory; the reference backend emits this shape):\n"
+        "```mlir\n" + skeleton + "```\n\n"
+    )
+
+
+def _isa_spec_block(te) -> str:
+    """Name the SHIPPED, real ISA sources (green card + ISA definition + the worked example kernel) and
+    tell the agent to derive encodings from THEM — the fix for the observed failure where the agent,
+    given only the discovered legal-opcode list, invents a plausible-but-wrong opcode/encoding scheme
+    that assembles cleanly yet computes garbage on the RTL (scores 0). Target-agnostic: rendered only
+    when the descriptor ships hardware-spec files (``isa_headers`` / ``hwbringup_set``); empty otherwise
+    (a target with no shipped ISA header — e.g. a command-ISA target derived purely from facts — is
+    unaffected, so the block never fabricates a source)."""
+    headers = list(getattr(te, "isa_headers", []) or [])
+    hw = getattr(te, "hwbringup_set", None)
+    if not headers and not hw:
+        return ""
+    lines = [
+        f"**Shipped {te.target} ISA — the source of truth for instruction encodings (derive, never invent):**",
+        f"The real {te.target} ISA is shipped read-only in your bundle. Derive EVERY instruction's",
+        "exact encoding from these files. Do NOT invent opcodes, mnemonics, instruction classes, or a",
+        "bit layout: a plausible-but-invented encoding assembles cleanly yet decodes to garbage on the",
+        "target and scores 0 (this is the single most common failure on a self-hosted ISA).",
+    ]
+    for h in headers:
+        lines.append(f"- `{h}`")
+    if hw:
+        lines += [
+            f"- `{hw}/` (also mounted as `{te.target}/`) — RTL + ISA headers + README + a WORKED",
+            "  example kernel under `example_kernel/`. Translate the example's real instructions into",
+            "  your emitted encoding using the exact field layout the ISA definition specifies; the",
+            "  legal-opcode values in the ISA facts below are DECODE GATES, not the instruction",
+            "  semantics — take semantics + field packing from these files, never from the value list.",
+        ]
+    lines.append(_fixed_format_encoding_block(te))
+    return "\n".join(l for l in lines if l) + "\n\n"
+
+
+def _fixed_format_encoding_block(te) -> str:
+    """For a FIXED-FORMAT wide-word target (a SIMT core whose whole ISA is one field layout selected by an
+    opcode field), render the RTL-DERIVED encoding — the exact bit layout, opcode table, and address spaces
+    the compiler must emit — so the agent packs correct words instead of inventing a layout. Empty for a
+    variable-format self-hosted ISA (that grounding is the shipped ISA definition above)."""
+    try:
+        from merlin.target.isa.machine_model import isa_model_for_target
+
+        m = isa_model_for_target(getattr(te, "target", ""))
+    except Exception:  # noqa: BLE001
+        return ""
+    if not m.is_fixed_format():
+        return ""
+    fl = sorted(m.field_layout.items(), key=lambda kv: -kv[1][0])
+    fields = ", ".join(f"{n}[{hi}:{lo}]" for n, (hi, lo) in fl)
+    ops = ", ".join(sorted(m.opcode_table))
+    out = [
+        f"\n**Derived {m.inst_width}-bit instruction encoding (from this target's RTL decoder — the exact",
+        "layout the hardware decodes; emit words that match it):**",
+        f"- fields: {fields}",
+        f"- opcodes: {ops}",
+    ]
+    if m.address_spaces:
+        sp = ", ".join(f"{k}={v}" for k, v in sorted(m.address_spaces.items()))
+        out.append(
+            f"- address spaces (field `{m.address_space_field}`): {sp} — a memory op's space is set "
+            "in that field; a plain load defaults to the first space, so a scratchpad access MUST set it."
+        )
+    out.append(
+        "The `disasm`/`lint` tools decode your emitted words against exactly this layout — run them "
+        "before every `self_check`."
+    )
+    return "\n".join(out)
+
+
+def _cmdbuf_opcodes() -> list[str]:
+    """The command buffer's legal `opcode` values, READ FROM THE SCHEMA that validation uses.
+
+    Rendered into the prompt rather than restated in prose so the two cannot drift: if the enum grows, an
+    agent is told about the new opcode by the same file that will accept it. Returns [] when the schema is
+    unavailable or stops declaring a closed enum, so the prompt simply omits the sentence rather than
+    asserting a vocabulary it could not confirm.
+    """
+    import json
+
+    from merlin.common.paths import contract_dir
+
+    path = contract_dir() / "schemas" / "command_buffer.schema.json"
+    try:
+        schema = json.loads(path.read_text(encoding="utf-8"))
+        enum = (
+            (((schema.get("properties") or {}).get("commands") or {}).get("items") or {})
+            .get("properties", {})
+            .get("opcode", {})
+            .get("enum")
+        )
+    except Exception:  # noqa: BLE001 — a prompt must render even if the schema moved
+        return []
+    return [str(v) for v in enum] if isinstance(enum, list) else []
+
+
+def _emit_framing(bundle: dict, endpoint: str = "inline_asm_insn", inst_width: int = 32) -> str:
+    """A CONCRETE, derived one-liner describing what the 4th-entrypoint artifact must be — derived from
+    the fact bundle + the codegen ENDPOINT (never a target literal). A RoCC ``inline_asm_insn`` target
+    emits a host `.insn` word stream encoding the discovered opcodes; a self-hosted-ISA ``external_backend``
+    target emits a ``kernel.S`` of `.word`/`.insn` directives — the target's OWN encoded instructions —
+    that STOCK LLVM (`llvm-mc`) assembles into IMEM words, NOT an MLIR module and NOT the model's bespoke
+    mnemonics; a spatial ``command_buffer`` target emits a command stream over its op-port tile. A target
+    with no HW dialect degrades to the generic phrasing."""
+    f = bundle.get("fields", {})
+    dim = f.get("mesh_dim", {})
+    _mesh = (
+        f" driving the discovered {dim['value']}x{dim['value']} systolic mesh"
+        if dim.get("derived") and dim.get("value")
+        else ""
+    )
+    # SELF-HOSTED ISA (external_backend): the 4th artifact is a `kernel.S` of `.word`/`.insn`
+    # directives that STOCK LLVM (llvm-mc) assembles to IMEM words — the encoding lives in the emitted
+    # directives, grounded on the ISA definition + example kernel shipped in the bundle. NOT an MLIR
+    # module, NOT `llvm.inline_asm`, and NOT the model's bespoke assembler mnemonics (llvm-mc can't
+    # assemble `VMATMUL`-style mnemonics — only `.word`/`.insn`). Grounding the agent on the bundled ISA
+    # is what stops it inventing opcodes (the AW2 hallucination finding).
+    if endpoint == "external_backend":
+        return (
+            "a `kernel.S` of `.word`/`.insn` directives encoding the target's OWN instructions "
+            f"(compute each {inst_width}-bit encoding from the opcode/funct/field layout in the ISA "
+            "definition shipped in your bundle; the bundled example kernel shows the required instruction "
+            "sequence) that STOCK LLVM (`llvm-mc -triple=riscv64`) assembles into IMEM words — emit "
+            "assembler text ONLY: NOT an MLIR module, NOT `llvm.inline_asm`, NOT the model's mnemonic "
+            "assembler syntax (stock LLVM cannot assemble the target's custom mnemonics)" + _mesh
+        )
+    # SPATIAL tensor-tile (OPU): a command buffer over one-hot op ports driving an outer-product tile —
+    # NOT a RoCC .insn stream over a systolic mesh. Frame it from the discovered tile geometry + command
+    # set (a systolic RoCC target has no tile_dim, so it never takes this branch and stays byte-identical).
+    td = f.get("tile_dim", {})
+    if td.get("derived") and isinstance(td.get("value"), dict):
+        tv = td["value"]
+        geo = (
+            f"{tv.get('rows')}x{tv.get('cols')}" if tv.get("rows") and tv.get("cols") else str(tv.get("dim") or "")
+        ).strip()
+        cats = (f.get("op_categories", {}) or {}).get("value") or []
+        dts = [d.get("name") for d in ((f.get("dtypes", {}) or {}).get("value") or []) if d.get("name")]
+        line = f"a command stream driving the discovered {geo} outer-product accumulator tile".rstrip()
+        if dts:
+            line += f" over the {', '.join(dts)} datapaths"
+        # TWO VOCABULARIES, and conflating them is a wasted round. `op_categories` are the unit's one-hot
+        # RTL PORTS, read off `io_op_<cat>_` names -- they describe the hardware. The command buffer is a
+        # target-INDEPENDENT ABI whose `opcode` enum is closed and lives in the schema; that is what the
+        # agent emits, and what the arc oracle consumes. Naming only the ports (as this line used to) reads
+        # as an instruction to emit `"opcode": "macc"`, which the schema rejects -- while the mapping
+        # between the two was stated nowhere. Both are rendered, each labelled, and the ABI side is read
+        # from the schema so it cannot drift from what validation will accept.
+        if cats:
+            line += (
+                f". The unit's op ports are {{{', '.join(cats)}}} -- that is the HARDWARE's command "
+                f"set, which the backend drives; it is not what you write in the buffer"
+            )
+        opcodes = _cmdbuf_opcodes()
+        if opcodes:
+            line += (
+                f". The buffer's own `opcode` values are the ABI's: {{{', '.join(opcodes)}}} (closed enum, validated)"
+            )
+        return line
+    lo = f.get("legal_opcodes", {})
+    dim = f.get("mesh_dim", {})
+    parts = []
+    if lo.get("derived") and lo.get("value"):
+        vals = lo["value"]
+        parts.append(
+            f"a word stream encoding ONLY the {len(vals)} discovered legal command opcodes "
+            f"(funct field {min(vals)}..{max(vals)}; enumerated in the ISA facts below)"
+        )
+    if dim.get("derived") and dim.get("value"):
+        parts.append(f"driving the discovered {dim['value']}x{dim['value']} systolic mesh")
+    if not parts:
+        return "a word stream encoding only the target's discovered legal command ISA (see the ISA facts below)"
+    return "; ".join(parts)
+
+
+_GRADE_INTEGER = (
+    "Per capsule the runner certifies exact-integer `golden == reference(cb) == simulate(cb) "
+    "== oracle` (no tolerance) across the sim tier ladder — derived from the manifest, not "
+    "restated:"
+)
+
+
+_GRADE_FLOAT = (
+    "Per capsule the runner certifies the emitted artifact's program-oracle output against an "
+    "INDEPENDENT float `golden` within the capsule's declared tolerance (its `grade_policy` "
+    "atol/rtol) across the sim tier ladder; the integer `reference(cb) == simulate(cb)` "
+    "self-consistency cross-checks do NOT apply to a float datapath and report `not_applicable` "
+    "— derived from the corpus goldens, not restated:"
+)
+
+
+_GRADE_MIXED = (
+    "This corpus is MIXED, so the grading model is decided PER CAPSULE by that capsule's own "
+    "golden, not once for the target: a capsule carrying an INDEPENDENT float `golden` is "
+    "certified against the program oracle within its declared tolerance (its `grade_policy` "
+    "atol/rtol) and its integer `reference(cb) == simulate(cb)` self-consistency cross-checks "
+    "report `not_applicable`; every other capsule is certified exact-integer "
+    "`golden == reference(cb) == simulate(cb) == oracle` with no tolerance. Both apply across "
+    "the sim tier ladder — derived from the corpus goldens, not restated:"
+)
+
+
+def _corpus_golden_regimes(te) -> tuple[bool, bool]:
+    """``(has_float, has_integer)`` over the declared corpus (+ discovered siblings), classified with the
+    SAME per-capsule signal the grader uses. Split out from the old any()-style predicate because a corpus
+    with even one float golden was reported as wholly float, which is wrong for a mixed corpus."""
+    import yaml
+
+    from merlin.common.paths import repo_root
+    from merlin.development.targetgen.grading.golden_inputs import selected_independent_float_golden
+
+    root = repo_root()
+    corpora = [te.capsule_corpus] if te.capsule_corpus else []
+    corpora += [root / rel.rstrip("/") for rel in te.corpus_siblings()]
+    has_float = has_int = False
+    for corpus in corpora:
+        if not corpus or not corpus.is_dir():
+            continue
+        for capy in sorted(corpus.glob("*/capsule.yaml")):
+            try:
+                cap = yaml.safe_load(capy.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            if selected_independent_float_golden(cap, capy.parent):
+                has_float = True
+            else:
+                has_int = True
+    return has_float, has_int
+
+
+def _grading_model(te) -> str:
+    """The certification sentence for this corpus: float-only, integer-only, or explicitly mixed."""
+    has_float, has_int = _corpus_golden_regimes(te)
+    if has_float and has_int:
+        return _GRADE_MIXED
+    return _GRADE_FLOAT if has_float else _GRADE_INTEGER
+
+
+_DRAM_CONTRACT = """
+## DRAM address map (self-hosted ISA — your kernel and the oracle must agree)
+The program oracle runs your assembled kernel on the target's cosim: it PRELOADS each input tensor into
+DRAM and reads the OUTPUT tensor back from DRAM. So in `command_buffer.json` you MUST declare **every
+tensor your kernel touches** — inputs, weights, AND the output — each as `{{shape, dtype, role}}`, and
+give each a `base` (its DRAM byte address). Your kernel must load each input from, and store the output
+to, EXACTLY those `base` addresses — the oracle preloads inputs and captures the output there. The output
+tensor MUST appear (its result is read from its `base`); omit it and the grade cannot see your answer. All
+addresses must lie inside the DRAM region defined by your ISA memory map (the oracle relocates that region
+to the model's aperture, so an address below the DRAM base cannot be indexed). If you omit a `base` the
+harness assigns a canonical one inside that same DRAM region, but then your kernel must target that layout —
+declaring them yourself is the reliable path. Addresses are per-capsule; size them from each tensor's
+shape x dtype.
+"""
+
+
+_POINTER_ARGS_CONTRACT = """
+## DRAM addressing — your kernel receives the operands as POINTER ARGUMENTS
+Your emitted kernel function is the lowering of the capsule's interface function: it receives **each
+interface tensor as a pointer argument**, in the interface's order (each tensor's role — input / weight /
+output — is declared in the interface MLIR you lower). The bare-metal harness ALLOCATES those buffers at
+run time and passes their addresses in — there is NO fixed, known-ahead-of-time DRAM address. So for every
+memory-movement instruction (the ISA facts mark which classes move data between DRAM and the accelerator),
+compute its DRAM address FROM the matching pointer argument: `%a = llvm.ptrtoint <that arg> : !llvm.ptr to
+i64`, then use `%a` (optionally plus a constant tile/element offset) as the address operand. NEVER bake a
+literal DRAM address (0, or any constant): a baked address cannot match the buffer the harness allocated,
+so the kernel accesses the wrong memory and faults on every capsule. On-chip scratchpad / accumulator
+addresses ARE fixed constants — only the off-chip DRAM addresses must come from the arguments. The ISA dev
+tools flag a baked DRAM address, so you can catch this before the oracle runs.
+"""
+
+
+def _dram_contract(manifest) -> str:
+    """Select the DRAM-address contract by the harness's ADDRESS MODEL, derived from the endpoint kind —
+    never a per-target literal. ``external_backend`` grades on the program oracle, which PRELOADS each
+    tensor at a declared base (fixed_preload) → the kernel targets those addresses. An inline-asm/RoCC
+    target's bare-metal harness PASSES each operand as a pointer arg (pointer_args) → the kernel derives
+    addresses from its args. A command-buffer endpoint carries operands in the buffer (no explicit
+    kernel-side addresses) → no contract."""
+    ek = getattr(manifest, "endpoint_kind", None)
+    if ek == "external_backend":
+        return _DRAM_CONTRACT  # fixed_preload
+    if ek == "inline_asm_insn":
+        return _POINTER_ARGS_CONTRACT  # pointer_args
+    return ""
+
+
+_TERMINATION_CONTRACT = """
+## Program termination (REQUIRED — a non-halting kernel fails before numerics)
+The functional oracle runs your assembled kernel to a fixed instruction/cycle cap and then STOPS. Your
+emitted program MUST reach the target's terminating instruction — the one the ISA definition marks as
+asserting the machine's halt/done signal — on every control path (the shipped example kernel ends with
+it). If it never halts, the capsule fails at the functional tier (`did not halt within N instructions`)
+and the numeric comparison never runs: a numerically-correct kernel that does not terminate still scores
+0. Derive the terminator's exact encoding from the ISA definition (do not invent it), and emit it as the
+final instruction of your kernel.
+"""
+
+
+def _termination_contract(te, manifest) -> str:
+    """The program-termination contract for a self-hosted-ISA target, with the terminator's DERIVED encoding
+    appended when it can be behaviorally derived from the target's own ISA definition (the op whose sole
+    semantic effect is asserting the machine finish flag). Public ISA structure — the agent already has the
+    ISA definition — so naming the exact `.word` is an aid, not a leak, and it is derived per-target (no
+    literal terminator here). Falls back to the generic contract if the terminator is not derivable."""
+    if manifest.endpoint_kind != "external_backend":
+        return ""
+    try:
+        from merlin.target.isa.machine_model import isa_model_for
+
+        m = isa_model_for(te)
+        words = sorted({v for _, v in m.halt_signatures})
+        if m.halt_mnemonics and words:
+            names = " / ".join(m.halt_mnemonics)
+            wl = ", ".join(f"`.word {w:#010x}`" for w in words)
+            return (
+                _TERMINATION_CONTRACT + f"\nFor this target the terminator is **{names}**, which the "
+                f"ISA's own encoder emits as {wl} (operands zero) — verify with the ISA dev tools' "
+                f"`disasm`/`lint`, and make it the final instruction on every path.\n"
+            )
+    except Exception:  # noqa: BLE001 — terminator not derivable (no model venv / no such op) -> generic text
+        pass
+    return _TERMINATION_CONTRACT
+
+
+def _screen_tier(manifest) -> tuple[str, str]:
+    """``(tier, sim)`` of this target's CHEAP SCREEN — the shallowest tier it declares that is not one
+    of its RTL tiers — or ``("", "")`` when it declares none.
+
+    The brief tells the agent to iterate cheapest-first, so it has to be able to NAME the cheap step in
+    the command it recommends. Both halves come from the target's own manifest (``tier_sim`` minus
+    ``rtl_tiers``), never from a simulator literal: a tier is a fidelity, and which simulator answers at
+    it is the contract's business. A target whose RTL tier is supplied by an adapter has an empty
+    ``tier_sim`` and therefore no screen — the brief must then say nothing about one rather than
+    recommend a step that does not exist.
+    """
+    tier_sim = dict(getattr(manifest, "tier_sim", {}) or {})
+    rtl = set(getattr(manifest, "rtl_tiers", ()) or ())
+    cheap = sorted(t for t in tier_sim if t not in rtl)
+    return (cheap[0], tier_sim[cheap[0]]) if cheap else ("", "")
+
+
+def prompt_slots(te, manifest) -> dict:
+    """The complete set of DERIVED, target-specific prompt slots for one target.
+
+    ``te`` is a :class:`TargetExperiment` (descriptor); ``manifest`` is a :class:`CapabilityManifest`.
+    Returns a flat ``{slot: value}`` dict — the only content that varies across targets for a fixed
+    experiment/arm/condition."""
+    from merlin.target.capabilities.operation_capabilities import (
+        memory_operation_prompt_block,
+        operation_contract_for_target,
+    )
+    from merlin.target.rtl.extraction.mlc_discovery import fact_bundle_for, render_fact_bundle_for
+
+    target = te.target
+    bundle = fact_bundle_for(target)  # KIND-routed; discovered ONCE; feeds brief + emit framing
+    _iw = 32  # instruction width for the emit framing — DERIVED, not literal
+    try:
+        from merlin.target.isa.machine_model import isa_model_for_target
+
+        _iw = isa_model_for_target(target).inst_width or 32
+    except Exception:  # noqa: BLE001 — no derivable model -> keep the 32-bit default phrasing
+        pass
+    # A SIMT external target graded on the MLIR thesis path (lowered.llvm.mlir) emits an LLVM-dialect MLIR
+    # kernel LOWERING compiled fork-free, not a self-hosted .word/.insn stream. Its grounding is the
+    # LLVM-dialect kernel contract, and the .word-ISA contracts (DRAM base map + halt-op) do not apply — the
+    # runner owns the harness (embed/call/print) and the BSP owns boot/halt.
+    _mlir = _is_simt_mlir(manifest)
+    _operation_contract = operation_contract_for_target(target, manifest.contract)
+    _operation_guidance = memory_operation_prompt_block({"operation_capabilities": _operation_contract})
+    return {
+        "target": target,
+        "tool_stem": f"{target}-opt",  # derived, never one target's tool name
+        "kernel_symbol": f"{target}_kernel",  # derived, never one target's symbol
+        # The 4th artifact defines a kernel SYMBOL only when it is a code module (.insn / upstream / an
+        # external kernel); a command_buffer endpoint's artifact IS the command buffer (no module symbol).
+        "emit_symbol_note": (
+            "" if manifest.endpoint_kind == "command_buffer" else f"; the emitted module defines `{target}_kernel`"
+        ),
+        "endpoint_kind": manifest.endpoint_kind,
+        "endpoint_desc": (
+            "emit an LLVM-dialect MLIR kernel lowering (compiled fork-free)"
+            if _mlir
+            else _ENDPOINT_DESC.get(manifest.endpoint_kind, _ENDPOINT_DESC["inline_asm_insn"])
+        ),
+        # The grading model the runner will actually apply — float-tolerance vs exact-integer — classified
+        # from the corpus goldens (never a per-target branch), so the agent is not told the wrong contract.
+        "grading_model": _grading_model(te),
+        "emit_framing": (
+            _simt_mlir_emit_framing() if _mlir else _emit_framing(bundle, manifest.endpoint_kind, inst_width=_iw)
+        ),  # endpoint+width derived
+        "isa_facts": render_fact_bundle_for(target, bundle),  # KIND-routed provenance-tagged ISA brief (agent info)
+        "corpus_rel": te.corpus_rel(),  # the primary corpus (isa/), repo-root-relative
+        "corpus_families": te.corpus_siblings(),  # globbed, not a hardcoded ISA/layers/model_slices list
+        "sim_tiers": dict(manifest.tier_sim),  # from the manifest, not "spike/verilator" literals
+        # THE CHEAP SCREEN, named by the target's OWN contract: the shallowest declared tier that is not
+        # one of its RTL tiers. Same derivation `capsule_runner._screen_tiers_of` uses for the mesh
+        # screen -- a tier is a fidelity and which simulator answers at it is the contract's business, so
+        # neither the tier index nor the simulator is a literal here. A target whose RTL tier is supplied
+        # by an adapter declares no cheap tier at all; it gets ("", "") and the brief then names no
+        # screen rather than inventing one.
+        **dict(zip(("screen_tier", "screen_sim"), _screen_tier(manifest))),
+        "prior_backend_deny": list(te.prior_backends),
+        "isa_headers": list(te.isa_headers),
+        "hwbringup_set": te.hwbringup_set,
+        # SIMT-MLIR target: ground the agent in the LLVM-dialect kernel contract (a compiler lowering compiled
+        # fork-free), NOT the self-hosted-ISA .word spec. Otherwise: name the shipped real ISA files.
+        "isa_spec": (_simt_mlir_grounding(target) if _mlir else _isa_spec_block(te)) + _operation_guidance,
+        # DRAM address contract (self-hosted-ISA external_backend only): declare every tensor + base so the
+        # emitted .word kernel and the program oracle agree on operand/result addresses (the atlas 0/11
+        # output-base bug). A SIMT-MLIR kernel takes pointer operands from the runner harness — no DRAM map.
+        "dram_contract": "" if _mlir else _dram_contract(manifest),
+        # program-termination contract (self-hosted-ISA only): the emitted .word kernel must reach the ISA's
+        # halt instruction. A SIMT-MLIR kernel just `llvm.return`s; the BSP owns boot/halt.
+        "termination_contract": "" if _mlir else _termination_contract(te, manifest),
+    }
+
+
+_TEMPLATE = """# Task: generate a {target} MLIR out-of-tree target backend (capsule_bench — {scope_label})
+
+You are an autonomous agent. Produce a **non-exempt out-of-tree MLIR target backend package** for the
+{target} accelerator under `submission/`. Your package is graded — through its CLI entrypoints only,
+never imported — by compiling workload **capsules** (interface MLIR) and matching the target's reference
+behavior. This is a **compiler/backend** task: your COMPILER generates the target artifact by lowering
+the interface — you never author a compute kernel.
+
+## Scope
+Make **every** public/dev capsule under the declared corpus pass. Families are discovered, not restated:
+{corpus_families}
+Read each capsule's `capsule.yaml` + `capsule.interface.mlir` for its op/shapes/dtypes/epilogue, and the
+target-agnostic contracts (`command_buffer_abi.yaml`, `interface_grammar.md`, the command-buffer schema).
+Derive everything (rounding rules and dtypes included) from the granted facts and contracts and the
+target docs below — nothing is restated here. The numeric reference golden is withheld; iterate against the QA gate.
+Build ONE general backend for every family — do not special-case individual capsules.
+
+{general_compiler_contract}
+
+## Deliverable (write into `submission/`)
+```
+submission/
+  manifest.yaml   # artifact_type: mlir_oot_target_backend; target: {target}; language: cpp|python;
+                  # integrity_exempt: false; (cpp) a build block; 4 required command argv templates
+  mlir_oot/       # your OOT sources: input dialect + {target} target dialect + passes + {tool_stem}
+  REPORT.md       # what you built + honest scope/limitations + a final status line (see end)
+  docs/           # PLAN.md (first-round design plan) + public_facts_used.md (facts used + source)
+```
+Your running notes go in `ITERATION_NOTES.md` at the workspace root, NOT in `submission/`: everything under
+`submission/` is the graded compiler, so a note edited there marks every finished grade as an older version.
+
+## The 4 CLI entrypoints (your package is invoked ONLY via these)
+- `parse`: `{{tool}} --verify-diagnostics {{input_mlir}}` — parse + verify the `merlin_iface` interface MLIR
+- `lower_interface_to_target`: `{{tool}} --convert-iface-to-{target} {{input_mlir}}` — emit {target}-dialect MLIR
+- `emit_command_buffer`: `{{tool}} --emit-command-buffer={{output_json}} {{input_mlir}}` — schema-valid `command_buffer.json`
+- `emit_target_artifact`: `{{tool}} --convert-iface-to-{target} --emit-target-artifact {{input_mlir}}` — {endpoint_desc}: {emit_framing}{emit_symbol_note}
+
+Declare these four commands in `manifest.yaml` exactly as the runner expects — see the OOT backend
+contract (`mlir_oot_backend_contract.yaml`) and the manifest schema (`schemas/manifest.schema.json`).
+
+For fast whole-model analysis, also declare the optional `emit_analysis_bundle` command when your
+driver can run its lowering pipeline once while handling both output flags. It writes the command
+buffer to `{{output_json}}` and the target artifact to stdout; the host feature-detects it and falls
+back to the two required emission commands when it is absent. This is an execution optimization,
+not a replacement for either independently required artifact or its validation.
+
+### Also declare `components:` — it is what keeps your passing capsules passing
+Add a top-level `components:` block mapping **each command you declared** to the submission-relative
+files that implement it. A capsule certified on the expensive RTL tier keeps that certificate across any
+edit that touches no component it rides on; without the block the harness has to work the mapping out
+from your imports, and anything it cannot place invalidates every certificate you have earned.
+```yaml
+components:
+  parse: [mlir_oot/frontend/]                  # only the files this command actually uses
+  lower_interface_to_target: [mlir_oot/lowering/]
+  emit_command_buffer: [mlir_oot/cmdbuf.py]
+  emit_target_artifact: [mlir_oot/codegen/, mlir_oot/tables/]
+  emit_analysis_bundle: [mlir_oot/]              # only when you declare the optional command
+```
+Rules: keys must be command names you declared (anything else is rejected and reported); paths are
+submission-relative files or directories; the longest matching path wins, so a nested entry is not
+swallowed by its parent. Keep it accurate rather than narrow — an under-declared component is how a
+certificate outlives the code it was earned on.
+
+### Declare the compiler's semantic optimization surfaces
+Phase 2 automatically inventories the source symbols reachable from `components:` and joins measured
+whole-model bottlenecks to this manifest map. Add top-level `optimization_surfaces:` entries for the
+real places an optimization agent may change. This is not a list of hoped-for features: every `path`
+must be inside a declared component, every `symbol` must be the exact Python AST name (`Class.method`
+or function), and each entry must say what emitted artifact change would prove the mechanism fired.
+Use only the shared effects accepted by the schema: placement, layout, dtype, encoding, quantization,
+movement, residency, fusion, synchronization, issue, tiling, latency_hiding.
+```yaml
+optimization_surfaces:
+  - id: schedule-selection
+    scope: heuristic                    # flag | knob | heuristic | pass | codegen
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.choose
+    effects: [movement, residency, latency_hiding]
+    cca_axes: [dispatch.dma_overlap, communication.resident_across_calls]
+    mechanism: choose a legal whole-region schedule from derived target capabilities
+    emitted_delta: fewer declared transfers or dependencies with identical required work
+    validation: warm reduced witness, then complete-model analytical re-plan
+    abandonment: no emitted delta, legality failure, or warm compute cycles do not improve
+```
+Do not invent a surface to satisfy the form. If a lever does not exist yet, implement the general
+compiler mechanism first and then declare its real symbol. Phase 2 treats an absent or invalid mapping
+as UNKNOWN rather than guessing from a filename.
+
+### Model compilation ownership and source identity
+For model capsules using the provided-host grading path, Merlin compiles the original model graph,
+implements pure host layers with its fixed host provider, and links your source-bound device kernels.
+Your deliverable is a general accelerator lowering, including the host instructions needed to execute
+that accelerator work: control flow, address calculations, descriptors, marshalling, synchronization
+and contract-supported scalar assistance or epilogues. Preserve the original source regions and node
+IDs; attribute device work with `merlin.source_op_index` and the source's `prov.region_id`.
+Do not implement independent pure-host model layers in the candidate package or replace required
+accelerator computation with host computation. Unsupported source operations are routed to Merlin's
+host infrastructure; report a missing host capability rather than synthesizing a candidate host layer.
+Qualification still requires every eligible source operation to execute unavoidable matching device
+work, exact emitted/object/linked command evidence, and complete model outputs on all required tiers.
+A device opcode count, source tag or correct host reference alone does not establish acceleration.
+
+### Explicit whole-program ABI authoring (only when the selected interface requests it)
+The protocol below applies to an explicitly selected whole-program command-buffer interface.
+It is not a requirement to emit a candidate whole-model program or host tasks for provided-host
+model grading. In that explicit interface, preserve `prov.region_id` through lowering and declare
+`params.global_program_plan.tasks` with contiguous `task_index` values in emitted order, a nonempty
+`kind`, and `source_op_indices` covering every source operation exactly once. Derive each task/group's
+source regions from those indices and the source IR; do not invent IDs from capsule names, output
+shapes, or instruction counts. Tag lowered LLVM-dialect operations owned by a task, including host
+arithmetic, with the same `merlin.global_task` index. The shared OOT backend contract defines the
+pointer order and this attribution protocol. A plan, tags, or a nonzero device opcode count is only a
+declaration: the independent grader still requires complete numerical and completed-dispatch evidence.
+Use the granted `python -m merlin.development.targetgen.oot_starterkit.plan inventory --source
+<capsule.interface.mlir>` before assigning indices. It pins the exact source bytes and enumerates
+every DIRECT operation in the unique source function's entry block except `func.return`, including constants, empty tensors,
+splats and fills (unlike the payload-only linalg reader); nested scalar-body operations are not
+counted. The typed `src/merlin/resources/contracts/schemas/mixed_program_plan.schema.json` documents the complete
+plan record. After emission, run `python -m merlin.development.targetgen.oot_starterkit.plan validate --source
+<capsule.interface.mlir> --command-buffer <command_buffer.json> --lowered-mlir <lowered.mlir>`.
+This is a public structural preflight, not a qualification verdict.
+Read its `findings` and `authoring_guidance` before a costly grade.
+For an emitted whole-program command buffer at `submission/command_buffer.json`, run
+`python agent_selfcheck.py --caller-layout command_buffer.json` before lowering pointer arithmetic. This
+answer-free host probe reports the selected caller's physical extents and element strides
+for every declared pointer, bound to the command buffer, facts and harness source. It is
+not a numerical or source-placement pass. If the selected provider cannot describe its
+caller layout, stop and report the missing contract; do not assume compact rows from the
+logical tensor shape.
+Hoisted constants alone do not establish task work. Even with tags, source work must be
+represented by executable, source-owned operations or an explicitly supported constant-folding
+proof. Every planned task must be covered on each returning CFG path. For a genuine fused loop,
+group the exact direct source indices it implements under one task and retain independent
+transformation evidence: cross-task reverse CFG edges violate the declared task order.
+Renumbering tags is not a proof.
+Use `merlin.source_op_index` and the source's `prov.region_id` on device-work commands;
+several operations may share a region ID. Fused commands require independently checked
+transformation evidence, not one opcode relabelled as many source operations.
+Accelerator-associated host control, addressing, descriptors, marshalling and synchronization are
+allowed. Scalar assistance and epilogues require the selected contract and independently checked
+source transformation to support them; host arithmetic cannot substitute for required accelerator
+work. Pure host model layers belong to Merlin's provided host compiler. Explicit host islands must
+not absorb independently accelerator-eligible source work. Missing attribution cannot pass the veto.
+
+If a selected host package is granted read-only, inspect its `knobs.yaml` C flags for the host
+`-march` and `-mabi`; the emitted LLVM module must agree with that selected host ISA/ABI and the
+runner-owned harness/board. Do not hardcode a target-specific host implementation or substitute the
+build machine's ISA. The runner owns harness generation, linking, and execution; your package emits
+the compiler-generated kernel under the declared `kernel_abi` pointer boundary.
+{dram_contract}{termination_contract}
+## Plan before you build (FIRST round only)
+If `qa/verdict.json` does not exist yet, this is the first round: **before writing any code, write
+`docs/PLAN.md`** surveying the whole task, then build to that plan. Do NOT re-plan from scratch on later
+rounds — follow and refine PLAN.md. Keep each item to a line or two:
+- **Corpus**: the families/capsules you must pass and the distinct op/shape/dtype/epilogue cases in them.
+- **Input ingestion**: how your `parse` entrypoint consumes the interface MLIR — parse it **structurally**
+  (a real IR / grammar parser), do NOT hand-roll a lexer or text-parser; a bespoke input parser is the most
+  common self-inflicted first-round failure.
+- **Dialect + lowering**: the target-dialect ops you define and the interface->target rewrite passes.
+- **Encoding**: how each instruction class is packed from the derived ISA facts (opcodes/fields), and how
+  you check that encoding before grading.
+- **Addressing + termination**: where operand addresses come from and how the program signals completion.
+- **Verification loop**: the cheapest self-check per change, escalating to the full set only to converge.
+It is your design contract with yourself — short and honest; update it only when your strategy changes.
+
+## Durable run memory
+The certified schedule keeps one continuing session, but the process can still resume after a timeout,
+quota boundary, or operator restart. Do not rely on conversational memory alone. The harness writes
+`qa/round_brief.md` with graded progress, and your own durable notes live in `ITERATION_NOTES.md` (workspace
+root, outside `submission/`).
+Read both before changing an existing submission. After every substantive change, append what changed,
+what the verdict showed, and the next hypothesis; do not undo a change that improved an earlier grade.
+
+## Grading + your QA signal
+{grading_model}
+{sim_tier_ladder}
+and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
+instruction trace). You cannot run the oracle; a QA gate writes a redacted `qa/verdict.json` per
+capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`, `mismatch_count`,
+`tiers` (L0–L3), `emitted_cost`, and `all_pass` — with NO golden/expected values.
+
+**`emitted_cost` is what YOUR program costs to run, and it is the cheapest lever you have.**
+`dram_movements` counts the movement operations your lowering emits (basis: the decoded instruction
+trace), next to the scratchpad/accumulator rows you touched and their capacities. Compare it ACROSS
+your own capsules in the same verdict: a lowering that moves a whole tile per operation and one that
+moves a few bytes per operation differ by orders of magnitude here, and the expensive one is a defect
+in your loop structure, not a property of the capsule. Measured on a real run: the capsules that
+exhausted the cycle-accurate budget emitted 18,624 and 20,592 movements where the median capsule
+emitted 10 — so a capsule that times out at the cert tier is usually telling you to move data
+per-tile instead of per-element. Fix the movement count and the tier becomes affordable.
+
+**`qa/verdict.json` is refreshed WHILE YOU WORK, and it does not exist when you start.** Grading runs
+on its own schedule in the background, so a single check at the beginning tells you nothing: the file
+appears only after the first grade lands. Read it after each substantive change and fix by
+`failure_plane` + `trace_violations`. Its content is the only feedback you get; an early "not found"
+is a timing artifact, not an answer. Iterate until `all_pass: true`.
+
+**WAIT, DO NOT POLL.** `python await_verdict.py` BLOCKS until the next grade lands and prints one JSON
+object (`--timeout <s>` to give up, `--since-ns <ns>` to wait for a grade newer than a stamp you
+hold). Every look costs you a whole turn, so a `sleep`/`stat`/`pgrep`/`tail -f` loop around
+`qa/verdict.json` spends your budget asking whether something finished: measured on one run, 118 of
+786 tool calls were poll loops — 56 minutes of wall clock and roughly 18M tokens — while a sibling run
+that used the blocking wait spent none. For the same reason do not launch a long job in the
+background and babysit it: `python simjob.py wait` blocks until a submitted simulation job lands.
+
+**Your shell kills any command at 600s, and `agent_selfcheck.py` can legitimately run longer than
+that.** So it does NOT simply block to completion: it waits up to ~9 minutes, then RETURNS with
+`{{"status": "in_progress", "request_id": ..., "n_finished": N, "n_expected": M, "resume_with": ...}}`
+and exit code 3. That is not a pass, not a failure and not an error — the check is still running on
+the grader. Resume it with the command it printed:
+
+    python agent_selfcheck.py --attach <request_id> --out <your out path>
+
+Each resume is one turn and returns more progress. To keep working meanwhile, submit with
+`--wait-budget 5`: it returns the request id at once, and `--attach` collects the verdict later.
+Several requests may be in flight; do not resubmit a check that is still running (that only repeats
+it), and do NOT background the check and poll for its output file.
+
+⚠️ **Your shell tool will, on refusing a bare `sleep`, suggest "use Monitor with an until-loop
+(`until <check>; do sleep 2; done`)". Do not do that here.** That loop is itself a command, so the
+same 600s ceiling truncates it — measured on one run: six such calls, 59.4 minutes, returning no
+information at all. The `--attach` resume above is the supported way to wait for a long check.
+
+Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
+each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` validates against the
+command-buffer schema and your lowered artifact looks right.
+
+**Iterate FAST — smallest scope, cheapest checks first.** When you `self_check`, check ONLY the capsule you
+just changed (it accepts a single capsule or subset and returns in seconds) — do NOT re-grade all capsules
+on every edit; run the full set once before you declare done. The slow cycle-accurate RTL check runs only
+AFTER you converge on the fast functional tier, so tight, narrow loops cost you nothing.
+
+## Hard rules (integrity)
+- `integrity_exempt: false`; no `import merlin`, no `merlin.runtime.engine.reference` calls, no baked-in reference outputs.
+- **Compute must be compiler-GENERATED, never an authored/library kernel.** No hand C compute kernels, no
+  copying/calling the target's high-level device libraries as the answer — your passes generate the code.
+- Never hardcode/embed outputs (hidden capsules run after you freeze). One general backend.
+- **Nor any other capsule-specific value.** Read every extent and every attribute from the capsule you
+  were handed, never from the set you happened to see. Two things a held-out capsule caught in a
+  submission that passed its public suite: a dispatch guarded on ONE operand extent, so a matmul with a
+  second tile in that dimension wrote nothing; and an accumulator-scale epilogue that emitted the literal
+  constant the public capsule happened to use, while the surrounding code parsed the real attribute and
+  discarded it. Both passed every public capsule and failed the holdout that changed only that value.
+- Do not read withheld goldens, hidden capsules, prior backends, or Merlin internals.
+- **If you cannot lower something, DECLINE it — do not emit a program that writes nothing.** Set
+  `declined: {{"reason": "...", "shape": [...], "op": "..."}}` on the command buffer and emit no commands.
+  A decline is scored as not-passed (it never becomes a pass), but it is recorded as a COVERAGE gap
+  rather than as wrong arithmetic, and your self-check reports it back to you by shape. Falling through
+  to an empty/terminator-only program instead makes your refusal arrive as an output of zeros — which is
+  indistinguishable from a multiply that ran and was wrong, so you will debug arithmetic you never
+  emitted. An empty command buffer with no stated reason is a contract violation.
+
+## Target ISA facts (derived — build your lowering on these)
+{isa_spec}{isa_facts}
+{isa_dev_tools}{seam_menu}{enforced_workflow}## Final status line (end of `submission/REPORT.md`) — write exactly one of:
+1. "Backend passes all required public/dev capsules and is ready for hidden grading."
+2. "Backend does not yet pass all required public/dev capsules; remaining failures listed by capsule + plane."
+3. "Backend is not comparable because it violates the compiler/runtime/integrity boundary."
+"""
+
+
+_SEAM_MENU = """## Menu of OOT modification points (merlin_assisted — the machine-checkable lever set)
+The granted CCA spine is not just files to read: two answer-free calls ENUMERATE the full,
+target-specific set of compiler seams you may modify for `{target}`, so you build the right lever set
+instead of guessing from the file tree (neither imports the oracle or the grader). Both are runnable
+CLIs exactly like `isa_tools.py` — run them from the workspace root:
+- `python cca_contract.py check-bijection {target}` — the *what-to-build* checklist: which lever axes
+  this target's ISA/RTL admits vs. which the compiler already routes (`orphan_fields` = leverable axes
+  still to wire; `orphan_routes` = routes with no backing lever). Build every leverable axis; add no
+  phantom. (API form, if you prefer: `from cca_contract import check_bijection; check_bijection("{target}")`.)
+- `python action_catalog.py escalation-ladder <axis> {target}` — for one axis, the full
+  FLAG→KNOB→HEURISTIC→PASS→CODEGEN ladder weakest→strongest, each row naming the concrete OOT-relative
+  seam file to edit and whether it is forkable today (the "which section, and the next stronger lever"
+  answer). The seams point at YOUR generated OOT package, not our in-tree reference. (API form:
+  `from action_catalog import escalation_ladder; escalation_ladder("<axis>", "{target}")`.)
+
+"""
+
+
+_ISA_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter / debugger) — staged as `isa_tools.py`
+You have a derived toolset for this target's self-hosted ISA (oracle-free for asm/disasm/lint: they encode
+the syntax YOU choose and inspect YOUR OWN emitted words; they never reveal a golden). Use it to avoid the
+two most common raw-ISA mistakes — invented encodings and a program that never halts:
+- `python isa_tools.py asm ops.txt` — assemble a mnemonic listing (`MNEMONIC field=value, ...`, one per
+  line) into the correct `.word` lines for your `kernel.S`, packed into the exact bits this target's own
+  encoder uses. It REFUSES rather than emit a wrong word, so you never hand-pack a 32-bit instruction.
+- `python isa_tools.py disasm submission/kernel.S` — decode your assembled kernel back to
+  `{mnemonic, operands}`; a word that decodes to nothing is an invented/garbled encoding.
+- `python isa_tools.py lint submission/kernel.S --op <op>` — flag illegal opcodes, a missing terminator
+  (a kernel that never halts fails every capsule before numerics), and instruction-class coverage vs the op.
+Run these locally as often as you like; they need no oracle. **Run `lint` (and `disasm`) BEFORE every
+`self_check`** — they are instant and catch the encoding / halt / missing-compute-role mistakes that would
+otherwise waste a functional-sim run.
+
+When your kernel assembles and halts but the OUTPUT is wrong (e.g. all zeros), stop guessing and OBSERVE the
+data path with the lite debugger:
+- `python isa_tools.py debug submission/kernel.S --capsule <name> --run-to <N> --region BASE:NBYTES ...`
+  runs your kernel on the functional model up to instruction `N` (omit `--run-to` to run to halt), then
+  reports `pc`, the scalar registers, `halt_reason`, `instr_count`, and a hex dump of each DRAM `--region`
+  you name (`--region` repeats; `BASE` may be hex `0x..` or decimal, matching the addresses your kernel
+  uses). Watch a region fill — or stay zero — as your DMA/load/compute/store sequence advances: dump the
+  input tile right after your DMA.LOAD to confirm data actually landed, then the scratch/accumulator region
+  after the compute. `all_zero: true` right after a load means your load didn't write where you think.
+  Add `--state` for a VALUE-FREE populated-map of on-chip memory (staging SRAM / register-file / accumulator
+  banks) — one `populated: true/false` per bank, no values — so you can see exactly which stage's data
+  landed (did VLOAD reach SRAM? did the weight push populate a register bank? did the MXU write the
+  accumulator?) and pinpoint the stage that silently no-ops.
+  This is the fastest way to localize which stage silently no-ops. The OUTPUT region is withheld (that is
+  the answer) — debug the INPUT and scratch regions; correctness of the final output comes from `self_check`.
+
+"""
+
+
+_ROCC_DEVTOOLS = """## ISA dev tools (assembler / disassembler / linter) — staged as `isa_tools.py`
+You have a derived RoCC toolset (oracle-free; it encodes the syntax YOU choose and inspects YOUR OWN
+emitted MLIR — never a golden). Use it so you never hand-write a wrong `.insn` op:
+- `python isa_tools.py asm ops.txt` — assemble a listing (one `CLASS rs1 rs2` per line: an instruction
+  class name from this target's derived ISA facts and two integer operands, decimal or hex, e.g.
+  `<CLASS> 0x10 4`; a class that takes no operands is written alone) into the CANONICAL
+  `llvm.inline_asm` MLIR — each operand a `%c = llvm.mlir.constant(<v> : i64)` SSA value — packed with
+  this target's derived opcode/func3/func7.
+  It REFUSES rather than emit a wrong instruction (unknown class, or a CONFIG whose rs1 subtype bits don't
+  match). Paste its output into your emitted `.mlir` — NEVER hand-write inline-integer-literal operands like
+  `"r,r" (65540, 16)`: that is invalid MLIR that neither assembles NOR decodes (it reads back as UNKNOWN and
+  the class scores missing).
+- `python isa_tools.py disasm submission/<your>.mlir` — decode your emitted MLIR back to instruction
+  classes; anything that comes back UNKNOWN is a non-canonical/garbled instruction.
+- `python isa_tools.py lint submission/<your>.mlir` — flag UNKNOWN instructions + show the decoded class
+  histogram. Run it BEFORE every `self_check` (it is instant and catches the exact encoding mistake that
+  makes an otherwise-correct kernel fail the trace gate).
+
+When a capsule passes the cheap tiers but fails the hardware oracle (the numeric/trace check is green yet
+the RTL oracle disagrees), OBSERVE the hardware behavior of YOUR OWN command buffer with the lite debugger:
+- `python isa_tools.py debug submission/command_buffer.json --capsule <name>` — answers YOUR command
+  buffer on the RTL-derived arc model and reports per-op HARDWARE STATE: `per_command` (cycles +
+  scratchpad-read / accumulator-write / DRAM-refill counts for each command), aggregate `metrics`
+  (bytes moved, accumulator commits, evictions), and the RTL `oracle` fingerprint. The output VALUES and
+  the pass/fail verdict are WITHHELD (that is the answer key). This runs your INTENDED computation, so pair
+  it with `disasm`/`lint` on the emitted `.mlir` (the encoding) to catch a field the command buffer cannot
+  carry (a store stride, a readout dtype, a tile DRAM offset).
+
+"""

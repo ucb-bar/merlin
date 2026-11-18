@@ -13,10 +13,10 @@ assert not any(name == "merlin" or name.startswith("merlin.") for name in sys.mo
 sys.path[:0] = [str(bundle), *config["dependencies"]]
 
 for name in (
-    "merlin.compiler.lower.model.direct_source_contraction",
-    "merlin.development.targetgen.common_transforms",
-    "merlin.development.testgen.connected_integer_bounds",
-    "merlin.runtime.reference",
+    "merlin.compiler.lower.source.dense",
+    "merlin.development.targetgen.execution.host.common_transforms",
+    "merlin.development.testgen.sealed_capture.connected_integer_bounds",
+    "merlin.runtime.engine.reference",
 ):
     try:
         __import__(name)

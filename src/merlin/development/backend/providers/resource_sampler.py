@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Sample one process tree's CPU, RSS, virtual memory, threads, and procfs I/O as JSONL."""
 
 from __future__ import annotations
@@ -9,6 +8,8 @@ import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
+
+# ---- resource_sampler --------------------------------------------------------------------------
 
 
 def _proc_table() -> dict[int, tuple[int, list[str]]]:

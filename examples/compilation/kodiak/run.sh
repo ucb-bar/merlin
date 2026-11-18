@@ -39,7 +39,7 @@ probe)
   # we know the probe reports the width it is given rather than the width it was built for.
   ex_say "build the vector probe and self-check it on spike"
   ex_preflight "$BOARD" --require probe
-  ex_run "$PY" -m merlin.runtime.vector_probe --board "$BOARD" --run --spike-vlen 512
+  ex_run "$PY" -m merlin.runtime.boards.vector_probe --board "$BOARD" --run --spike-vlen 512
   ex_note "on the board this is the FIRST thing to run: it costs seconds and settles VLEN before"
   ex_note "anyone spends minutes uploading a multi-megabyte model image"
   ;;

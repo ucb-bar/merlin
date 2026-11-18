@@ -11,7 +11,9 @@ import socket
 import struct
 from pathlib import Path
 
-from merlin.common.owned_process import _readable as readable
+from merlin.common.process.ownership import _readable as readable
+
+# ---- _protocol ---------------------------------------------------------------------------------
 
 MAX_PACKET = 256 * 1024
 

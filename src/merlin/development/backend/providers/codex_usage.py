@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# ---- codex_usage -------------------------------------------------------------------------------
+
 
 def usage_to_claude_shape(usage: dict) -> tuple[dict, bool]:
     """Translate a Codex ``turn.completed`` usage payload to the Claude shape.

@@ -31,6 +31,8 @@ import os
 import time
 from pathlib import Path
 
+# ---- cca ---------------------------------------------------------------------------------------
+
 
 def _bijection_to_dict(report) -> dict:
     """Serialize a :class:`cca_contract.BijectionReport` dataclass faithfully. asdict captures the five
@@ -57,7 +59,7 @@ def _handle(req: dict) -> dict:
         target = (req.get("target") or "").strip()
         if not target:
             return {"error": "check_bijection needs a target (the backend to diff)"}
-        from merlin.analysis.kernels import cca_contract
+        from merlin.analysis.kernels.cca import action_contract as cca_contract
 
         return _bijection_to_dict(cca_contract.check_bijection(target))
 
@@ -66,7 +68,7 @@ def _handle(req: dict) -> dict:
         axis = (req.get("axis") or "").strip()
         if not target or not axis:
             return {"error": "escalation_ladder needs both axis and target"}
-        from merlin.analysis.kernels import action_catalog
+        from merlin.analysis.kernels.cca import action_catalog
 
         # escalation_ladder already returns a list of plain dicts (action_class/target_seam/forkable_now/
         # seam_file/seam_kind/needs_new_code) — JSON-clean as-is. Wrap so an empty ladder is still an
@@ -83,7 +85,7 @@ def main(argv=None):
     ap.add_argument("--poll", type=float, default=0.4)
     ap.add_argument("--rtl-facts", type=Path, help="Selected facts in the verified frozen input snapshot")
     a = ap.parse_args(argv)
-    from merlin.development.backend.frozen_facts import select
+    from merlin.development.backend.session.inputs.run_record import select
 
     select(Path(a.ws), a.rtl_facts)
     ch = Path(a.ws) / ".cca_channel"
@@ -113,7 +115,7 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    from merlin.development.backend.telemetry.resilient_output import install
+    from merlin.development.backend.telemetry.evidence import install
 
     install()  # A full log volume drops log lines, never the broker.
     raise SystemExit(main())

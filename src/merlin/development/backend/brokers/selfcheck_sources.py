@@ -17,7 +17,7 @@ sandbox, masking and tier rules. What differs is only what a result may be used 
 * exact-byte reuse still applies, because it is keyed by bytes rather than by tree: the simulator
   certificate store keys a verdict by the emitted ELF bytes, the capsule's stimulus and policy, the
   compiler profile, the engine and the grading-path instrument
-  (``merlin.development.targetgen.simulation_certificate``; ``tier_cache`` likewise keys by execution identity).
+  (``merlin.development.targetgen.oracles.certificates``; ``tier_cache`` likewise keys by execution identity).
   A variant whose emitted program for a capsule is byte-identical to ``submission/``'s produces the
   same key, so either side may carry that verdict; any differing byte is a different key.
 
@@ -36,15 +36,20 @@ import string
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+# ---- selfcheck_sources -------------------------------------------------------------------------
+
 SUBMISSION = "submission"
+
 VARIANTS = "variants"
-#: Longest accepted variant name. Names are labels, never operator paths.
+
 NAME_MAX = 64
+
 _NAME_FIRST = frozenset(string.ascii_letters + string.digits)
+
 _NAME_CHARS = _NAME_FIRST | frozenset("._-")
-#: Tells the self-check worker which tree it grades, for its operator-side telemetry line.
+
 LABEL_ENV = "MERLIN_SELFCHECK_SUBMISSION_LABEL"
-#: Operator bound on concurrent ordinary variant requests (default: half the ordinary lane).
+
 VARIANT_JOBS_ENV = "MERLIN_SELFCHECK_VARIANT_JOBS"
 
 VARIANT_NOTE = (

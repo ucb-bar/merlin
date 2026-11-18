@@ -1,26 +1,25 @@
 ---
-title: Verify the program and its execution
+title: 9. Verify the program and its execution
 kind: guide
 status: current
 owner: verification
 last_verified: 2026-11-09
-related: [07-building, 10-compiler-generation, ../reference/repo_structure]
+related: [08-running, 10-compiler-generation, ../reference/repo_structure]
 code_refs:
   - src/merlin/compiler/quantization/contract.py
   - src/merlin/compiler/quantization/admission.py
-  - src/merlin/compiler/transforms/validation.py
+  - src/merlin/compiler/transforms/pipeline.py
   - src/merlin/verification/cli.py
-  - src/merlin/verification/scalar_ir.py
-  - src/merlin/verification/partition.py
-  - src/merlin/verification/lean_checker.py
-  - src/merlin/evaluation/model/metrics.py
-  - src/merlin/evaluation/model/full_quantized.py
-  - src/merlin/evaluation/model/full_chain_validation.py
-  - src/merlin/evaluation/model/binding.py
-  - src/merlin/evaluation/capsule/numerics.py
-  - src/merlin/runtime/dispatch_placement.py
-  - src/merlin/runtime/elf_audit.py
-  - src/merlin/runtime/service.py
+  - src/merlin/verification/translation/pass_validation.py
+  - src/merlin/verification/lean/checker.py
+  - src/merlin/evaluation/model/bundles/models.py
+  - src/merlin/evaluation/model/whole_model/quantized_comparison.py
+  - src/merlin/evaluation/model/whole_model/check.py
+  - src/merlin/evaluation/model/binding/receipt.py
+  - src/merlin/evaluation/capsule/operations/grading.py
+  - src/merlin/runtime/dispatch/executor.py
+  - src/merlin/runtime/boards/image_audit.py
+  - src/merlin/runtime/execution/service.py
   - build_tools/checks/check_test_budget.py
   - .github/workflows/ci.yml
 ---
@@ -65,16 +64,23 @@ fidelity. Use the reference appropriate to the realized numerical form.
 | Owner | Responsibility |
 | --- | --- |
 | `verification/` | Independent program/transformation checks, including scalar SMT, pure outlining, partition reconstruction, packing/pointer obligations and Lean checking. |
-| `transforms/validation.py` | Checks the actual structure and witnesses of supported before/after rewrites; a structural witness is not a formal receipt. |
+| [`compiler/transforms/pipeline.py`](../../src/merlin/compiler/transforms/pipeline.py) | `validate_change` checks the actual structure and witnesses of supported before/after rewrites; a structural witness is not a formal receipt. |
 | `evaluation/capsule/` | Runs selected capsule evaluation paths and judges their declared numerical/execution obligations. |
-| `model_check/` | Builds and checks complete model paths, references, all-output comparisons and declared simulator/hardware bindings. |
+| [`evaluation/model/`](../../src/merlin/evaluation/model/) | Builds and checks selected model paths, references, complete judged-output comparisons and declared simulator/hardware bindings. |
 | `runtime/` | Executes selected images and checks applicable deployment, ELF, dispatch and observation boundaries. |
 
-For example, `verification/partition.py` reconstructs the original typed SSA
-program from outlined calls. That checks partitioning fidelity, not subsequent
-device lowering. `model_check/full_chain_validation.py` requires the selected
-quantized-reference gates and every declared step, rather than trusting a
-standalone pass string.
+For example, `verification/translation/pass_validation.py:verify_partition`
+reconstructs the complete original typed SSA program from actual outlined
+calls, including dead computations. That checks partitioning fidelity, not
+subsequent device lowering.
+
+`evaluation/model/whole_model/check.py` runs the selected declared chains.
+Its default host-twin comparison checks complete outputs against the matching
+compiled host twin. An explicit `quantized-reference` comparison uses the sealed
+judged quantized outputs through `whole_model/quantized_comparison.py`.
+Missing cached twin steps remain pending, and a shortened recurrent run is
+partial. These selections have different scopes; one successful kernel or
+step does not establish the complete model gate.
 
 The applicable verifier must bind its claim to the exact source and artifacts.
 A saved receipt for an older program cannot establish a changed program. A
@@ -83,7 +89,7 @@ The candidate compiler cannot replace the independent checker that accepts it.
 
 ## Try a small scalar equivalence check
 
-Save this as `out/before.mlir`:
+Create `out/artifacts/probes/scalar-check/` and save this as `before.mlir` there:
 
 ```mlir
 builtin.module {
@@ -95,7 +101,7 @@ builtin.module {
 }
 ```
 
-Save the simplified version as `out/after.mlir`:
+Save the simplified version as `after.mlir` in the same directory:
 
 ```mlir
 builtin.module {
@@ -108,7 +114,10 @@ builtin.module {
 With the `verify` extra installed, run:
 
 ```sh
-merlin verify scalar-receipt --before out/before.mlir --after out/after.mlir --output out/scalar.json
+merlin verify scalar-receipt \
+  --before out/artifacts/probes/scalar-check/before.mlir \
+  --after out/artifacts/probes/scalar-check/after.mlir \
+  --output out/artifacts/probes/scalar-check/receipt.json
 ```
 
 This uses the supported pure scalar-integer SMT checker: it asks whether any
@@ -118,8 +127,10 @@ functions and bytes; it establishes no accelerator, pointer or hardware behavior
 Use fresh output paths. `merlin verify --help` lists the other actual entrypoints;
 there is no universal command that proves every backend or model.
 
-The CLI distinguishes `verified`, `refuted` and `abstained`, with exit codes
-0, 1 and 2. Abstention means the checker could not establish the requested claim,
+The proof commands use exit codes 0 for verification, 1 for refutation and 2
+when they cannot establish the claim. The scalar receipt retains the specific
+`unknown`, `unsupported`, `unavailable` or `error` status when applicable.
+Abstention means the checker could not establish the requested claim,
 not that the compiler is correct or necessarily wrong. A timeout or unavailable
 tool must not be recorded as a pass.
 
@@ -130,10 +141,15 @@ argument/result positions, scalar versus buffer arguments, element widths,
 strides, alignment, ownership and aliases. Shared memory also needs the selected
 visibility and completion rules. A transfer's issue is not its completion.
 
-`runtime/dispatch_placement.py` checks structural placement requirements.
-`runtime/elf_audit.py` checks a produced ELF against selected board properties.
-`model_check/binding.py` checks declared simulator/RTL/board correspondence from
-the selected sources. Each supplies a different part of the evidence.
+`runtime/dispatch/executor.py:DispatchPlacements` checks the original static
+call table and its selected placement on each dispatch. It refuses a host call
+when that call explicitly requires a device; it supplies no hardware authority.
+`runtime/boards/image_audit.py` checks a produced ELF against selected board properties.
+[`evaluation/model/binding/receipt.py`](../../src/merlin/evaluation/model/binding/receipt.py)
+assembles declared simulator/RTL/board correspondence and serializes its report.
+[`binding/checks.py`](../../src/merlin/evaluation/model/binding/checks.py) owns
+the numerical, ISA, memory and source checks. Missing facts remain unknown;
+source binding is separate from numerical or hardware execution evidence.
 
 If a requirement says Gemmini must execute, scalar fallback cannot satisfy it
 merely by producing correct output. Conversely, an instruction appearing in a

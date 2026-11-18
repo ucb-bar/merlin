@@ -8,7 +8,7 @@
 # plus `carry: j` -- from the second step on, the program's own output j of the previous step (a state).
 # The bindings restate each capture's session contract (session_contract.yaml); a program with `steps`
 # runs that many times.
-schema: merlin.evaluation.model.models.v1
+schema: merlin.evaluation.model.bundles.models.v1
 target: gemmini
 
 # The only shared numerical-report policy. Per-model quality bars stay in judged.admission.

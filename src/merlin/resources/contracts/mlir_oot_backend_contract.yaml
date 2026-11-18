@@ -75,7 +75,7 @@ logical_kernel_abi:
       `dst` of a `published_by` command, in program order), then every declared role=output tensor not
       yet listed (in declaration order; a host-lane program's results have no producing command),
       restricted to the buffer's declared `outputs` when it declares them."
-  # The opcodes whose destination merlin.runtime.reference.reference_outputs reports as a result.
+  # The opcodes whose destination merlin.runtime.engine.reference.reference_outputs reports as a result.
   published_by: [COMMIT, BIAS_ADD, RESIDUAL_ADD, ATTENTION_QK, ATTENTION_PV, CONV2D, BATCHED_MATMUL, MOVEMENT]
   pointee:
     layout: "dense row-major in the tensor's LOGICAL shape: element (i0, ..., ik) at the C-order linear
@@ -86,7 +86,7 @@ logical_kernel_abi:
     # The only placement guarantee: the base of every buffer is aligned to this many bytes.
     alignment_bytes: 64
     explicit_storage: "a whole-program buffer may declare params.storage_encodings (its OWN physical
-      layout); the harness then allocates and packs exactly that encoding (merlin.runtime.storage_binding)."
+      layout); the harness then allocates and packs exactly that encoding (merlin.runtime.engine.storage_binding)."
   outputs:
     # Every output buffer is filled with this byte before EVERY invocation, outside the cycle window, so
     # an output the kernel does not write (or wrote only during warm-up) cannot match by accident.
@@ -181,7 +181,7 @@ build:
 
 # The ADMISSION PARTITION. A package handed a program must land in exactly ONE route and must SAY
 # which; the routes are disjoint and together they cover every well-formed input. Enforced by
-# `build_tools/checks/check_route_partition.py` over `merlin.runtime.route_partition`.
+# `build_tools/checks/check_route_partition.py` over `merlin.evaluation.route_admission`.
 #
 # This section exists because its absence was load-bearing. Nothing here required a decline, and
 # `validate_command_buffer` only ever read `declined` as an EXCUSE (it lets such a buffer skip the
@@ -213,12 +213,12 @@ admission:
     host_route_states_a_reason_the_target_does_not_contradict: "a region placed on a host lane is a
       refusal, and it must say why in `params.lane_placement[].reason`. The reason must not be
       contradicted by the target's OWN derived capability: if the target's readout facet
-      (`merlin.development.targetgen.readout_facet`) licenses the epilogue stage the family needs, then `family X
+      (`merlin.target.capabilities.readout_facet`) licenses the epilogue stage the family needs, then `family X
       has no datapath here` is false and the region was refused for a reason the hardware denies.
       Measured on a deployable ResNet-50 package: 116 of 119 host-routed regions state a no-datapath
       reason while the target's own backend declares a readout applying acc_scale, relu and maxpool.
       Fix the lowering or state the real reason -- a declaration gap is not a hardware limit.
-      Adjudicated by `merlin.runtime.route_quality.declaration_quality`, gate
+      Adjudicated by `merlin.evaluation.route_admission.declaration_quality`, gate
       `route_declaration_quality`"
     accepted_region_does_not_compute_on_the_host: "a region routed A may configure, address and
       synchronize on the host, but it may not COMPUTE there. An arithmetic operation in the region's
@@ -229,7 +229,7 @@ admission:
       is explicitly permitted -- a rule that counted arithmetic by opcode family would veto every
       legal descriptor setup. The same arithmetic in an H region is coverage, not a defect. Absent
       host IR is `incomplete` with a stated cause, never a pass. Adjudicated by
-      `merlin.runtime.route_quality.host_compute`, gate `route_host_compute`"
+      `merlin.evaluation.host_compute_accounting.host_compute`, gate `route_host_compute`"
   route_quality:
     purpose: "the QUALITY of an A or H claim, as distinct from the SHAPE of the partition above.
       `route_partition` says every region lands in exactly one route; this says the route it landed in
@@ -241,7 +241,7 @@ admission:
     # adjudicating a refusal with a guessed rung manufactures a verdict nobody declared.
     #
     # `epilogue_stage` names a stage in the command-buffer ABI's epilogue vocabulary
-    # (`merlin.runtime.commandbuffer.EPILOGUE_STAGES`). The refusal is contradicted when the target's
+    # (`merlin.runtime.engine.command_buffer.EPILOGUE_STAGES`). The refusal is contradicted when the target's
     # derived epilogue capability licenses that stage, or when the target's own declared readout
     # census applies it; it is confirmed only when a readout census exists and none applies it.
     #
@@ -275,7 +275,7 @@ admission:
     optional: [op]
     example: {op: "rmsnorm", reason: "no lowering for this operation on this target yet"}
 
-# Optional manifest declarations for the WHOLE-MODEL build path (merlin.analysis.perf.whole_model_build). Both
+# Optional manifest declarations for the WHOLE-MODEL build path (merlin.analysis.whole_model.build.stages). Both
 # are OFF unless the package's own manifest.yaml declares them; a package that declares neither sees no
 # change in how it is built, whatever the build's own flags are. Neither entry says HOW to use the
 # mechanism it names -- what a package does with a region or a pass is the package's own compiler
@@ -296,7 +296,7 @@ whole_model_optional:
       recomputed from the inputs the device held and the boundary is checked from them. Every member
       counts as package-answered while the region's kernel is linked; a region whose kernel is not
       linked puts every member back on the target's library."
-    who_decides_legality: "merlin.compiler.lower.model.region_legality.legal_regions, from the model's own
+    who_decides_legality: "merlin.compiler.lower.device.region.legal_regions, from the model's own
       dataflow, and the TARGET's own declaration of which ops its driver can hold as an internal
       member (its whole-model driver's FUSED_REGION_INTERNAL_OPS; a target that declares
       LINKS_FUSED_REGIONS false or nothing is never offered a region) -- never the package's; a

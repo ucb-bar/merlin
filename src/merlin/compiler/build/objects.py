@@ -4,9 +4,13 @@ The caller supplies its existing observed process runner. This owner chooses no
 target, compiler defaults, runtime, startup code, or link inputs.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
 
-from merlin.common import compile_trace
+from merlin.compiler.ir import compile_trace
+
+# ---- objects -----------------------------------------------------------------------------------
 
 
 def compile_llvm_object(source, destination, *, compiler, flags, run, timeout_s=None):

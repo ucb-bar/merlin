@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.compiler.lower.model.device_offload import DeviceRewrite, Routed
-from merlin.compiler.lower.model.host_transform_chain import (
+from merlin.compiler.lower.device.offload import DeviceRewrite, Routed
+from merlin.compiler.lower.host.transforms import (
     HostLLVMArtifact,
     HostLLVMEmission,
     HostLLVMStageContract,

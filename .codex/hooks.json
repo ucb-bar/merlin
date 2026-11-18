@@ -1,0 +1,58 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python 'C:\\Users\\coppa\\Documents\\merlin\\.codex\\hooks\\guard_artifact_writes.py'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python 'C:\\Users\\coppa\\Documents\\merlin\\.codex\\hooks\\guard_process_kills.py'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_artifact_layout.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_docs.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_no_regex.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_no_target_name.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_no_assumed_constants.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_no_answer_keys.py --stop-hook"
+          },
+          {
+            "type": "command",
+            "command": ".venv/bin/python build_tools/checks/check_provenance.py --stop-hook"
+          }
+        ]
+      }
+    ]
+  }
+}

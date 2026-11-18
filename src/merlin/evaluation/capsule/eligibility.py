@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from merlin.development.targetgen.runner_config import _config_for_target
+import json
+from contextlib import contextmanager
+
+from merlin.target.registry.identity import _config_for_target
+
+# ---- eligibility -------------------------------------------------------------------------------
 
 
 def _dtype_has_no_datapath(region, cmap, _el) -> tuple[bool, str]:
@@ -59,8 +64,8 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
     suite shrink itself into a better score, which is the opposite of the point.
     """
     try:
-        from merlin.development.targetgen import coverage_report as _cr
-        from merlin.development.targetgen import eligibility as _el
+        from merlin.development.targetgen.grading import coverage_report as _cr
+        from merlin.target.capabilities import eligibility as _el
 
         cmap = _el.capability_map_for_target(target)
     except Exception:  # noqa: BLE001 - never block a grade
@@ -78,40 +83,40 @@ def _split_ineligible(op_caps: list[dict], target: str) -> tuple[list[dict], lis
         if getattr(v, "undetermined", False) or getattr(v, "eligible", True):
             keep.append(c)
             continue
-        # WITHHOLD ONLY ON A HARD STRUCTURAL FACT: an operand dtype or rank that appears in NO declared
-        # capability at all. Then no datapath on the device can hold the operands and no composition can
-        # rescue it, whatever family the op belongs to -- which also covers a capsule whose family our
-        # taxonomy cannot name (pooling, whole-model), where withholding on the family verdict alone
-        # would drop it for OUR ignorance rather than the hardware's limits.
-        #
-        # A merely UNDECLARED FAMILY is graded. Families compose -- attention on a systolic array is a
-        # contraction plus a transposing movement -- so "no capability for family X" is not proof the
-        # device cannot do X. Measured: a float target PASSED two capsules its contract calls ineligible
-        # on family grounds; withholding those would have hidden a contract under-declaration, which is a
-        # finding we want, not noise to suppress.
-        # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
-        # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
-        # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
-        # See :func:`_dtype_has_no_datapath` for why the dtype is the only hard fact here, and why
-        # family and rank must not withhold. State the fact that ACTUALLY triggered withholding:
-        # eligibility's own reason describes its FAMILY verdict, which would send someone to fix the
-        # taxonomy when the hardware is the constraint.
+            # WITHHOLD ONLY ON A HARD STRUCTURAL FACT: an operand dtype or rank that appears in NO declared
+            # capability at all. Then no datapath on the device can hold the operands and no composition can
+            # rescue it, whatever family the op belongs to -- which also covers a capsule whose family our
+            # taxonomy cannot name (pooling, whole-model), where withholding on the family verdict alone
+            # would drop it for OUR ignorance rather than the hardware's limits.
+            #
+            # A merely UNDECLARED FAMILY is graded. Families compose -- attention on a systolic array is a
+            # contraction plus a transposing movement -- so "no capability for family X" is not proof the
+            # device cannot do X. Measured: a float target PASSED two capsules its contract calls ineligible
+            # on family grounds; withholding those would have hidden a contract under-declaration, which is a
+            # finding we want, not noise to suppress.
+            # Compare dtypes through eligibility's OWN alias-aware check, never by string equality: the
+            # contract spells the format `int8` while a capsule region reports `i8`, so a raw `!=` reads a
+            # native-dtype capsule as having no datapath at all and withholds it for a spelling difference.
+            # See :func:`_dtype_has_no_datapath` for why the dtype is the only hard fact here, and why
+            # family and rank must not withhold. State the fact that ACTUALLY triggered withholding:
+            # eligibility's own reason describes its FAMILY verdict, which would send someone to fix the
+            # taxonomy when the hardware is the constraint.
         dtype_absent, why = _dtype_has_no_datapath(region, cmap, _el)
         if not dtype_absent:
             keep.append(c)
             continue
-        # A CAPSULE THAT FORBIDS THE MESH IS ASKING FOR EXACTLY THIS, so withholding it deletes the
-        # test. The rule above is "no datapath can hold these operands, so do not ask the device to
-        # certify this arithmetic" -- sound for a capsule that WANTS to be accelerated. A host-lane
-        # capsule wants the opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler
-        # leaves the work on the host, and the absent datapath is its premise rather than its problem.
-        # Withheld, the negative lane is never graded, and an axis that derives such capsules produces
-        # nothing while looking like it ran -- the exact silence this corpus is built to prevent. The
-        # forbid IS gradeable: a decoded accelerator instruction violates it.
-        # Explicit frozen host-only work is also gradeable through the existing
-        # Merlin host provider. That route rechecks source eligibility and credits
-        # infrastructure only, never candidate accelerator capability.
-        from merlin.development.targetgen.owned_host_leaf_execution import declared_host_only
+            # A CAPSULE THAT FORBIDS THE MESH IS ASKING FOR EXACTLY THIS, so withholding it deletes the
+            # test. The rule above is "no datapath can hold these operands, so do not ask the device to
+            # certify this arithmetic" -- sound for a capsule that WANTS to be accelerated. A host-lane
+            # capsule wants the opposite: it declares `forbid: [on_mesh]` and exists to prove the compiler
+            # leaves the work on the host, and the absent datapath is its premise rather than its problem.
+            # Withheld, the negative lane is never graded, and an axis that derives such capsules produces
+            # nothing while looking like it ran -- the exact silence this corpus is built to prevent. The
+            # forbid IS gradeable: a decoded accelerator instruction violates it.
+            # Explicit frozen host-only work is also gradeable through the existing
+            # Merlin host provider. That route rechecks source eligibility and credits
+            # infrastructure only, never candidate accelerator capability.
+        from merlin.development.targetgen.execution.host.leaf_execution import declared_host_only
 
         if _forbids_the_mesh(c) or declared_host_only(c):
             keep.append(c)
@@ -155,8 +160,8 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
     if cap is None:
         return True
     try:
-        from merlin.development.targetgen import coverage_report as _cr
-        from merlin.development.targetgen import eligibility as _el
+        from merlin.development.targetgen.grading import coverage_report as _cr
+        from merlin.target.capabilities import eligibility as _el
 
         cmap = _el.capability_map_for_target(target)
         if not cmap:
@@ -167,7 +172,7 @@ def _gate_counts(result: dict, capsules: list[dict], target: str) -> bool:
         return True
     if getattr(verdict, "undetermined", False) or getattr(verdict, "eligible", True):
         return True
-    from merlin.development.targetgen.owned_host_leaf_execution import declared_host_only
+    from merlin.development.targetgen.execution.host.leaf_execution import declared_host_only
 
     if _forbids_the_mesh(cap) or declared_host_only(cap):
         return True
@@ -185,3 +190,209 @@ def suite_for(target: str, *, dtype: str = "i8xi8_i32") -> str:
     glob an empty directory and report ``n_capsules: 0`` on every call — the feedback loop went blind while
     the in-memory grade was correct. Derived from the target's RunnerConfig, so it stays target-agnostic."""
     return _config_for_target(target, None, dtype).suite
+
+
+# ---- model_suite -------------------------------------------------------------------------------
+# Capsule evaluation: model suite.
+
+
+def _model_gate_operation_passed(result: dict, capsule: dict, oracle_adapters) -> bool:
+    """An explicit L2 screen may open only the L2 capstone, never full certification."""
+    if result.get("status") == "pass":
+        return True
+    if oracle_adapters is None or set(oracle_adapters) != {"L2"}:
+        return False
+    if result.get("status") != "incomplete" or "L2" not in capsule.get("required_oracle_tiers", []):
+        return False
+    failure = result.get("failure") or {}
+    if (
+        failure.get("plane") != "oracle_unavailable"
+        or failure.get("category") != "NOT_RUN_IS_NOT_PASS"
+        or failure.get("tier") != "L3"
+        or failure.get("tier_status") != "unavailable"
+    ):
+        return False
+    tiers = result.get("tiers") or {}
+    if (tiers.get("L2") or {}).get("status") != "pass" or (result.get("numeric") or {}).get("status") != "pass":
+        return False
+    for tier in capsule.get("required_oracle_tiers", []):
+        if tier == "L3":
+            continue
+        record = tiers.get(tier) or {}
+        if record.get("status") != "pass" and not record.get("not_applicable"):
+            return False
+    return True
+
+
+def _run_streaming_model_gate(
+    op_caps,
+    model_caps,
+    run_one,
+    *,
+    max_workers,
+    target,
+    oracle_adapters,
+    on_complete=None,
+    calibrate=None,
+    calibration_cap=0,
+    model_gate_continuations=(),
+    defer_pending=None,
+    defer_running=True,
+    boundary_readiness=None,
+    model_gate_prerequisites=None,
+):
+    """Open capstones on a fixed selected-operator denominator in the same worker pool."""
+    from merlin.development.targetgen.grading.scheduling import run_pipelined
+    from merlin.experiments.corpus.capsules.model_sources import model_gate_satisfied
+
+    caps = op_caps + model_caps
+    model_names = {str(cap["name"]) for cap in model_caps}
+    if any(str(cap.get("extends") or "") in model_names for cap in op_caps):
+        raise ValueError("operator capsule extends a gated model; dependency conflicts with the model gate")
+        # Determine eligibility from the complete selected roster, never completed rows.
+    eligible = [c for c in op_caps if _gate_counts({"capsule": c["name"]}, caps, target)]
+    denominator = eligible or op_caps
+    completed = {}
+
+    def fraction(cap=None):
+        if cap is not None:
+            from merlin.development.targetgen.grading.boundary import prerequisite_fraction
+
+            prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
+            if prior is not None:
+                return prior
+        return (
+            sum(_model_gate_operation_passed(completed.get(c["name"], {}), c, oracle_adapters) for c in denominator)
+            / len(denominator)
+            if denominator
+            else 0.0
+        )
+
+    def finished(result):
+        completed[str(result.get("capsule"))] = result
+        if on_complete is not None:
+            on_complete(result)
+
+    def blocked(cap):
+        return {
+            "capsule": cap["name"],
+            "kind": cap.get("kind"),
+            "label": cap.get("label"),
+            "status": "gated",
+            "failure": {
+                "plane": "gate",
+                "category": "GATED",
+                "detail": f"whole-model capsule deferred: op pass fraction {fraction(cap):.2f} "
+                f"< gate {(cap.get('gate') or {}).get('after_op_pass_fraction')}",
+            },
+        }
+
+    def admitted(cap):
+        if cap.get("kind") != "model":
+            return True
+        from merlin.development.targetgen.grading.boundary import admits, prerequisite_fraction
+
+        prior = prerequisite_fraction(cap, model_gate_prerequisites, target=target)
+        continuation = (
+            prior is None
+            and not op_caps
+            and admits(cap, model_gate_continuations, target=target, adapters=oracle_adapters)
+        )
+        value = fraction(cap)
+        passed = continuation or model_gate_satisfied(cap, value)
+        if passed:
+            cap["_driver_model_gate_admission"] = {
+                "passed": True,
+                "fraction": value,
+                "stage": "L2" if set(oracle_adapters or {}) == {"L2"} else "continuation" if continuation else "full",
+            }
+        return passed
+
+    return run_pipelined(
+        caps,
+        run_one,
+        max_workers=max_workers,
+        calibrate=calibrate,
+        calibration_cap=calibration_cap,
+        boundary_readiness=boundary_readiness,
+        on_complete=finished,
+        can_start=admitted,
+        blocked_result=blocked,
+        calibration_eligible=lambda cap: cap.get("kind") != "model",
+        priority=lambda cap: 0 if cap.get("kind") == "model" else 1,
+        **({"defer_pending": defer_pending, "defer_running": defer_running} if defer_pending is not None else {}),
+    )
+
+
+@contextmanager
+def _original_capsule_worker_scope():
+    """Rebind the original executor's guarded entry on this actual worker thread.
+
+    A copied parent context alone deliberately grants no thread-local snapshot
+    reuse. Reuse requires the executor's existing live concurrency capability;
+    its scope checks owner/selection identity at entry and exit. Legacy owners
+    retain ordinary fresh verification, and every command keeps its final read.
+    """
+    from merlin.development.targetgen.packaging.loading import active_package_executor
+
+    owner = active_package_executor()
+    capability = getattr(owner, "concurrent_entrypoints_v1", None)
+    if not callable(capability) or capability() is not True:
+        yield
+        return
+    scope = getattr(owner, "concurrent_entrypoint_scope_v1", None)
+    if not callable(scope):
+        raise ValueError("concurrent capsule execution requires its original worker scope")
+    with scope():
+        yield
+
+
+def _candidate_boundary_readiness(capsules, pkg, *, oracle_adapters):
+    """Order one existing public L2 operator witness for this exact native owner.
+
+    This is scoped to the immutable suite invocation. Models/slices use distinct
+    host graph routes and remain unchanged. Component model_slice wrappers that
+    reach the ordinary operator ladder share this route; raw connected source
+    slices and Merlin-owned host leaves do not. No error message or case-local
+    structural category can prove the whole compiler route invalid.
+    """
+    if set(oracle_adapters or {}) != {"L2"}:
+        return None
+    from merlin.development.backend.campaign import control as joint_control
+    from merlin.development.backend.feedback.execution.profile_runtime import active_original_execution
+    from merlin.development.targetgen.execution.host.leaf_execution import selected_host_leaf
+    from merlin.development.targetgen.execution.host.selections import selected_source_slice
+    from merlin.development.targetgen.grading.boundary import expects_refusal
+    from merlin.development.targetgen.grading.scheduling import BoundaryReadiness
+
+    if joint_control.selected() is None:
+        return None
+    owner = active_original_execution()
+    if owner is None:
+        return None
+    snapshot = getattr(owner.owner, "snapshot_digest", None)
+    profile = getattr(owner.owner, "profile", None)
+    if not snapshot or not isinstance(profile, dict) or not profile.get("sha256"):
+        return None
+    import hashlib
+
+    identity = {
+        "compiler_sha256": owner.source_sha256,
+        "bundle_snapshot_sha256": snapshot,
+        "profile_sha256": profile["sha256"],
+        "manifest": pkg.manifest,
+        "route": "native_operator_lower_interface",
+        "requested_tiers": ["L2"],
+    }
+    route = hashlib.sha256(json.dumps(identity, sort_keys=True, allow_nan=False).encode()).hexdigest()
+    return BoundaryReadiness(
+        {
+            str(cap["name"]): route
+            for cap in capsules
+            if cap.get("kind") in {"isa", "layer", "model_slice"}
+            and cap.get("label") in {"public", "dev"}
+            and not expects_refusal(cap)
+            and not selected_host_leaf(cap)
+            and not selected_source_slice(cap)
+        }
+    )

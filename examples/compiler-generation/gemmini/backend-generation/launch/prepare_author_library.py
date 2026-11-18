@@ -4,7 +4,7 @@ New callers should use ``python -m merlin.experiments.phase1.prepare_author_libr
 This example supplies no target policy, backend implementation or schedule.
 """
 
-from merlin.development.backend.prepare_author_library import (
+from merlin.development.backend.authoring.library.preparation import (
     main,
     prepare,
     reviewed_discovery_modules,

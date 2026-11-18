@@ -6,8 +6,10 @@ from pathlib import Path
 
 import yaml
 
-from merlin.development.testgen.claim_boundary import assert_no_claim_capsules, held_out_models
+from merlin.development.testgen.generation.claim_boundary import assert_no_claim_capsules, held_out_models
 from merlin.experiments.definition import SpecError
+
+# ---- publication -------------------------------------------------------------------------------
 
 
 def require_public_capsules(experiment, roots) -> None:
@@ -54,7 +56,7 @@ def require_accelerator_placement(roots) -> int:
     capsule without that record is refused as well, because its absence is not evidence of accelerator
     work. Returns the number of public capsules checked.
     """
-    from merlin.development.testgen.program_admission import accelerator_placement_refusal
+    from merlin.development.testgen.evidence.program_admission import accelerator_placement_refusal
 
     refused, checked = [], 0
     for root in roots:

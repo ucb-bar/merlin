@@ -4,9 +4,9 @@ import yaml
 
 from corefixtures.offload_plan import example
 from corefixtures.source_proposal_admission import original_check, proposal, topology
-from merlin.compiler.backend.sourceproposal import admit_original_cpu, admit_proposal
-from merlin.compiler.lower.model.offload_plan import bind_source
-from merlin.target.system.topology import select_topology
+from merlin.compiler.backend.source_proposals import admit_original_cpu, admit_proposal
+from merlin.compiler.lower.device.plan import bind_source
+from merlin.target.system import select_topology
 
 
 def roster(tmp_path, *, capacity=4096, extra_domain=False, shape=(3, 7, 5)):

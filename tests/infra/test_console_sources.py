@@ -8,7 +8,7 @@ deletion of either family is silent everywhere except here.
 
 import importlib
 
-from merlin.experiments.tracking.console import model
+from merlin.experiments.tracking.console import snapshot as model
 
 
 def test_console_sources_and_managed_execution_modules_import():

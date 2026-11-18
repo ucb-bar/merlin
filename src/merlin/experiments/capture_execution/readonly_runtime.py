@@ -12,11 +12,12 @@ import os
 import stat
 from pathlib import Path
 
-from merlin.common import strict_json
+from merlin.common import record_formats as strict_json
+from merlin.experiments.capture_execution import readonly_runtime_directories as D
+from merlin.experiments.capture_execution import runtime_store as R
+from merlin.experiments.capture_execution.sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
 
-from . import readonly_runtime_directories as D
-from . import runtime_store as R
-from .sealed_static import _canonical_path, _digest, _file_digest, _json, _tree
+# ---- readonly_runtime --------------------------------------------------------------------------
 
 SCHEMA = "merlin.sealed_m2m_readonly_runtime.v1"
 OVERLAY_SCHEMA = "merlin.sealed_m2m_readonly_runtime.v2"

@@ -16,9 +16,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from merlin.common.ir_lock import IR_LOCK
 from merlin.common.paths import data_path
-from merlin.development.targetgen.contract.linalg_iface import make_linalg_context
+from merlin.compiler.ir.xdsl_io import IR_LOCK
+from merlin.target.contract.interfaces.linalg import make_linalg_context
+
+# ---- plan --------------------------------------------------------------------------------------
 
 OUTPUT_WRITER_OWNERSHIP_FINDING = "output writer lacks exact source-result task ownership"
 
@@ -78,7 +80,7 @@ def source_operation_inventory(source: bytes | str) -> dict[str, Any]:
         return numerical_inventory(raw)
     # Interface syntax belongs to its frozen owner grammar, not a linalg
     # function parser. A mention in a comment is not enough to select it.
-    from merlin.development.targetgen.contract.interface_emit import op_mnemonics
+    from merlin.target.contract.interfaces.grammar import op_mnemonics
 
     if op_mnemonics(raw.decode("utf-8")):
         return interface_inventory(raw)
@@ -389,8 +391,8 @@ def _selected_lowered_entry(functions, abi):
 def _lowered_task_problems(
     text: str, plan: Mapping[str, Any], command_buffer: Mapping[str, Any], lowered_abi: Mapping[str, str] | None = None
 ) -> list[str]:
-    from merlin.analysis.perf.task_cfg_evidence import analyze_task_cfg
-    from merlin.development.targetgen.oot_starterkit.llvm_context import parse_llvm_module
+    from merlin.analysis.programs.task_cfg_evidence import analyze_task_cfg
+    from merlin.compiler.ir.llvm_context import parse_llvm_module
 
     with IR_LOCK:
         module = parse_llvm_module(text)

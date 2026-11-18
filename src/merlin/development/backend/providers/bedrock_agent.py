@@ -3,7 +3,7 @@
 The `claude` CLI (the default agent) speaks the Anthropic Messages API ONLY, so a non-Anthropic Bedrock
 model (glm5 / qwen-coder / nemotron / ...) cannot drive it. This module is a drop-in alternative for one
 ROUND: it runs an agentic Converse loop whose tools (`run_bash` / `write_file` / `read_file`) execute
-INSIDE the SAME masked bwrap sandbox the claude agent uses (`merlin.development.targetgen.sandbox.bwrap.wrap`), so
+INSIDE the SAME masked bwrap sandbox the claude agent uses (`merlin.development.targetgen.sandbox.grants.wrap`), so
 answer-masking + integrity are identical. It produces the agent's `submission/` in the workspace and
 writes a claude-stream-json-COMPATIBLE transcript (`assistant` events with `usage` + `tool_use` blocks),
 so the driver's grading (`qa_grade`), token/cost accounting (`experiment_tokens.parse_transcript`) and
@@ -22,8 +22,8 @@ import subprocess
 import time
 from pathlib import Path
 
-# Non-Anthropic Bedrock models usable as the agent (mirror of chia's registry; the driver venv has no
-# chia). Anything NOT here is treated as an Anthropic id and left to the claude CLI.
+# ---- bedrock_agent -----------------------------------------------------------------------------
+
 _CONVERSE_MODELS = {
     "glm5": "zai.glm-5",
     "glm4.7": "zai.glm-4.7",
@@ -111,9 +111,6 @@ def _tools(target: str) -> dict:
     }
 
 
-# The delegate tool (tier-within-agent). Only added to the tool list when a distinct, cheaper subagent
-# model is configured — it lets the strong primary offload well-scoped mechanical sub-tasks to the cheap
-# model (the faithful Claude-Code Task->subagent pattern; there is no per-turn auto-routing).
 _DELEGATE_TOOL = {
     "toolSpec": {
         "name": "delegate",
@@ -133,9 +130,6 @@ _DELEGATE_TOOL = {
     }
 }
 
-# Bedrock prompt-caching marker. Placed at the end of the STABLE prefix (system prompt + tool schemas +
-# the first user message's task/ISA-facts), so the large static context is billed once and reused across
-# the ~120 tool-iterations of a round instead of re-shipped uncached every call (the glm5f cached=0 waste).
 _CACHE_POINT = {"cachePoint": {"type": "default"}}
 
 
@@ -179,9 +173,6 @@ def _roll_cachepoint(messages: list) -> None:
             last.append(dict(_CACHE_POINT))
 
 
-# Substrings (case-insensitive) that mark a line as decisive signal — an error, a failure, or a grade
-# result — which must SURVIVE compaction so the model never loses feedback it needs to debug. Matched by
-# plain substring containment (structural, no regex).
 _SIGNAL_TOKENS = (
     "error",
     "fail",
@@ -287,12 +278,12 @@ def _extract_output(
 def _bash_in_sandbox(
     te, ws: Path, bundle: dict, command: str, sandbox: str, timeout: int, *, private_run_dir: Path | None
 ) -> str:
-    from merlin.development.targetgen.sandbox import bwrap as _BW
+    from merlin.development.targetgen.sandbox import grants as _BW
 
     if sandbox == "bwrap":
         if private_run_dir is None:
             raise RuntimeError("Phase 1 agent tool has no host-private run boundary")
-        from merlin.development.backend.semantic_diagnostics import assert_private_mounts
+        from merlin.development.backend.telemetry.evidence import assert_private_mounts
 
         cmd = _BW.wrap(
             te,
@@ -311,7 +302,7 @@ def _bash_in_sandbox(
 
 
 def _write_file(ws: Path, rel: str, content: str) -> str:
-    from merlin.development.backend.runtime_environment import RETIRED_READONLY_ENV, RETIRED_READONLY_MESSAGE
+    from merlin.development.backend.context import RETIRED_READONLY_ENV, RETIRED_READONLY_MESSAGE
 
     if os.environ.get(RETIRED_READONLY_ENV, "").strip() == "1":
         return f"[refused] {RETIRED_READONLY_MESSAGE}"

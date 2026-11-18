@@ -3,14 +3,14 @@ from __future__ import annotations
 import pytest
 import yaml
 
-from merlin.common.yaml import write_yaml
-from merlin.compiler.backend.composition import (
+from merlin.common.record_formats import write_yaml
+from merlin.compiler.backend.providers import (
     BackendCompositionError,
     composition,
     materialize,
+    read_provider,
     validate_backend_composition,
 )
-from merlin.compiler.backend.load import read_provider
 
 REVISION = "a" * 40
 

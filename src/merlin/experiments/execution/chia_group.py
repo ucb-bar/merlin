@@ -7,7 +7,9 @@ import os
 import tempfile
 import time
 
-from .chia_native import CleanupIncomplete, cleanup, setup
+from merlin.experiments.execution.chia_native import CleanupIncomplete, cleanup, setup
+
+# ---- chia_group --------------------------------------------------------------------------------
 
 
 def local_options(resources: dict[str, float]) -> dict:

@@ -13,7 +13,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..io import num, obj
+from merlin.experiments.tracking.console.snapshot import num, obj
+
 from .insight_common import activity, line, panel, row, table
 
 #: ``(category, label, kind)``; ``perf`` categories are the performance tooling the guidance names.

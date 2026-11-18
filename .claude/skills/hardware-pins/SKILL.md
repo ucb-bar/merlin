@@ -66,7 +66,7 @@ is the raising form — use it where proceeding under drift would be meaningless
 
 Sometimes the artifact a body of results is attributed to no longer exists and cannot be rebuilt.
 **Record the loss; do not repair it.** `lost_artifacts:` in the registry, read by
-`merlin.common.provenance_lost` (`load_lost`, `lost_for_digest`, state `UNRECOVERABLE`). A record says
+`merlin.common.provenance_claims` (`load_lost`, `lost_for_digest`, state `UNRECOVERABLE`). A record says
 what was lost, when, why it cannot be rebuilt and what still verifies, and it **claims** its digest: the
 loaders refuse any pin or artifact that re-declares those bytes. The two moves that look like fixes are
 worse than the loss — repointing the declaration at whatever is on disk now (every citation becomes

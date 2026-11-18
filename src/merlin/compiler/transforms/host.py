@@ -6,10 +6,14 @@ reference implementation is discovered. LLVM utilities require their original
 explicit CPU and numerical/effect choices.
 """
 
+from __future__ import annotations
+
+from merlin.compiler.transforms.host_arithmetic import SQUARED_SUM_SOURCE
 from merlin.compiler.transforms.host_broadcast import BROADCAST_SOURCE
 from merlin.compiler.transforms.host_contraction import CONTRACTION_SOURCE
 from merlin.compiler.transforms.host_integer_math import SOURCE as FINITE_INTEGER_MATH_SOURCE
-from merlin.compiler.transforms.host_reduction import SQUARED_SUM_SOURCE
+
+# ---- host --------------------------------------------------------------------------------------
 
 _COMPOSE = r"""
 def _merlin_host_ordinary_scope(operation):
@@ -91,22 +95,22 @@ def rewrite_tensor_module(
 
 def legalize_bounded_rounding(source, *, host_isa=None, combine_clamp=False):
     """Legalize closed LLVM integer observations under an explicit CPU policy."""
-    from merlin.compiler.lower.model.late_quant_rne import rewrite
+    from merlin.compiler.lower.quant.late_quant_rne import rewrite
 
     return rewrite(source, host_isa=host_isa, combine_clamp=combine_clamp)
 
 
 def legalize_constant_clamps(source):
     """Retain IEEE values while simplifying complete finite-bound clamp calls."""
-    from merlin.compiler.lower.model.constant_float_clamp import rewrite
+    from merlin.compiler.lower.quant.constant_float_clamp import rewrite
 
     return rewrite(source)
 
 
 def rewrite_fma_packets(source, *, capability, width, ordinary_nontrapping, exception_flags_unobserved):
     """Schedule source FMA calls using an explicit host CPU emitter and effects."""
-    from merlin.compiler.lower.model.constant_fma_packet import rewrite
-    from merlin.runtime.host_fma_packet import RV64GCScalarFmaCapability
+    from merlin.compiler.lower.quant.constant_fma_packet import rewrite
+    from merlin.compiler.transforms.host_arithmetic import RV64GCScalarFmaCapability
 
     if type(capability) is not RV64GCScalarFmaCapability:
         raise ValueError("explicit supported host CPU packet capability required")

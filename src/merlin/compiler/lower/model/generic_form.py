@@ -35,6 +35,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+# ---- generic_form ------------------------------------------------------------------------------
+
 
 class GenericFormError(RuntimeError):
     """A module could not be re-printed in generic form."""

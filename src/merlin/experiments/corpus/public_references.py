@@ -10,8 +10,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from merlin.development.backend.feedback import reference_baselines as baselines
-from merlin.development.backend.reference_inputs import (
+from merlin.development.backend.feedback.performance import reference_baselines as baselines
+from merlin.experiments.corpus.reference_intake import (
     ReferenceFile,
     ReferenceOrigin,
     _ordinary,
@@ -19,6 +19,8 @@ from merlin.development.backend.reference_inputs import (
     stage_references,
 )
 from merlin.experiments.definition import SpecError
+
+# ---- public_references -------------------------------------------------------------------------
 
 SCHEMA = "operator.allowed_reference_sources.v2"
 
@@ -137,7 +139,7 @@ def stage_bank(source: Path, sha256: str, destination: Path) -> dict:
     import shutil
 
     try:
-        from merlin.analysis.mining.reference_subsets import verify_bank
+        from merlin.analysis.mining.references.subsets import verify_bank
     except ImportError as exc:
         raise SpecError("CCA bank staging requires the mining workflow from 'merlin[mining]'") from exc
     try:

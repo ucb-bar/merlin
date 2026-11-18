@@ -10,25 +10,19 @@ from __future__ import annotations
 
 from importlib import import_module
 
-from merlin.compiler.dialects._common import HAS_XDSL, make_context, roundtrip, text
+from merlin.compiler.dialects.visibility import HAS_XDSL
+
+# ---- dialects ----------------------------------------------------------------------------------
 
 _CORE_NAMES = ("contract", "schedule", "interface", "runtime", "dse")
-__all__ = [
-    "HAS_XDSL",
-    "make_context",
-    "roundtrip",
-    "text",
-    "CORE_DIALECT_MODULES",
-    "get_all_dialects",
-    "make_core_context",
-    *_CORE_NAMES,
-]
 
 
 def __getattr__(name):
     # Importing a pure compiler helper must not load every dialect and runtime.
     # In an answer-masked compiler sandbox the reference runtime is deliberately absent.
-    if name == "CORE_DIALECT_MODULES":
+    if name in {"make_context", "roundtrip", "text"}:
+        value = getattr(import_module(".xdsl_context", __name__), name)
+    elif name == "CORE_DIALECT_MODULES":
         value = tuple(import_module(f".{module}", __name__) for module in _CORE_NAMES)
     elif name in _CORE_NAMES:
         value = import_module(f".{name}", __name__)
@@ -51,4 +45,4 @@ def get_all_dialects():
 
 def make_core_context():
     """A Context with Builtin + Func + every core dialect loaded."""
-    return make_context(*get_all_dialects())
+    return __getattr__("make_context")(*get_all_dialects())

@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [06-lowering, 08-running]
-code_refs: [src/merlin/compiler/build/image.py, src/merlin/compiler/build/control.py, src/merlin/compiler/build/objects.py, src/merlin/compiler/build/zephyr, src/merlin/compiler/artifact.py]
+code_refs: [src/merlin/compiler/build/image.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/objects.py, src/merlin/compiler/build/process.py, src/merlin/compiler/build/zephyr.py, src/merlin/compiler/system.py, src/merlin/compiler/records.py, src/merlin/runtime/backends/zephyr/image_build.py, src/merlin/runtime/boards/catalog.py, src/merlin/runtime/boards/image_audit.py, examples/compilation/quickstart/run.py]
 ---
 
 # 7. Build an image for the selected platform
@@ -31,12 +31,23 @@ hashes. It does not execute the program or establish numerical correctness.
 
 ## Shared image construction
 
-`compiler/build/objects.py` constructs common object-compilation commands.
-`build/control.py` emits shared C dispatch for supported wrappers.
-`build/image.py` links an explicitly selected image using `CImageLink`.
+[`compiler/build/objects.py`](../../src/merlin/compiler/build/objects.py)
+exposes `compile_llvm_object(source, destination, *, compiler, flags, run, timeout_s=None)`.
+The caller supplies the selected compiler, target flags and observed process
+runner. `build/process.py` owns bounded execution and invocation receipts for
+the shared build route.
+
+[`build/regions.py`](../../src/merlin/compiler/build/regions.py) emits shared
+C dispatch from the original selected partition and admitted callable wrappers.
+`build/completion.py` retains the original caller's platform-completion admission.
+[`build/image.py`](../../src/merlin/compiler/build/image.py) links an explicitly
+selected image using `CImageLink`.
 
 The caller supplies the compiler, flags, startup compilation, link inputs and
-`Deployment`. Startup and link order must match the selected ABI and platform.
+`Deployment`. `CImageLink` requires `compiler`, `flags`, a saved startup
+`Compilation`, its ordered `link_inputs`, and `deployment`; `context_entry` is
+optional. It rechecks the compiler/startup identities and corroborates supported
+ELF header fields. Startup and link order must match the selected ABI and platform.
 The image builder does not guess a board from the compiler backend's name.
 An explicitly selected image is optional; a valid compilation can stop at region
 artifacts when no complete image was requested.
@@ -53,15 +64,26 @@ Bare-metal and Zephyr images share compiler mechanisms but have different
 startup, memory and runtime contracts. The selected SoC affects memory regions,
 device visibility, ISA features and the available execution resources.
 
-Zephyr configuration is owned by `compiler/build/zephyr/`:
+Zephyr configuration is consolidated in
+[`compiler/build/zephyr.py`](../../src/merlin/compiler/build/zephyr.py):
 
-* `config.py` derives the selected image configuration.
-* `tree.py` reads the selected Zephyr tree's available symbols and defaults.
-* `memory.py` builds the image memory layout.
+| API | Responsibility |
+| --- | --- |
+| `TreeConfiguration` | Read symbols and unconditional literal defaults from the selected tree. |
+| `project_config`, `image_cpus`, `cpu_disable_overlay` | Derive image configuration from the selected board, tree and hart choices. |
+| `memory_plan`, `require_external_arena` | Check the declared DRAM layout and the linked image's remaining low-memory arena. |
+
+These helpers choose no compiler and execute no simulator. The saved-model
+Zephyr build route is `runtime/backends/zephyr/image_build.py:build_app`, using
+the application sources in `runtime/backends/zephyr/application.py` and an
+explicit board from the target-owned catalog.
 
 Do not copy a fixed `prj.conf` between SoCs and assume it describes the new
 system. Record the actual board/tree/toolchain selection and derived configuration.
-Hart count is part of the deployment contract when the image binds it; a runner
+`runtime/boards/image_audit.py` inspects the produced ELF against selected board
+properties. Header or memory-fit checks do not establish startup behavior,
+numerical correctness or actual device execution. Hart count is part of the
+deployment contract when the image binds it; a runner
 cannot silently override a built image's assumptions.
 
 ## Keep build outputs together

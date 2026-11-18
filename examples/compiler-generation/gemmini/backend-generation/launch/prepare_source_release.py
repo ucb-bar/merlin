@@ -13,12 +13,12 @@ from pathlib import Path
 
 import yaml
 
-from merlin.experiments.corpus import release
+from merlin.experiments.corpus import release_binding as release
 
 
 def selected_public_references(scaffold, explicit, author_profile=None):
     """Explicit no-expert profiles must never inherit a previous release's bank."""
-    from merlin.development.backend.author_profiles import resolve
+    from merlin.development.backend.authoring.profiles import resolve
 
     profile = resolve(author_profile) if author_profile else None
     if profile is not None and not profile.raw_kernel_references:
@@ -38,7 +38,7 @@ def prepare(
     public_supplement=None,
     public_program_suite=None,
     host_capability_selection=None,
-    common_substrate="merlin.common_compiler_substrate.v20",
+    common_substrate="merlin.common_compiler_substrate.v21",
     source_run=None,
     phase1_policy_descriptor=None,
     author_profile=None,
@@ -48,7 +48,7 @@ def prepare(
     operand_protocol_revision=None,
     cca_bank=None,
 ):
-    from merlin.development.targetgen.tool_profile import require_current_substrate
+    from merlin.development.targetgen.authoring.tool_profile import require_current_substrate
 
     require_current_substrate(common_substrate)
     previous, output, sdk = Path(previous), Path(output), Path(sdk)
@@ -191,8 +191,8 @@ def main():
     )
     p.add_argument(
         "--common-substrate",
-        default="merlin.common_compiler_substrate.v20",
-        choices=("merlin.common_compiler_substrate.v20",),
+        default="merlin.common_compiler_substrate.v21",
+        choices=("merlin.common_compiler_substrate.v21",),
         help="explicit prospective source epoch; only the current common substrate is supported",
     )
     p.add_argument(

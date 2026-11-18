@@ -614,7 +614,7 @@ references:
       sealed: false
       sealed_reason: >-
         The run IS bound to its bytes -- this queue revision records `stage_from_sha256`, which the
-        699-731 range did not -- but `merlin.analysis.perf.firesim_receipt` accepts only the v1 policy shape,
+        699-731 range did not -- but `merlin.analysis.perf.measurement.firesim_receipt` accepts only the v1 policy shape,
         and this run was gated against the v2 shape (per-group checksums), which is the stronger
         oracle. `observed`, for that reason alone.
     measured:

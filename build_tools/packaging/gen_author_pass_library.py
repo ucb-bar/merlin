@@ -4,8 +4,8 @@
 The catalog (``src/merlin/resources/optimizations/authoring.json``) lists every reusable mechanism with its
 facet, required traits, applicability, adapter obligations and evidence. The backend author never read
 it as a menu of callable passes, so this generator turns it into an index skill
-(``author_skills/pass-library/SKILL.md``) and one reference file per facet
-(``author_skills/pass-library/reference/<facet>.md``). Each entry is joined with the compiler source
+(``resources/skills/pass-library/SKILL.md``) and one reference file per facet
+(``resources/skills/pass-library/reference/<facet>.md``) in the built package. Each entry is joined with the compiler source
 (the symbol's signature and the first sentence of its docstring, read with ``ast``) and with one
 repository test that calls the symbol, found by scanning the test trees.
 
@@ -70,7 +70,7 @@ def _screen(text, forbidden) -> str:
 
 
 def _resource_facets() -> list[tuple[str, str, tuple[str, ...]]]:
-    from merlin.development.backend.feedback import mechanism_hints
+    from merlin.development.backend.feedback.guidance import mechanism_hints
 
     rows = []
     for label, probe in RESOURCE_PROBES:
@@ -166,7 +166,7 @@ def _symbol(root: Path, path: str, symbol: str, seen=frozenset()) -> dict:
 
 def current_binding(compiler: dict, root: Path = ROOT) -> dict:
     """Render current public owners without rewriting issued catalog records."""
-    path = root / "src/merlin/development/backend/catalog_owners.py"
+    path = root / "src/merlin/development/backend/authoring/library/catalog_owners.py"
     spec = importlib.util.spec_from_file_location("_pass_library_source_owner", path)
     if spec is None or spec.loader is None:
         raise ValueError("current compiler source owner is unavailable")

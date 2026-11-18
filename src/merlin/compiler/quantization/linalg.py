@@ -10,6 +10,8 @@ from typing import Any
 
 from merlin.compiler.ir.provenance import carry_provenance
 
+# ---- linalg ------------------------------------------------------------------------------------
+
 _DEQUANT_KINDS = {
     "quant_ext.dequantize_per_tensor": "per_tensor",
     "quant_ext.dequantize_per_channel": "per_channel",

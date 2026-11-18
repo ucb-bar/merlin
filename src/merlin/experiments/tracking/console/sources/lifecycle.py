@@ -29,7 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import bounded_glob, clean, epoch, mtime, num
+from merlin.experiments.tracking.console.snapshot import bounded_glob, clean, epoch, mtime, num
 
 STARTUP_SCHEMA = "merlin.author_startup_stage.v1"
 MAX_TURNS = 64

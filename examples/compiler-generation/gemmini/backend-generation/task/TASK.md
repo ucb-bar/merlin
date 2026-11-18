@@ -41,8 +41,8 @@ but are **diagnostic only** (never gate pass/fail). You pass when **all required
 pass**. Hidden capsules are run only after your submission is frozen.
 
 ## Hard rules (integrity — your submission must satisfy these)
-- `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.reference` /
-  `merlin.runtime.simulator` / `reference_outputs` in your sources.
+- `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.engine.reference` /
+  `merlin.runtime.engine.simulator` / `reference_outputs` in your sources.
 - The device implementation must be **MLIR-lowered RoCC** — **no C compute kernels**, **no copying or
   calling bareMetalC**, **no high-level vendor C library kernels** as the
   answer. Integer math is **exact** (no tolerance).

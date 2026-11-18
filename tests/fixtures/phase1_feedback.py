@@ -10,12 +10,12 @@ from merlin.common.paths import checkout_root, module_source_path
 from merlin.development.backend.context import InvocationContext
 
 MODULES = {
-    "loop_grading": "merlin.development.backend.feedback.loop_grading",
-    "grade_agent_run": "merlin.development.backend.feedback.formal",
-    "freeze_run": "merlin.development.backend.feedback.freeze",
-    "qa_check": "merlin.development.backend.feedback.qa",
-    "agent_selfcheck": "merlin.development.backend.feedback.selfcheck",
-    "tier_promote": "merlin.development.backend.feedback.promotion",
+    "loop_grading": "merlin.development.backend.feedback.grading.loop_grade",
+    "grade_agent_run": "merlin.development.backend.feedback.grading.formal",
+    "freeze_run": "merlin.development.backend.feedback.grading.freeze",
+    "qa_check": "merlin.development.backend.feedback.grading.qa",
+    "agent_selfcheck": "merlin.development.backend.feedback.selfcheck.adapters",
+    "tier_promote": "merlin.development.backend.feedback.certification.promotion",
     "selfcheck_broker": "merlin.development.backend.brokers.selfcheck",
     "simjob_broker": "merlin.development.backend.brokers.simjob",
 }

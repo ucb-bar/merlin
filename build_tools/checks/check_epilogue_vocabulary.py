@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: the command-buffer epilogue vocabulary has ONE definition, and nothing has drifted from it.
 
-The definition is :data:`merlin.runtime.commandbuffer.EPILOGUE_STAGES`. Six representations derive from
+The definition is :data:`merlin.runtime.engine.command_buffer.EPILOGUE_STAGES`. Six representations derive from
 it and are checked here:
 
   1. the strict JSON validator's ``epilogue`` enum (``src/merlin/resources/contracts/schemas/command_buffer.schema.json``)
@@ -37,7 +37,7 @@ _HERE = Path(__file__).resolve()
 _ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_ROOT / "merlin" / "python"))
 
-from merlin.runtime.commandbuffer import EPILOGUE_STAGES  # noqa: E402
+from merlin.runtime.engine.command_buffer import EPILOGUE_STAGES  # noqa: E402
 
 _SCHEMA = _ROOT / "src/merlin/resources/contracts" / "schemas" / "command_buffer.schema.json"
 #: The prose ABI documents, and which opcode's epilogue line in each carries the FULL vocabulary.
@@ -143,7 +143,7 @@ def check(write: bool = False) -> list[str]:
 
     # 4/5. the in-tree dialect verifiers
     from merlin.compiler.dialects import interface as IFACE
-    from merlin.compiler.dialects.targets import factory as FACTORY
+    from merlin.compiler.dialects.lowering import target_stage as FACTORY
 
     for mod in (IFACE, FACTORY):
         got = set(getattr(mod, "KNOWN_EPILOGUE"))
@@ -151,7 +151,7 @@ def check(write: bool = False) -> list[str]:
             problems.append(f"{mod.__name__}.KNOWN_EPILOGUE {sorted(got)} != EPILOGUE_STAGES {canon}")
 
     # 6. the emitted target-dialect template
-    from merlin.development.targetgen.generate import xdsl as GEN
+    from merlin.development.targetgen.generation import xdsl_dialect as GEN
 
     arts = GEN.generate(
         {

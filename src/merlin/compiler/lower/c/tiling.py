@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from merlin.compiler.semantic.tiled_softmax import RowSoftmaxTiling
-from merlin.compiler.transforms.contraction_mnk import LoopedMNKTiling
 from merlin.compiler.transforms.panels import StreamedMNKTiling
+from merlin.compiler.transforms.tiling import LoopedMNKTiling
 
 
 def render_looped_seed_c(plan: LoopedMNKTiling, prefix: str, pad_element: bytes) -> str:

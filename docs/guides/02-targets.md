@@ -5,7 +5,7 @@ status: current
 owner: targetgen
 last_verified: 2026-11-09
 related: [01-inputs, 03-preparation]
-code_refs: [src/merlin/target/spec/load.py, src/merlin/target/system/topology.py, src/merlin/compiler/backend/service.py, src/merlin/compiler/backend/load.py, src/merlin/development/targetgen/target_registry.py, src/merlin/development/targetgen/rtl/facts.py]
+code_refs: [src/merlin/target/spec/expansion.py, src/merlin/target/system.py, src/merlin/compiler/backend/providers.py, src/merlin/target/registry/identity.py, src/merlin/target/rtl/facts.py, src/merlin/target/rtl/extraction]
 ---
 
 # 2. Select a target system and backend
@@ -47,7 +47,7 @@ from merlin.api import inspect_spec
 record = inspect_spec("examples/compiler-generation/gemmini/target/software-spec.yaml", expanded=True)
 ```
 
-Compact specifications are loaded through `target/spec/load.py` and expanded into
+Compact specifications are loaded through `target/spec/expansion.py` and expanded into
 the view consumed by existing code. Inspection does not execute authored Python
 or establish that a backend implements every declared operation.
 
@@ -91,18 +91,19 @@ are different evidence. A backend can propose an implementation only under the
 selected numerical, memory and resource contract. It cannot loosen application
 accuracy requirements to make its implementation acceptable.
 
-RTL extraction uses the configured ModeLIR/CIRCT tools through
-`targetgen/rtl/circt_introspect.py` and `introspect.py`. Start with an explicit
-hardware source selection. Retain the reader/tool identities and unknown fields;
-do not replace a missing fact with a guessed capacity or datatype.
+RTL extraction lives in `target/rtl/extraction/`. `circt_facts.py` joins selected
+ModelIR/CIRCT discovery and declared source readers; `census.py` reads structural
+FIRRTL evidence. Start with an explicit hardware source selection. Retain the
+reader/tool identities and unknown fields; do not replace a missing fact with a
+guessed capacity or datatype.
 
 ## Open the implementation
 
 | Responsibility | Source |
 | --- | --- |
-| Authored spec loading and expansion | [`target/spec/load.py`](../../src/merlin/target/spec/load.py) |
-| Resource and memory topology | [`system/topology.py`](../../src/merlin/system/topology.py) |
-| Installed compiler/runtime selection | [`backend/service.py`](../../src/merlin/compiler/backend/service.py) |
-| Provider roles and selected resources | [`backend/load.py`](../../src/merlin/compiler/backend/load.py) |
-| Target-definition search order | [`target_registry.py`](../../src/merlin/targetgen/target_registry.py) |
-| Facts loading and validation | [`rtl/facts.py`](../../src/merlin/targetgen/rtl/facts.py) |
+| Authored spec loading and expansion | [`target/spec/expansion.py`](../../src/merlin/target/spec/expansion.py) |
+| Resource and memory topology | [`target/system.py`](../../src/merlin/target/system.py) |
+| Installed compiler/runtime selection and provider roles | [`backend/providers.py`](../../src/merlin/compiler/backend/providers.py) |
+| Target-definition search order | [`target/registry/identity.py`](../../src/merlin/target/registry/identity.py) |
+| Facts loading and validation | [`target/rtl/facts.py`](../../src/merlin/target/rtl/facts.py) |
+| Selected discovery and structural census | [`target/rtl/extraction/`](../../src/merlin/target/rtl/extraction) |

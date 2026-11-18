@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+# ---- catalog_effects ---------------------------------------------------------------------------
+
 CAPABILITY_EFFECTS = {
     "segmented_k_retained_operand_pipeline": dict(
         families=("dense",),

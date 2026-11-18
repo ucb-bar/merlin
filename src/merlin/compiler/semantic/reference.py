@@ -20,7 +20,7 @@ from merlin.compiler.semantic.model import (
     TensorType,
     pointwise_identity_maps,
 )
-from merlin.compiler.semantic.reference_values import (
+from merlin.compiler.semantic.scalar_reference import (
     _BF16_RELU_ATTRS,
     TensorValue,
     _checked_f32_pointwise_maps,
@@ -32,6 +32,8 @@ from merlin.compiler.semantic.reference_values import (
     _matmul_maps,
     _wrap_i32,
 )
+
+# ---- reference ---------------------------------------------------------------------------------
 
 ReferencePrimitive = Callable[[SemanticNode, tuple[TensorValue, ...]], TensorValue]
 
@@ -90,7 +92,7 @@ def evaluate_graph(
             values[node.id] = evaluate_scalar_region(node, operands)
             continue
         if node.op == "mask":
-            from merlin.compiler.semantic.masks import evaluate_mask
+            from merlin.compiler.semantic.linalg.scalar_regions import evaluate_mask
 
             values[node.id] = evaluate_mask(node, operands)
             continue

@@ -18,7 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from merlin.compiler.quantization import methodology as M
-from merlin.compiler.quantization import static as Q
+from merlin.compiler.quantization import recipe as Q
+
+# ---- preparation -------------------------------------------------------------------------------
 
 SCHEMA = "merlin.application_preparation_profile.v1"
 PRESERVE_REQUEST = "preserve_request_v1"
@@ -46,7 +48,7 @@ def validate_profile(document: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("application preparation profile has an unknown compatibility_policy")
     body["methodology"] = M.validate(body.get("methodology"))
     if "gptq_weights" in body:
-        from merlin.development.targetgen import _gptq
+        from merlin.compiler.quantization.torchao.rewrites import _gptq
 
         if not isinstance(body["gptq_weights"], Mapping):
             raise ValueError("gptq_weights must state the existing GPTQ parameters")

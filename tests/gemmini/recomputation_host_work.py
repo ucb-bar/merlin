@@ -12,12 +12,23 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import IntegerAttr, IntegerType, i64
 from xdsl.ir import Block
 
-from merlin.analysis.perf import address_loop_control, constant_control_cfg, host_cfg_activity, host_cfg_index
-from merlin.compiler.dialects.lowering import integer_constant_eval
+from merlin.analysis.programs import (
+    cfg_activity as address_loop_control,
+)
+from merlin.analysis.programs import (
+    cfg_activity as host_cfg_activity,
+)
+from merlin.analysis.programs import (
+    constant_control as constant_control_cfg,
+)
+from merlin.analysis.programs import (
+    host_cfg_index,
+)
+from merlin.compiler.dialects.lowering import analyses as integer_constant_eval
 from merlin.compiler.frontend import linalg_mlir
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.development.targetgen.oot_starterkit import llvm_context
-from merlin.verification import host_call_alignment as host_call_alignment
+from merlin.compiler.ir import llvm_context
+from merlin.verification.host import llvm_symbols as host_call_alignment
 
 
 def implementation_paths():

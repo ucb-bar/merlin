@@ -15,7 +15,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import num, obj
+from merlin.experiments.tracking.console.snapshot import num, obj
+
 from .certification import _held
 from .insight_common import duration, line, panel, previous_workspace, row, series, table
 

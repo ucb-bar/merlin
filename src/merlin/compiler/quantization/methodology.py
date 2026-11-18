@@ -2,7 +2,7 @@
 
 A recipe (:mod:`merlin.compiler.quantization.capabilities`) says which number formats a unit computes. That is
 not enough to quantize a model the way the unit computes it. A contraction unit's output path
-(:mod:`merlin.development.targetgen.output_path`) fixes much more: which value is preloaded into the
+(:mod:`merlin.target.capabilities.output_path`) fixes much more: which value is preloaded into the
 accumulator (a bias), which rectifier runs in which domain, how many columns share ONE scale, the
 rounding, the clamp, the window maximum. A model quantized without those facts computes a
 different function: a float bias off the accumulator grid, or three float roundings where the unit
@@ -34,8 +34,10 @@ import math
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.compiler.quantization import static as QR
-from merlin.development.targetgen import output_path as OP
+from merlin.compiler.quantization import recipe as QR
+from merlin.target.capabilities import output_path as OP
+
+# ---- methodology -------------------------------------------------------------------------------
 
 SCHEMA = "merlin.quantization_methodology.v1"
 EPILOGUE_SCHEMA = "integer_epilogue_v1"
@@ -219,7 +221,7 @@ def variants_for(methodology: Mapping[str, Any], model: str | None) -> list[dict
 
 
 def _format(token: Any) -> str | None:
-    from merlin.common import quant_formats as qf
+    from merlin.common import target_data as qf
 
     text = str(token or "")
     for candidate in (text, "int" + text[1:] if text[:1] == "i" and text[1:].isdigit() else text):
@@ -529,7 +531,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
     import argparse
     from pathlib import Path
 
-    from merlin.development.targetgen.software_spec import load_software_spec
+    from merlin.target.spec.software import load_software_spec
 
     parser = argparse.ArgumentParser(
         prog="python -m merlin.compiler.quantization.methodology", description=derive.__doc__

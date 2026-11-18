@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, fields
 from typing import Any
 
+# ---- groups ------------------------------------------------------------------------------------
+
 
 def _group_identity(groups, operations) -> str:
     ordinals = {id(op): ordinal for ordinal, op in enumerate(operations)}
@@ -75,23 +77,27 @@ class GroupPlan:
 
     def report(self) -> dict:
         """Describe the selected groups without another grouping decision."""
-        from merlin.compiler.dialects.lowering import compute_groups
+        from merlin.compiler.partition.groups import compute_groups
+        from merlin.compiler.partition.groups import plan_compute_groups as _merlin_plan_compute_groups_1
 
         self.require_current(self.source, self.target, weight_args=self.weight_args)
-        result = compute_groups.plan(self.source, self.target, oracle=self.oracle, groups=self.groups)
+        result = _merlin_plan_compute_groups_1.plan(self.source, self.target, oracle=self.oracle, groups=self.groups)
         self.require_current(self.source, self.target, weight_args=self.weight_args)
         return result
 
 
 def plan_groups(module, target: str, *, oracle=None, weight_args=None) -> GroupPlan:
     """Select groups once using the existing source and target legality owner."""
-    from merlin.compiler.dialects.lowering import compute_groups
+    from merlin.compiler.partition.groups import compute_groups
+    from merlin.compiler.partition.groups import (
+        formation_compute_groups as _merlin_formation_compute_groups_2,
+    )
     from merlin.compiler.transforms.certificates import ir_digest
 
     before = ir_digest(module)
     operations = tuple(module.walk())
     oracle = oracle or compute_groups.TargetOracle(target)
-    groups = tuple(compute_groups.form_groups(module, target, oracle=oracle))
+    groups = tuple(_merlin_formation_compute_groups_2.form_groups(module, target, oracle=oracle))
     current = tuple(module.walk())
     if (
         ir_digest(module) != before

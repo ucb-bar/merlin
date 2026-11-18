@@ -64,7 +64,10 @@ CONSTANTS = {
     "_INHERITED_META",
 }
 _ROOT = Path(__file__).resolve().parent
-_TARGETGEN = _ROOT.parents[2] / "development" / "targetgen"
+_HELPER_FILES = {name: _ROOT / "rewrites" / (name + ".py") for name in DEPENDENCIES}
+_HELPER_FILES["quant_layer_plan"] = _ROOT.parent / "quant_layer_plan.py"
+_HELPER_MODULES = {name: "merlin.compiler.quantization.torchao.rewrites." + name for name in DEPENDENCIES}
+_HELPER_MODULES["quant_layer_plan"] = "merlin.compiler.quantization.quant_layer_plan"
 _LOCK = threading.RLock()
 
 
@@ -79,9 +82,9 @@ def source_identity():
     files = (
         Path(__file__).resolve(),
         _ROOT / "__init__.py",
-        _TARGETGEN / "_recipe_quantizer.py",
+        _ROOT / "_recipe_quantizer.py",
         *(_ROOT / (name + ".py") for name in OWNERS),
-        *(_TARGETGEN / (name + ".py") for name in DEPENDENCIES),
+        *(_HELPER_FILES[name] for name in DEPENDENCIES),
     )
     return tuple((str(path), hashlib.sha256(_bytes(path)).hexdigest()) for path in files)
 
@@ -94,10 +97,10 @@ def helper(name):
     """Load only an admitted sibling file; preloaded foreign leaves refuse."""
     if name not in DEPENDENCIES:
         raise ImportError(f"recipe dependency is not admitted: {name}")
-    path = _TARGETGEN / (name + ".py")
+    path = _HELPER_FILES[name]
     with _LOCK:
         selected = None
-        for spelling in ("merlin.development.targetgen." + name, name):
+        for spelling in (_HELPER_MODULES[name], name):
             existing = sys.modules.get(spelling)
             if existing is None:
                 continue
@@ -108,7 +111,7 @@ def helper(name):
             selected = existing
         if selected is None:
             before = _bytes(path)
-            canonical = "merlin.development.targetgen." + name
+            canonical = _HELPER_MODULES[name]
             spec = importlib.util.spec_from_file_location(canonical, path)
             selected = importlib.util.module_from_spec(spec)
             sys.modules[name] = selected
@@ -126,7 +129,7 @@ def helper(name):
             raise ImportError(f"selected recipe dependency changed after loading: {path}")
         selected.__recipe_source_sha256__ = observed
         sys.modules[name] = selected
-        sys.modules["merlin.development.targetgen." + name] = selected
+        sys.modules[_HELPER_MODULES[name]] = selected
         return selected
 
 

@@ -1,6 +1,6 @@
 """Muon SIMT reference backend — the OUT-OF-TREE package home (evicted from ``runtime/backends/``).
 
-Loaded by :func:`merlin.runtime.backends.base._load_oot_backend` as ``merlin._oot_backends.muon`` because
+Loaded by :func:`merlin.runtime.backends.registry._load_oot_backend` as ``merlin._oot_backends.muon`` because
 the muon target contract declares ``plugin.backend: backend`` and the discovery pass walks curated
 reference targets (see base._oot_backend_modules). Registering under THIS PACKAGE's name makes
 ``base.get_backend("muon")`` return this package — exposing both the public backend API (re-exported from
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import importlib
 
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass, register
+from merlin.runtime.backends.registry import BackendInfo, BackendKind, TargetClass, register
 
 # Import ``muon`` — runs its module-level ``register(...)`` and re-exports its public API onto the package
 # so ``get_backend("muon").available`` / ``.compile_kernel_forkfree`` / ``.run_elf`` / ``.MuonUnavailable``

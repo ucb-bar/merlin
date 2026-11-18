@@ -1,6 +1,6 @@
 """The legit TOOLCHAIN bound back into the deny-by-default sandbox — tools+infra, never answers.
 
-The base :func:`merlin.development.targetgen.sandbox.bwrap.base_argv` tmpfs-masks all of ``/scratch*``, so the
+The base :func:`merlin.development.targetgen.sandbox.grants.base_argv` tmpfs-masks all of ``/scratch*``, so the
 repo's python/venv and every simulator toolchain disappear. This module binds the LEGIT tools back over
 those masks and sets the env to find them, PARAMETERIZED BY THE DESCRIPTOR — never a per-target hand-list:
 
@@ -11,7 +11,7 @@ those masks and sets the env to find them, PARAMETERIZED BY THE DESCRIPTOR — n
     that needs nothing beyond the universal set has no row: it resolves to the empty family.
   * The CURATED baremetal C harness — bound + exported iff the descriptor declares one.
 
-The compute-unit ``kind`` (resolved from the capability manifest via :mod:`merlin.development.targetgen.families`)
+The compute-unit ``kind`` (resolved from the capability manifest via :mod:`merlin.target.capabilities.families`)
 is the cross-check: a ``systolic`` target's RTL tiers imply an RTL-sim toolchain, a ``simt``/``vector``
 target does not. It drives :func:`required_tool_probes` so the isolation test asserts exactly the tools
 that target's kind needs — again with no target name anywhere.
@@ -29,7 +29,9 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from merlin.common.paths import compat_lib_dir, env, ext_path, python_source_dir, repo_root
-from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.target.registry.experiment_descriptor import TargetExperiment
+
+# ---- toolchain ---------------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------- universal toolchain
 RESOLVE_DIR = "/run/systemd/resolve"  # /etc/resolv.conf -> here; else DNS fails in bwrap
@@ -168,14 +170,14 @@ NESTED_SESSION_VARS = (
 def paths_for_bundle(ws: Path, bundle: dict, *, paths: ToolchainPaths | None = None) -> ToolchainPaths:
     """Select an already granted public SDK import root from its frozen profile."""
     from merlin.common.digest import sha256_file
-    from merlin.development.targetgen.sandbox import bwrap
-    from merlin.development.targetgen.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.authoring.tool_profile import verify_tool_profile
+    from merlin.development.targetgen.sandbox import grants as bwrap
 
     paths = paths if paths is not None else ToolchainPaths.from_checkout()
     profile = verify_tool_profile(bundle)
     author = bundle.get("author_profile")
     if author is not None:
-        from merlin.development.backend.author_profiles import resolve, verify_bundle
+        from merlin.development.backend.authoring.profiles import resolve, verify_bundle
 
         verify_bundle(resolve(author.get("name")), bundle)
         # The legacy SDK remains a host-only judge input. Its metadata cannot

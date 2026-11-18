@@ -16,8 +16,7 @@ golden is ever involved — asm encodes the syntax YOU chose; disasm/lint inspec
   # LITE DEBUGGER (self-hosted-ISA / external_backend target): run your kernel.S on the functional model
   # to instruction N, then dump machine state + named DRAM windows (watch a region fill or NOT as your
   # DMA/compute advances). The OUTPUT region is withheld (that's the answer); debug INPUT/scratch regions.
-  python isa_tools.py debug submission/kernel.S --capsule A1_mvin_mvout --run-to 40 \
-         --region 0x80001000:256 --region 0x80002000:256
+  python isa_tools.py debug submission/kernel.S --capsule A1_mvin_mvout --run-to 40          --region 0x80001000:256 --region 0x80002000:256
   # LITE DEBUGGER (RoCC / command-buffer target): answer YOUR command_buffer.json on the
   # RTL-derived arc model and see per-op HARDWARE STATE (cycles + scratchpad/accumulator/DRAM-refill
   # counts per command + the RTL fingerprint). The output VALUES and pass/fail verdict are withheld
@@ -33,6 +32,8 @@ import os
 import sys
 import time
 from pathlib import Path
+
+# ---- isa ---------------------------------------------------------------------------------------
 
 
 def _text_of(arg: str) -> str:

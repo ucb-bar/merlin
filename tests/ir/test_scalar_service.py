@@ -4,7 +4,7 @@ import pytest
 
 from merlin import api
 from merlin.compiler.backend import scalar
-from merlin.compiler.request import CompileOptions, CompileRequest, Source
+from merlin.compiler.compilation import CompileOptions, CompileRequest, Source
 
 SOURCE = "module {func.func @identity(%x: i32) -> i32 {func.return %x : i32}}"
 LAYOUT = "e-p:64:64-i64:64-n32:64-S128"
@@ -41,14 +41,14 @@ def test_public_export_system_compilation_plans_bound_weights_runs_and_refuses_u
     import subprocess
     from pathlib import Path
 
-    from merlin.compiler.artifact import Artifact, Compilation, Deployment
+    from merlin.common.external_tools import capture_pin, capture_python_path, root
     from merlin.compiler.build.image import CImageLink
+    from merlin.compiler.compilation import Artifact, Compilation, Deployment
     from merlin.compiler.lower.model import toolchain
     from merlin.compiler.lower.model.target_data_layout import observe_index_width
     from merlin.compiler.system import SystemCompiler, scalar_cpu
-    from merlin.integrations.model2mlir import capture_pin, capture_python_path, root
-    from merlin.runtime import linux
-    from merlin.target.system.topology import select_topology
+    from merlin.runtime.execution import linux_runner as linux
+    from merlin.target.system import select_topology
 
     checkout = root()
     producer = capture_python_path(checkout=checkout)

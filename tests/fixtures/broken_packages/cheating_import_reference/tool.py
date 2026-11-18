@@ -2,7 +2,7 @@
 import json
 import sys
 
-from merlin.runtime.reference import reference_outputs  # INTEGRITY VIOLATION
+from merlin.runtime.engine.reference import reference_outputs  # INTEGRITY VIOLATION
 
 flags = [a for a in sys.argv[1:] if a.startswith("-")]
 pos = [a for a in sys.argv[1:] if not a.startswith("-")]

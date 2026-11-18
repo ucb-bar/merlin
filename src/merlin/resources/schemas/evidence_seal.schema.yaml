@@ -7,7 +7,7 @@ purpose: >-
   missing or tampered file -- including members no other record pins -- plus what immutability the
   host granted. Sealing clears write bits and asks for the immutable attribute (chattr +i); a seal
   records whether that was granted rather than claiming it. Its `protects` list makes the sealed
-  tree cited evidence for every cleanup that consults merlin.common.cited_evidence.
+  tree cited evidence for every cleanup that consults merlin.common.storage.retention.
 required_top_level_fields:
   - schema
   - root
@@ -21,7 +21,7 @@ required_top_level_fields:
 producer: merlin.experiments.corpus.evidence_custody.seal
 consumers:
   - merlin.experiments.corpus.evidence_custody.verify
-  - merlin.common.cited_evidence (protects)
+  - merlin.common.storage.retention (protects)
 validation_notes: >-
   `schema` is merlin.evidence_seal.v1. `members` maps each path relative to `root` to its sha256 and
   byte count. `immutability.read_only` counts files and directories made read-only;

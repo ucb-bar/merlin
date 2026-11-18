@@ -13,11 +13,13 @@ from struct import pack
 from xdsl.dialects.builtin import FloatAttr, StringAttr, TensorType
 
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.semantic.linalg_bridge import (
+from merlin.compiler.semantic.linalg.linalg_bridge import (
     LinalgBridgeError,
     _named_matmul_maps_are_default,
     _source_f32_batched_matmul,
 )
+
+# ---- intake ------------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)

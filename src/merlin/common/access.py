@@ -12,9 +12,14 @@ import contextlib
 import os
 import sys
 import threading
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.machinery import all_suffixes
 from pathlib import Path, PurePosixPath
+
+from merlin.common.source_aliases import MODULE_RELOCATIONS as _MODULE_RELOCATIONS
+
+# ---- access ------------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
@@ -44,6 +49,12 @@ PYTHON_SOURCE_ROOTS = (
 
 # This is the existing public input grammar exception, NOT an exemption for the core or an extension.
 PUBLIC_INPUT_MODULE = "merlin.compiler.dialects.interface"
+PUBLIC_INPUT_CONTRACT_MODULES = (
+    PUBLIC_INPUT_MODULE,
+    "merlin.compiler.dialects.visibility",
+    "merlin.compiler.ir.interface_contract",
+    "merlin.compiler.ir.readout",
+)
 
 
 # The transcript audit and every consumer of its recorded evidence share one vocabulary.
@@ -129,6 +140,24 @@ AUTHOR_WITHHELD_PREFIXES = (
 )
 
 
+# Exact moved leaves, not their entire new public parent packages.
+AUTHOR_WITHHELD_PREFIXES += (
+    "merlin.analysis.observation.matrix_units",
+    "merlin.analysis.perf.measurement.authority",
+    "merlin.analysis.programs.work",
+    "merlin.compiler.build.saved_model",
+    "merlin.compiler.lower.host.host_policy",
+    "merlin.development.targetgen.execution.host.common_transforms",
+    "merlin.development.targetgen.generation.generated_target",
+    "merlin.development.targetgen.generation.load",
+    "merlin.development.targetgen.generation.validation_validate",
+    "merlin.runtime.engine.reference",
+    "merlin.runtime.engine.simulator",
+    "merlin.runtime.execution.saved_model",
+    "merlin.verification.references.saved_model",
+)
+
+
 def author_withheld(module: str) -> bool:
     """Whether a module lies inside a package withheld from every compiler author."""
     return any(module_matches(module, prefix) for prefix in AUTHOR_WITHHELD_PREFIXES)
@@ -139,7 +168,7 @@ def is_harness_module(module: str) -> bool:
 
 
 def is_public_input_module(module: str) -> bool:
-    return module_matches(module, PUBLIC_INPUT_MODULE)
+    return module_matches(module, PUBLIC_INPUT_MODULE) or module in PUBLIC_INPUT_CONTRACT_MODULES
 
 
 def module_name_for(rel_path: str) -> str | None:
@@ -177,6 +206,9 @@ class ModuleAccess:
     directory: bool = False
 
 
+# Relocated implementations retain the access class of their issued identity.
+
+
 def _module(module: str, origin: str, *, directory: bool = False, aliases: tuple[str, ...] = ()) -> ModuleAccess:
     # The staged evaluation split retains the targetgen tail; aliases are DENIES, never new grants.
     modules = (module, *aliases)
@@ -191,6 +223,7 @@ def _module(module: str, origin: str, *, directory: bool = False, aliases: tuple
         for name in modules
         if module_matches(name, "merlin_experiments")
     )
+    modules += tuple(alias for name in modules for alias in _MODULE_RELOCATIONS.get(name, ()))
     return ModuleAccess(module, origin, tuple(dict.fromkeys(modules)), directory)
 
 
@@ -422,6 +455,12 @@ MODULE_ACCESS = (
     ),
     _module("merlin.development.targetgen.coverage_report", "grader"),
     _module("merlin.development.targetgen.eval", "grader", directory=True),
+    # Independent MX arithmetic reference; never part of candidate compiler support.
+    _module(
+        "merlin.verification.references.microscaling_flash",
+        "oracle",
+        aliases=("merlin.development.targetgen.mx_flash_ref",),
+    ),
 )
 
 
@@ -689,3 +728,67 @@ KEY_FILENAME = "recovery_key.yaml"
 KEY_ENV = "MERLIN_RECOVERY_KEY"
 KEY_TOPIC = "perf-recovery"
 KEY_TOPIC_FOLDED = ("perf-studies", "recovery")
+
+
+# ---- path_scrub --------------------------------------------------------------------------------
+# Scrub host filesystem paths out of text that crosses into an agent-visible document.
+#
+# An error message from a build or a simulator routinely names files outside the agent's work tree, and
+# quoting it verbatim would disclose host layout the agent has no use for. This replaces
+# every absolute path in ``text`` with :data:`TOKEN`, except a path under one of the ``keep`` roots (the
+# agent's own visible work tree), and first rewrites any ``rewrite`` prefix (a host-private snapshot of
+# that tree) to the root the agent knows it by.
+#
+# Structural, not pattern-based: a path starts with ``/`` at the beginning of the text or after a
+# delimiter, and runs to the next delimiter. Nothing here names a host, a user or a directory.
+
+TOKEN = "<host-path>"
+
+#: Characters that end a path, or may sit immediately before one.
+_DELIMITERS = frozenset(" \t\r\n'\"`()[]{}<>,;=|")
+
+
+def _norm(root: str | Path) -> str:
+    text = str(root)
+    return text.rstrip("/") if text != "/" else text
+
+
+def scrub_host_paths(
+    text: str,
+    *,
+    keep: Sequence[str | Path] = (),
+    rewrite: Mapping[str | Path, str | Path] | None = None,
+) -> str:
+    """``text`` with every absolute path outside ``keep`` replaced by :data:`TOKEN`."""
+    if not text:
+        return text
+    roots = sorted((_norm(k) for k in keep if str(k)), key=len, reverse=True)
+    mapping = sorted(((_norm(a), _norm(b)) for a, b in (rewrite or {}).items()), key=lambda p: -len(p[0]))
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        char = text[i]
+        if char == "/" and (i == 0 or text[i - 1] in _DELIMITERS or text[i - 1] == ":"):
+            j = i
+            while j < n and text[j] not in _DELIMITERS:
+                j += 1
+            if j == i + 1:  # a bare slash is not a path
+                out.append(char)
+                i += 1
+                continue
+            path = text[i:j]
+            trailing = ""
+            while path and path[-1] in ".:":
+                trailing = path[-1] + trailing
+                path = path[:-1]
+            for source, target in mapping:
+                if path == source or path.startswith(source + "/"):
+                    path = target + path[len(source) :]
+                    break
+            visible = any(path == root or path.startswith(root + "/") for root in roots)
+            out.append((path if visible else TOKEN) + trailing)
+            i = j
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)

@@ -9,19 +9,27 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from merlin.capture.artifacts import _MODEL_CAPTURE_ABI_VERSION, CapsuleArtifacts, M2MUnavailable, _float_reference_of
-from merlin.capture.cachekey import capture_slot
+from merlin.capture.artifacts import (
+    _MODEL_CAPTURE_ABI_VERSION,
+    CapsuleArtifacts,
+    M2MUnavailable,
+    _float_reference_of,
+    capture_slot,
+)
 from merlin.capture.loaders import build_loader_src
-from merlin.capture.numerics import _DEF_ATOL, _DEF_RTOL
+from merlin.capture.preparation import cache as capture_cache
+from merlin.capture.preparation.diagnostics import stderr_cause as _stderr_cause
 from merlin.capture.receipts import (
+    _DEF_ATOL,
+    _DEF_RTOL,
     _require_integer_contraction,
     _require_materialized_contraction,
     _require_pt2e_integerization_receipt,
     _static_pt2e_model,
 )
 from merlin.common.paths import module_source_path, repo_root
-from merlin.development.targetgen import capture_cache
-from merlin.development.targetgen._capture_diagnostics import stderr_cause as _stderr_cause
+
+# ---- pytorch -----------------------------------------------------------------------------------
 
 
 def _m2m_dir() -> Path:
@@ -31,14 +39,14 @@ def _m2m_dir() -> Path:
     not one machine's home directory -- callers already treat a non-existent path as "not
     available" and skip, and that behaviour is preserved.
     """
-    from merlin.integrations.model2mlir import root
+    from merlin.common.external_tools import root
 
     return root(default=repo_root().parent / "model2MLIR")
 
 
 def _m2m_python(*, checkout: Path | None = None) -> Path:
     """Shared interpreter selection with this edge's historical sibling default."""
-    from merlin.integrations.model2mlir import capture_python_path
+    from merlin.common.external_tools import capture_python_path
 
     return capture_python_path(checkout=checkout if checkout is not None else _m2m_dir())
 
@@ -217,7 +225,7 @@ class PytorchRefSource:
         # pin: its integer shifts and floor divisions only lower exactly through the decompositions the
         # pinned revision carries, and an off-pin checkout would import them as opaque calls or, worse,
         # with different bytes behind the same name.
-        from merlin.integrations.model2mlir import capture_pin
+        from merlin.common.external_tools import capture_pin
 
         frontend_pin = capture_pin(getattr(self, "m2m_dir", None))
         if "integer_nonlinear" in capabilities and not frontend_pin["ok"]:
@@ -339,7 +347,7 @@ class PytorchRefSource:
         framework/importer dependency or arbitrary loader input. The caller rechecks
         the key before publishing or returning a shared-cache result.
         """
-        worker = module_source_path("merlin.development.targetgen._m2m_capture_worker")
+        worker = module_source_path("merlin.capture.preparation.worker")
         cached_slot = capture_cache.committed_attempt(slot) if slot is not None else None
         if cached_slot is not None:
             try:
@@ -477,7 +485,7 @@ class PytorchRefSource:
         # program digests and the raw census, and leaves any unknown call in the remaining census.
         # Therefore this cannot turn an unrecognized opaque op into a clean capsule.
         if meta.get("opaque"):
-            from merlin.compiler.frontend.capture_normalization import (
+            from merlin.compiler.frontend.patterns.capture_normalization import (
                 CaptureNormalizationError,
                 normalize_capture_mlir,
             )

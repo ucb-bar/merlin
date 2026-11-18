@@ -15,17 +15,24 @@ from hashlib import sha256
 from itertools import product
 from typing import Any
 
-from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
-from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
-
-from .contract import _SOURCE_MAPS, BoundaryConversion, DiagnosticMatmulTile, MatmulTileProfile, _digest
-from .intake import (
+from merlin.compiler.quantization.contraction.contract import (
+    _SOURCE_MAPS,
+    BoundaryConversion,
+    DiagnosticMatmulTile,
+    MatmulTileProfile,
+    _digest,
+)
+from merlin.compiler.quantization.contraction.intake import (
     SourceValueRef,
     check_source_bound_f32_batched_matmuls,
     check_source_bound_f32_matmuls,
     inventory_source_f32_batched_matmuls,
 )
-from .values import FloatBoundarySpec
+from merlin.compiler.quantization.contraction.values import FloatBoundarySpec
+from merlin.compiler.semantic.linalg.linalg_bridge import LinalgBridgeError
+from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
+
+# ---- transform ---------------------------------------------------------------------------------
 
 
 def _permutation(index_map: IndexMap, source_rows: tuple[tuple[int, ...], ...]) -> tuple[int, int]:

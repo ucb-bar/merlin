@@ -1,11 +1,8 @@
 import yaml
 
-from merlin.compiler.backend.sourceproposal import (
-    SourceProposal,
-    source_numerical_identity,
-)
-from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
-from merlin.target.system.topology import select_topology
+from merlin.compiler.backend.source_proposals import SourceProposal, source_numerical_identity
+from merlin.compiler.transforms.dense.ir import recognize_signed_integer_matmul
+from merlin.target.system import select_topology
 
 
 def topology(tmp_path, **edge_changes):

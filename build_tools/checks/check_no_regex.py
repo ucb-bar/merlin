@@ -40,7 +40,7 @@ import _source_layout  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
-from merlin.common.regex_scan import scan_source  # noqa: E402
+from merlin.common.record_formats import scan_source  # noqa: E402
 
 ALLOW_FILE = ROOT / "build_tools" / "checks" / "regex_allowlist.txt"
 SCAN_ROOTS = (*_source_layout.SOURCE_SCAN_ROOTS, "src/merlin/resources/contracts", *_source_layout.BUILD_SCRIPT_ROOTS)
@@ -120,7 +120,7 @@ def main(argv: list[str] | None = None) -> int:
         return _unexaminable(stop_hook, exc)
     for rel in targets:
         relstr = rel.as_posix()
-        if _source_layout.policy_path(relstr) in allow or relstr in allow:
+        if _source_layout.policy_covered(relstr, allow):
             continue
         for lineno, what in _scan_file(ROOT / rel):
             violations.append(

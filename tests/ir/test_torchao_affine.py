@@ -4,9 +4,7 @@ import numpy as np
 import pytest
 
 from merlin.common.paths import repo_root
-from merlin.compiler.lower.model.torchao_affine import (
-    lower_torchao_affine_quant,
-)
+from merlin.compiler.quantization.torchao.affine import lower_torchao_affine_quant
 
 _REF = repo_root() / "tests" / "data" / "torchao_affine" / "reference.npz"
 _SCHEME = "int8_dyn_act_int8_weight"
@@ -32,8 +30,8 @@ def _run_case(x):
     """Lower + outline + compile + execute one case; returns ``(scale, q)`` as numpy."""
     import tempfile
 
-    from merlin.compiler.dialects.lowering.outline import outline_dispatches
-    from merlin.runtime.dispatch_runtime import execute
+    from merlin.compiler.partition.outline import outline_dispatches
+    from merlin.runtime.dispatch.executor import execute
 
     module = _parse(_module_text(x.shape))
     assert lower_torchao_affine_quant(module) == 2

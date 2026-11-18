@@ -13,8 +13,10 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from merlin.common.tree_hash import hash_tree
-from merlin.compiler.artifact import Artifact, Compilation
+from merlin.common.digest import hash_tree
+from merlin.compiler.compilation import Artifact, Compilation
+
+# ---- package -----------------------------------------------------------------------------------
 
 name = "merlin.package"
 _OPTIONS = {"package.root", "package.contract", "package.timeout"}
@@ -30,7 +32,7 @@ def _tree(root):
 
 
 def _formats(tensors):
-    from merlin.common import quant_formats
+    from merlin.common import target_data as quant_formats
 
     formats = {}
     for tensor in tensors.values():
@@ -83,9 +85,9 @@ def _select(request):
     from xdsl.dialects.builtin import Builtin, StringAttr, TensorType, UnregisteredOp
     from xdsl.parser import Parser
 
-    from merlin.development.targetgen.contract import schemas
-    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir, to_generic_form
-    from merlin.development.targetgen.package_runtime import load_package
+    from merlin.development.targetgen.packaging.loading import load_package
+    from merlin.target.contract.interfaces import abi as schemas
+    from merlin.target.contract.interfaces.grammar import parse_interface_mlir, to_generic_form
 
     if request.source.kind != "merlin-interface":
         raise ValueError("package transport requires explicit merlin-interface input, not model MLIR")
@@ -172,7 +174,8 @@ def validate(request):
 
 
 def compile(request):
-    from merlin.development.targetgen import capsule_common, package_runtime
+    from merlin.development.targetgen.corpus import capsule_io as capsule_common
+    from merlin.development.targetgen.packaging import loading as package_runtime
 
     selected = _select(request)
     request.output.mkdir(parents=True, exist_ok=False)

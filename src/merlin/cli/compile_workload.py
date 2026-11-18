@@ -30,6 +30,14 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from merlin_rvv.src.rvv.policy.host_selection import (
+    _DTYPE_STRATEGY,
+    _verified_against_the_pinned_lane,
+    default_package,
+    host_lane_identity,
+    host_lane_pin_name,
+)
+
 from merlin.compiler.backend.host import HOST_PRECISIONS as _RVV_DTYPES
 
 # The exact helpers historically extracted from this facade remain re-exported here, so
@@ -37,18 +45,16 @@ from merlin.compiler.backend.host import HOST_PRECISIONS as _RVV_DTYPES
 # export their private implementation through this facade. A re-export is a second binding: patching it
 # does not reach callers in the defining module, so tests patch a name where it is DEFINED
 # (enforced by tests/infra/test_compile_cli_patch_targets.py).
-from merlin.compiler.frontend.bundle import (
+from merlin.compiler.frontend.inputs import (
     _IR_ELEMENT_ORDER,
     _IR_ELEMENT_SPELLING,
     _bundle_dir,
     _capture_python,
     ir_scalar_dtype,
 )
-from merlin.compiler.frontend.preflight import (
-    preflight_model,  # noqa: F401 -- re-exported
-)
+from merlin.compiler.frontend.staged import preflight_model
 from merlin.compiler.planning.model import plan_before_build
-from merlin.compiler.selection.capacity import (
+from merlin.compiler.selection.kernels import (
     _accumulator_capacity_elems,
     _capacity_fit_tile,
     _dtype_bits,
@@ -58,14 +64,7 @@ from merlin.compiler.selection.capacity import (
     capacity_fit,
     declared_primitive_tile,
 )
-from merlin.compiler.selection.host import (
-    _DTYPE_STRATEGY,
-    _verified_against_the_pinned_lane,
-    default_package,
-    host_lane_identity,
-    host_lane_pin_name,
-)
-from merlin.runtime.mesh import (
+from merlin.runtime.dispatch.mesh import (
     _MESH_NTILE_WIDTH,
     _certify_tile_via_executor,
     _default_oot_package,
@@ -78,32 +77,30 @@ from merlin.runtime.mesh import (
     run_matmul_on_mesh,
     tile_builder_op,
 )
-from merlin.runtime.mesh_backend import (
+from merlin.runtime.dispatch.mesh_driver import (
     _MESH_PKG_CACHE,
     _MESH_PKG_LOCK,
     _MESH_REFUSAL,
     _MESH_RUN_SEQ,
     _built_mesh_package,
+    _int8_chain_policy,
+    _int8_chain_reference,
+    _int8_chain_step,
     _mesh_invocation_id,
     _mesh_layer_id,
     _refuse,
     _requested_mesh_simulator,
     _resolve_oot_mesh_simulator,
-)
-from merlin.runtime.mesh_model import (
-    _int8_chain_policy,
-    _int8_chain_reference,
-    _int8_chain_step,
     run_int8_chain_on_mesh,
     run_whole_model_on_mesh,
 )
-from merlin.verification.mesh_reference import _accum_rel_tolerance, _reference_on_datapath
+from merlin.verification.references.mesh_arithmetic import _accum_rel_tolerance, _reference_on_datapath
 
 #: Where ``--run`` can put a compiled result. ``board`` deploys to the ``flow: linux`` board ``--board``
 #: names (``runtime.remote_linux``); the board is data from the catalog, never a run name.
 _RUNS = ("none", "host", "board", "spike", "zephyr", "verilator", "gsim")
 
-from merlin.common import compile_trace as _trace  # noqa: E402
+from merlin.compiler.ir import compile_trace as _trace  # noqa: E402
 
 #: The stage the front door itself reaches before any lowering: the model bundle it resolved or captured.
 _STAGES = _trace.declare(
@@ -176,7 +173,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
         return []
     frozen = list(pkg.compiler_features)
     try:
-        from merlin.analysis.mining.apply import blocking_risks, shape_adapted_features
+        from merlin.analysis.mining.package_application import blocking_risks, shape_adapted_features
 
         # A package whose block lives in its SCHEDULE TEXT (no feature) cannot be re-resolved. Say so
         # rather than letting the resulting ~34x fp32 degradation read as "this model is slow".
@@ -195,7 +192,7 @@ def _workload_features(pkg, bundle, out: dict, harts: int = 1) -> list[str]:
         # A re-derived point may leave an op class UNCLAIMED: no block wider than one lane is legal
         # for its extents, so its contractions go through convert-linalg-to-loops (scalar). Correct,
         # but a perf fact a reader must not have to decode from a feature name -- so say it.
-        from merlin.compiler.optimizations.blocks import unclaimed_op_classes
+        from merlin.compiler.optimizations.register_blocking import unclaimed_op_classes
 
         unclaimed = sorted({cls for f in feats for cls in unclaimed_op_classes(f)})
         out["features_shape_adapted"] = {
@@ -290,8 +287,11 @@ def compile_rvv(
     import numpy as np
 
     from merlin.compiler.backend.host import load_host_package
-    from merlin.runtime import remote_linux
-    from merlin.runtime.backends import zephyr_model as zm
+    from merlin.runtime.backends.linux import cross_build as linux_cross_build
+    from merlin.runtime.backends.linux import remote_session as remote_linux
+    from merlin.runtime.backends.zephyr import application as zm
+    from merlin.runtime.backends.zephyr import execution as zephyr_execution
+    from merlin.runtime.backends.zephyr import image_build as zephyr_build
 
     # ``timeout`` is the budget for the complete subprocess session.  The generated harness owns
     # observations, warmups, and measurement repeats *inside that one invocation*.  Multiplying
@@ -309,7 +309,7 @@ def compile_rvv(
                 "status": "not_run",
                 "reason": f"{run} requires --board and MERLIN_BOARD_CATALOG",
             }
-        from merlin.runtime.boards import board as _selected_board
+        from merlin.runtime.boards.catalog import board as _selected_board
 
         selected_board = _selected_board(board)  # Reject unknown boards before capture or work allocation.
         if selected_board.flow != "zephyr":
@@ -385,7 +385,7 @@ def compile_rvv(
     session_contract_version = 0
     session_path = bundle / "session_contract.yaml"
     if session_path.is_file():
-        from merlin.common.yaml import load_yaml
+        from merlin.common.record_formats import load_yaml
 
         session_value = load_yaml(session_path)
         session_contract_version = int(session_value.get("version", 0)) if isinstance(session_value, dict) else 0
@@ -414,7 +414,7 @@ def compile_rvv(
         # indistinguishable afterwards from one built against the pinned lane.
         "host_lane": host_lane_identity(pkg_dir),
     }
-    from merlin.runtime.dispatch_runtime import mesh_datapath
+    from merlin.runtime.dispatch.whole_model import mesh_datapath
 
     refs: dict = {}
     if verify and not multi_program:
@@ -429,7 +429,7 @@ def compile_rvv(
         if not _act_quant and kernel_backend == "mesh" and mesh_target:
             try:
                 _op_dt = mesh_datapath(mesh_target, numeric_policy=numeric_policy).operand_dtype
-                from merlin.common import quant_formats as _qf
+                from merlin.common import target_data as _qf
 
                 _act_quant = int(_qf.get(_op_dt).element_bits or 32) <= 8
             except Exception:  # noqa: BLE001 — undecidable: keep the f32 golden
@@ -454,7 +454,7 @@ def compile_rvv(
     # discriminator when a board run disagrees: host-vs-board separates a quantization-math
     # bug (both wrong) from a codegen/RVV bug (only the board wrong).
     if run == "host":
-        from merlin.runtime.dispatch_runtime import run_model
+        from merlin.runtime.dispatch.whole_model import run_model
 
         res = run_model(
             bundle,
@@ -475,7 +475,7 @@ def compile_rvv(
             # module-global (`_dr.execute.mesh_ran`), which concurrent grades clobber -- and a model
             # verdict now depends on them. `UNKNOWN` rather than None when absent: None reads as "zero
             # layers ran", when what it means is "nobody could tell".
-            from merlin.common.provenance import UNKNOWN as _UNKNOWN
+            from merlin.common.provenance_claims import UNKNOWN as _UNKNOWN
 
             out["mesh_execution"] = {
                 "target": mesh_target,
@@ -529,7 +529,7 @@ def compile_rvv(
         # `contractions_ran` is reported apart from `kernels_ran` because the host lane is populated
         # overwhelmingly by norms and activations -- a bare kernel count is satisfied by any model and
         # says nothing about whether real work crossed to the host.
-        from merlin.common.provenance import UNKNOWN as _UNKNOWN_HOST
+        from merlin.common.provenance_claims import UNKNOWN as _UNKNOWN_HOST
 
         out["host_execution"] = {
             "kernels_ran": res.get("host_kernels_ran", _UNKNOWN_HOST),
@@ -549,7 +549,7 @@ def compile_rvv(
                     raise ValueError("multi-output golden manifest disagrees with runtime results")
                 per_output = []
                 for name, value in zip(names, outputs, strict=True):
-                    check = zm._gate(value, {"fp32": archive[name]})
+                    check = zephyr_execution._gate(value, {"fp32": archive[name]})
                     per_output.append({"name": name, **check})
                 g = {
                     "ok": all(bool(x.get("ok")) for x in per_output),
@@ -558,7 +558,7 @@ def compile_rvv(
                     "fp32_rel": max(float(x.get("fp32_rel", float("inf"))) for x in per_output),
                 }
             else:
-                g = zm._gate(res["output"], refs)
+                g = zephyr_execution._gate(res["output"], refs)
             out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
             out["status"] = "verified" if g.get("ok") else "run_mismatch"
         return out
@@ -579,7 +579,7 @@ def compile_rvv(
             out["reason"] = "targeted board host execution requires MERLIN_HOST_DTS for ISA verification"
             return out
         if selected_dts:
-            from merlin.compiler.backend.isa import require_host_isa_dts
+            from merlin.compiler.backend.host import require_host_isa_dts
 
             try:
                 out["host_isa"] = require_host_isa_dts(
@@ -600,7 +600,7 @@ def compile_rvv(
         feats = _workload_features(pkg, bundle, out)
 
         def _build(fs):
-            return zm.build_app(
+            return zephyr_build.build_app(
                 bundle,
                 work,
                 board=board,
@@ -654,16 +654,16 @@ def compile_rvv(
         if run == "zephyr":
             return out
         if run == "verilator":
-            sim = zm.verilator_sim(board=board)
+            sim = zephyr_execution.verilator_sim(board=board)
             if sim is None:
                 out["status"] = "not_run"
                 out["reason"] = "no compatible multicore Verilator simulator is available for the selected target"
                 return out
-            res = zm.run_on_verilator(b["elf"], board=board, timeout=timeout, references=refs or None)
+            res = zephyr_execution.run_on_verilator(b["elf"], board=board, timeout=timeout, references=refs or None)
         else:
-            from merlin.runtime.boards import board as _board_desc
+            from merlin.runtime.boards.catalog import board as _board_desc
 
-            res = zm.run_on_spike(
+            res = zephyr_execution.run_on_spike(
                 b["elf"],
                 dram_base=_board_desc(board).dram_base,
                 harts=max(2, harts),
@@ -671,7 +671,7 @@ def compile_rvv(
                 timeout=timeout,
             )
             if refs:
-                res.update(zm._gate(res["prefix"], refs))
+                res.update(zephyr_execution._gate(res["prefix"], refs))
         out["status"] = "ran"
         out["cycles"] = res.get("metrics", {}).get("cycles")
         if res.get("sustained"):
@@ -704,7 +704,7 @@ def compile_rvv(
         # run-on-hardware routes, so `--run none --harts 8` produced a single-core binary and
         # reported success -- a compile-only multicore A/B silently compared two identical
         # single-core images. Same expression as the `--run board` call below, so the two agree.
-        binary = remote_linux.build_binary(
+        binary = linux_cross_build.build_binary(
             linux_board,
             bundle,
             work,
@@ -787,7 +787,7 @@ def compile_rvv(
             elif multi_program:
                 g = _session_correctness_gate(None, 1)
             else:
-                g0 = zm._gate(res["prefix"], refs)
+                g0 = zephyr_execution._gate(res["prefix"], refs)
                 g = {"gate_ok": bool(g0.get("ok")), **g0}
             out["verify"] = g
             out["status"] = "verified" if out["verify"]["gate_ok"] else "run_mismatch"
@@ -1037,7 +1037,7 @@ def compile_model(
             out["placement"] = _pre["placement"]
             out["routing_plan"] = {**_summarize_route_plan(plan), "authority": _authority}
             try:
-                from merlin.development.targetgen import coverage_certificate as _cert
+                from merlin.development.targetgen.conformance import coverage_certificate as _cert
 
                 # ARR coverage certificate: the compiler's routing decisions (numerator) scored against
                 # the target's INDEPENDENT eligibility oracle (denominator). Empty capability map (target
@@ -1061,8 +1061,8 @@ def compile_model(
                 # demands, so they are not "placed on the host", they are absent -- and they are
                 # where a whole model spends its time. The census walks every region of the module
                 # and gives each a unit, or a refusal with its owner, or names it a silent fallback.
-                from merlin.analysis.perf import placement_census as _census
-                from merlin.common import mlir_query as _mq
+                from merlin.analysis.optimization.candidates import placement_census as _census
+                from merlin.compiler.ir import mlir_query as _mq
 
                 # The requested datapath is retained for diagnostics, but the census
                 # judges captured operations at their observed operand formats,
@@ -1114,8 +1114,8 @@ def compile_oot(
     (e.g. A2_single_tile_matmul) and ``--package`` the OOT backend. Accelerators run capsules/kernels,
     not whole VLA models."""
     from merlin.common.paths import runs_root
-    from merlin.development.targetgen import package_runtime as oot_runner
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.packaging import loading as oot_runner
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     out: dict = {"tool": "merlin-compile", "target": target, "workload": workload, "package": package, "run": run}
     if corpus_descriptor is None:
@@ -1202,8 +1202,8 @@ def compile_oot(
 
 def main(argv: list[str] | None = None) -> int:
     from merlin.cli import compile_command as command
-    from merlin.common.compile_trace import StopAfterStage
-    from merlin.compiler import inspect as debug
+    from merlin.compiler import diagnostics as debug
+    from merlin.compiler.ir.compile_trace import StopAfterStage
 
     ap = command.parser(_RVV_DTYPES, _RUNS, "board", ("board", "zephyr", "spike", "verilator"))
     ap.description = "Retained workload/operator adapter; explicit-source compilation uses merlin compile."
@@ -1240,7 +1240,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _dispatch(a, run: str, selection) -> dict:
     """The selected workflow, run with the optional lowering passes ``selection`` names."""
-    from merlin.compiler.lower.model import optional_passes
+    from merlin.compiler.lower.options import optional_passes
 
     with optional_passes.applied(selection) as passes:
         res = _workflow(a, run)
@@ -1269,7 +1269,7 @@ def _workflow(a, run: str) -> dict:
             rtl_facts=a.rtl_facts,
         )
     elif a.model_preflight:
-        from merlin.compiler.frontend.preflight import preflight_model
+        from merlin.compiler.frontend.staged import preflight_model
 
         return preflight_model(a.capture_bundle, target=a.target, deployment_dtype=a.deployment_dtype)
     elif a.target == "rvv":

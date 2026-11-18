@@ -1,18 +1,18 @@
 from dataclasses import replace
 
 from corefixtures.compact_dense import ADAPTER, fixture
-from merlin.compiler.schedule.compact_dense import emit_compact_dense
-from merlin.compiler.schedule.dense_panel_pipeline import (
-    DenseRetainedReductionAdmission,
-    dense_retained_operand_hoists,
-    schedule_dense_panel_pipeline,
-)
-from merlin.compiler.schedule.schedule_ir import (
+from merlin.compiler.schedule.dense.compact import emit_compact_dense
+from merlin.compiler.schedule.dense.plans import (
     dense_schedule_text,
     make_dense_schedule_plan,
     parse_dense_schedule_plan,
 )
-from merlin.compiler.transforms.dense_planning import dense_blocks
+from merlin.compiler.schedule.panels.pipeline import (
+    DenseRetainedReductionAdmission,
+    dense_retained_operand_hoists,
+    schedule_dense_panel_pipeline,
+)
+from merlin.compiler.transforms.dense.planning import dense_blocks
 
 
 def inputs(shape=(9, 14, 25), tile=(2, 3, 4)):
@@ -42,14 +42,14 @@ def chosen(p, r, s, b, a, *, role="lhs", order=("m", "n"), hoist=True, compute_o
     raw = emit_compact_dense(p, b, s, ADAPTER, name="retained", dtypes=("i8", "i8", "i32"), outer_order=order)
     transforms = dense_retained_operand_hoists(raw, ADAPTER, role=role) if hoist else ()
     if compute_order is not None:
-        from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_order
-        from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+        from merlin.compiler.schedule.loops.counted_loops import propose_loop_transforms
+        from merlin.compiler.schedule.panels.pipeline import dense_retained_compute_order
 
         current = propose_loop_transforms(raw, transforms)
         transforms += dense_retained_compute_order(current, ADAPTER, order=compute_order)
     if compute_unroll is not None:
-        from merlin.compiler.schedule.dense_panel_pipeline import dense_retained_compute_unroll
-        from merlin.compiler.schedule.loop_schedule import propose_loop_transforms
+        from merlin.compiler.schedule.loops.counted_loops import propose_loop_transforms
+        from merlin.compiler.schedule.panels.pipeline import dense_retained_compute_unroll
 
         current = propose_loop_transforms(raw, transforms)
         axis, factor = compute_unroll

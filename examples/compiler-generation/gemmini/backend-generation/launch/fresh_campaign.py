@@ -269,7 +269,7 @@ def cmd_export(ctx: Context, args) -> int:
         raise SpecError("git archive failed")
     # The export has no .git: record its own revision, or every provenance read inside it would walk up
     # to whichever checkout encloses it and report that branch's moving HEAD instead.
-    from merlin.development.targetgen.provenance import write_source_record
+    from merlin.development.targetgen.packaging.records import write_source_record
 
     write_source_record(framework, head)
     # Repository-local configuration that git archive cannot carry.
@@ -391,7 +391,7 @@ def prepare_command_recorder(ctx: Context) -> int:
         ctx.x("${PYTHON}"),
         "-B",
         "-m",
-        "merlin.analysis.perf.command_recorder",
+        "merlin.analysis.perf.measurement.command_recorder",
         "--engine",
         str(ctx.path(config["engine"])),
         "--include",
@@ -563,7 +563,7 @@ def require_bank_dependencies(environment, profile):
     if not any(entry.parts[-3:] == ("packages", "merlin-mining", "src") for entry in entries):
         raise SpecError(
             "a CCA bank arm needs packages/merlin-mining/src on plan.environment.PYTHONPATH "
-            "(the broker verifies the bank with merlin.analysis.mining.reference_subsets)"
+            "(the broker verifies the bank with merlin.analysis.mining.references.subsets)"
         )
 
 
@@ -578,8 +578,8 @@ def cmd_inputs_stage(ctx: Context, args) -> int:
     out.mkdir(parents=True, exist_ok=False)
     started = time.monotonic()
 
-    from merlin.development.backend.author_profiles import prepare_sources, resolve
-    from merlin.development.backend.full_compiler_workspace import prepare as prepare_full
+    from merlin.development.backend.authoring.library.compiler_workspace import prepare as prepare_full
+    from merlin.development.backend.authoring.profiles import prepare_sources, resolve
 
     profile = resolve(ctx.section("plan").get("author_profile", ""))
     library = load_module("prepare_author_library", modules)
@@ -738,7 +738,7 @@ def edited_policy(base: dict, *, max_wall_s, final_model_s, workers, excluded, v
 
 
 def _validate_policy(policy: dict) -> dict:
-    from merlin.development.backend.joint_control import policy as load_policy
+    from merlin.development.backend.campaign.control import policy as load_policy
 
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
         json.dump(policy, handle)
@@ -749,7 +749,7 @@ def _validate_policy(policy: dict) -> dict:
 
 
 def restore_library(selection_path: Path):
-    from merlin.development.backend.optimization.compiler_library_state import restore_selection
+    from merlin.development.backend.optimization.campaign.compiler_library_state import restore_selection
 
     return restore_selection(json.loads(Path(selection_path).read_bytes()))
 
@@ -845,7 +845,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     timing = {"path": str(selection), "sha256": sha256(selection)}
 
     # 3. Inputs: full compiler manifest, author library selection and public references.
-    from merlin.development.backend.author_profiles import resolve as resolve_author_profile
+    from merlin.development.backend.authoring.profiles import resolve as resolve_author_profile
 
     author_profile = resolve_author_profile(plan.get("author_profile", ""))
     manifest = None if author_profile and author_profile.level == 1 else ctx.path(plan["full_compiler_manifest"])
@@ -881,7 +881,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     if ctx.reference_guidance == "on" and reference is None:
         raise SpecError("reference guidance on requires a pinned reference_experiments selection")
     if reference is not None:
-        from merlin.development.backend.feedback.reference_experiments import invocation
+        from merlin.development.backend.feedback.references.experiments import invocation
 
         if (
             not isinstance(reference, dict)
@@ -909,7 +909,7 @@ def build_plan(ctx: Context, *, helper_effort=None, write=True) -> dict:
     require_bank_dependencies(environment, author_profile)
     reference_map = pin_reference_map(ctx, plan, output, references)
     if reference_map is not None:
-        from merlin.development.backend.feedback.reference_map import ENV as REFERENCE_MAP_ENV
+        from merlin.development.backend.feedback.references.reference_map import ENV as REFERENCE_MAP_ENV
 
         if REFERENCE_MAP_ENV in environment:
             raise SpecError(f"select the reference map through plan.reference_map, not {REFERENCE_MAP_ENV}")
@@ -1061,7 +1061,7 @@ def pin_reference_map(ctx: Context, plan: dict, output: Path, references: Path |
         )
     if not path.is_file():
         raise SpecError(f"reference map is unavailable: {path}")
-    from merlin.development.backend.feedback.reference_map import FILENAME, read_pin
+    from merlin.development.backend.feedback.references.reference_map import FILENAME, read_pin
 
     try:
         _, document = read_pin({"path": str(path.resolve()), "sha256": digest})
@@ -1082,7 +1082,7 @@ def _check_campaign(ctx: Context, argv: list[str], plan: dict) -> None:
     leftover = [item for item in argv if "${" in item]
     if leftover:
         raise SpecError(f"unexpanded variables: {leftover[:3]}")
-    from merlin.development.backend.author_profiles import resolve
+    from merlin.development.backend.authoring.profiles import resolve
 
     profile = resolve(plan.get("author_profile", ""))
     omitted = profile_omitted_flags(profile)

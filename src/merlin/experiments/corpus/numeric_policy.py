@@ -13,12 +13,14 @@ from pathlib import Path
 
 import yaml
 
-from merlin.development.targetgen.corpus_spec import profile_datapath
-from merlin.development.targetgen.software_spec import (
+from merlin.development.targetgen.corpus.binding import profile_datapath
+from merlin.target.spec.software import (
     numerical_datapath,
     software_spec_path_for_recipe,
     validate_software_spec,
 )
+
+# ---- numeric_policy ----------------------------------------------------------------------------
 
 
 def numeric_profile_path(declaration: str | None, *, repo: Path) -> Path | None:

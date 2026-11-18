@@ -28,22 +28,22 @@ Each workload is a PyTorch model with a loader in the model2mlir repository
 (`workloads/<model>/loader.py`; the r53b captures used model2mlir commit `905d2c918f83`). test generation
 freezes a quantization **recipe**, a `quant_recipe_v1` JSON document derived from what the target's
 readout can hold (`src/merlin/development/targetgen/quant_recipe.py`, `derive`). The capture worker
-(`src/merlin/development/targetgen/_m2m_capture_worker.py`) exports every program with `torch.export`.
-`src/merlin/development/targetgen/_recipe_quantizer.py` (`apply_recipe`, `build_quantizer`) turns the recipe into
+(`src/merlin/capture/preparation/worker.py`) exports every program with `torch.export`.
+`src/merlin/compiler/quantization/torchao/_recipe_quantizer.py` (`apply_recipe`, `build_quantizer`) turns the recipe into
 a TorchAO PT2E quantizer, calibrates it and converts. Next, model2mlir rewrites every contraction whose
 two operands are **float32** dequantizes into int8 × int8 → int32 followed by scaling
 (`m2m/capture/pt2e_integerize.py`, `integerize_pt2e`). The rest of the graph is lowered to linalg MLIR,
 where the remaining quantization points appear as `quant_ext.quantize_per_tensor` and
 `quant_ext.dequantize_per_tensor`. Merlin prepares this captured program with
-`src/merlin/runtime/backends/zephyr_model.py` (`_prepare_model_mlir` with `int8_compute=True` and
+`src/merlin/runtime/backends/zephyr/application.py` (`_prepare_model_mlir` with `int8_compute=True` and
 `respect_captured_quantization_scope=True`). Only the pass `contraction_int8` runs, and it runs only on
 contractions with an input that traces to a captured dequantize (`src/merlin/compiler/lower/model/quant_scope.py`,
 `captured_quantized_contraction`). That pass converts the remaining (bf16) quantize/dequantize
-contractions to int8 × int8 → int32 plus a requantization (`src/merlin/compiler/lower/model/passes_quant_int.py`,
+contractions to int8 × int8 → int32 plus a requantization (`src/merlin/compiler/lower/quant/int8_contraction.py`,
 `lower_contraction_int8`). `lower_quant_ext` (`src/merlin/compiler/lower/model/passes_xdsl.py`) then spells every
 leftover quantize and dequantize as explicit float arithmetic. The result, taken before any device
 grouping, is the **INT8 reference**. Device grouping (`src/merlin/compile/complete_group_routing.py`,
-`src/merlin/compiler/lower/model/device_offload.py`, `rewrite_groups_to_device`) cuts that program into Gemmini
+`src/merlin/compiler/lower/device/offload.py`, `rewrite_groups_to_device`) cuts that program into Gemmini
 kernels and host code.
 
 ```
@@ -113,7 +113,7 @@ RTL facts of the backend generation release payload, whose readout section match
 - The **i8 readout** applies `acc_scale`, `relu` and `maxpool`.
 - `acc_scale` is **one f32 scalar per readout configuration**: a 32-bit field of the mvout config
   command (`ConfigMvoutRs2.acc_scale`). It is applied as `clamp_i8(round_half_even(f32(acc) · scale))`
-  (`src/merlin/runtime/tensor.py`, `Tensor.requant_acc_scale`).
+  (`src/merlin/runtime/engine/command_buffer.py`, `Tensor.requant_acc_scale`).
 - There is no zero point, and the scaler has no bias operand. A bias can enter only as an int32 seed
   that is loaded into the accumulator before the contraction.
 - Load-time scaling, which could implement an integer residual add, rounds each operand half-to-even
@@ -124,7 +124,7 @@ As a result, the following run on the **host CPU**:
 
 - per-output-channel and per-token scales;
 - the two-multiply epilogue, unless Merlin proves that one integer bias plus one `acc_scale` reproduce
-  it over the whole accumulator range (`src/merlin/compiler/dialects/lowering/group_exact_float.py`,
+  it over the whole accumulator range (`src/merlin/compiler/partition/groups/group_exact_float.py`,
   `prove`); when the proof fails, the kernel returns int32 and the float epilogue stays on the host;
 - float biases;
 - every nonlinearity, softmax, normalization, RoPE and embedding;
@@ -239,12 +239,12 @@ outer-product rescale of every score element per plane, plus element-wise absmax
 
 Contract: [`docs/guides/09-verification.md`](../../../../docs/guides/09-verification.md), §3–§4.
 
-- **INT8 reference.** The prepared program (§1), evaluated by `merlin.runtime.linalg_numpy.evaluate`,
+- **INT8 reference.** The prepared program (§1), evaluated by `merlin.evaluation.model.linalg_evaluator.evaluate`,
   which reads each op's semantics from the IR and shares no code with any lowering. Integers wrap at
   their width, f32 is float32, and bf16 is computed in f32 with round-to-nearest-even after each op.
 - **Device kernels** must be **bit-identical** to the reference's boundary outputs (§4.2). The
   expected value of a kernel call is its interface program evaluated exactly
-  (`src/merlin/evaluation/model/kernel_reference.py`). A kernel that folds an epilogue into the readout
+  (`src/merlin/evaluation/model/bundles/program_catalog.py`). A kernel that folds an epilogue into the readout
   must reproduce the reference's epilogue order exactly or leave it on the host.
 - **Declared approximate kernels** follow the ratio rule:
   `metric(y, y_fp) ≤ max(1.1 × metric(y_ref, y_fp), floor)`, with floors (§4.3).
@@ -301,9 +301,9 @@ To match Merlin bit for bit, an independent implementation needs the following.
    two-multiply epilogue in operand order, bf16 rounding where the program rounds, SmolVLA's dynamic
    patch-embedding scales, and `clamp_i8(round_half_even(acc · acc_scale))` for the average pool.
 4. **The right ground truth**, which is the INT8 reference. It can be regenerated from a capture
-   directory with `merlin.evaluation.model.catalog.prepare(stage, out_dir, target="gemmini")`, which writes
+   directory with `merlin.evaluation.model.bundles.program_catalog.prepare(stage, out_dir, target="gemmini")`, which writes
    `ref/model.prepared.mlir` and `ref/quantization-policy.json` (`passes: [contraction_int8]`,
-   `selection: captured_scope`); evaluate it with `merlin.runtime.linalg_numpy.evaluate`. Two other
+   `selection: captured_scope`); evaluate it with `merlin.evaluation.model.linalg_evaluator.evaluate`. Two other
    candidates are **not** the ground truth:
    - The capture's `integer-reference.json` (`m2m/capture/pt2e_integer_reference.py`) runs every
      non-contraction op in PyTorch eager and keeps bf16 Q/DQ contractions in float.

@@ -9,7 +9,9 @@ import yaml
 
 from merlin.common.digest import sha256_file
 from merlin.experiments.definition import SpecError
-from merlin.runtime.kernel_call_timing import from_contract
+from merlin.runtime.harness.call_timing import kernel_call_plan as from_contract
+
+# ---- kernel_timing_selection -------------------------------------------------------------------
 
 
 def select(original: dict, selection: tuple[Path, str]) -> tuple[dict, dict]:

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+# ---- token_budget ------------------------------------------------------------------------------
+
 SCHEMA = "merlin.author_token_budget.v1"
+
 DEFAULT_TARGET = 40_000_000
+
 DEFAULT_RESERVE = 8_000_000
+
 ADMISSION_SCHEMA = "merlin.author_token_budget.v2"
 
 

@@ -6,8 +6,8 @@ buffer into a device program clang-muon compiles. The reference backend uses it 
 
 Design (faithful + simple):
   * Leaf inputs are materialized on the host via the SAME deterministic rule the reference uses
-    (:func:`merlin.runtime.commandbuffer.materialize_inputs`) and baked as ``const float`` arrays, so
-    device outputs gate bit-for-bit against :func:`merlin.runtime.reference.reference_outputs`.
+    (:func:`merlin.runtime.engine.command_buffer.materialize_inputs`) and baked as ``const float`` arrays, so
+    device outputs gate bit-for-bit against :func:`merlin.runtime.engine.reference.reference_outputs`.
   * Only the first threadblock computes (``threadblock_id == 0``); within it every thread runs a
     grid-stride loop over the output, with an ``mu_barrier`` between dependent matmuls. Other
     threadblocks/cores no-op or redundantly recompute identical values -- correct, not yet tiled.
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from merlin.runtime.commandbuffer import materialize_inputs
+from merlin.runtime.engine.command_buffer import materialize_inputs
 
 from .muon import MUON_CONSOLE
 

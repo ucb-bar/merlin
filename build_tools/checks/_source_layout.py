@@ -91,28 +91,15 @@ _SOURCE_MOVES = json.loads((Path(__file__).with_name("source_moves.json")).read_
 _SOURCE_MOVE_DIRS = sorted(((k, v) for k, v in _SOURCE_MOVES.items() if k.endswith("/")), key=lambda kv: -len(kv[0]))
 
 
-def moved_from(prefix: str) -> list[str]:
-    """Current paths of the files ``source_moves.json`` records as moved out of ``prefix``.
-
-    A gate whose scope named the old location keeps covering the same files after the move.
-    """
-    return sorted(current for current, former in _SOURCE_MOVES.items() if former.startswith(prefix))
-
-
-def policy_path(path: str) -> str:
+def _legacy_policy_path(path: str) -> str:
     """Stable debt identity for the same merlin module, including shared-namespace distributions.
 
     ``source_moves.json`` records files moved by a reorganization (current path -> path before the
     move), so a move never resets the debt recorded against the file.
     """
-    if path in _SOURCE_MOVES:
-        return policy_path(_SOURCE_MOVES[path])
-    for current, former in _SOURCE_MOVE_DIRS:
-        if path.startswith(current):
-            return policy_path(former + path[len(current) :])
     preparation = {
-        "src/merlin/evaluation/w8a8_execution.py": "build_tools/scripts/make_w8a8_golden.py",
-        "src/merlin/evaluation/w8a8_eager.py": "build_tools/scripts/make_w8a8_independent_golden.py",
+        "src/merlin/evaluation/model/bundles/w8a8_execution.py": "build_tools/scripts/make_w8a8_golden.py",
+        "src/merlin/evaluation/model/bundles/w8a8_eager.py": "build_tools/scripts/make_w8a8_independent_golden.py",
     }
     if path in preparation:
         return preparation[path]
@@ -126,8 +113,6 @@ def policy_path(path: str) -> str:
             return "build_tools/scripts/" + path.removeprefix(prefix)
     if path.startswith("tools/benchmarks/"):
         return "build_tools/scripts/" + path.removeprefix("tools/benchmarks/")
-
-    # Physical organization does not clear a source's existing review debt.
     for canonical, former in (
         ("src/merlin/development/backend/optimization", "src/merlin/experiments/phase2"),
         ("src/merlin/development/backend", "src/merlin/experiments/phase1"),
@@ -135,7 +120,7 @@ def policy_path(path: str) -> str:
         ("tools/timing", "packages/merlin-timing"),
     ):
         if path == canonical or path.startswith(canonical + "/"):
-            return policy_path(former + path[len(canonical) :])
+            return _legacy_policy_path(former + path[len(canonical) :])
     parts = path.split("/")
     if len(parts) >= 3 and parts[0] == "examples" and parts[1] in {"compilation", "compiler-generation", "targets"}:
         leaf = "compiler" if parts[2] == "compiler-api" else parts[2]
@@ -146,109 +131,17 @@ def policy_path(path: str) -> str:
             tail = ["phase1", *tail[1:]]
         elif tail[:1] == ["test-generation"]:
             tail = ["phase0", *tail[1:]]
-        return policy_path("/".join(("examples", leaf, *tail)))
+        return _legacy_policy_path("/".join(("examples", leaf, *tail)))
     if path.startswith("experiments/inputs/"):
         return "experiments/reference-data/" + path[len("experiments/inputs/") :]
-    # Relocated algorithms retain their existing debt identities; no new allowance.
-    relocated = {
-        "src/merlin/compiler/quantization/contraction/contract.py": "merlin/python/merlin/semantic_compiler/precision_contract.py",
-        "src/merlin/compiler/quantization/contraction/intake.py": "merlin/python/merlin/semantic_compiler/precision_intake.py",
-        "src/merlin/compiler/quantization/contraction/values.py": "merlin/python/merlin/semantic_compiler/precision_values.py",
-        "src/merlin/compiler/quantization/contraction/constants.py": "merlin/python/merlin/semantic_compiler/precision_constants.py",
-        "src/merlin/compiler/quantization/contraction/transform.py": "merlin/python/merlin/semantic_compiler/precision_transform.py",
-        "src/merlin/compiler/quantization/contraction/codegen.py": "merlin/python/merlin/semantic_compiler/precision_codegen.py",
-        "src/merlin/compiler/lower/native/arguments.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/features.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/invoke.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/pipeline.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/policy.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/recipe.py": "merlin/python/merlin/llvmlower/lowering_recipe.py",
-        "src/merlin/compiler/lower/native/reports.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/runners.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/stages.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/compiler/lower/native/stock.py": "merlin/python/merlin/llvmlower/stock_cli.py",
-        "src/merlin/compiler/lower/native/transport.py": "merlin/python/merlin/llvmlower/llvm_dialect_product.py",
-        "src/merlin/compiler/lower/native/vector.py": "merlin/python/merlin/llvmlower/pipeline.py",
-        "src/merlin/evaluation/capsule/adapters.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/availability.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/bundle.py": "merlin/python/merlin/targetgen/capsule_bundle.py",
-        "src/merlin/evaluation/capsule/certificates.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/cpu.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/diagnostics.py": "merlin/python/merlin/targetgen/capsule_diagnostics.py",
-        "src/merlin/evaluation/capsule/eligibility.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/identity.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/inputs.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/instructions.py": "merlin/python/merlin/targetgen/capsule_instruction_policy.py",
-        "src/merlin/evaluation/capsule/ladder.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/lanes.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/lanes_evidence.py": "merlin/python/merlin/targetgen/capsule_lane_evidence.py",
-        "src/merlin/evaluation/capsule/model.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_assessment.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_candidates.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_context.py": "merlin/python/merlin/targetgen/capsule_candidate_context.py",
-        "src/merlin/evaluation/capsule/model_evidence.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_inputs.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_runtime.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_suite.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/model_tiers.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/numerics.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/operation.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/oracle_call.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/oracle_result.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/processes.py": "merlin/python/merlin/targetgen/capsule_processes.py",
-        "src/merlin/evaluation/capsule/publication.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/records.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/reference.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/result.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/runner.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/source.py": "merlin/python/merlin/targetgen/capsule_source_identity.py",
-        "src/merlin/evaluation/capsule/suite.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/evaluation/capsule/tier.py": "merlin/python/merlin/targetgen/capsule_tier_result.py",
-        "src/merlin/evaluation/capsule/trace.py": "merlin/python/merlin/targetgen/capsule_runner.py",
-        "src/merlin/capture/artifacts.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/receipts.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/loaders.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/pytorch.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/cachekey.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/numerics.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/carriers.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/demands.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/capture/spec.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/source_evidence.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/pytorch_sources.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/model_inputs.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/model_requirements.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/model_sources.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/experiments/corpus/spec_sources.py": "merlin/python/merlin/targetgen/capsule_source.py",
-        "src/merlin/compiler/optimizations/blocks.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/contraction.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/discovery.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/hoisting.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/loops.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/passes.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/perop.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/pointwise.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/resident.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/variants.py": "merlin/python/merlin/llvmlower/impr_features.py",
-        "src/merlin/compiler/optimizations/registry.py": "merlin/python/merlin/llvmlower/impr_features.py",
-    }
-    if path in relocated:
-        return relocated[path]
-    # This issuer predates the later merlin_experiments namespace. Its recorded
-    # ceiling remains bound to the original shared-namespace implementation.
     if path in {
-        "src/merlin/experiments/capture_execution/sealed_m2m.py",
+        "src/merlin/experiments/capture_execution/m2m_sandbox.py",
         "packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py",
     }:
         return "packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py"
-    # Historical ledgers used both physical spellings of this same research
-    # owner. Normalize their shared-namespace spelling before generic core paths.
     historical = "packages/merlin-experiments/src/merlin/experiments"
     if path == historical or path.startswith(historical + "/"):
         return "packages/merlin-experiments/src/merlin_experiments" + path[len(historical) :]
-    # Declaration/catalog orchestration moved intact from the research namespace.
-    # Preserve its original policy identity, rather than granting compiler code
-    # permission to read experiment definitions because it now shares a wheel.
     if path in {"src/merlin/development/definition.py", "src/merlin/experiments/definition.py"}:
         return "packages/merlin-experiments/src/merlin_experiments/spec.py"
     if path == "src/merlin/experiments" or path.startswith("src/merlin/experiments/"):
@@ -273,6 +166,65 @@ def policy_path(path: str) -> str:
     if len(parts) >= 4 and parts[0] == "packages" and parts[2:4] == ["src", "merlin"]:
         return "/".join(("merlin", "python", "merlin", *parts[4:]))
     return path
+
+
+def _former_paths(value: str | list[str]) -> tuple[str, ...]:
+    if isinstance(value, str) and value:
+        return (value,)
+    if not isinstance(value, list) or not value or any(not isinstance(item, str) or not item for item in value):
+        raise ValueError("source ancestry must contain one or more nonempty paths")
+    return tuple(value)
+
+
+def policy_paths(path: str) -> tuple[str, ...]:
+    """Every historical source of a moved, split or merged implementation.
+
+    Multiple predecessors are identities, not combined permissions or an added
+    size allowance. Cycles are malformed policy data and must be reported.
+    """
+
+    def visit(current: str, seen: frozenset[str]) -> set[str]:
+        if current in seen:
+            raise ValueError(f"source policy ancestry cycle at {current}")
+        seen = seen | {current}
+        if current in _SOURCE_MOVES:
+            return {old for value in _former_paths(_SOURCE_MOVES[current]) for old in visit(value, seen)}
+        for prefix, former in _SOURCE_MOVE_DIRS:
+            if current.startswith(prefix):
+                return {old for value in _former_paths(former) for old in visit(value + current[len(prefix) :], seen)}
+        return {_legacy_policy_path(current)}
+
+    return tuple(sorted(visit(path, frozenset())))
+
+
+def policy_path(path: str) -> str:
+    """A single identity for diagnostics; merged sources retain their current path.
+
+    Permission/ratchet checks must use policy_covered or policy_paths. Choosing
+    one predecessor of a merge would silently discard the other sources' debt.
+    """
+    origins = policy_paths(path)
+    return origins[0] if len(origins) == 1 else path
+
+
+def policy_covered(path: str, entries, prefixes=()) -> bool:
+    """Whether an existing whole-file exception covers every source ancestor.
+
+    A merge cannot borrow a whole-file waiver from just one constituent. Legacy
+    entries normalize by spelling only, never through the new merged source.
+    """
+    entries = tuple(entries)
+    exact = set(entries) | {_legacy_policy_path(entry) for entry in entries}
+    roots = tuple(prefixes) + tuple(_legacy_policy_path(prefix) for prefix in prefixes)
+    return all(old in exact or any(old.startswith(prefix) for prefix in roots) for old in policy_paths(path))
+
+
+def moved_from(prefix: str) -> list[str]:
+    """Current files with any predecessor inside the selected historical scope."""
+    prefixes = (prefix, _legacy_policy_path(prefix))
+    return sorted(
+        current for current in _SOURCE_MOVES if any(old.startswith(prefixes) for old in policy_paths(current))
+    )
 
 
 def core_package(root: Path) -> Path:

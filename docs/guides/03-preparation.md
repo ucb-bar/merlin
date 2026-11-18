@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [02-targets, 04-planning]
-code_refs: [src/merlin/capture, src/merlin/compiler/frontend/torch, src/merlin/compiler/quantization, src/merlin/compiler/ir/provenance.py, src/merlin/target/spec/quantization.py]
+code_refs: [src/merlin/capture, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, src/merlin/compiler/frontend/bindings.py, src/merlin/compiler/quantization, src/merlin/compiler/lower/options/quantization_scope.py, src/merlin/compiler/ir/provenance.py, src/merlin/target/spec/quantization.py]
 ---
 
 # 3. Capture and prepare numerical semantics
@@ -21,8 +21,13 @@ the realized quantized program, and the compiled executable.
 
 Capture preserves the graph, call signature, constants, shape constraints and
 source information. The shared capture code lives in `src/merlin/capture/`;
-the public export/import adapters live in `compiler/frontend/torch/`.
-Corpus construction belongs to `experiments/corpus/`, not the compiler frontend.
+the public export/import adapters live in `compiler/frontend/`. Experiment corpus
+construction lives in `src/merlin/experiments/corpus/`.
+
+The public saved-export path imports and binds existing captured values; it does
+not select a new quantization recipe. `StagedProgram` selects existing
+compiler-only inputs with a source-bound precision policy and requires explicit
+provider admission. It runs no capture, calibration or quantization.
 
 An authored MLIR kernel can enter directly with its numerical contract. It need
 not pass through TorchAO. A Python kernel or FX graph needs a supported capture
@@ -85,8 +90,9 @@ quantized previous attempt or change numerical meaning during lowering.
 
 | Question | Source |
 | --- | --- |
-| Which source sites belong to a captured quantization scope? | [`quantization/scope.py`](../../src/merlin/compiler/quantization/scope.py) |
+| Which contractions retain captured quantization scope during integer lowering? | [`lower/options/quantization_scope.py`](../../src/merlin/compiler/lower/options/quantization_scope.py) |
 | How are numerical requirements represented? | [`quantization/contract.py`](../../src/merlin/compiler/quantization/contract.py) |
 | Where is preparation policy selected? | [`quantization/preparation.py`](../../src/merlin/compiler/quantization/preparation.py) |
 | How are supported TorchAO recipes projected? | [`quantization/torchao/recipes.py`](../../src/merlin/compiler/quantization/torchao/recipes.py) |
-| What reaches import from a saved export? | [`frontend/torch/export.py`](../../src/merlin/compiler/frontend/torch/export.py) |
+| What reaches import from a saved export? | [`frontend/export.py`](../../src/merlin/compiler/frontend/export.py) |
+| How are captured parameters bound without changing their storage bits? | [`frontend/bindings.py`](../../src/merlin/compiler/frontend/bindings.py) |

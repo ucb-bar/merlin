@@ -12,7 +12,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import num, obj
+from merlin.experiments.tracking.console.snapshot import num, obj
+
 from . import TOKEN_FIELDS, downsample, empty_tokens
 from .agents import index_for
 

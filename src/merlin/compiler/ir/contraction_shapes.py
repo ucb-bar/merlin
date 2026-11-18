@@ -149,7 +149,7 @@ def _shaped(value) -> "tuple[list[int], str] | None":
     computes int8 and not fp32 rejects on element type, never on extents) and it names the
     accumulator, which is what decides whether a reduction overflows.
     """
-    from merlin.common.mlir_query import type_shape_dtype
+    from merlin.compiler.ir.mlir_query import type_shape_dtype
 
     try:
         shape, dtype = type_shape_dtype(value.type)
@@ -167,7 +167,7 @@ def _shape_of(value) -> "list[int] | None":
 
 def _iterator_types(op) -> "list[str] | None":
     """``["parallel", ..., "reduction"]`` for a ``linalg.generic``, or None when unreadable."""
-    from merlin.common.mlir_query import _attr_tables
+    from merlin.compiler.ir.mlir_query import _attr_tables
 
     for table in _attr_tables(op):
         it = table.get("iterator_types")
@@ -190,7 +190,7 @@ def indexing_maps(op) -> "list[list[Any]] | None":
     unregistered dialects as well as on a fully-typed xDSL ``GenericOp``. None means "could not read",
     which is NOT the same as "no maps" — callers must fail closed on it rather than proceed.
     """
-    from merlin.common.mlir_query import _attr_tables
+    from merlin.compiler.ir.mlir_query import _attr_tables
 
     maps = getattr(op, "indexing_maps", None)
     if maps is None:
@@ -317,7 +317,7 @@ def observe_contractions(src: "str | Path | Any") -> "list[tuple[Any, Contractio
     Returns an EMPTY list rather than raising when the module cannot be parsed — a shape observer that
     fails must degrade to "I observed nothing", which makes the caller fall back to the shape-blind
     realization instead of failing a build over an unreadable capture."""
-    from merlin.common import mlir_query as mq
+    from merlin.compiler.ir import mlir_query as mq
 
     try:
         module = mq.parse(src)  # accepts an already-parsed module, MLIR text, or a path
@@ -393,8 +393,8 @@ def windowed_contraction_extents(module, out: dict | None = None) -> dict:
     """
     import math
 
-    from merlin.common import mlir_query as mq
-    from merlin.compiler.dialects.lowering import contraction_coverage as cc
+    from merlin.compiler.ir import mlir_query as mq
+    from merlin.compiler.partition import outline as cc
 
     out = {} if out is None else out
     for op in mq.walk(module):

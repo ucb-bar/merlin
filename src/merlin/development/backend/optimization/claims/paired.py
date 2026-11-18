@@ -1,7 +1,7 @@
 """Decide a two-arm performance claim from MEASURED cycles.
 
 A differential family says two programs doing the same work should not cost the same. Deciding that
-was routed through ``merlin.analysis.perf.differential.compare``, which compares two composed demand
+was routed through ``merlin.analysis.perf.search.differential.compare``, which compares two composed demand
 envelopes -- and on a target whose resource times neither add nor max (a partial composition) that
 function refuses by construction, correctly: a cycle delta is not derivable from demands when the
 composition is partial. Refusing is sound, but it left every differential family undecided, because
@@ -31,15 +31,18 @@ import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.analysis.perf import barrier_arms as BA
+from merlin.analysis.perf.claims import comparison_group as BA
+
+# ---- paired ------------------------------------------------------------------------------------
 
 ANALYZER = "perf_paired_claim.analyze_paired_claim/v1"
 
 ESTABLISHED = "ESTABLISHED"
+
 REFUTED = "REFUTED"
+
 REFUSED = "REFUSED"
 
-#: A family that predicts a difference without predicting its sign declares this instead of a role.
 EITHER = "either"
 
 
@@ -58,7 +61,7 @@ def analyze_paired_claim(descriptors: object, results: object, per_unit: object 
     ``cycles``. Every member must report both of its declared arms.
 
     ``per_unit`` maps capsule -> how many units the cheap arm REMOVED (for the synchronization
-    family, completion points, from :func:`merlin.analysis.perf.barrier_arms.paired_removal`). It is required
+    family, completion points, from :func:`merlin.analysis.perf.claims.comparison_group.paired_removal`). It is required
     exactly when the family's own falsifier declares a per-unit GROWTH observation, and is ignored
     otherwise. A direction test cannot decide a growth claim: "this arm is cheaper on every member"
     is true of a saving that is CONSTANT across members, which is precisely what a per-unit claim
@@ -259,27 +262,8 @@ def _apply_growth_falsifier(
     return merged
 
 
-# ---------------------------------------------------------------------------------------------
-# PREFLIGHT: may this cohort be measured at all?
-#
-# ``analyze_paired_claim`` refuses evidence that cannot decide the claim. That is the last line, not
-# the first: by the time it speaks, every arm of every member has been simulated. The questions it
-# asks about the DECLARATION -- are there two roles, is one of them predicted cheaper, is the band
-# measured rather than assumed -- are answerable before any cycle is spent, and asking them at
-# launch is what stops a campaign producing an undecidable cohort at full price.
-#
-# The replicate schedule is a PARAMETER here, exactly as it is for the residency family: these
-# contracts state a FLOOR (``noise_band.minimum_replicate_count``, or ``acceptance.replicates``) and
-# the run authors the identities. A floor the declaration does not state is not defaulted to two --
-# it is refused, because a band this family calls MEASURED, measured over a schedule nobody
-# declared, is a band the analyzer would compute from whatever the run happened to do.
-# ---------------------------------------------------------------------------------------------
-
 SCHEMA_VERSION = 1
 
-#: The one band kind this procedure implements. A contract declaring a CONSTANT band is declaring a
-#: different test -- the analyzer never reads a constant -- so it is refused rather than scored
-#: against a bound nothing evaluates.
 BAND_MEASURED_DISPERSION = "measured_replicate_dispersion"
 
 
@@ -382,7 +366,7 @@ def _validated_declaration(
             "measured dispersion, so the constant would be declared and never applied"
         )
 
-    from merlin.analysis.perf import claim_reach
+    from merlin.analysis.perf.claims import reach as claim_reach
 
     schedules = []
     for descriptor in members:

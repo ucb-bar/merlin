@@ -762,7 +762,7 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// InsightNames are the insight panels (merlin.experiments.tracking.console.model.INSIGHTS), in display
+// InsightNames are the insight panels (merlin.experiments.tracking.console.snapshot.INSIGHTS), in display
 // order. Every one shares the generic Insight shape below.
 var InsightNames = []string{"performance", "cases", "tools", "grader", "integrity", "attempts", "certification", "focus", "cost", "library"}
 

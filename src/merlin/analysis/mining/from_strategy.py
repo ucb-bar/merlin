@@ -1,4 +1,4 @@
-"""Compatibility calls for provider-owned vector schedules and optional forks.
+"""Provider calls for vector schedules and the retained fork-creation API.
 
 RVV schedule rendering, blocking legality and microkernel realization live in
 the selected OOT provider. Importing this module registers no target. The
@@ -13,7 +13,10 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from merlin.compiler.backend.host import HostPackage as RvvPackage
+from merlin.analysis.mining.fork import mint_fork as mint_fork
+from merlin.compiler.backend.host import HostPackage as RvvPackage  # noqa: F401 - retained module attribute
+
+# ---- from_strategy -----------------------------------------------------------------------------
 
 _LEGACY_SUPPORT = "rvv"
 
@@ -27,11 +30,11 @@ def _codegen(codegen_provider=None, *, support_target: str | None = None):
         from merlin.common.paths import env
 
         if support_target is not None or env("MERLIN_TARGET_PATH"):
-            from merlin.development.targetgen.plugins import load_declared
+            from merlin.target.registry.plugins import load_declared
 
             codegen_provider = load_declared(support_target or _LEGACY_SUPPORT, "rvv_codegen")
         else:
-            from merlin.compiler.backend.service import resolve
+            from merlin.compiler.backend.providers import resolve
 
             try:
                 _, service = resolve(_LEGACY_SUPPORT, group="merlin.backends", methods=("codegen_provider",))
@@ -54,7 +57,7 @@ def _codegen_selected() -> bool:
     from merlin.common.paths import env
 
     if env("MERLIN_TARGET_PATH"):
-        from merlin.development.targetgen.target_registry import explicit_targets
+        from merlin.target.registry.identity import explicit_targets
 
         return _LEGACY_SUPPORT in explicit_targets()
     from importlib.metadata import entry_points
@@ -96,7 +99,7 @@ def microkernel_features(
     historical RVV identity has a named legacy OOT selection; arbitrary package
     or SoC names never imply that provider.
     """
-    from merlin.analysis.kernels.microkernel import MicrokernelSpec, registered_targets, resolve_for_shapes
+    from merlin.analysis.mining.microkernel import MicrokernelSpec, registered_targets, resolve_for_shapes
 
     if codegen_provider is None and support_target is None:
         if target in registered_targets() or target != _LEGACY_SUPPORT:
@@ -123,7 +126,7 @@ def policy_source_record(codegen_provider, *, operation=None) -> dict:
     selected = tuple(source_files(operation=operation)) if operation is not None else tuple(source_files())
     if not selected or any(not isinstance(path, (str, Path)) for path in selected):
         raise ValueError("selected vector provider has no actual policy source closure")
-    from merlin.analysis.kernels import microkernel
+    from merlin.analysis.mining import microkernel
 
     paths = tuple(dict.fromkeys((Path(__file__), Path(microkernel.__file__), *(Path(path) for path in selected))))
     return {
@@ -143,44 +146,3 @@ def _checked_call(provider, action, *args, operation=None, **kwargs):
     if policy_source_record(provider, operation=operation) != before:
         raise ValueError("selected vector policy source changed during its operation")
     return result
-
-
-def mint_fork(
-    parent: RvvPackage | str | Path,
-    overrides: dict[str, Any],
-    *,
-    version: int,
-    depth: int,
-    timestamp: str,
-    source_evidence: list[str],
-    lever: str,
-    target: str = _LEGACY_SUPPORT,
-    out_root: str | Path = "out/artifacts/targets",
-    generated_by_agent: bool = False,
-    codegen_provider=None,
-    support_target=None,
-) -> Path:
-    """Delegate fork creation to the optional mining workflow."""
-    try:
-        from merlin.analysis.mining.fork import mint_fork as create
-    except ModuleNotFoundError as exc:
-        if exc.name != f"{__package__}.fork":
-            raise
-        raise ModuleNotFoundError(
-            "Merlin installation lacks fork creation; reinstall 'merlin[mining]'.",
-            name=exc.name,
-        ) from exc
-    return create(
-        parent,
-        overrides,
-        version=version,
-        depth=depth,
-        timestamp=timestamp,
-        source_evidence=source_evidence,
-        lever=lever,
-        target=target,
-        out_root=out_root,
-        generated_by_agent=generated_by_agent,
-        codegen_provider=codegen_provider,
-        support_target=support_target,
-    )

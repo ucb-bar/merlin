@@ -33,7 +33,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ..io import Reader, epoch, is_dir, obj, positive, scan_dir
+from merlin.experiments.tracking.console.snapshot import Reader, epoch, is_dir, obj, positive, scan_dir
 
 #: Bytes of new records one refresh may digest (the reader's budget still applies on top).
 STEP = 48 << 20
@@ -44,7 +44,7 @@ MAX_VERDICTS = 8192
 LEDGER = Path("qa") / "perf_history.jsonl"
 LEDGER_SCHEMA = "merlin.phase1.perf_history.v1"
 KINDS = ("measured", "modeled")
-_SKILL_SCRIPT = ("author_skills", "roofline-and-utilization", "scripts", "perf_summary.py")
+_SKILL_SCRIPT = ("skills", "roofline-and-utilization", "scripts", "perf_summary.py")
 _SHARED: Any = None
 
 
@@ -54,7 +54,7 @@ def definitions():
     if _SHARED is None:
         from merlin.common.paths import module_source_path
 
-        _SHARED = load_script(module_source_path("merlin.development.backend").parent.joinpath(*_SKILL_SCRIPT))
+        _SHARED = load_script(module_source_path("merlin.resources").parent.joinpath(*_SKILL_SCRIPT))
     return _SHARED
 
 

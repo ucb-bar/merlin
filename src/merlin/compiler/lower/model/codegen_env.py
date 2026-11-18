@@ -19,7 +19,9 @@ cost of a binary nobody can reproduce.
 
 from __future__ import annotations
 
-from merlin.compiler.lower.model.optional_passes import child_environment
+from merlin.compiler.lower.options.optional_passes import child_environment
+
+# ---- codegen_env -------------------------------------------------------------------------------
 
 #: Prefix that marks a variable as this project's. Everything set under it is captured.
 PREFIX = "MERLIN_"

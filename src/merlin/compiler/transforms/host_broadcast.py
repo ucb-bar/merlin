@@ -3,6 +3,10 @@
 Native source executes in the caller-selected MLIR context; no tool discovery.
 """
 
+from __future__ import annotations
+
+# ---- host_broadcast ----------------------------------------------------------------------------
+
 BROADCAST_SOURCE = r"""
 def _broadcast_math_spec(op):
     from torch_mlir import ir as _bh_ir

@@ -2,12 +2,8 @@ from dataclasses import replace
 
 from merlin.compiler.kernel_ir.ir import Call, Loop, as_expr
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
-from merlin.compiler.schedule.compact_dense import (
-    DenseLoopAdapter,
-    DenseLoopStorage,
-    DenseMemoryView,
-)
-from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources
+from merlin.compiler.schedule.dense.compact import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
+from merlin.compiler.transforms.dense.planning import DenseProblem, DenseResources
 
 
 def encode(op):

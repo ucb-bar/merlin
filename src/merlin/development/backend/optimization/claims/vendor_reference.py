@@ -23,9 +23,14 @@ import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+# ---- vendor_reference --------------------------------------------------------------------------
+
 ANALYZER = "perf_vendor_reference_claim.analyze_vendor_reference_claim/v1"
+
 ESTABLISHED, REFUTED, REFUSED = "ESTABLISHED", "REFUTED", "REFUSED"
+
 CANDIDATE, VENDOR = "candidate", "vendor_reference"
+
 _BAND = "measured_replicate_dispersion"
 
 

@@ -44,7 +44,7 @@ goldens and credentials must never be copied into this public example.
 
 The handwritten support provider and copied kernel headers have been removed.
 [`support/`](support) is a data-only provider (contract copy, plugin pointers to the generic
-`merlin.runtime.backends.chipyard_rocc` runtime, and a digest-pinned ISA-headers spec); it holds no code.
+`merlin.runtime.backends.rocc.chipyard_backend` runtime, and a digest-pinned ISA-headers spec); it holds no code.
 Fresh backend generation and backend optimization use the independently issued hardware, runtime and
 compiler-origin authorities described in the
 [fresh compiler design](../../../docs/guides/12-experiments.md).

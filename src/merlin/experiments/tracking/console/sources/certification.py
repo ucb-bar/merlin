@@ -29,7 +29,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, obj, rows, scan_dir
+
 from .insight_common import line, panel, private_rows, row, table
 from .progress import FAIL, PASS
 

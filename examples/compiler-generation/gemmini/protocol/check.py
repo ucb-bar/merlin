@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 
 from merlin.compiler.quantization.capabilities import digest
-from merlin.evaluation.model import models as MD
+from merlin.evaluation.model.bundles import models as MD
 
 
 def selected_input_manifest(spec_path: Path, spec: dict, selected: Path | None) -> Path:

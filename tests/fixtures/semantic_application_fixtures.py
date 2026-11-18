@@ -2,14 +2,14 @@
 
 from dataclasses import replace
 
-from merlin.compiler.dialects.lowering.global_plan import (
+from merlin.compiler.partition.global_plan import (
     BufferRepresentation,
     CycleInterval,
     GlobalPlan,
     RegionAlternative,
     ValueRepresentation,
 )
-from merlin.compiler.partition.semantic import extract_semantic_region
+from merlin.compiler.partition.semantic_regions import extract_semantic_region
 
 
 def plan_for(source, groups):

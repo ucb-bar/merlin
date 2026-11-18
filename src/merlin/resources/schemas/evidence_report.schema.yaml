@@ -12,9 +12,9 @@ required_top_level_fields:
   - sources
   - files
   - detected_concepts
-producer: merlin.development.targetgen.evidence.report
+producer: merlin.development.targetgen.generation.evidence
 consumers:
-  - merlin.development.targetgen.synthesize.*
+  - merlin.development.targetgen.generation.pipeline
   - human reviewers
 validation_notes: >-
   Every file entry should carry a path relative to the source root and a short summary. Every

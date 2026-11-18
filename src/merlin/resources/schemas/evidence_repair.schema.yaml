@@ -7,7 +7,7 @@ purpose: >-
   so restoring a deleted member is only acceptable when the restored bytes equal the pin, and only
   auditable when the restoration says what was missing, where each byte came from, when, by whom
   and why. Written read-only and exclusively (never overwritten); its `protects` list makes the
-  repaired tree cited evidence for every cleanup that consults merlin.common.cited_evidence.
+  repaired tree cited evidence for every cleanup that consults merlin.common.storage.retention.
 required_top_level_fields:
   - schema
   - root
@@ -23,7 +23,7 @@ required_top_level_fields:
 producer: merlin.experiments.corpus.evidence_custody.repair
 consumers:
   - operators auditing sealed evidence
-  - merlin.common.cited_evidence (protects)
+  - merlin.common.storage.retention (protects)
 validation_notes: >-
   `schema` is merlin.evidence_repair.v1. Every `restored` row carries the member path relative to
   `root`, the pinned digest, the records that pin it, the source path, and the digest of the bytes

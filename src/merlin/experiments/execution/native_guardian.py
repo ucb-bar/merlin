@@ -9,8 +9,8 @@ import subprocess
 import sys
 import time
 
-from merlin.common.owned_children import become_child_subreaper as _subreaper
-from merlin.common.owned_children import reap_owned_children as _cleanup
+from merlin.common.process.ownership import become_child_subreaper as _subreaper
+from merlin.common.process.ownership import reap_owned_children as _cleanup
 
 from ..frozen_python import active_source_identity
 from . import _protocol as protocol

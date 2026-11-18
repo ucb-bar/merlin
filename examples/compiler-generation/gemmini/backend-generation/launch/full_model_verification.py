@@ -9,12 +9,11 @@ from pathlib import Path
 
 import yaml
 
-from merlin.common import oot_repo
-from merlin.common.digest import sha256_file
-from merlin.common.tree_hash import hash_tree
+from merlin.common import oot_repository as oot_repo
+from merlin.common.digest import hash_tree, sha256_file
+from merlin.evaluation.model.bundles.models import load as load_models
 from merlin.evaluation.model.cli import tree_sha256
-from merlin.evaluation.model.full_chain_validation import report_complete
-from merlin.evaluation.model.models import load as load_models
+from merlin.evaluation.model.whole_model.quantized_comparison import report_complete
 
 
 def read(path: Path) -> dict:
@@ -209,12 +208,12 @@ def _target_witness(launch, record: dict) -> None:
     import numpy as np
 
     from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
-    from merlin.evaluation.model import full_build as FB
-    from merlin.evaluation.model import full_quantized as FQ
-    from merlin.evaluation.model import full_reference_cache as RC
-    from merlin.evaluation.model import replay as RP
-    from merlin.runtime.backends import spike_model
-    from merlin.runtime.modelinputs import strict_tree_sha256
+    from merlin.evaluation.model.bundles import host_twins as RC
+    from merlin.evaluation.model.kernels import replay as RP
+    from merlin.evaluation.model.whole_model import build as FB
+    from merlin.evaluation.model.whole_model import quantized_comparison as FQ
+    from merlin.runtime.backends.baremetal import image_link as spike_model
+    from merlin.runtime.execution.model_inputs import strict_tree_sha256
 
     value = _witness(launch, record, "merlin.phase1.infrastructure_target_witness.v1")
     if set(value) != {
@@ -389,8 +388,8 @@ def _capture_correspondence(selected: dict) -> None:
 
 def validate_infrastructure_readiness(launch, receipt: dict) -> None:
     """Admit authoring from positive mechanisms; never qualify the retained or fresh compiler."""
-    from merlin.evaluation.model import bundle as B
-    from merlin.evaluation.model import full_quantized as FQ
+    from merlin.evaluation.model.bundles import seal as B
+    from merlin.evaluation.model.whole_model import quantized_comparison as FQ
 
     if (
         set(receipt)

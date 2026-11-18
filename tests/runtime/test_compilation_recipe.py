@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from merlin.compiler.lower.model.compilation_recipe import FILENAME, CompilationRecipe
-from merlin.runtime.backends import spike_model
+from merlin.runtime.backends.baremetal import image_link as spike_model
 
 
 def _read(work):

@@ -4,7 +4,7 @@
 It accepts exactly two interface shapes -- one 16x16 movement (isa/A1_mvin_mvout) and one
 single-tile weight-stationary matmul (isa/A2_single_tile_matmul) -- and refuses everything else.
 Every encoding constant is read from ``gemmini_isa.h`` beside this file, which Merlin GENERATES from
-the RTL facts and the target contract (merlin.development.targetgen.isa_header_gen): funct codes, the RoCC
+the RTL facts and the target contract (merlin.target.isa.headers): funct codes, the RoCC
 opcode, command-register field offsets, CONFIG selector codes and local-address flag bits. The only
 facts taken from the public Gemmini ISA description rather than the header are the protocol choices
 a probe has to make: weight-stationary dataflow is value 1 of the CONFIG_EX dataflow field, unit

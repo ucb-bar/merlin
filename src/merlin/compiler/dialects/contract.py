@@ -7,7 +7,9 @@ See docs/core_dialects.md and docs/dialects.md.
 
 from __future__ import annotations
 
-from merlin.compiler.dialects._common import HAS_XDSL
+from merlin.compiler.dialects.xdsl_context import HAS_XDSL
+
+# ---- contract ----------------------------------------------------------------------------------
 
 DIALECT_NAME = "contract"
 OPS = ["region", "assume", "fact", "require", "prove", "capability", "check"]

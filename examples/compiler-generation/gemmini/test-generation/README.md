@@ -117,7 +117,7 @@ trace. No second workload or held-out model is used to derive this obligation;
 missing or inconsistent trace geometry is reported, not guessed.
 
 ```sh
-"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -172,7 +172,7 @@ fits the selected DTS, and one saved rank-4 capture passed Spike, but this does
 not qualify Rocket RTL/FireSim execution or every declared host operation.
 A deterministic native-host diagnostic can
 be generated for a saved capture with
-`python -m merlin.experiments.model_qualification --bundle "$CAPTURE_ROOT/residual_cnn" --out "$QUALIFICATION_ROOT/residual_cnn" --native-host-only --atol 0 --rtol 0`.
+`python -m merlin.experiments.inspection.qualification_workflow --bundle "$CAPTURE_ROOT/residual_cnn" --out "$QUALIFICATION_ROOT/residual_cnn" --native-host-only --atol 0 --rtol 0`.
 The generated `qualification.json` binds the input bytes, compiler route and
 numerical result. It proves that saved whole program on the CPU, not independent
 per-operation support, Rocket execution, or Gemmini execution; test generation keeps the
@@ -306,7 +306,7 @@ generated from the selected spec and hardware; do not author a replacement.
 Capture each iteration workload into a new scoped directory:
 
 ```sh
-"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/coverage_mlp/loader.py \
   --dtype int8 --recipe "$GENERATED_RECIPE" \
@@ -463,7 +463,7 @@ The fire-aligned EL4 release is prepared from one checked-in file,
 Lean toolchain and backend generation policy descriptor (each with its SHA256), the host
 index width and the seal statement. The
 [backend generation launch config](../backend-generation/launch/el4-fire-aligned.yaml) names it;
-`python -m merlin.development.backend.launch_config render` writes its exact
+`python -m merlin.development.backend.session.launch_config render` writes its exact
 `release.prepare(...)` arguments to `release-prepare.json`, and `verify` compares
 an existing release's `private/preparation.json` and seal against it. A new release
 always takes a new version (`--var RELEASE_VERSION=N`); sealed releases are never

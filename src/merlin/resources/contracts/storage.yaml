@@ -132,7 +132,7 @@ retention:
       doc: targets/<target>/champions/<package_id>/
 
 # What cleanup must never delete because a record that outlives the cleanup cites it
-# (merlin.common.cited_evidence; `merlin-storage cited PATH` asks the same question by hand).
+# (merlin.common.storage.retention; `merlin-storage cited PATH` asks the same question by hand).
 #
 # Disk cleanups deleted sealed Phase 0 evidence twice (2026-10-17: the captures a derivation
 # cited; 2026-10-24: catalogs inside a reviewed derivation). Each time the record pinning the path

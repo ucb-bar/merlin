@@ -21,9 +21,9 @@ COMPATIBILITY_IMPORTS = frozenset(
     {
         ("merlin.analysis.mining.from_strategy", ("mint_fork",), "merlin.analysis.mining.fork"),
         (
-            "merlin.development.targetgen.package_runtime",
+            "merlin.development.targetgen.packaging.loading",
             ("__getattr__",),
-            "merlin.development.targetgen.package_certification",
+            "merlin.development.targetgen.packaging.certification",
         ),
     }
 )

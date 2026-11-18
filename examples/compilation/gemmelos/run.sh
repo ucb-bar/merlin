@@ -56,7 +56,7 @@ preflight)
 probe)
   ex_say "build the vector probe and self-check it on spike"
   ex_preflight "$BOARD" --require probe
-  ex_run "$PY" -m merlin.runtime.vector_probe --board "$BOARD" --run --spike-vlen 256
+  ex_run "$PY" -m merlin.runtime.boards.vector_probe --board "$BOARD" --run --spike-vlen 256
   ex_note "the shipped probe speaks this chip's UART; the self-checked one speaks HTIF, because that"
   ex_note "is the console spike provides. Same source, same CSR reads, different console object."
   ;;

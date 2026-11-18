@@ -10,13 +10,14 @@ import json
 
 from xdsl.dialects import builtin, func, tensor
 
-from merlin.compiler.artifact import Artifact, Compilation
-from merlin.compiler.backend.cabi import CRegionABI, TensorPort
+from merlin.compiler.backend.c_abi import CRegionABI, TensorPort
+from merlin.compiler.compilation import Artifact, Compilation, CompileOptions
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.lower.c.layout import emit_layout_c
-from merlin.compiler.request import CompileOptions
-from merlin.compiler.semantic.linalg_bridge import translate_linalg_text
+from merlin.compiler.semantic.linalg.linalg_bridge import translate_linalg_text
 from merlin.compiler.semantic.model import KernelRequest, SemanticNode, TensorType
+
+# ---- layout ------------------------------------------------------------------------------------
 
 name = "merlin.layout"
 

@@ -14,7 +14,7 @@ What each part is for:
 * **``expected_console.txt``** — the console text OUR spike run produced. They can diff it.
 * **``golden*.npy``** — the references, because grading happens against them, not against the binary.
 * **``grade.py``** — reads a console log and prints the verdict, using the *same* parser and gate the
-  repo grades with (``zephyr_model._parse_console`` + ``_gate``). No merlin checkout needed beyond numpy.
+  repo grades with (``zephyr_execution._parse_console`` + ``_gate``). No merlin checkout needed beyond numpy.
 * **``elf_audit.json``** — what we checked before shipping: segments inside their DRAM, entry point,
   ``.htif`` present, vector instructions present, and the upload-time estimate.
 * **``manifest.json``** — board facts we built for, per-binary build hashes, the package id, and the
@@ -47,11 +47,17 @@ import numpy as np  # noqa: E402
 
 from merlin.common.artifacts import new_product  # noqa: E402
 from merlin.common.paths import _dotenv, repo_root  # noqa: E402
+from merlin.compiler.backend import source_proposals as proposal
 from merlin.compiler.backend.host import load_host_package as load_rvv_package  # noqa: E402
+from merlin.compiler.build import model_preparation as zephyr_preparation  # noqa: E402
+from merlin.compiler.build import zephyr as config
 from merlin.compiler.optimizations.registry import PEROP_BLOCK_NAME  # noqa: E402
-from merlin.runtime import boards, elf_audit  # noqa: E402
-from merlin.runtime.backends import zephyr_model as zm  # noqa: E402
-from merlin.runtime.boards import CONSOLE_HTIF  # noqa: E402
+from merlin.runtime.backends.zephyr import application as zm
+from merlin.runtime.backends.zephyr import execution as zephyr_execution
+from merlin.runtime.backends.zephyr import image_build as zephyr_build
+from merlin.runtime.boards import catalog as boards  # noqa: E402
+from merlin.runtime.boards import image_audit as elf_audit
+from merlin.runtime.boards.catalog import CONSOLE_HTIF  # noqa: E402
 
 #: How each board is loaded and run, in ITS OWN flow. Quoted from the board's own repo so the authors
 #: recognise it, rather than a command we invented.
@@ -419,7 +425,8 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     the default spike map is not: its arena at 0xC0000000 and weights at 0x2_0000_0000 are simply not
     memory on a 1 GB chip, so the image would fault on its first activation.
     """
-    from merlin.runtime.backends import spike_model
+    from merlin.runtime.backends.baremetal import image_link as spike_execution
+    from merlin.runtime.backends.baremetal import model_build as spike_build
 
     # The SAME package, features and int8 datapath the Zephyr path uses. Not optional: lowering the raw
     # bundle here scored cos 0.925 on deepjscc, which the prepared path gets bit-exact.
@@ -429,13 +436,13 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     # encoder attention and died here as `*** FAILED *** (tohost = 2055)` -- no message, no named
     # allocation, because the bare-metal path has no RTOS and so does not carry the malloc guard the
     # Zephyr images do. A board with 1 GB of DRAM had 700 MB spare at the time.
-    from merlin.common.ir_lock import IR_LOCK
-    from merlin.common.mlir_query import activation_peak_bytes
+    from merlin.compiler.ir.mlir_query import activation_peak_bytes
+    from merlin.compiler.ir.xdsl_io import IR_LOCK
 
     with IR_LOCK:
         peak = activation_peak_bytes(bundle / "model.mlir")
     arena_mb = max(256, ((int(peak or 0) + 128 * 1024 * 1024) + 2**20 - 1) // 2**20)
-    b = spike_model.build(
+    b = spike_build.build(
         bundle,
         work,
         inputs_npz=bundle / "inputs.npz",
@@ -451,9 +458,11 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    run = spike_model.run(b["elf"], harts=1, mem_bytes=b["mem_bytes"], timeout=timeout, isa=zm.spike_isa(brd.vlen))
+    run = spike_execution.run(
+        b["elf"], harts=1, mem_bytes=b["mem_bytes"], timeout=timeout, isa=zephyr_execution.spike_isa(brd.vlen)
+    )
     res = dict(run)
-    res.update(zm._gate(run["prefix"], refs))
+    res.update(zephyr_execution._gate(run["prefix"], refs))
     res.setdefault("metrics", run.get("metrics", {}))
     res["vlen"] = brd.vlen or 128
     ship = b
@@ -463,7 +472,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
         # same bundle, package, features and vlen, so `build_hash` (a digest of the lowered model
         # object plus the weights blob) is identical and the package can say the compute is the same
         # binary content and only the output channel differs.
-        ship = spike_model.build(
+        ship = spike_build.build(
             bundle,
             work / "board",
             inputs_npz=bundle / "inputs.npz",
@@ -504,7 +513,7 @@ def build_baremetal(bundle: Path, brd, *, work: Path, timeout: int, sdk_dir=None
     )
 
 
-#: Keys `zephyr_model.build_app` returns that describe an image's MEMORY DEMAND. Forwarded explicitly by
+#: Keys `zephyr_build.build_app` returns that describe an image's MEMORY DEMAND. Forwarded explicitly by
 #: every wrapper, because a wrapper that hand-picks its return silently drops them -- and then the arena
 #: check downstream compares against zero and passes an image it never examined.
 MEMORY_KEYS = ("allocation_bytes_total", "allocation_dynamic_calls", "activation_peak_bytes")
@@ -530,9 +539,9 @@ def build_board_only(
         # Respect the board's FLOW. Skipping the simulation must not also silently change which
         # harness the image is built with: a board whose SDK has no RTOS cannot run a Zephyr image,
         # and building one anyway would ship an ELF that cannot boot on the target it names.
-        from merlin.runtime.backends import spike_model
+        from merlin.runtime.backends.baremetal import model_build as spike_build
 
-        b = spike_model.build(
+        b = spike_build.build(
             bundle,
             work,
             inputs_npz=bundle / "inputs.npz",
@@ -571,13 +580,13 @@ def build_board_only(
         # It does not vectorise the image -- the point of a scalar build is a hart with no vector unit,
         # and that property is checked, not assumed: `forward` audits at 0 vector instructions with
         # this on, and `_audit` below fails the package if any appear.
-        b = zm.build_app(
+        b = zephyr_build.build_app(
             bundle,
             work,
             board=brd.name,
             backend=backend,
             rvv_hart=0,
-            cpus=zm.image_cpus(brd, harts),
+            cpus=config.image_cpus(brd, harts),
             n_harts=harts,
             int8_compute=True,
             features=frozenset([PEROP_BLOCK_NAME]),
@@ -592,13 +601,13 @@ def build_board_only(
             "op_profile_table": b.get("op_profile_table"),
             **_keep_memory(b),
         }
-    b = zm.build_app(
+    b = zephyr_build.build_app(
         bundle,
         work,
         board=brd.name,
         backend="rvv",
         rvv_hart=0,
-        cpus=zm.image_cpus(brd, harts),
+        cpus=config.image_cpus(brd, harts),
         n_harts=harts,
         int8_compute=True,
         rvv_schedule=pkg.schedule_text,
@@ -647,10 +656,10 @@ def build_one(
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    cpus = zm.image_cpus(brd, harts)
+    cpus = config.image_cpus(brd, harts)
 
     def board(dbg: bool):
-        return zm.build_app(
+        return zephyr_build.build_app(
             bundle,
             work / f"board_h{harts}{'_dbg' if dbg else ''}",
             board=brd.name,
@@ -678,7 +687,7 @@ def build_one(
         # `-pN` is the image's CPU COUNT, not its hart count: a 1-hart model image is still built with
         # MP_MAX_NUM_CPUS=2, and under `-p1` Zephyr waits forever for a CPU that never arrives and hangs
         # before printing anything. That failure is indistinguishable from a slow model.
-        res = zm.run_on_spike(
+        res = zephyr_execution.run_on_spike(
             ship["elf"],
             dram_base=brd.dram_base,
             harts=cpus,
@@ -686,12 +695,12 @@ def build_one(
             timeout=timeout,
             vlen=vlen if vec else None,
         )
-        res.update(zm._gate(res["prefix"], refs))
+        res.update(zephyr_execution._gate(res["prefix"], refs))
         res["backend"] = backend
     else:
         # A board whose console is its own UART cannot be simulated here at all -- spike has no such
         # peripheral -- so the gate runs on an HTIF twin built from the same IR, and the package says so.
-        res = zm.build_and_run(
+        res = zephyr_execution.build_and_run(
             bundle,
             work,
             board="spike_riscv64",
@@ -841,7 +850,7 @@ def _routing_facts(build_dir: Path, routing) -> dict:
     signature routed, nothing skipped) and the arithmetic behind it, because "the matrix unit is used"
     is compatible with one small GEMM out of a hundred going through it.
     """
-    zm.load_matrix_signatures(Path(build_dir), routing)
+    zephyr_preparation.load_matrix_signatures(Path(build_dir), routing)
     f = Path(build_dir) / routing.provider().SIDECAR_NAME
     if not f.is_file():
         return {}
@@ -967,8 +976,8 @@ def build_matrix(
     """
     if not support_target:
         raise ValueError("matrix routing requires an explicit support_target")
-    from merlin.analysis.kernels.decode import matrix_units as unit_audit
-    from merlin.development.targetgen.plugins import load_declared
+    from merlin.analysis.observation import matrix_units as unit_audit
+    from merlin.target.registry.plugins import load_declared
 
     provider = load_declared(support_target, "matrix_lowering")
     encodings = provider.derive_encodings(provider.load_contract(unit)).encodings
@@ -977,11 +986,11 @@ def build_matrix(
     refs = {"fp32": np.load(bundle / "golden.npy")}
     if (bundle / "golden_w8a8.npy").is_file():
         refs["w8a8"] = np.load(bundle / "golden_w8a8.npy")
-    cpus = zm.image_cpus(brd, harts)
-    routing = zm.MatrixRouting(unit=unit, config=config, support_target=support_target)
+    cpus = config.image_cpus(brd, harts)
+    routing = proposal.MatrixRouting(unit=unit, config=config, support_target=support_target)
 
     def build(*, stand_in: bool, dbg: bool, where: str):
-        return zm.build_app(
+        return zephyr_build.build_app(
             bundle,
             work / where,
             board=brd.name,
@@ -1053,7 +1062,7 @@ def build_matrix(
         )
 
     if simulate:
-        res = zm.run_on_spike(
+        res = zephyr_execution.run_on_spike(
             twin["elf"],
             dram_base=brd.dram_base,
             harts=cpus,
@@ -1061,7 +1070,7 @@ def build_matrix(
             timeout=timeout,
             vlen=vlen,
         )
-        res.update(zm._gate(res["prefix"], refs))
+        res.update(zephyr_execution._gate(res["prefix"], refs))
     else:
         # --no-spike: the twin is still BUILT and both images still audited (the digest match and the
         # instruction-count checks above are what make the pair meaningful), but the functional grade is
@@ -1336,7 +1345,7 @@ def main(argv=None) -> int:
     # every context switch, and every simulator gate agrees with the descriptor by construction.
     probe_check, probe_problems = None, []
     if a.probe_console:
-        from merlin.runtime import vector_probe
+        from merlin.runtime.boards import vector_probe
 
         probe_check = vector_probe.verify_declared(brd.vlen, Path(a.probe_console).read_text(errors="replace"))
         v, measured = probe_check["verdict"], probe_check["measured"]
@@ -1748,7 +1757,7 @@ def main(argv=None) -> int:
 
     probe_report = None
     try:
-        from merlin.runtime import vector_probe
+        from merlin.runtime.boards import vector_probe
 
         pwork = Path(tempfile.mkdtemp(prefix="delivery_probe_"))
         # The probe we CHECK speaks HTIF, because that is the console spike provides; the probe we
@@ -1774,7 +1783,7 @@ def main(argv=None) -> int:
             # whether the PLL programming took effect.
             mtime_hz = None
             if a.sdk_dir and brd.sdk_chip:
-                from merlin.runtime.sdk_facts import derive_uart_console
+                from merlin.runtime.boards.sdk_facts import derive_uart_console
 
                 mtime_hz = derive_uart_console(a.sdk_dir, brd.sdk_chip).mtime_hz
             pelf = vector_probe.build(
@@ -2025,7 +2034,7 @@ def _model_mnemonics(elf: Path) -> list[str] | None:
     look through."""
     import subprocess
 
-    from merlin.analysis import disassembly as OD
+    from merlin.analysis.observation import disassembly as OD
 
     try:
         out = subprocess.run([OD.nm_bin(), str(elf)], capture_output=True, text=True, timeout=300, check=True).stdout

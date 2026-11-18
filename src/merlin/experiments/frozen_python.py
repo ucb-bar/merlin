@@ -22,6 +22,8 @@ from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
 
+# ---- frozen_python -----------------------------------------------------------------------------
+
 CONTEXT = "MERLIN_FROZEN_PYTHON_CONTEXT"
 _OWNER = "merlin.experiments.frozen_python"
 _LEGACY_OWNER = "perf_frozen_python"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.common.digest import sha256_file
-from merlin.development.targetgen.artifact_bundle import BundleError, SelectedArtifactProfile, verify_bundle
+from merlin.development.targetgen.packaging.records import BundleError, SelectedArtifactProfile, verify_bundle
 
 
 def _profile(root):

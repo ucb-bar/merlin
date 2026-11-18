@@ -384,8 +384,10 @@ def _stage(out: Path, proposed: str, result: Path) -> None:
     """Stage the seed exactly as the session does, into ``out/workspace`` and ``out/run``."""
     import fresh_seed
 
-    from merlin.development.backend import fresh_backend, joint_control, joint_seed
-    from merlin.development.backend import full_compiler_workspace as FCW
+    from merlin.development.backend.authoring import fresh_backend
+    from merlin.development.backend.authoring.library import compiler_workspace as FCW
+    from merlin.development.backend.campaign import control as joint_control
+    from merlin.development.backend.campaign.seeding import joint_seed
 
     plan = json.loads(Path(proposed).read_text())
     options = fresh_seed.options_from_argv(plan["argv"])
@@ -404,7 +406,7 @@ def _stage(out: Path, proposed: str, result: Path) -> None:
     seed_run = plan["seed"]["run"]
     corpus = planned_corpus(plan, run_dir, out / "corpus")
     planning_inventory(corpus, workspace, run_dir)
-    from merlin.development.targetgen import seeded_grade
+    from merlin.development.targetgen.grading import seeded_grade
 
     environment = {
         FCW.ENV: json.dumps(
@@ -446,8 +448,8 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
     descriptor's pin. The minute-0 starting grade must be the planned run's."""
     import yaml
 
-    from merlin.development.backend import corpus_inputs
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.backend.session.inputs import corpus_views as corpus_inputs
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     argv = plan["argv"]
 
@@ -472,8 +474,9 @@ def planned_corpus(plan: dict, run_dir: Path, corpus: Path) -> Path:
 
 def planning_inventory(corpus: Path, workspace: Path, run_dir: Path) -> None:
     """The planned corpus's public planning inventory (workload roles), as the session stages it."""
-    from merlin.development.backend import capability_inventory, joint_control
-    from merlin.development.targetgen.capsule_common import discover_capsules
+    from merlin.development.backend.campaign import control as joint_control
+    from merlin.development.backend.session.inputs import capability_inventory
+    from merlin.development.targetgen.corpus.capsule_io import discover_capsules
 
     contract = corpus / "contract"
     native = discover_capsules(corpus / "public", labels={"public", "dev"}, contract=contract)
@@ -580,9 +583,9 @@ def _raw_results(root: Path) -> dict:
 def _grade(out: Path, label: str, submission: str, cases_json: str, workers: str, result: Path) -> None:
     """Grade ``submission`` over the cases with the self-check evaluator; per-case carry and timing."""
     from merlin.development.backend.context import load_context
-    from merlin.development.backend.feedback.public_scalability import install
-    from merlin.development.backend.feedback.selfcheck import main as selfcheck
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.backend.feedback.scalability.public_scalability import install
+    from merlin.development.backend.feedback.selfcheck.adapters import main as selfcheck
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     descriptor = Path(os.environ["MERLIN_TARGET_EXPERIMENT"])
     context = load_context(descriptor, repo=Path(os.environ["MERLIN_REPO_ROOT"]))

@@ -13,9 +13,9 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from hashlib import sha256
 
+from merlin.common.fp8_formats import float_format_params, storage_bits
 from merlin.compiler.semantic.model import ConstantBinding, KernelRequest, SemanticNode, TensorType
 from merlin.compiler.semantic.rules import InstructionDescriptor
-from merlin.runtime.fp8_formats import float_format_params, storage_bits
 
 _ARITIES = {
     "row_max": 1,

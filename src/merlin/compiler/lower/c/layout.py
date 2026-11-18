@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from math import prod
 
-from merlin.compiler.lower.model.c_runtime import DT_BYTES
+from merlin.common.fp8_formats import storage_bits
+from merlin.compiler.lower.c.dispatch import c_source_pair
+from merlin.compiler.lower.c.runtime import DT_BYTES
 from merlin.compiler.semantic.model import IndexMap, KernelRequest, pointwise_identity_maps
-from merlin.runtime.fp8_formats import storage_bits
 
-from .sources import c_source_pair
+# ---- layout ------------------------------------------------------------------------------------
 
 
 def _element_bytes(dtype: str) -> int:
@@ -249,7 +250,7 @@ def emit_layout_c(source: KernelRequest, name: str) -> tuple[dict, dict[str, str
     if len(computations) != 1:
         raise ValueError("layout C needs exactly one source computation")
     if computations[0].op == "indexed_insert_slice":
-        from .c_indexed_update import emit_indexed_update_c
+        from merlin.compiler.lower.c.c_indexed_update import emit_indexed_update_c
 
         return emit_indexed_update_c(source, computations[0], name)
     if computations[0].op == "embedding_lookup":

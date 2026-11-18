@@ -14,31 +14,31 @@ inputs:
   # SDK V24 adds the checked shared-RHS/full-K scheduling (attention) with its recipe and catalog
   # entries; both arms select it explicitly.
   library_version: 24
-  common_substrate: merlin.common_compiler_substrate.v20
+  common_substrate: merlin.common_compiler_substrate.v21
   # V23's reviewed leaves (as in fresh-campaign-next.yaml) plus the three V24 shared-RHS leaves
   # absent from the pinned previous library (reviewed 2026-10-27).
   reviewed_modules:
   - merlin.compiler.kernel_ir.ir
-  - merlin.compiler.schedule.scf_carried_events
+  - merlin.compiler.schedule.loops.completion_events
   - merlin.compiler.kernel_ir.loops
-  - merlin.common.stat_memo
+  - merlin.common.digest
   - merlin.compiler.kernel_ir.loops
-  - merlin.compiler.schedule.completion_streams
-  - merlin.compiler.schedule.configuration_motion
-  - merlin.compiler.schedule.spatial_max_stripes
+  - merlin.compiler.schedule.loops.completion_events
+  - merlin.compiler.schedule.loops.configuration_motion
+  - merlin.compiler.schedule.spatial.max_stripes
   - merlin.compiler.ir.logical_abi
-  - merlin.compiler.schedule.convolution_exploration
-  - merlin.compiler.schedule.dense_panel_epochs
-  - merlin.compiler.transforms.evaluated_exploration
-  - merlin.compiler.transforms.shape_policy
-  - merlin.compiler.schedule.pointwise_convolution
-  - merlin.compiler.schedule.batched_dense
-  - merlin.compiler.schedule.loaded_sum_epochs
+  - merlin.compiler.schedule.convolution.exploration
+  - merlin.compiler.schedule.panels.epochs
+  - merlin.compiler.transforms.exploration.cycle_feedback
+  - merlin.compiler.transforms.exploration.shape_assessment
+  - merlin.compiler.schedule.convolution.dense_views
+  - merlin.compiler.schedule.dense.batched
+  - merlin.compiler.schedule.dense.loaded_sums
   - merlin.compiler.selection.knobs
-  - merlin.compiler.transforms.tuning_selection
-  - merlin.compiler.schedule.dense_shared_rhs
-  - merlin.compiler.schedule.dense_shared_rhs_check
-  - merlin.compiler.schedule.shared_rhs_schedule_ir
+  - merlin.compiler.transforms.exploration.cycle_feedback
+  - merlin.compiler.schedule.shared_operands.shared_rhs
+  - merlin.compiler.schedule.shared_operands.shared_rhs_checks
+  - merlin.compiler.schedule.shared_operands.shared_rhs
 plan:
   guidance: ${TASK}/.tmp/fresh/fresh8ref-raw-arm-guidance.md
   reference_map:

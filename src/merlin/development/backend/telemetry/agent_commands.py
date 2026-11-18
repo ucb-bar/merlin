@@ -15,14 +15,20 @@ from __future__ import annotations
 
 import shlex
 
+# ---- agent_commands ----------------------------------------------------------------------------
+
 SELFCHECK = "agent_selfcheck.py"
+
 SIMJOB = "simjob.py"
+
 CLIENTS = (SELFCHECK, SIMJOB)
 
 _OPERATOR_CHARS = frozenset("();<>|&")
+
 _REDIRECTS = frozenset({">", ">>", "<", ">&", "&>", ">|", "<&", "&>>", "<>"})
-#: Wrappers that run their argument as a command, with how many leading option words they take.
+
 _WRAPPERS = frozenset({"env", "timeout", "nice", "nohup", "stdbuf", "taskset", "time", "exec", "command"})
+
 _VALUE_FLAGS = frozenset(
     {
         "--submission",
@@ -39,6 +45,7 @@ _VALUE_FLAGS = frozenset(
         "--debug",
     }
 )
+
 _PROBE_FLAGS = (
     "--compile-only",
     "--scale-probe",

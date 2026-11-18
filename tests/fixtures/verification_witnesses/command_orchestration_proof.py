@@ -7,8 +7,8 @@ from xdsl.context import Context
 from xdsl.dialects import builtin, llvm
 from xdsl.parser import Parser
 
-from merlin.development.targetgen.rocc import decode
-from merlin.verification import host_compute_audit as HA
+from merlin.target.isa.rocc import decode
+from merlin.verification.host import compute_audit as HA
 
 _ISA = {
     "CUSTOM_OPCODE": 123,

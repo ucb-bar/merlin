@@ -1,1 +1,1 @@
-"""Shared target contract loading; no target discovery or implementation imports."""
+"""Shared target contract loading and the system model; no target discovery or implementation imports."""

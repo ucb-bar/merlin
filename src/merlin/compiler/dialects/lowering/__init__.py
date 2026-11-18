@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from importlib import import_module
 
+# ---- lowering ----------------------------------------------------------------------------------
+
 # Preserve the public convenience API without importing execution/oracle modules
 # when a submitted compiler needs only a pure leaf helper.
 _EXPORTS = {
@@ -59,7 +61,6 @@ _EXPORTS = {
     )
     for name in names
 }
-__all__ = list(_EXPORTS)
 
 
 def __getattr__(name):

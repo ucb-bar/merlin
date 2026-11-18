@@ -12,8 +12,8 @@ metadata is bound by the existing host environment marker, never by the mutable
 marker alone; final masks and backend optimization public projections use captured private
 views even after original aliases or selected providers change.
 
-- `answer_surfaces.py` — The DERIVED answer-surface mask set (goldens/model weights/hidden/prior/oracle/grader/memory) and transcript-audit tokens, consuming shared identities from `merlin.common.access` and mandatory historical target identities from packaged `merlin.experiments.access_policy`.
-- `toolchain.py` — The legit tools bound back over the deny-by-default masks: universal + the descriptor's `sim_via` family, cross-checked by `kind` via `merlin.development.targetgen.families`.
+- `answer_surfaces.py` — The DERIVED answer-surface mask set (goldens/model weights/hidden/prior/oracle/grader/memory) and transcript-audit tokens, consuming shared identities from `merlin.common.access` and mandatory historical target identities from packaged `merlin.experiments.definition`.
+- `toolchain.py` — The legit tools bound back over the deny-by-default masks: universal + the descriptor's `sim_via` family, cross-checked by `kind` via `merlin.target.capabilities.families`.
   Importing this owner must not resolve a checkout or tool installation. `ToolchainPaths`
   supplies immutable explicit universal paths; omitted runtime configuration retains the
   legacy checkout resolver. `universal_probes()` derives probes from the selected paths,

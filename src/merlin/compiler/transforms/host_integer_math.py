@@ -5,6 +5,10 @@ It contains no model data or approximated values. Source operations with an
 observable floating environment, unknown effects or dynamic domains decline.
 """
 
+from __future__ import annotations
+
+# ---- host_integer_math -------------------------------------------------------------------------
+
 SOURCE = r"""
 def _memoize_finite_integer_math(ctx, module, max_bits=8, minimum_repetition=8):
     from torch_mlir import ir as ir

@@ -36,13 +36,14 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..io import Reader, clean, epoch, is_dir, num, obj, scan_dir
+from merlin.experiments.tracking.console.snapshot import Reader, clean, epoch, is_dir, num, obj, scan_dir
+
 from .case_history import definitions, history_for, load_script
 from .insight_common import Needles, activity, ago, line, panel, row, table
 
 SHARED = "shared-library.json"
 SUGGESTIONS = "OPTIMIZATION_SUGGESTIONS.json"
-_SCRIPT = ("author_skills", "scheduling-api", "scripts", "library_inventory.py")
+_SCRIPT = ("skills", "scheduling-api", "scripts", "library_inventory.py")
 MAX_REQUESTS = 65536
 MAX_EVIDENCE_FILES = 400
 EVIDENCE_FILE_BYTES = 1 << 20
@@ -61,7 +62,7 @@ def inventory():
     if not _INVENTORY:
         from merlin.common.paths import module_source_path
 
-        _INVENTORY.append(load_script(module_source_path("merlin.development.backend").parent.joinpath(*_SCRIPT)))
+        _INVENTORY.append(load_script(module_source_path("merlin.resources").parent.joinpath(*_SCRIPT)))
     return _INVENTORY[0]
 
 

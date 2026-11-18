@@ -11,15 +11,22 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from merlin.compiler.backend import host as host
-from merlin.compiler.backend.isa import implementation_functions as _host_isa_functions
-from merlin.compiler.backend.isa import require_host_isa_dts
-from merlin.compiler.build.modeloptions import BaremetalModelError, _output_root, _sha, prepare_saved
-from merlin.compiler.build.saved import build_saved, select_build
-from merlin.runtime import modelinputs as MI
-from merlin.runtime.backends import spike as spike_backend  # noqa: F401 -- retained operator patch surface
-from merlin.runtime.backends import spike_model as spike_model
-from merlin.runtime.model import (
+from merlin_rvv.src.rvv.runtime import spike as spike_backend  # noqa: F401 -- retained operator patch surface
+
+from merlin.compiler.backend import host
+from merlin.compiler.backend.host import implementation_functions as _host_isa_functions
+from merlin.compiler.backend.host import require_host_isa_dts
+from merlin.compiler.build.saved_model import (
+    BaremetalModelError,
+    _output_root,
+    _sha,
+    build_saved,
+    prepare_saved,
+    select_build,
+)
+from merlin.runtime.backends.baremetal import image_link as spike_model
+from merlin.runtime.execution import model_inputs as MI
+from merlin.runtime.execution.saved_model import (
     _native_engine,
     _retain_simulator_failure_output,
     _spike_extension_backend,
@@ -27,7 +34,7 @@ from merlin.runtime.model import (
     observe_profiles,
     select_runtime,
 )
-from merlin.verification.model import (
+from merlin.verification.references.saved_model import (
     _agreement,
     _full_references,
     _judge_full_readback,
@@ -40,11 +47,9 @@ from merlin.verification.model import (
 )
 
 if TYPE_CHECKING:
-    from merlin.compiler.lower.model.graph_optimizations import GraphOptimizationContract
-    from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
-    from merlin.compiler.lower.model.source_dense import SourceDenseLowering
-    from merlin.compiler.lower.model.source_pointwise import SourcePointwiseLowering
-    from merlin.compiler.lower.model.source_rows import SourceRowLowering
+    from merlin.compiler.lower.host.graph import GraphOptimizationContract, HostGraphPolicy
+    from merlin.compiler.lower.source.dense import SourceDenseLowering
+    from merlin.compiler.lower.source.families import SourcePointwiseLowering, SourceRowLowering
 
 
 def implementation_functions():
@@ -131,7 +136,7 @@ def compile_saved_model(
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
     ``blob_weights`` stores each routed weight once: the device-layout copy goes to the weights blob and
-    the original the device alone read is dropped (:mod:`merlin.compiler.lower.model.blob_weights`).
+    the original the device alone read is dropped (:mod:`merlin.compiler.lower.c.weights`).
 
     ``weights_source`` reuses an immutable existing blob only after this stage
     independently derives identical complete bytes, size and hash.
@@ -157,7 +162,7 @@ def compile_saved_model(
     ordinary lowering receipt records each actual match. False is unchanged.
 
     ``readback="full"`` builds the image to print every forward result complete
-    (:mod:`merlin.runtime.whole_model_readback`); execution then holds each result to the capture's
+    (:mod:`merlin.runtime.harness.output_observation`); execution then holds each result to the capture's
     own reference (``goldens.npz`` + ``output_order.json``, or the one ``reference_file``), exactly or
     within ``tolerance`` (``{atol, rtol}``). ``group_profile`` brackets every routed device-group call
     with cycle counts and records them. A ``spike`` run goes through the target backend with its
@@ -281,7 +286,7 @@ def compile_saved_model(
         package_tree = MI.strict_tree_sha256(package_path)
         catalog_sha, dts_sha = _sha(catalog_path), _sha(dts_path)
         if materialized_inputs is not None:
-            from merlin.compiler.frontend.materialized import MaterializedModelInputs
+            from merlin.compiler.frontend.inputs import MaterializedModelInputs
 
             if type(materialized_inputs) is not MaterializedModelInputs:
                 raise BaremetalModelError("explicit trusted materialized model binding required")
@@ -511,7 +516,7 @@ def compile_saved_model(
         raise
     (output_path / "baremetal_model.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     if storage_policy is not None:
-        from merlin.compiler.lower.model.borrowed_arena import retain_borrowed_lifetime
+        from merlin.compiler.lower.host.borrowed_arena import retain_borrowed_lifetime
 
         return retain_borrowed_lifetime(receipt, receipt_borrowed_lifetime(built))
     return receipt

@@ -1,7 +1,7 @@
 """Build the operator's reference-compiler baselines file from measurement studies, mapped to corpus cases.
 
 The author sees, per large test case, the cycles of reference compilers the operator measured
-(:mod:`merlin.development.backend.feedback.reference_baselines`). This builder reads the operator's
+(:mod:`merlin.development.backend.feedback.performance.reference_baselines`). This builder reads the operator's
 study JSON files, keeps only the implementations it is told are references (``--source
 <study key>=<label>``), drops every implementation whose key or label carries an ``--exclude`` token
 (by default ``exo``: private kernels the operator withholds from author inputs), maps each measured
@@ -20,10 +20,10 @@ corpus when the release is prepared. Historical v1 staging at ``performance-base
 
 Usage::
 
-    python -m merlin.experiments.corpus.performance_baselines \\
-        --corpus <source-release>/payload/corpus \\
-        --study-dir out/artifacts/perf-studies/fresh1-firesim \\
-        --source fsm=fsm-library --source merlin=merlin-reference \\
+    python -m merlin.experiments.corpus.performance_baselines \
+        --corpus <source-release>/payload/corpus \
+        --study-dir out/artifacts/perf-studies/fresh1-firesim \
+        --source fsm=fsm-library --source merlin=merlin-reference \
         --out <origin-dir>/baselines.json
 """
 
@@ -38,8 +38,10 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.development.backend.feedback import reference_baselines as RB
+from merlin.development.backend.feedback.performance import reference_baselines as RB
 from merlin.experiments.definition import SpecError
+
+# ---- performance_baselines ---------------------------------------------------------------------
 
 #: Display name and kind of the reference labels this repository's operators use; others pass ``--display``.
 KNOWN_SOURCES = {

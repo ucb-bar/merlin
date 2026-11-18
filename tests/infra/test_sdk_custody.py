@@ -9,9 +9,9 @@ from compiler_profile import bundle, prepare, reseal
 
 from merlin.common import frozen_imports
 from merlin.compiler.schedule.export import namespace_replacements
-from merlin.development.targetgen import tool_registry as TR
-from merlin.development.targetgen.sandbox import bwrap
-from merlin.development.targetgen.tool_profile import tool_profile_prompt, verify_tool_profile
+from merlin.development.targetgen.authoring import tool_registry as TR
+from merlin.development.targetgen.authoring.tool_profile import tool_profile_prompt, verify_tool_profile
+from merlin.development.targetgen.sandbox import grants as bwrap
 
 
 @pytest.fixture(scope="module")
@@ -22,9 +22,9 @@ def release(tmp_path_factory):
 def test_current_release_preserves_real_packages_and_independent_check_inputs(release, tmp_path):
     selected = bundle(release)
     profile = verify_tool_profile(selected)
-    assert profile["shared_scheduling_library"]["inventory_version"] == 27
+    assert profile["shared_scheduling_library"]["inventory_version"] == 28
     scalar = release / "merlin/compiler/lower/scalar"
-    assert (scalar / "__init__.py").read_bytes() == namespace_replacements(27)["merlin.compiler.lower.scalar"].encode()
+    assert (scalar / "__init__.py").read_bytes() == namespace_replacements(28)["merlin.compiler.lower.scalar"].encode()
     assert (scalar / "casts.py").is_file() and (not scalar.with_suffix(".py").exists())
     for lemma in ("Foundation", "ResourceGeometry", "StateEffects"):
         assert (release / "merlin/verification/lean/Merlin" / (lemma + ".lean")).is_file()
@@ -32,7 +32,7 @@ def test_current_release_preserves_real_packages_and_independent_check_inputs(re
     assert not any(
         name == "merlin.compile" or name.startswith("merlin.compile.") for name in profile["common_public_modules"]
     )
-    assert "merlin.compiler.passes.xdsl" not in profile["common_public_modules"]
+    assert "merlin.compiler.frontend.preprocess" not in profile["common_public_modules"]
     assert profile["proof_policy"]["mode"] == "strict_within_coverage"
     assert profile["proof_policy"]["unknown_within_coverage"] == "reject"
     assert profile["lean_toolchain"] == {"selection": "not_selected", "readiness": "unavailable"}
@@ -85,12 +85,12 @@ def test_treatments_share_algorithms_but_only_declared_optional_tools_are_expose
         profile = verify_tool_profile(selected)
         profiles.append(profile)
         prompt = tool_profile_prompt(selected)
-        assert "V27 uses canonical" in prompt
+        assert "V28 uses canonical" in prompt
         for tool in ("isa_dialect_generation", "lean_proof_authoring"):
             assert ("`" + tool + "`" in prompt) == (tool in selected["tools"])
         allowed = {row["path"] for row in selected["allowed"]}
         denied = {row["path"] for row in selected["denied"]}
-        cli = str(release / "merlin/verification/lean_cli.py")
+        cli = str(release / "merlin/verification/lean/cli.py")
         assert (cli in allowed) == (arm == "merlin_lean")
         assert (cli in denied) != (arm == "merlin_lean")
         hosts = {row["path"] for row in selected["host_inputs"]}
@@ -108,7 +108,7 @@ def test_treatments_share_algorithms_but_only_declared_optional_tools_are_expose
 
 
 def test_changed_shared_algorithm_refuses_before_profile_admission(release):
-    path = release / "merlin/compiler/schedule/configuration.py"
+    path = release / "merlin/compiler/schedule/loops/configuration.py"
     before = path.read_bytes()
     try:
         path.write_bytes(before + b"\n# changed source\n")
@@ -120,7 +120,7 @@ def test_changed_shared_algorithm_refuses_before_profile_admission(release):
 
 def test_resealed_profile_cannot_publish_reference_implementation(release):
     selected = bundle(release)
-    selected["compiler_tool_profile"]["common_public_modules"].append("merlin.runtime.reference")
+    selected["compiler_tool_profile"]["common_public_modules"].append("merlin.runtime.engine.reference")
     reseal(selected)
     with pytest.raises(ValueError):
         verify_tool_profile(selected)

@@ -52,7 +52,7 @@ and ALOHA episode 0/frame 100/noise seed 1000. Capture sample provenance is
 recorded separately; those samples are not the external evaluation inputs.
 
 The sealed quantized oracle evaluates prepared, ungrouped quantized IR through
-`merlin.runtime.linalg_numpy` with the selected scalar math policy. The capture's
+`merlin.evaluation.model.linalg_semantics` with the selected scalar math policy. The capture's
 PyTorch fake-quant `integer-reference.json` and recipe-side `integer_reference`
 helper do not substitute for that oracle.
 

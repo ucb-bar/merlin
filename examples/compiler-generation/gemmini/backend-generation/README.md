@@ -272,10 +272,10 @@ release and numerics versions are overridable defaults. Neither file is granted 
 the author sandbox or copied into a release payload.
 
 ```sh
-python -m merlin.development.backend.launch_config render \
+python -m merlin.development.backend.session.launch_config render \
   --config examples/compiler-generation/gemmini/backend-generation/launch/el4-fire-aligned.yaml \
   --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" --plan-template "${PLAN_TEMPLATE:?}"
-python -m merlin.development.backend.launch_config verify \
+python -m merlin.development.backend.session.launch_config verify \
   --config examples/compiler-generation/gemmini/backend-generation/launch/el4-fire-aligned.yaml \
   --task-root "${TASK_ROOT:?}" --prep "${PREP:?}" [--run-id "${RUN_ID}" --controller-pid PID]
 ```
@@ -291,7 +291,7 @@ environment and affinity. Neither starts a run.
 
 The copied kernel headers and legacy harness aliases have been removed. Runtime
 support is the data-only provider `examples/compiler-generation/gemmini/support` (selected by default
-when `MERLIN_TARGET_PATH` is unset): the generic `merlin.runtime.backends.chipyard_rocc`
+when `MERLIN_TARGET_PATH` is unset): the generic `merlin.runtime.backends.rocc.chipyard_backend`
 backend reads its contract and ISA-headers spec, builds against the pinned bare-metal
 runtime plus a header generated from the RTL facts, and never puts an excluded vendor
 header on the include path. Reference compilers and their runtimes stay outside

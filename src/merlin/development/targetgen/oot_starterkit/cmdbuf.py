@@ -14,6 +14,8 @@ from typing import Any
 
 from merlin.common.paths import data_path
 
+# ---- cmdbuf ------------------------------------------------------------------------------------
+
 _SCHEMA = data_path("contract", "schemas", "command_buffer.schema.json")
 
 

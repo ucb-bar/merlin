@@ -4,15 +4,15 @@ import pytest
 import yaml
 from corefixtures.offload_plan import example as legacy_example
 
-from merlin.compiler.backend.sourceproposal import (
+from merlin.compiler.backend.source_proposals import (
     SourceProposal,
     admit_original_cpu,
     admit_proposal,
     source_numerical_identity,
 )
-from merlin.compiler.lower.model.offload_plan import bind_source
-from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
-from merlin.target.system.topology import select_topology
+from merlin.compiler.lower.device.plan import bind_source
+from merlin.compiler.transforms.dense.ir import recognize_signed_integer_matmul
+from merlin.target.system import select_topology
 
 
 def example():

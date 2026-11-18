@@ -40,10 +40,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import EXPERIMENTS_SCHEMA, SNAPSHOT_SCHEMA, placement
-from .discovery import Discovery, default_selection
-from .io import Reader
-from .model import Collector
+from merlin.experiments.tracking.console import EXPERIMENTS_SCHEMA, SNAPSHOT_SCHEMA
+from merlin.experiments.tracking.console import discovery as placement
+from merlin.experiments.tracking.console.discovery import Discovery, default_selection
+from merlin.experiments.tracking.console.snapshot import Collector, Reader
+
+# ---- serve -------------------------------------------------------------------------------------
 
 LIVE_STATES = ("LIVE", "STALLED", "ACTIVE")
 PLACE_EVERY_S = 30.0

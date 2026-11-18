@@ -17,12 +17,12 @@ the registry (``get_backend("muon")``).
 
 from __future__ import annotations
 
-from merlin.development.targetgen.oracle_policy import register_sim_oracle
+from merlin.target.simulators.oracle_policy import register_sim_oracle
 
 
 def _cyclotron_tier_plan(target: str):
     """The support plugin's tier inventory without instantiating grading adapters."""
-    from merlin.runtime.backends.base import get_backend
+    from merlin.runtime.backends.registry import get_backend
 
     return get_backend("muon").muon_oracles.tier_plan(target)
 
@@ -32,7 +32,7 @@ def _cyclotron_adapters(target: str) -> dict:
     (``muon_oracles``) — NOT the arc command-buffer path, which grades the wrong artifact for a SIMT
     kernel. The muon adapters fail closed (MuonUnavailable) when the MERLIN_MUON_* toolchain env is
     unset, so an unwired target degrades honestly, never mis-grades."""
-    from merlin.runtime.backends.base import get_backend
+    from merlin.runtime.backends.registry import get_backend
 
     return get_backend("muon").muon_oracles.default_adapters(target)
 
@@ -41,7 +41,7 @@ def _cyclotron_available(target: str) -> tuple[bool, str]:
     """cyclotron (SIMT): require the cyclotron oracle; the mlc arc command-buffer adapter grades the wrong
     artifact for a SIMT kernel, so it is NOT a valid fallback (that was a false-green). Fail closed."""
     try:
-        from merlin.runtime.backends.base import get_backend
+        from merlin.runtime.backends.registry import get_backend
 
         if get_backend("muon").available("cyclotron"):
             return True, f"{target!r}: cyclotron SIMT oracle available"
@@ -64,7 +64,7 @@ def _cyclotron_l3_selection(target: str) -> dict:
     selection path, so before this the engine policy simply did not apply to it and nothing anywhere said
     which simulator its cert ran on.
     """
-    from merlin.runtime.backends.base import get_backend
+    from merlin.runtime.backends.registry import get_backend
 
     return get_backend("muon").muon_oracles.l3_selection(target)
 

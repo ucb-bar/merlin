@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
+# ---- dialect -----------------------------------------------------------------------------------
+
 
 def load_interface_dialect():
     """Return the framework's xDSL merlin_iface input-dialect module (typed ops/types) for registration."""

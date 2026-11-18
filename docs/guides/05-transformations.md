@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-09
 related: [04-planning, 06-lowering, 11-optimization]
-code_refs: [src/merlin/compiler/transforms/pipeline.py, src/merlin/compiler/transforms/pipeline_state.py, src/merlin/compiler/transforms/validation.py, src/merlin/compiler/passes, src/merlin/compiler/schedule, src/merlin/compiler/optimizations, src/merlin/compiler/dialects/schedule.py, src/merlin/compiler/kernel_ir/ir.py]
+code_refs: [src/merlin/compiler/transforms/pipeline.py, src/merlin/compiler/transforms/pipeline_state.py, src/merlin/compiler/schedule/blocks.py, src/merlin/compiler/optimizations/registry.py, src/merlin/compiler/dialects/schedule.py, src/merlin/compiler/dialects/opt.py, src/merlin/compiler/kernel_ir/ir.py, src/merlin/compiler/lower/native/invocation.py, src/merlin/compiler/lower/options/optional_passes.py, examples/tutorials/03_scheduling.ipynb, examples/tutorials/04_transformations.ipynb]
 ---
 
 # 5. Transform and schedule the program
@@ -22,11 +22,12 @@ the algorithm.
 
 | Work | Implementation owner |
 | --- | --- |
-| Generic IR rewrites and ordered pipelines | `src/merlin/compiler/transforms/` |
-| Common frontend normalization and graph transforms | `src/merlin/compiler/frontend/`, `compiler/transforms/` |
-| Registered optimization strategies | `src/merlin/compiler/optimizations/` |
-| Tiling, operand retention, transfer merging and command ordering | `src/merlin/compiler/schedule/` |
-| Native MLIR and xDSL pass invocation | `src/merlin/compiler/passes/` |
+| Generic IR rewrites and ordered pipelines | [`compiler/transforms/`](../../src/merlin/compiler/transforms/) |
+| Common frontend normalization and graph transforms | [`compiler/frontend/`](../../src/merlin/compiler/frontend/), [`compiler/transforms/`](../../src/merlin/compiler/transforms/) |
+| Registered optimization strategies | [`optimizations/registry.py`](../../src/merlin/compiler/optimizations/registry.py) |
+| Tiling, operand retention, transfer merging and command ordering | [`compiler/schedule/`](../../src/merlin/compiler/schedule/) |
+| Native MLIR invocation | [`lower/native/invocation.py`](../../src/merlin/compiler/lower/native/invocation.py) |
+| xDSL dialect/pass driver | [`dialects/opt.py`](../../src/merlin/compiler/dialects/opt.py) |
 | Target instruction selection, encoders and target-specific rewrites | The selected OOT backend |
 
 These are related libraries with different inputs. A scalar IR rewrite does not
@@ -37,12 +38,22 @@ consume the same representation as a command-stream scheduling pass.
 [Notebook 4](../../examples/tutorials/04_transformations.ipynb) starts with a loop
 that adds the integers zero through nine. It simplifies a redundant addition,
 splits the loop into ordered segments and optionally unrolls it. The notebook
-shows the changed IR and calls the independent change checker.
+shows the changed IR and calls `validate_change` on each recorded rewrite. It
+uses `plan_only=True`; these structural checks do not issue a formal receipt.
 
 The public pipeline uses `PipelineOptions` and `apply_common_pipeline` from
-`merlin.compiler.transforms.pipeline`. `PipelineSession` tracks pass results and analysis
-invalidation. An analysis computed for the previous IR cannot silently stand in
-for a fresh result after a modifying pass.
+`merlin.compiler.transforms.pipeline`:
+
+```text
+apply_common_pipeline(module, options, *, verifier=None, plan_only=False, context=None)
+```
+
+`PipelineOptions` requires an explicit `index_bits`. The driver verifies and
+clones the input module, then records actual changes. A covered change outside
+planning mode requires the host verifier's live accepted Lean completion for
+those exact bytes. A callback value or structural certificate alone is
+insufficient. `PipelineSession`, defined in `transforms/pipeline_state.py`,
+tracks pass results and invalidates analyses when their IR or context changes.
 
 When adding a rewrite, keep its applicability, numerical ordering and effects
 beside the implementation. Record the transformation that actually ran rather
@@ -52,7 +63,7 @@ than a separately maintained list of intended passes.
 
 | Representation | What it expresses | Source to open |
 | --- | --- | --- |
-| xDSL `schedule` dialect | Selected compiler decisions and bindings | [`xdsl_dialects/schedule.py`](../../src/merlin/xdsl_dialects/schedule.py) |
+| xDSL `schedule` dialect | Selected compiler decisions and bindings | [`compiler/dialects/schedule.py`](../../src/merlin/compiler/dialects/schedule.py) |
 | Python `Kernel`, `Loop`, `Call` records with `mk` text | Counted loops, calls and effects | [`compiler/kernel_ir/ir.py`](../../src/merlin/compiler/kernel_ir/ir.py) |
 | Shared counted block schedules | Explicit loads, compute, storage and completion | [`compiler/schedule/blocks.py`](../../src/merlin/compiler/schedule/blocks.py) |
 
@@ -64,14 +75,20 @@ roles of the core dialects without presenting them as a mandatory linear pipelin
 [Notebook 3](../../examples/tutorials/03_scheduling.ipynb) lets you change block
 size, storage capacity, operand reuse and command order. It parses real schedule
 operations, checks storage ranges and executes the neutral schedule model.
-The default example needs 24 loads with retention and 48 without it; both produce
-the same small integer result. The command picture shows ordering, not timing.
+The notebook compares retained loads with reloading in every group and checks
+both results against its small integer fixture. The command picture shows
+ordering, not timing or measured hardware performance.
 
 ## Reuse upstream pass managers
 
-`compiler/passes/native.py` invokes the selected native MLIR environment.
-`compiler/passes/xdsl.py` runs ordered xDSL rewrites. Use these boundaries and the
-existing upstream pass managers instead of adding a shell wrapper for each pass.
+`compiler/lower/native/invocation.py` exposes
+`apply_passes(mlir_text, pipeline, timeout=600)` as a diagnostic seam into the
+selected Model2MLIR Python environment's native pass registry. Production scalar
+lowering uses `lower/native/policy_pipeline.py` and the selected native driver.
+`merlin-opt`, implemented in `compiler/dialects/opt.py`, uses xDSL's opt driver
+and discovers Merlin-authored passes through `dialects/lowering/passes.py`.
+Its catalog distinguishes production, normalization and prototype passes;
+catalog membership does not establish that a compilation invoked a pass.
 
 A pipeline needs its owner, operation anchor, options, required dialects and
 input/output requirements. Record the actual tool version and resulting
@@ -91,7 +108,7 @@ merlin-compile --list-passes --json
 That route accepts repeated `--pass NAME` and `--no-pass NAME` options; existing
 launch definitions can select `lowering_passes`. These switches retain their
 recorded defaults and numerical requirements. They are not universal flags for
-every installed backend. See `llvmlower/optional_passes.py` for the actual
+every installed backend. See `compiler/lower/options/optional_passes.py` for the actual
 catalog and `compiler/optimizations/registry.py` for registered strategies.
 
 An exact pass preserves the admitted program's numerical behavior. A pass that

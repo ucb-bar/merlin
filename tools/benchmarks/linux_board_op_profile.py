@@ -3,7 +3,7 @@
 
 The board is a ``flow: linux`` entry of the board catalog (``--board``, ``--board-catalog`` or
 ``MERLIN_BOARD_CATALOG``); its timebase, vector length, substrate label and binary name are read from
-that entry through ``merlin.runtime.remote_linux``.
+that entry through ``merlin.runtime.backends.linux.remote_session``.
 
 WHY. The only whole-model instrumentation this repo had was a TWO-WAY split — a matmul bucket
 (``-DMERLIN_DISPATCH_TIMING`` inside the routed GEMM shim) vs "everything else". Measured on
@@ -12,10 +12,10 @@ silicon, matmul is 1.3-6 % of a model once the kernel is fast (dispatch_breakdow
 attribution and ranks what is left on the table by MEASURED milliseconds.
 
 METHOD (default-OFF; the un-instrumented build is byte-identical).
-``merlin.compiler.lower.model.op_profile`` interleaves a one-instruction-cost ``@merlin_prof_mark(id)`` call
+``merlin.compiler.lower.model.profile`` interleaves a one-instruction-cost ``@merlin_prof_mark(id)`` call
 between the top-level ops of ``func.func @forward`` (plus a sentinel before ``func.return``); the
 shim ``runtime/c/merlin_op_prof.c`` samples ``rdtime`` at each mark and credits the elapsed ticks
-to the previous op's id. ``remote_linux.build_binary(..., op_profile=True)`` splices this in AFTER
+to the previous op's id. ``linux_cross_build.build_binary(..., op_profile=True)`` splices this in AFTER
 any kernel-backend rewrite and links the shim; the harness prints ``PROF <id> <ticks> <hits>``.
 ``remote_linux.run`` joins those against the id->op table (``prov.*`` provenance) it emitted at build.
 
@@ -48,7 +48,7 @@ step inside a single timed iteration, so the wall is divided by the executions-p
 before anything is expressed as a share. Getting this wrong in one direction produced the 144 %
 artifact; getting it wrong in the other would refuse a sound 256-step profile at coverage ~0.004.
 
-FAIL-CLOSED, AND GRADED BY THE RIGHT RULES. Every run is scored by ``zephyr_model._gate`` against
+FAIL-CLOSED, AND GRADED BY THE RIGHT RULES. Every run is scored by ``zephyr_execution._gate`` against
 TIER-KEYED references (``fp32`` -> golden.npy, ``w8a8`` -> golden_w8a8.npy for an int8 package); a
 run that does not gate is ``not_run`` and its wall is never recorded. The tier KEYS choose the
 thresholds, so handing the W8A8 golden over as ``fp32`` — which this driver used to do, on top of an
@@ -78,9 +78,9 @@ import numpy as np
 
 from merlin.common.paths import artifacts_dir
 from merlin.compiler.backend.host import load_host_package as load_rvv_package
-from merlin.compiler.lower.model import op_profile as opf
-from merlin.runtime import remote_linux
-from merlin.runtime.backends import zephyr_model as zm
+from merlin.compiler.lower.model import profile as opf
+from merlin.runtime.backends.linux import remote_session as remote_linux
+from merlin.runtime.backends.zephyr import execution as zm
 
 # "is this op vectorized?" is answered by its RESOLVED family (op_profile.resolve_family): the
 # default RVV pipeline (llvmlower.pipeline.build_rvv_pipeline) vectorizes only the contraction
@@ -100,7 +100,7 @@ def _rvv_coverage(binary: Path, board) -> dict | None:
     emitted compute is scalar-dominated regardless of what family a op claims. Best-effort: returns
     None if objdump/the binary is unreadable (honest, never a silent 'fully vectorized')."""
     try:
-        from merlin.runtime.rvv_audit import audit_binary
+        from merlin_rvv.src.rvv.runtime.coverage import audit_binary
 
         rep = audit_binary(binary, toolchain_root=remote_linux.toolchain_root(board))
         fwd = rep.by_symbol.get("forward")
@@ -126,7 +126,7 @@ def gate_run(
 ) -> tuple[bool, str | None, dict]:
     """Score one board run against the TIER-KEYED references and say whether it counts.
 
-    WHY TIER-KEYED. ``zephyr_model._gate`` decides which tier carries the verdict from the KEYS of
+    WHY TIER-KEYED. ``zephyr_execution._gate`` decides which tier carries the verdict from the KEYS of
     the references dict: ``w8a8`` is graded by W8A8 rules (T1: cos > 0.999 + rel < 1e-2 + no
     per-element blow-up) and ``fp32`` by fp32 rules (T2: cos > 0.99 + argmax + no blow-up). Handing a
     W8A8 golden over under the ``fp32`` key — which this driver did — grades int8 output by fp32

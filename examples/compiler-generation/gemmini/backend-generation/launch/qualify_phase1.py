@@ -20,9 +20,9 @@ from pathlib import Path
 import launch_phase1 as P
 import yaml
 
-from merlin.common import owned_children
 from merlin.common.digest import sha256_file
-from merlin.development.backend import launch_config as L
+from merlin.common.process import ownership as owned_children
+from merlin.development.backend.session import launch_config as L
 
 
 class DeadlineReached(RuntimeError):
@@ -245,7 +245,7 @@ def formal_complete(F, native, run_dir: Path, package: dict, *, validation_scope
         return complete
     if validation_scope != "capsules" or descriptor is None:
         return False
-    from merlin.development.backend.feedback import capsule_certification
+    from merlin.development.backend.feedback.certification import capsule_certification
 
     try:
         verified = capsule_certification.verify(run_dir, descriptor=descriptor)
@@ -390,7 +390,7 @@ def run(
                 raise ValueError("qualification requires selected all-declared-output evidence")
             # The ordinary launcher performs source/config/pin, bundle-seal and
             # positive infrastructure readiness admission; it starts no author.
-            from merlin.development.backend.feedback import private_numerical_selection
+            from merlin.development.backend.qualification.provenance import private_numerical_selection
 
             source_delegated = (
                 not capsule_only
@@ -437,7 +437,9 @@ def run(
                 raise DeadlineReached("preparation exhausted original campaign budget")
             env = dict(os.environ)
             if imported_qualification:
-                from merlin.development.backend.feedback.capsule_qualification_handoff import ENV
+                from merlin.development.backend.feedback.certification.capsule_qualification_handoff import (
+                    ENV,
+                )
 
                 env[ENV] = json.dumps({"path": str(proof), "sha256": proof_sha256}, sort_keys=True)
             jobs = {"native": (qualifier_argv(launch, submission), None, None)}
@@ -638,10 +640,12 @@ def run(
                         qualification_wall_s=time.time() - started,
                     )
                     if capsule_proof and not capsule_only:
-                        from merlin.development.backend.feedback import capsule_certification
+                        from merlin.development.backend.feedback.certification import capsule_certification
 
                         if imported_qualification:
-                            from merlin.development.backend.feedback import capsule_qualification_handoff
+                            from merlin.development.backend.feedback.certification import (
+                                capsule_qualification_handoff,
+                            )
 
                             final_publication = capsule_qualification_handoff.verify(
                                 proof, descriptor=launch.path(launch.document["inputs"]["descriptor"])

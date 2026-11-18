@@ -4,68 +4,170 @@
   "description": "The exact merlin_experiments.corpus.release.prepare arguments and seal statement for one reviewed release. Strings may reference ${VARIABLES}.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "target", "variables", "prepare", "seal"],
+  "required": [
+    "schema",
+    "id",
+    "target",
+    "variables",
+    "prepare",
+    "seal"
+  ],
   "properties": {
-    "schema": {"const": "merlin.phase0.release_config.v1"},
-    "id": {"$ref": "#/$defs/token"},
-    "target": {"$ref": "#/$defs/token"},
+    "schema": {
+      "const": "merlin.phase0.release_config.v1"
+    },
+    "id": {
+      "$ref": "#/$defs/token"
+    },
+    "target": {
+      "$ref": "#/$defs/token"
+    },
     "variables": {
       "type": "object",
-      "propertyNames": {"type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$"},
-      "additionalProperties": {"type": "string"}
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Z_][A-Z0-9_]*$"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
     },
     "prepare": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["run_dir", "output", "generated_only"],
+      "required": [
+        "run_dir",
+        "output",
+        "generated_only"
+      ],
       "properties": {
-        "run_dir": {"$ref": "#/$defs/text"},
-        "output": {"$ref": "#/$defs/text"},
-        "generated_only": {"type": "boolean"},
-        "capsule_scope": {"enum": ["all", "accelerator"]},
-        "selected_levels": {"$ref": "#/$defs/tokens"},
-        "selected_variants": {"$ref": "#/$defs/tokens"},
-        "optional_levels": {"type": "array", "uniqueItems": true, "items": {"enum": ["EL5", "EL6"]}},
-        "kernel_timing_selection": {"$ref": "#/$defs/pin"},
-        "lean_toolchain_manifest": {"$ref": "#/$defs/pin"},
-        "common_substrate": {"enum": ["merlin.common_compiler_substrate.v20"]},
-        "python_source_root": {"$ref": "#/$defs/text"},
-        "host_index_bits": {"type": "integer", "minimum": 1},
-        "phase1_policy_descriptor": {"$ref": "#/$defs/pin"}
+        "run_dir": {
+          "$ref": "#/$defs/text"
+        },
+        "output": {
+          "$ref": "#/$defs/text"
+        },
+        "generated_only": {
+          "type": "boolean"
+        },
+        "capsule_scope": {
+          "enum": [
+            "all",
+            "accelerator"
+          ]
+        },
+        "selected_levels": {
+          "$ref": "#/$defs/tokens"
+        },
+        "selected_variants": {
+          "$ref": "#/$defs/tokens"
+        },
+        "optional_levels": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "EL5",
+              "EL6"
+            ]
+          }
+        },
+        "kernel_timing_selection": {
+          "$ref": "#/$defs/pin"
+        },
+        "lean_toolchain_manifest": {
+          "$ref": "#/$defs/pin"
+        },
+        "common_substrate": {
+          "enum": [
+            "merlin.common_compiler_substrate.v21"
+          ]
+        },
+        "python_source_root": {
+          "$ref": "#/$defs/text"
+        },
+        "host_index_bits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "phase1_policy_descriptor": {
+          "$ref": "#/$defs/pin"
+        }
       }
     },
     "expect": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "whole_programs": {"type": "integer", "minimum": 0},
-        "whole_model_execution": {"$ref": "#/$defs/token"}
+        "whole_programs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "whole_model_execution": {
+          "$ref": "#/$defs/token"
+        }
       }
     },
     "seal": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["descriptor", "seal", "reviewed_by", "review_note"],
+      "required": [
+        "descriptor",
+        "seal",
+        "reviewed_by",
+        "review_note"
+      ],
       "properties": {
-        "descriptor": {"$ref": "#/$defs/text"},
-        "seal": {"$ref": "#/$defs/text"},
-        "post_experiment_descriptor": {"$ref": "#/$defs/pin"},
-        "reviewed_by": {"$ref": "#/$defs/text"},
-        "review_note": {"$ref": "#/$defs/text"}
+        "descriptor": {
+          "$ref": "#/$defs/text"
+        },
+        "seal": {
+          "$ref": "#/$defs/text"
+        },
+        "post_experiment_descriptor": {
+          "$ref": "#/$defs/pin"
+        },
+        "reviewed_by": {
+          "$ref": "#/$defs/text"
+        },
+        "review_note": {
+          "$ref": "#/$defs/text"
+        }
       }
     }
   },
   "$defs": {
-    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"},
-    "tokens": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/token"}},
-    "text": {"type": "string", "minLength": 1},
+    "token": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "tokens": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/token"
+      }
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
     "pin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "sha256"],
+      "required": [
+        "path",
+        "sha256"
+      ],
       "properties": {
-        "path": {"$ref": "#/$defs/text"},
-        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+        "path": {
+          "$ref": "#/$defs/text"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
       }
     }
   }

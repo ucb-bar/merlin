@@ -51,7 +51,7 @@
             "type": "string",
             "pattern": "^[a-z][a-z_]*$"
           },
-          "description": "Closed-vocabulary instruction roles (merlin.analysis.instruction_roles) no candidate program may emit anywhere in its linked ELF, in Phase 1 and in the Phase 2 candidate arm; Phase 0 resolves them to the target's own instructions."
+          "description": "Closed-vocabulary instruction roles (merlin.analysis.observation.instruction_roles) no candidate program may emit anywhere in its linked ELF, in Phase 1 and in the Phase 2 candidate arm; Phase 0 resolves them to the target's own instructions."
         }
       }
     },
@@ -99,8 +99,6 @@
         },
         "mode": {
           "enum": [
-            "measured_claims",
-            "model_portfolio",
             "whole_model_measured"
           ]
         },

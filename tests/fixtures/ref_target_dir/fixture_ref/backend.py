@@ -8,7 +8,7 @@ reference backend will once evicted into ``experiments/inputs/target-inputs/gemm
 
 from __future__ import annotations
 
-from merlin.runtime.backends import base
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass
+from merlin.runtime.backends import registry as base
+from merlin.runtime.backends.registry import BackendInfo, BackendKind, TargetClass
 
 base.register(BackendInfo("fixture_ref", TargetClass.NPU, BackendKind.KERNEL, __name__))

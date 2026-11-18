@@ -15,16 +15,19 @@ from collections.abc import Mapping
 from io import StringIO
 from pathlib import Path
 
-from merlin.common import compile_trace, invocation_record
-from merlin.common.cpu_pool import shared_compute_pool
-from merlin.compiler.lower.llvm.normalize import normalize_float_literals as _fix_float_literals
-from merlin.compiler.lower.llvm.passes import bind_index_width as _bind_index_width
-from merlin.compiler.lower.model import fusion_guard
+from merlin.common.process import invocation_records as invocation_record
+from merlin.common.process.cpu_pool import shared_compute_pool
+from merlin.compiler.ir import compile_trace
 from merlin.compiler.lower.model.toolchain import llvm_install, mlir_translate
+from merlin.compiler.lower.native.contract import PipelineError
+from merlin.compiler.lower.native.normalize import normalize_float_literals as _fix_float_literals
+from merlin.compiler.lower.native.passes import bind_index_width as _bind_index_width
 from merlin.compiler.lower.native.policy import SINK_DEALLOC_PASS, _upstream_pipeline
 from merlin.compiler.lower.native.recipe import LoweringRecipe
-from merlin.compiler.passes.contract import PipelineError
-from merlin.runtime.build_runtime import run_in_build_view
+from merlin.compiler.lower.options import fusion_guard
+from merlin.runtime.views.build_lookup import run_in_build_view
+
+# ---- stock -------------------------------------------------------------------------------------
 
 
 def _identifiers(text):
@@ -82,8 +85,8 @@ def lower(
     if data_layout is not None:
         from xdsl.dialects.builtin import StringAttr
 
-        from merlin.common.dense_float_ir import DenseFloatPrinter
         from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+        from merlin.compiler.ir.xdsl_io import DenseFloatPrinter
 
         module = parse_mlir_text(text)
         module.attributes["llvm.data_layout"] = StringAttr(data_layout)

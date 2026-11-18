@@ -82,9 +82,9 @@ REQUIRED_SCHEMAS = [
     "rvv_package_manifest",
     "session_contract",
     "deployment_profile",
-    # Quantization-format registry entry schema (merlin.common.quant_formats).
+    # Quantization-format registry entry schema (merlin.common.target_data).
     "quant_format",
-    # Per-form exactness contract every whole-model gate enforces (merlin.analysis.perf.exactness).
+    # Per-form exactness contract every whole-model gate enforces (merlin.analysis.whole_model.grading.exactness).
     "exactness_contract",
     # Full-model check report (merlin.evaluation.model): build, census, kernel exactness, model metrics.
     "model_check_report",
@@ -667,15 +667,15 @@ def check_library_boundary(errors):
     # `merlin.common.corpora`, which has never existed -- an author following the instruction found no
     # such module, and the gate that reported four docstring false positives also told them the wrong
     # place to put the fix.
-    _sanctioned = "merlin.development.targetgen.corpora"
+    _sanctioned = "merlin.target.registry.descriptor_loading"
     for relative in _source_layout.python_files(Path(ROOT), _source_layout.SOURCE_SCAN_ROOTS):
         key = relative.as_posix()
-        stable = _source_layout.policy_path(key)
+        origins = _source_layout.policy_paths(key)
         # Independently named experiment orchestration is not the compiler library. Shared merlin
         # namespace packages retain exactly the library rule they had before extraction.
-        if not stable.startswith("merlin/python/merlin/"):
+        if not any(origin.startswith("merlin/python/merlin/") for origin in origins):
             continue
-        if stable in _BOUNDARY_ALLOW or stable in ratchet:
+        if _source_layout.policy_covered(key, _BOUNDARY_ALLOW | ratchet):
             continue
         src = (Path(ROOT) / relative).read_text(encoding="utf-8")
         refs = _experiments_refs(src)

@@ -10,7 +10,7 @@ from pathlib import Path
 import launch_phase1 as P
 
 from merlin.common.digest import sha256_file
-from merlin.development.backend.feedback import private_model_chain as chain
+from merlin.development.backend.qualification.provenance import chain
 from merlin.evaluation.model import cli
 
 
@@ -42,7 +42,7 @@ def wait_owner(run_dir, pin, deadline):
         )
         if all((run_dir / name).is_file() for name in required):
             # Do not retry a malformed/contradictory owner as a transient wait.
-            from merlin.development.backend.feedback.compiler_profile_runtime import functional_service
+            from merlin.development.backend.feedback.execution.profile_runtime import functional_service
 
             if functional_service(run_dir) is None:
                 raise ValueError("prepared native owner has no original compiler profile")

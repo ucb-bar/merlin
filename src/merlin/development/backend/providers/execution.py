@@ -8,23 +8,180 @@ is intentionally not yet consolidated with the differing shared full_argv path.
 from __future__ import annotations
 
 import json
+import os
+import selectors
 import shlex
+import signal
+import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 
-from merlin.common import arrival_stamp as AS
-from merlin.common.cpu_pool import AUTHOR, with_priority
-from merlin.development.backend import author_subagents
+from merlin.common.process.cpu_pool import AUTHOR, with_priority
+from merlin.development.backend import transcript_tokens as ET
+from merlin.development.backend.authoring import author_subagents
 from merlin.development.backend.context import InvocationContext
-from merlin.development.backend.feedback import lifecycle as FL
+from merlin.development.backend.feedback.grading import lifecycle as FL
 from merlin.development.backend.providers import codex_context
-from merlin.development.backend.telemetry import startup as _START
-from merlin.development.targetgen import experiment_tokens as ET
+from merlin.development.backend.telemetry import author_agents as _START
+
+# ---- execution ---------------------------------------------------------------------------------
+
+ARRIVED_AT = "arrived_at"
+
+_POLL_S = 0.25
+
+
+def now_iso() -> str:
+    """The arrival stamp format: ISO-8601, UTC, timezone-aware."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def stamp_obj(obj: dict, arrived: str) -> dict:
+    """Append ``arrived_at`` to ``obj`` unless it already has one. Mutates and returns."""
+    if ARRIVED_AT not in obj:
+        obj[ARRIVED_AT] = arrived
+    return obj
+
+
+def stamp_line(line: str, arrived: str) -> str:
+    """Return ``line`` (no trailing newline) with an arrival stamp appended.
+
+    A blank line, a line that is not JSON, or a JSON value that is not an object
+    comes back UNCHANGED -- there is nowhere to put a field on those, and losing
+    them would lose evidence.
+    """
+    text = line.rstrip("\n")
+    if not text.strip():
+        return text
+    try:
+        obj = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return text
+    if not isinstance(obj, dict):
+        return text
+    return json.dumps(stamp_obj(obj, arrived))
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    """SIGKILL the child's whole process group (bash -> bwrap -> agent)."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except OSError:
+            return
+    try:
+        proc.wait(timeout=30)
+    except subprocess.TimeoutExpired:
+        pass
+
+
+def stream_stamped(
+    cmd: list[str],
+    *,
+    cwd: str | os.PathLike | None,
+    transcript: str | os.PathLike,
+    stderr_path: str | os.PathLike,
+    timeout: float | None = None,
+    env: dict | None = None,
+    raw_path: str | os.PathLike | None = None,
+    now=now_iso,
+) -> int:
+    """Run ``cmd``, writing its stdout to ``transcript`` one arrival-stamped line at a time.
+
+    Returns the child's return code. Raises :class:`subprocess.TimeoutExpired`
+    after killing the process group when ``timeout`` elapses -- the transcript
+    (and the raw tee) keep everything that arrived before the kill.
+    """
+    tpath = Path(transcript)
+    tpath.parent.mkdir(parents=True, exist_ok=True)
+    epath = Path(stderr_path)
+    epath.parent.mkdir(parents=True, exist_ok=True)
+    raw_f = None
+    if raw_path is not None:
+        rp = Path(raw_path)
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        raw_f = open(rp, "wb")
+
+    deadline = None if timeout is None else time.monotonic() + float(timeout)
+    buf = bytearray()
+    timed_out = False
+    with open(tpath, "w") as tf, open(epath, "w") as ef:
+
+        def _write(line_bytes: bytes) -> None:
+            arrived = now()
+            if raw_f is not None:  # durable FIRST, interpreted second
+                raw_f.write(line_bytes)
+                raw_f.flush()
+            text = line_bytes.decode("utf-8", errors="replace")
+            had_nl = text.endswith("\n")
+            tf.write(stamp_line(text, arrived) + ("\n" if had_nl else ""))
+            tf.flush()
+
+        proc = subprocess.Popen(
+            cmd,
+            cwd=None if cwd is None else str(cwd),
+            stdout=subprocess.PIPE,
+            stderr=ef,
+            env=env,
+            start_new_session=True,
+        )
+        try:
+            sel = selectors.DefaultSelector()
+            sel.register(proc.stdout, selectors.EVENT_READ)
+            while True:
+                if deadline is not None and time.monotonic() >= deadline:
+                    timed_out = True
+                    break
+                wait = _POLL_S if deadline is None else max(0.0, min(_POLL_S, deadline - time.monotonic()))
+                if not sel.select(timeout=wait):
+                    if proc.poll() is not None and not sel.select(timeout=0):
+                        break
+                    continue
+                try:
+                    chunk = os.read(proc.stdout.fileno(), 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                buf += chunk
+                while True:
+                    nl = buf.find(b"\n")
+                    if nl < 0:
+                        break
+                    _write(bytes(buf[: nl + 1]))
+                    del buf[: nl + 1]
+            if buf:  # a final line with no newline
+                _write(bytes(buf))
+                buf.clear()
+        finally:
+            try:
+                proc.stdout.close()
+            except OSError:
+                pass
+            if raw_f is not None:
+                raw_f.close()
+            if timed_out:
+                _kill_group(proc)
+            else:
+                try:
+                    proc.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    _kill_group(proc)
+    if timed_out:
+        raise subprocess.TimeoutExpired(cmd, timeout)
+    return proc.returncode
+
 
 _MODEL_HOST_SNAPSHOT_ROOT_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"
+
 _MODEL_HOST_SNAPSHOT_REQUIRED_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_REQUIRED"
+
 _MODEL_HOST_SNAPSHOT_RECORD_ENV = "MERLIN_MODEL_HOST_LANE_SNAPSHOT_RECORD"
 
 
@@ -60,13 +217,15 @@ def automatic_model_gate_interval(context, options) -> int:
         return options.grade_interval
     if options.experiment != "full" or getattr(options, "validation_scope", "full") != "full":
         return 0
-    from merlin.development.backend.feedback.private_full_models import program_requirements_for
+    from merlin.development.backend.qualification.full_models.private_full_models import (
+        program_requirements_for,
+    )
 
     return options.grade_interval if program_requirements_for(context.descriptor) else 0
 
 
 _DRIVER_MODULES = {
-    "codex": "merlin.development.backend.providers.codex_agent",
+    "codex": "merlin.development.backend.providers.codex_launch_codex_agent",
     "opencode": "merlin.development.backend.providers.opencode_agent",
     "converse": "merlin.development.backend.providers.bedrock_agent",
 }  # 'claudecode' drives the claude CLI directly
@@ -148,8 +307,8 @@ def _assemble(stage, function, /, *args, **kwargs):
     all of it waiting for the interpreter lock. The first call of each step in this process (the
     preflight) computes the argv both in process and in a worker and keeps the in-process one; later
     calls use the worker only if the two were identical, and a worker failure falls back in process
-    (:func:`merlin.development.targetgen.grade_offload.call`). A mismatch keeps the step in process for the run."""
-    from merlin.development.targetgen import grade_offload
+    (:func:`merlin.development.targetgen.grading.grade_offload.call`). A mismatch keeps the step in process for the run."""
+    from merlin.development.targetgen.grading import grade_offload
 
     grade_offload.register(function)
     verified = _ASSEMBLY_VERIFIED.get(stage)
@@ -165,8 +324,6 @@ def _assemble(stage, function, /, *args, **kwargs):
     return function(*args, **kwargs)
 
 
-# Sandbox verification is on the author launch/resume critical path. Change only
-# admission priority: do not reserve a core or hold a lease over the paid turn.
 @with_priority(AUTHOR)
 def sandbox_plan(
     inner: str,
@@ -186,9 +343,9 @@ def sandbox_plan(
 
     No mode mounts the operator's Claude state (``~/.claude``, ``~/.claude.json``). An ``inner`` that runs
     the ``claude`` CLI gets a home staged fresh for that launch (``sandbox.claude_home``) instead."""
-    from merlin.development.targetgen.sandbox import bwrap as _BW
-    from merlin.development.targetgen.sandbox import claude_home as _CH
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.sandbox import cleanroom as _CH
+    from merlin.development.targetgen.sandbox import grants as _BW
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     base_options = {"repo": context.repo, "include_claude_home": False}
     if codex_mode:
@@ -201,7 +358,7 @@ def sandbox_plan(
             home = _CH.stage(private_run_dir.name if private_run_dir is not None else "agent", workspace=ws)
             parts += home.binds()
     target = load_target_experiment(context.descriptor)
-    from merlin.development.backend import author_toolchain
+    from merlin.development.backend.authoring import author_toolchain
 
     parts += author_toolchain.toolchain_binds(target, bundle)
     # These point at operator-only snapshot storage for the out-of-sandbox grader. The agent receives
@@ -209,7 +366,7 @@ def sandbox_plan(
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_ROOT_ENV, "--unsetenv", _MODEL_HOST_SNAPSHOT_REQUIRED_ENV]
     parts += ["--unsetenv", _MODEL_HOST_SNAPSHOT_RECORD_ENV]
     parts += ["--unsetenv", "MERLIN_MODEL_OWNED_HOST_BUILD_SELECTION"]
-    from merlin.development.backend import joint_control
+    from merlin.development.backend.campaign import control as joint_control
 
     if joint_control.selected() is not None:
         parts += ["--unsetenv", "MERLIN_JOINT_CAMPAIGN_STATE"]
@@ -233,7 +390,7 @@ def sandbox_plan(
         bundle,
         repo=context.repo,
     )
-    from merlin.development.backend.compiler_library import sandbox_overlay
+    from merlin.development.backend.authoring.library.compiler_library import sandbox_overlay
 
     parts, library_environment = _START.call(
         "library_overlay",
@@ -259,10 +416,10 @@ def sandbox_plan(
     if home is not None and _BW.is_exposed(parts, home.root.parent):
         raise RuntimeError("staged Claude homes are visible at their host path in the agent sandbox")
     if private_run_dir is not None:
-        from merlin.development.backend.semantic_diagnostics import assert_private_mounts
+        from merlin.development.backend.telemetry.evidence import assert_private_mounts
 
         assert_private_mounts(parts, private_run_dir)
-    from merlin.development.backend import joint_control
+    from merlin.development.backend.campaign import control as joint_control
 
     if joint_control.selected() is not None:
         parts += ["--setenv", "MERLIN_JOINT_DEVELOPMENT", "1"]
@@ -317,7 +474,7 @@ class SandboxPlan:
     workspace: Path
 
     def command(self, inner: str) -> str:
-        from merlin.development.targetgen.sandbox import bwrap
+        from merlin.development.targetgen.sandbox import grants as bwrap
 
         payload = self.environment + inner
         return bwrap.compose_command(list(self.parts), " bash -c " + shlex.quote(payload), self.workspace)
@@ -352,8 +509,8 @@ class CodexSandboxCommand:
 
 
 def _verify_codex_runtime(runtime, context, ws, bundle):
-    from merlin.development.backend import author_toolchain
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.backend.authoring import author_toolchain
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     _START.call("runtime_verify", runtime.verify)
     target = load_target_experiment(context.descriptor)
@@ -395,7 +552,7 @@ def launch(
     policy_root: Path | None = None,
     contract: Path | None = None,
 ) -> tuple[int, Path]:
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     # TASK.md must live INSIDE the bound workspace: run_dir is under runs/ which bwrap tmpfs-masks,
     # so a stdin redirect from run_dir/TASK.md is invisible inside the sandbox (empty stdin).
@@ -432,7 +589,7 @@ def launch(
     )
     model_gate = None
     if config.model_gate_interval > 0 and sandbox == "bwrap":
-        from merlin.development.backend.feedback import visible_model_gate
+        from merlin.development.backend.feedback.certification import visible_model_gate
 
         model_gate = visible_model_gate.start(
             ws,
@@ -447,7 +604,7 @@ def launch(
     calibration_watcher = None
     try:
         if sandbox == "bwrap":
-            from merlin.development.backend import joint_calibration_lifecycle
+            from merlin.development.backend.campaign.calibration import service as joint_calibration_lifecycle
 
             calibration_watcher = joint_calibration_lifecycle.start_for_author(
                 run_dir=run_dir, context=config.context, round_index=rnd
@@ -457,7 +614,7 @@ def launch(
         # sandbox agentic loop (incl. the self_check tool wired to the shim above) + a compatible transcript;
         # 'opencode' drives the provider-agnostic OpenCode CLI; 'claudecode'/Anthropic uses the claude CLI.
         drv = resolve_driver(model, config=config.provider)
-        from merlin.development.backend.conformance_sources import execution_context
+        from merlin.development.backend.authoring.conformance_sources import execution_context
 
         conformance_context = execution_context(
             ws,
@@ -519,10 +676,10 @@ def launch(
                 conformance_context=conformance_context,
             )
         if drv == "codex":
-            from merlin.development.backend import joint_control
+            from merlin.development.backend.campaign import control as joint_control
 
             try:
-                from merlin.development.backend.providers import codex_agent as _CA
+                from merlin.development.backend.providers import codex_launch_codex_agent as _CA
             except ImportError as e:
                 raise SystemExit(f"--driver codex is not available: {e}")
             # effort is threaded through: codex takes it as a config override, and an
@@ -589,7 +746,7 @@ def launch(
         epath = run_dir / "rounds" / f"round_{rnd:02d}.stderr.log"
         # Observe each event as it arrives, retaining the untouched stream beside it. The
         # shared launcher also kills the whole bash -> sandbox -> agent group on timeout.
-        rc = AS.stream_stamped(
+        rc = stream_stamped(
             ["bash", "-c", cmd],
             cwd=ws,
             transcript=tpath,

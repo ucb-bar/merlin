@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=none
-# merlin schema (not yet formal JSON Schema; merlin.evaluation.model.report checks the top-level fields).
+# merlin schema (not yet formal JSON Schema; merlin.evaluation.model.cli checks the top-level fields).
 title: Full-Model Check Report
 purpose: >-
   One judgement of a device submission on complete quantized models: build and link status, the
@@ -21,7 +21,7 @@ required_top_level_fields:
   - failures
 
 example: |
-  schema: merlin.evaluation.model.report.v1
+  schema: merlin.evaluation.model.cli.v1
   command: check
   status: fail                       # pass | fail | error
   exit_code: 1

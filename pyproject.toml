@@ -78,30 +78,30 @@ replay = ["merlin[verify,experiments,analysis]", "pytest"]
 merlin = "merlin.cli.main:main"
 merlin-opt = "merlin.compiler.dialects.opt:main"
 merlin-verify = "merlin.verification.cli:main"
-merlin-verify-lean = "merlin.verification.lean_cli:main"
-merlin-isa-generate = "merlin.development.targetgen.isa_codegen_cli:main"
+merlin-verify-lean = "merlin.verification.lean.cli:main"
+merlin-isa-generate = "merlin.target.isa.dialect_generation:main"
 # What the generated-output root costs and why, plus the reclaim classes whose safety is a property
 # (an unreferenced store object, an abandoned input closure, a declared-regenerable cache) rather
 # than a judgement about whether a run is finished.
-merlin-storage = "merlin.common.storage_cli:main"
-merlin-whole-model-gate = "merlin.analysis.perf.whole_model_gate:main"
-merlin-whole-model-gsim = "merlin.analysis.perf.whole_model_gsim:main"
-merlin-semantic-facts = "merlin.development.targetgen.rtl.semantic_facts:main"
-merlin-lit-suite = "merlin.development.targetgen.lit_suite:main"
+merlin-storage = "merlin.common.storage.cli:main"
+merlin-whole-model-gate = "merlin.analysis.whole_model.grading.gate:main"
+merlin-whole-model-gsim = "merlin.analysis.whole_model.grading.whole_model_gsim:main"
+merlin-semantic-facts = "merlin.target.rtl.firrtl.semantic_sources:main"
+merlin-lit-suite = "merlin.development.targetgen.checks.lit_suite:main"
 merlin-targetgen = "merlin.development.targetgen.cli:main"
-merlin-target-tools = "merlin.development.targetgen.tool_cli:main"
-merlin-target-fetch = "merlin.development.targetgen.oot_fetch:main"
-merlin-onboard = "merlin.development.targetgen.onboard:main"
-merlin-target-publish = "merlin.development.targetgen.publish:main"
+merlin-target-tools = "merlin.development.targetgen.authoring.operator_tools:main"
+merlin-target-fetch = "merlin.development.targetgen.generation.oot_fetch:main"
+merlin-onboard = "merlin.development.targetgen.generation.onboard:main"
+merlin-target-publish = "merlin.development.targetgen.packaging.champion_selection:main"
 # Search/mining campaign commands keep their historical module identities.
 merlin-compile = "merlin.cli.compile_workload:main"
-merlin-liveness = "merlin.verification.liveness.cli:main"
+merlin-liveness = "merlin.verification.liveness:main"
 # Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
 # never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
-merlin-firesim-receipt = "merlin.analysis.perf.firesim_receipt:main"
-merlin-deployment-check = "merlin.analysis.perf.deployment_admissibility:main"
+merlin-firesim-receipt = "merlin.analysis.perf.measurement.firesim_receipt:main"
+merlin-deployment-check = "merlin.analysis.perf.measurement.deployment_admissibility:main"
 
-merlin-backend-public-diagnostic = "merlin.development.backend.optimization.public_diagnostic_launch:main"
+merlin-backend-public-diagnostic = "merlin.development.backend.optimization.diagnostics.launch:main"
 merlin-experiment = "merlin.experiments.cli:main"
 merlin-backend-timing-study = "merlin.development.backend.optimization.timing_study:main"
 
@@ -111,10 +111,10 @@ merlin-backend-timing-study = "merlin.development.backend.optimization.timing_st
 "merlin.package" = "merlin.compiler.backend.package"
 
 [project.entry-points."merlin.runners"]
-"merlin.linux" = "merlin.runtime.linux"
+"merlin.linux" = "merlin.runtime.execution.linux_runner"
 
 [project.entry-points."merlin.exact_offload_release"]
-reviewed_phase0 = "merlin.experiments.corpus.release:verify_exact_offload_binding"
+reviewed_phase0 = "merlin.experiments.corpus.release_binding:verify_exact_offload_binding"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
@@ -154,11 +154,10 @@ merlin = [
     "analysis/kernels/framework_contracts/feature_extraction/triton.yaml",
     "analysis/kernels/framework_contracts/openblas.yaml",
     "analysis/kernels/framework_contracts/xnnpack.yaml",
-    "runtime/backends/outlined_int8_board/outlined_gemm_i8_rvv.c",
 ]
 
 "merlin.experiments" = ["resources/*.json"]
-"merlin.development.backend" = ["author_skills/*/SKILL.md", "author_skills/*/scripts/*.py", "author_skills/*/reference/*.md"]
+"merlin.resources" = ["skills/*/SKILL.md", "skills/*/scripts/*.py", "skills/*/reference/*.md"]
 "merlin.experiments.execution" = ["container_guardian.c"]
 
 [tool.pytest.ini_options]

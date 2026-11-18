@@ -162,7 +162,7 @@ Paired workers carry the same live owner and library. The original full grade,
 source/native/issue check and timing gates remain required for both treatments.
 
 `agent_workspace` projects capsule inputs using frozen reference roles in
-`merlin.development.targetgen.capsule_privacy` and the central answer registry. Live-source
+`merlin.development.targetgen.corpus.declarations` and the central answer registry. Live-source
 deletion cannot disclose frozen expected values; public inputs remain usable.
 Projection grants no numerical, runtime or isolation qualification.
 
@@ -180,7 +180,7 @@ and queue wait separate. Reopen original job identity, source/resource context a
 persisted products; saved data cannot issue an observation. Telemetry failure
 cannot change a grade or retry cleanup. Failed/cancelled costs are descriptive;
 CPU, per-arm cost and cache state remain UNKNOWN.
-`evaluation_priorities` joins passing singleton selected costs to the incumbent's
+`search_priorities.project_costs` joins passing singleton selected costs to the incumbent's
 existing potential savings, retaining every repeat and separate evaluator/resource
 contexts. This diagnostic projection never changes contender scores, calibration,
 promotion, plateau or final gates and cannot price another source or parallel sweep.
@@ -395,9 +395,9 @@ bounds retain distinct meanings; neither promises reachable improvement.
 Unpriced host members remain in the total measured time, and absent complete
 evaluation costs stay UNKNOWN. Priorities cannot select or stop a compiler.
 
-`search_target` projects optional operator goals from that same complete measured
+`search_priorities.target_progress` projects optional operator goals from that same complete measured
 incumbent, never from diagnostic or predicted rows. Preserve all repeat ranges
-and reuse `roofline_priority` for every member's complete, consistent, unrefuted
+and reuse `search_priorities.roofline_priorities` for every member's complete, consistent, unrefuted
 floor. Targets are scoped to the frozen development roster, not complete models
 or final acceptance. An explicitly disabled plateau stop retains its evidence
 and all original time/job/drain budgets; unknown goals never establish success.

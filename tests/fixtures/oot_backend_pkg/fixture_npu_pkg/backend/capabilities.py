@@ -7,7 +7,7 @@ intact. If base._load_oot_backend loaded the package's ``__init__`` as a bare si
 
 from __future__ import annotations
 
-from merlin.runtime.backends.base import BackendKind, TargetClass
+from merlin.runtime.backends.registry import BackendKind, TargetClass
 
 # Consumed by the package __init__ via a relative import.
 BACKEND_CLASS = TargetClass.NPU

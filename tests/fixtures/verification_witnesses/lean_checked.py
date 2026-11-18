@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from merlin.compiler.transforms.analyses import blocks_in
 from merlin.compiler.transforms.certificates import ir_text, parse_ir
-from merlin.compiler.transforms.planning import blocks_in
-from merlin.verification import lean_checked as CHECK
-from merlin.verification.lean_contract import LeanToolchain, LeanTransformReceipt, coverage_policy_record
-from merlin.verification.lean_state_effects import EffectScheduleContract
+from merlin.verification.lean import host_checks as CHECK
+from merlin.verification.lean.contract import LeanToolchain, LeanTransformReceipt, coverage_policy_record
+from merlin.verification.lean.state_effects import EffectScheduleContract
 
 
 def _contract():

@@ -18,12 +18,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.analysis.perf.component_cost import COMPLETE_STAGES
-from merlin.analysis.perf.component_screen import ComponentScreenPolicy
-from merlin.analysis.perf.execution_policy import ITERATION_MAX_SECONDS
-from merlin.common import invocation_record as I
+from merlin.analysis.optimization.evaluation.component_cost import COMPLETE_STAGES
+from merlin.analysis.optimization.evaluation.component_screen import ComponentScreenPolicy
+from merlin.analysis.perf.measurement.execution_policy import ITERATION_MAX_SECONDS
 from merlin.common.digest import is_sha256
-from merlin.common.strict_json import loads
+from merlin.common.process import invocation_records as I
+from merlin.common.record_formats import loads
 from merlin.development.backend.optimization.contracts import (
     StageGateError,
     canonical_json,
@@ -392,7 +392,7 @@ class OrdinaryCpuStudyAdapter:
         loads them. Original complete-cost/calibration/held rows remain UNKNOWN
         until their existing owners have actually produced those observations.
         """
-        from merlin.development.backend.optimization.supervised_feedback import bounded_feedback
+        from merlin.development.backend.optimization.author_interface.broker_transports import bounded_feedback
 
         self.verify(request)
         request = loads(canonical_json(request))

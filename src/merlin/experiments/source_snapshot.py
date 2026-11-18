@@ -14,6 +14,8 @@ import os
 import shutil
 from pathlib import Path, PurePosixPath
 
+# ---- source_snapshot ---------------------------------------------------------------------------
+
 OMIT = {"__pycache__", "_qa_ws"}
 SCHEMA = "merlin.performance-source-snapshot.v4"
 RESOURCE_DECLARATION = "build_tools/package_resources.json"
@@ -28,7 +30,7 @@ class SnapshotError(RuntimeError):
 
 def selected_provider(target: str) -> dict:
     """Resolve source ownership once, in the trusted creating process."""
-    from merlin.development.targetgen.target_registry import resolve
+    from merlin.target.registry.identity import resolve
 
     info = resolve(target)
     if info.kind not in {"reference", "external"} or not info.base.is_dir():

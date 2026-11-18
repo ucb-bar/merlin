@@ -21,6 +21,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+# ---- linalg_mlir -------------------------------------------------------------------------------
+
 
 def strip_paren_results(text: str) -> str:
     """Drop the parentheses from a multi-result ``linalg`` region terminator.
@@ -134,13 +136,12 @@ def make_context():
     from xdsl.dialects.scf import Scf
     from xdsl.dialects.tensor import Tensor
 
-    from merlin.compiler.dialects._common import linalg_dialect
-
     # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
     # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
     # context builders disagree: a capsule spelling `f8E4M3FN` -- or an ordinary `arith.truncf %x :
     # f32 to f8E4M3FN` requantize -- loads through one reader and fails `type expected` in the other.
-    from merlin.compiler.dialects.fp8 import (
+    from merlin.compiler.dialects.xdsl_context import (
+        linalg_dialect,
         register_fp8_float_constraints,
         register_fp8_linalg_named_ops,
         register_fp8_types,
@@ -163,8 +164,7 @@ def parse_mlir_text(text: str, ctx=None):
     context in :mod:`merlin.compiler.frontend.quant_ext`); it defaults to the permissive
     :func:`make_context`.
     """
-    from merlin.common.dense_float_ir import DenseFloatParser
-    from merlin.common.ir_lock import IR_LOCK
+    from merlin.compiler.ir.xdsl_io import IR_LOCK, DenseFloatParser
 
     text = strip_paren_results(text)
     # THE serialization point for xDSL parsing, held here rather than at call sites because the call

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.development.targetgen.precision_policy import best_format
+from merlin.development.targetgen.policies.precision import best_format
 
 pytestmark = pytest.mark.target("gemmini")
 

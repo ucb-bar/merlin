@@ -2,7 +2,7 @@
  *
  * Only linked when the board descriptor declares `chip_freq_hz` (see zephyr_model._cmakelists). The
  * numbers below are NOT written here: every base, offset and selector value arrives as a -D macro
- * derived from the target's own SDK headers by `merlin.runtime.sdk_facts`, so adding a second chip is
+ * derived from the target's own SDK headers by `merlin.runtime.boards.sdk_facts`, so adding a second chip is
  * a descriptor entry, not an edit to this file. It refuses to compile if a macro is absent rather than
  * defaulting one -- a wrong PLL ratio or a wrong divisor is a console that emits garbage, which reads
  * as a corrupt program rather than as a misconfigured clock.

@@ -47,7 +47,7 @@ from typing import Any
 import numpy as np
 
 from merlin.common import provenance
-from merlin.runtime.backends import base
+from merlin.runtime.backends import registry as base
 
 #: The hardware revision a cycle number here belongs to.
 RTL_PIN = "gemmini_rtl"

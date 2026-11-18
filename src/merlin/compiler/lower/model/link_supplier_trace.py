@@ -14,6 +14,8 @@ from typing import Any
 
 from merlin.common.digest import sha256_file
 
+# ---- link_supplier_trace -----------------------------------------------------------------------
+
 SCHEMA = "merlin.link_supplier_trace.v1"
 SCOPE = "observed defining supplier in selected link; source-call and numerical proof excluded"
 _MAX_TRACE_BYTES = 65536

@@ -17,7 +17,7 @@ Build, run and judge complete quantized models for a device submission.
 - `cache.py` — Kernel objects and replay results reused across checks, keyed by every input that produced them.
 - `catalog.py` — Everything about one captured program that does not depend on a submission, computed once.
 - `chain.py` — Run a model's programs as a chain on one input, following the models file's input bindings.
-- `chain_worker.py` — One worker of a bundle's INT8 reference pool: ``python -m merlin.evaluation.model.chain_worker <request> <k>``.
+- `chain_worker.py` — One worker of a bundle's INT8 reference pool: ``python -m merlin.evaluation.model.bundles.references <request> <k>``.
 - `chain_image.py` — Package retained completed programs into one recurrent guest without candidate recompilation.
 - `chain_image_objects.py` — Reopen original recipes and observe symbol-only object namespaces.
 - `chain_image_sections.py` — Compare actual allocated ELF object sections and argument symbol bytes.

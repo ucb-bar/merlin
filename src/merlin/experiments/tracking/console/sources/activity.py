@@ -37,8 +37,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from ... import terminal_probe as probe
-from ..io import clean
+from merlin.experiments.tracking.console.snapshot import clean
+from merlin.experiments.tracking.terminal import resource_probe as probe
 
 #: ``(id, code, title)`` in legend order.
 CATEGORIES = (

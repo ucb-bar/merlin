@@ -1,8 +1,7 @@
 import pytest
 
-from merlin.compiler.build.zephyr.config import project_config
-from merlin.compiler.build.zephyr.tree import TreeConfiguration
-from merlin.runtime.boards import CONSOLE_HTIF, FLOW_ZEPHYR, Board
+from merlin.compiler.build.zephyr import TreeConfiguration, project_config
+from merlin.runtime.boards.catalog import CONSOLE_HTIF, FLOW_ZEPHYR, Board
 
 
 def tree(tmp_path, name, *, vector, width=256):

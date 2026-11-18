@@ -8,8 +8,10 @@ from pathlib import Path
 from merlin.common.paths import runtime_dir
 from merlin.compiler.build import process as _process
 from merlin.compiler.build import shared as _shared
-from merlin.compiler.lower.model.optional_passes import child_environment
 from merlin.compiler.lower.model.toolchain import clang, host_llc
+from merlin.compiler.lower.options.optional_passes import child_environment
+
+# ---- codegen -----------------------------------------------------------------------------------
 
 # A bounded per-compile wall clock. A pathological schedule (e.g. an outer-product contraction at a
 # large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a

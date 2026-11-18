@@ -20,7 +20,7 @@ serialized dispatch program rather than IR (their declared dialects say so:
 quietly shows 10 of 12 passes is indistinguishable from one that has 10.
 
 Target dialects are resolved at run time from a dialect plan (``--dialect-plan`` / ``--merlin-target``)
-through :mod:`merlin.compiler.dialects.targets.factory`. The target name is a CLI value, never a literal
+through :mod:`merlin.compiler.dialects.lowering.target_stage`. The target name is a CLI value, never a literal
 in this file — a target name baked into shared code is exactly the overfit the repo's gates reject.
 
 Usage::
@@ -38,7 +38,9 @@ import inspect
 import sys
 from typing import Any, Callable
 
-from merlin.compiler.dialects._common import HAS_XDSL
+from merlin.compiler.dialects.xdsl_context import HAS_XDSL
+
+# ---- opt ---------------------------------------------------------------------------------------
 
 #: Catalog entries that cannot be an MLIR pass, with the reason reported to the user. Keyed by the
 #: catalog's own pass name. The reason is derived from the signature, not asserted: an entry whose
@@ -77,8 +79,8 @@ def _emit_dispatch_program(module) -> str:
     """
     import json
 
-    from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
-    from merlin.compiler.dialects.lowering.outline import outline_dispatches
+    from merlin.compiler.partition.dispatch_program import build_dispatch_program
+    from merlin.compiler.partition.outline import outline_dispatches
 
     prog = build_dispatch_program(outline_dispatches(module))
     return json.dumps(prog.to_dict(), indent=2, sort_keys=True) + "\n"
@@ -92,9 +94,8 @@ def _emit_schedule(module) -> str:
     strongest of the three unverified passes (``validate`` proves every dependency edge crosses a
     level barrier upward), so exposing the table is what lets a check assert it.
     """
-    from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
-    from merlin.compiler.dialects.lowering.outline import outline_dispatches
-    from merlin.compiler.dialects.lowering.schedule_dispatch import emit_schedule_c, partition_dispatches
+    from merlin.compiler.partition.dispatch_program import build_dispatch_program, emit_schedule_c, partition_dispatches
+    from merlin.compiler.partition.outline import outline_dispatches
 
     prog = build_dispatch_program(outline_dispatches(module))
     result = partition_dispatches(prog)
@@ -206,7 +207,8 @@ if HAS_XDSL:
 
         def register_all_dialects(self):
             super().register_all_dialects()
-            from merlin.compiler.dialects import CORE_DIALECT_MODULES, fp8
+            from merlin.compiler.dialects import CORE_DIALECT_MODULES
+            from merlin.compiler.dialects import xdsl_context as fp8
 
             if hasattr(fp8, "register_fp8_types"):
                 fp8.register_fp8_types()
@@ -219,7 +221,7 @@ if HAS_XDSL:
         def _register_target_dialect(self) -> None:
             """Register the target dialect named by the plan. Never a literal: the name comes from
             the plan the caller supplied."""
-            from merlin.compiler.dialects.targets import factory
+            from merlin.compiler.dialects.lowering import target_stage as factory
 
             built = factory.build_dialect(self._target or "", plan=self._plan)
             dialect = getattr(built, "dialect", None)

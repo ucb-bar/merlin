@@ -33,11 +33,14 @@ import copy
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-#: The frozen identity the reviewed PF contract names. Kept as the historical spelling so capsules
-#: sealed under it are decided by this implementation; ``dispatch`` maps its module to this owner.
+# ---- group_arithmetic --------------------------------------------------------------------------
+
 ANALYZER = "merlin.analysis.perf.group_arithmetic_claim.analyze_group_arithmetic_claim/v1"
+
 ESTABLISHED, REFUTED, REFUSED = "ESTABLISHED", "REFUTED", "REFUSED"
+
 WHOLE, PARTS_SUM, EITHER = "whole", "parts_sum", "either"
+
 _BAND = "measured_replicate_dispersion"
 
 

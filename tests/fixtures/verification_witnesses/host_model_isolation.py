@@ -4,7 +4,7 @@ import subprocess
 
 import pytest
 
-from merlin.compiler.lower.model.abi import HostModel
+from merlin.compiler.lower.model.oracle import HostModel
 
 # Explicit fixture/reference reexports consumed by retained direct tests.
 __all__ = [

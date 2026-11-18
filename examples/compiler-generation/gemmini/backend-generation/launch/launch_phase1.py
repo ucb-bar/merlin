@@ -12,9 +12,10 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from merlin.development.backend import launch_config as L
-from merlin.evaluation.model import bundle as B
-from merlin.evaluation.model import seal as S
+from merlin.development.backend.session import launch_config as L
+from merlin.development.backend.session import launch_drift as _merlin_launch_drift_1
+from merlin.evaluation.model.bundles import seal as B
+from merlin.evaluation.model.bundles import seal as S
 
 
 def save(path: Path, value: object) -> None:
@@ -85,10 +86,10 @@ def _source_preflight_inputs(launch):
     """Reopen the gate's selected source inputs and compiler-owned index premise."""
     import yaml
 
-    from merlin.development.backend.feedback import private_control_support as control
-    from merlin.development.backend.feedback import private_full_model_execution as execution
-    from merlin.development.backend.feedback import private_full_models as models
-    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
+    from merlin.development.backend.qualification.full_models import execution_engine as execution
+    from merlin.development.backend.qualification.full_models import private_full_models as models
+    from merlin.development.backend.qualification.source_witnesses import control_guards as control
+    from merlin.runtime.execution.model_inputs import file_sha256, strict_tree_sha256
 
     spec = launch.path(launch.document["inputs"]["private_full_model_spec"])
     descriptor = launch.path(launch.document["inputs"]["descriptor"])
@@ -163,10 +164,12 @@ def source_preparation(launch, prep: Path) -> dict:
     """Reuse only this preparation's exact source-only check, never candidate credit."""
     import hashlib
 
-    from merlin.development.backend.feedback import private_full_models as models
-    from merlin.development.backend.feedback import private_source_freeze as freeze
-    from merlin.development.backend.feedback import private_source_preflight_parallel as preflight
-    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
+    from merlin.development.backend.qualification.full_models import private_full_models as models
+    from merlin.development.backend.qualification.full_models import (
+        private_source_preflight_parallel as preflight,
+    )
+    from merlin.development.backend.qualification.provenance import private_source_freeze as freeze
+    from merlin.runtime.execution.model_inputs import file_sha256, strict_tree_sha256
 
     identity, native = _source_preflight_inputs(launch)
     key = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -244,7 +247,7 @@ def source_preparation_for(launch, prep, private_spec, *, qualification_only=Fal
         }
     if not qualification_only:
         return source_preparation(launch, prep)
-    from merlin.development.backend.feedback import private_numerical_selection
+    from merlin.development.backend.qualification.provenance import private_numerical_selection
 
     if private_numerical_selection.read(private_spec) is None:
         raise ValueError("source delegation requires the selected canonical native full-chain criterion")
@@ -334,8 +337,8 @@ def _prepare(launch: L.Launch, prep: Path, *, qualification_only: bool = False) 
     if plan.exists() and json.loads(plan.read_text()) != desired:
         raise ValueError("existing operator plan differs; use a fresh preparation directory")
     save(plan, desired)
-    report = L.verify(launch)
-    record = L.report_record(launch, report)
+    report = _merlin_launch_drift_1.verify(launch)
+    record = _merlin_launch_drift_1.report_record(launch, report)
     save(out / "config-verification.json", record)
     if report.drifts:
         raise ValueError(f"launch config drift: see {out / 'config-verification.json'}")

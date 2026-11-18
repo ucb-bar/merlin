@@ -1,19 +1,23 @@
 """Explicit public test inputs, separate from completed automatic generation."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 import yaml
 
 from merlin.common.digest import is_sha256, sha256_bytes, sha256_file
-from merlin.common.strict_json import loads
+from merlin.common.record_formats import loads
 from merlin.experiments.definition import SpecError
+
+# ---- public_supplement -------------------------------------------------------------------------
 
 SCHEMA = "merlin.corpus.public_supplement.v1"
 
 
 def read(path: Path, *, target: str) -> dict:
-    from ..runner import fingerprint
-    from .preparation import _members, ordinary_tree
+    from merlin.experiments.corpus.source_staging import _members, ordinary_tree
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     path = path.expanduser().absolute()
     ordinary_tree(path)
@@ -85,10 +89,9 @@ def read(path: Path, *, target: str) -> dict:
 
 
 def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
-    from merlin.development.targetgen.sandbox.bwrap import _validate_host_sources
-
-    from .preparation import _members, copy_input, read_yaml
-    from .publication import require_accelerator_placement, require_public_capsules
+    from merlin.development.targetgen.sandbox.grants import _validate_host_sources
+    from merlin.experiments.corpus.publication import require_accelerator_placement, require_public_capsules
+    from merlin.experiments.corpus.source_staging import _members, copy_input, read_yaml
 
     record = read(path, target=te.target)
     root = Path(record["selection"]["path"]).parent
@@ -120,7 +123,7 @@ def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
 
 
 def verify(record: dict, corpus: Path) -> None:
-    from ..runner import fingerprint
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     if read(Path(record["selection"]["path"]), target=record["target"]) != record:
         raise SpecError("public supplement source selection changed after preparation")

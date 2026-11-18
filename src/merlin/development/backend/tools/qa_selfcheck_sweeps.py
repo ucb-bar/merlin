@@ -9,40 +9,16 @@ import os
 import time
 from pathlib import Path
 
+# ---- qa_selfcheck_sweeps -----------------------------------------------------------------------
+
 if __package__:
-    from .qa_selfcheck_protocol import (
-        _SUBMISSION,
-        PROTOCOL_VERSION,
-        _atomic_write,
-        _read_json,
-        _reply_is_usable,
-        _request_budget_seconds,
-        _request_id,
-        _requester_identity,
-        _source_label,
-        _submission_digest,
-        _variant_error,
-    )
+    from merlin.development.backend.tools import qa_selfcheck_protocol as protocol
 else:
-    from qa_selfcheck_protocol import (
-        _SUBMISSION,
-        PROTOCOL_VERSION,
-        _atomic_write,
-        _read_json,
-        _reply_is_usable,
-        _request_budget_seconds,
-        _request_id,
-        _requester_identity,
-        _source_label,
-        _submission_digest,
-        _variant_error,
-    )
+    import qa_selfcheck_protocol as protocol
 
 _SWEEP_SCHEMA = "merlin.selfcheck_sweep.v1"
 
-
 _EXPERIMENT_SCHEMA = "merlin.idle_tuning_experiment.v1"
-
 
 _MODEL_KEYS = (
     "selection_sha256",
@@ -58,13 +34,15 @@ def _sweep_candidates(ws: Path, variants: str, knobs: list[str]) -> list[dict]:
     """Validate the complete candidate list before making any request visible."""
     candidates = []
     for value in variants.split(",") if variants else ():
-        label, error = _source_label(ws, value.strip())
-        error = error or (_variant_error(ws, label) if label != _SUBMISSION else "--sweep names variants/")
+        label, error = protocol._source_label(ws, value.strip())
+        error = error or (
+            protocol._variant_error(ws, label) if label != protocol._SUBMISSION else "--sweep names variants/"
+        )
         if error:
             raise ValueError(error)
         candidates.append({"submission": label, "key": "variant:" + label.partition("/")[2]})
     if knobs:
-        declared = _read_json(ws / _SUBMISSION / "TUNING_KNOBS.json")
+        declared = protocol._read_json(ws / protocol._SUBMISSION / "TUNING_KNOBS.json")
         if not isinstance(declared, dict) or declared.get("schema") != "merlin.tuning_knobs.v1":
             raise ValueError("--knob needs submission/TUNING_KNOBS.json (merlin.tuning_knobs.v1)")
         for text in knobs:
@@ -82,7 +60,7 @@ def _sweep_candidates(ws: Path, variants: str, knobs: list[str]) -> list[dict]:
                     raise ValueError(f"--knob {name}: value is not declared in TUNING_KNOBS.json")
                 candidates.append(
                     {
-                        "submission": _SUBMISSION,
+                        "submission": protocol._SUBMISSION,
                         "tuning_overrides": {name: value},
                         "key": "knob:" + name + "=" + json.dumps(value),
                     }
@@ -97,7 +75,7 @@ def _sweep_cases(ws: Path, capsules: str, bundle: str) -> str:
     if bundle:
         if capsules != "all":
             raise ValueError("--bundle selects its own cases; drop --capsules")
-        ledger = _read_json(ws / "qa" / "idle_tuning.json") or {}
+        ledger = protocol._read_json(ws / "qa" / "idle_tuning.json") or {}
         chosen = next((b for b in ledger.get("bundles") or () if b.get("representative") == bundle), None)
         if chosen is None:
             raise ValueError("no matching bundle in qa/idle_tuning.json; use --capsules X,Y")
@@ -123,7 +101,7 @@ def _case_groups(ws: Path, names: list[str]) -> list[tuple[str, list[str]]]:
         return [("scalability", list(dict.fromkeys(names)))]
     if path.is_symlink() or not path.is_file() or path.stat().st_size > 16 << 20:
         raise ValueError("public case routing requires an ordinary bounded inventory file")
-    inventory = _read_json(path)
+    inventory = protocol._read_json(path)
     members = inventory.get("members") if isinstance(inventory, dict) else None
     if not isinstance(members, dict):
         raise ValueError("public case routing requires the staged capability inventory")
@@ -289,19 +267,19 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
         candidates = _sweep_candidates(ws, a.sweep or "", a.knob)
         cases = _sweep_cases(ws, a.capsules, a.bundle)
         groups = _case_groups(ws, cases.split(","))
-        sid = "sweep_" + _request_id()
-        base = _submission_digest(ws / _SUBMISSION)
+        sid = "sweep_" + protocol._request_id()
+        base = protocol._submission_digest(ws / protocol._SUBMISSION)
         now = time.time_ns()
-        deadline = time.time() + _request_budget_seconds(a.timeout, capsules=cases, workers=a.workers)
+        deadline = time.time() + protocol._request_budget_seconds(a.timeout, capsules=cases, workers=a.workers)
         caller = os.environ.get("CODEX_THREAD_ID", "").strip()[:128]
         requests, bodies = [], []
         baselines = []
         for suite, names in groups:
             baseline_id = f"{sid}_{len(requests)}"
             baselines.append(baseline_id)
-            for candidate in [{"submission": _SUBMISSION, "key": "baseline"}, *candidates]:
+            for candidate in [{"submission": protocol._SUBMISSION, "key": "baseline"}, *candidates]:
                 label, rid = candidate["submission"], f"{sid}_{len(requests)}"
-                digest = base if label == _SUBMISSION else _submission_digest(ws / label)
+                digest = base if label == protocol._SUBMISSION else protocol._submission_digest(ws / label)
                 member = {
                     **candidate,
                     "request_id": rid,
@@ -312,10 +290,10 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
                 }
                 requests.append(member)
                 body = {
-                    "protocol": PROTOCOL_VERSION,
+                    "protocol": protocol.PROTOCOL_VERSION,
                     "request_id": rid,
                     "requested_at_unix_ns": now,
-                    "requester": _requester_identity(),
+                    "requester": protocol._requester_identity(),
                     "deadline_unix_ns": int(deadline * 1e9),
                     "submission": label,
                     "submission_sha256": digest,
@@ -357,11 +335,11 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
             "capsules": cases,
             "deadline_unix_ns": int(deadline * 1e9),
         }
-        _atomic_write(ch / f"{sid}.json", json.dumps(manifest))
+        protocol._atomic_write(ch / f"{sid}.json", json.dumps(manifest))
         for body in bodies:
             rid = body["request_id"]
-            _atomic_write(ch / f"detached_{rid}", json.dumps({"sweep": sid, "at_unix_ns": now}))
-            _atomic_write(ch / f"req_{rid}.json", json.dumps(body))
+            protocol._atomic_write(ch / f"detached_{rid}", json.dumps({"sweep": sid, "at_unix_ns": now}))
+            protocol._atomic_write(ch / f"req_{rid}.json", json.dumps(body))
     sid = manifest["sweep_id"]
     until = manifest["deadline_unix_ns"] / 1e9
     if a.wait_budget > 0:
@@ -372,11 +350,11 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
             rid = request["request_id"]
             if rid in responses or rid in faults or not (ch / f"done_{rid}").exists():
                 continue
-            doc = _read_json(ch / f"resp_{rid}.json")
+            doc = protocol._read_json(ch / f"resp_{rid}.json")
             if not isinstance(doc, dict):
                 faults[rid] = "unparseable self-check response"
                 continue
-            ok, why = _reply_is_usable(doc, rid, request["submission_sha256"], label=request["submission"])
+            ok, why = protocol._reply_is_usable(doc, rid, request["submission_sha256"], label=request["submission"])
             if ok and request.get("tuning_overrides"):
                 variant = doc.get("variant") or {}
                 if (
@@ -406,7 +384,8 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
         "baseline_status": (
             "current"
             if all(
-                _submission_digest(ws / _SUBMISSION) == (responses.get(rid) or {}).get("submission_sha256")
+                protocol._submission_digest(ws / protocol._SUBMISSION)
+                == (responses.get(rid) or {}).get("submission_sha256")
                 for rid in manifest.get("baseline_request_ids", [manifest["baseline_request_id"]])
             )
             else "older_source"
@@ -420,7 +399,7 @@ def _run_sweep(a, ws: Path, ch: Path, manifest: dict | None = None) -> int:
         "resume_with": f"python agent_selfcheck.py --attach {sid}",
         "all": path.relative_to(ws).as_posix(),
     }
-    _atomic_write(path, json.dumps(report, indent=2))
+    protocol._atomic_write(path, json.dumps(report, indent=2))
     compact = {**report, "ranked_candidates": rankings[:12], "comparisons": comparisons[:12]}
     text = json.dumps(compact, indent=2)
     print(text)

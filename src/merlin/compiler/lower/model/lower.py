@@ -14,44 +14,45 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
-    from merlin.compiler.lower.model.graph_optimizations import GraphOptimizationContract
-    from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
-    from merlin.compiler.lower.model.source_optimization_selection import SourceOptimizationSelection
-    from merlin.compiler.lower.model.source_recomputation import SourceRecomputationSelection
-
-from merlin.common import compile_trace
-from merlin.common.digest import sha256_file, sha256_text
-from merlin.common.ir_audit import IrAudit, audit_mode
-from merlin.common.jsonio import write_pretty_json
+from merlin.common.digest import sha256_file, sha256_text, write_pretty_json
 from merlin.compiler.frontend.preprocess import PREPROCESS_STAGES, preprocess_text
-from merlin.compiler.lower.model.broadcast_fold import (
+from merlin.compiler.ir import compile_trace
+from merlin.compiler.ir.lowering_audit import IrAudit, audit_mode
+from merlin.compiler.lower.model.codegen import build_host_shared, compile_ll
+from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
+from merlin.compiler.lower.options.broadcast_fold import (
     ensure_registered as _register_fold_broadcast_into_generic,
 )
-from merlin.compiler.lower.model.codegen import build_host_shared, compile_ll
-from merlin.compiler.lower.model.concat_dps import ensure_registered as _register_concat_dps
+from merlin.compiler.lower.options.concat_dps import ensure_registered as _register_concat_dps
+from merlin.compiler.lower.options.epilogue_fusion import ensure_registered as _register_epilogue_fusion
+from merlin.compiler.lower.options.guarded_zero_contraction import (
+    ensure_registered as _register_guarded_zero_contraction,
+)
+from merlin.compiler.lower.options.im2col import ensure_registered as _register_im2col_panel_pack
+from merlin.compiler.lower.options.masked_contraction import MaskEffectContract
+from merlin.compiler.lower.options.named_broadcast_fold import (
+    ensure_registered as _register_named_broadcast_fold,
+)
+from merlin.compiler.lower.options.prov_cse import ensure_registered as _register_cse_through_provenance
+from merlin.compiler.lower.options.tensor_provenance_cse import (
+    ensure_registered as _register_tensor_preparation_cse,
+)
+from merlin.compiler.lower.options.transpose_maps import ensure_registered as _register_fold_weight_transpose
+from merlin.compiler.lower.source.carrier import host_admitted
+from merlin.compiler.lower.source.interval import IntervalEffectContract
+
+# ---- lower -------------------------------------------------------------------------------------
+
+if TYPE_CHECKING:
+    from merlin.compiler.lower.host.graph import GraphOptimizationContract, HostGraphPolicy
+    from merlin.compiler.lower.source.source_optimization_selection import SourceOptimizationSelection
+    from merlin.compiler.lower.source.source_recomputation import SourceRecomputationSelection
+
 
 # Registering here, and not in `impr_features` itself, keeps the epilogue-fusion stage's definition
 # next to the pass list it edits while still making the NAME resolvable: this module is what every
 # whole-model backend imports to lower, so by the time a feature set is normalized for a lowering the
 # entry exists. Idempotent, so a second import is a no-op.
-from merlin.compiler.lower.model.epilogue_fusion import ensure_registered as _register_epilogue_fusion
-from merlin.compiler.lower.model.guarded_zero_contraction import (
-    ensure_registered as _register_guarded_zero_contraction,
-)
-from merlin.compiler.lower.model.im2col_pack import ensure_registered as _register_im2col_panel_pack
-from merlin.compiler.lower.model.masked_contraction import MaskEffectContract
-from merlin.compiler.lower.model.named_broadcast_fold import (
-    ensure_registered as _register_named_broadcast_fold,
-)
-from merlin.compiler.lower.model.prov_cse import ensure_registered as _register_cse_through_provenance
-from merlin.compiler.lower.model.source_expression_interval import IntervalEffectContract
-from merlin.compiler.lower.model.source_scalar_carrier_binding import host_admitted
-from merlin.compiler.lower.model.tensor_provenance_cse import (
-    ensure_registered as _register_tensor_preparation_cse,
-)
-from merlin.compiler.lower.model.transpose_maps import ensure_registered as _register_fold_weight_transpose
-from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
 
 _register_epilogue_fusion()
 _register_fold_weight_transpose()
@@ -212,7 +213,7 @@ def lower_model(
 
     ``static_arena=True`` (or ``MERLIN_STATIC_ARENA=1``) binds the emitted per-intermediate
     ``malloc``/``free`` pairs to one statically planned arena -- see
-    :mod:`merlin.compiler.lower.model.arena_bind`. Default OFF: unflagged, the emitted ``.ll`` is byte-identical
+    :mod:`merlin.compiler.lower.host.arena`. Default OFF: unflagged, the emitted ``.ll`` is byte-identical
     to the baseline, and the report of what was bound lands in ``stats["static_arena"]``.
     """
     if type(op_profile) is not bool:
@@ -241,7 +242,7 @@ def lower_model(
     if descriptor_result_effects is not None and not descriptor_result_identities:
         raise ValueError("descriptor effects require their original descriptor identities")
     if descriptor_result_identities:
-        from merlin.compiler.lower.model.descriptor_result_preparation import DescriptorResultPreparation
+        from merlin.compiler.lower.options.descriptor_result_preparation import DescriptorResultPreparation
 
         descriptor_preparation = DescriptorResultPreparation(
             descriptor_result_identities, effects=descriptor_result_effects, additional_calls=borrowed_buffer_calls
@@ -269,7 +270,7 @@ def lower_model(
         borrowed_buffer_calls = descriptor_preparation.initial_calls()
     source_choices = None
     if source_optimizations is not None:
-        from merlin.compiler.lower.model.source_optimization_selection import SourceCompilationOptimization
+        from merlin.compiler.lower.source.source_optimization_selection import SourceCompilationOptimization
 
         source_choices = SourceCompilationOptimization(mlir_text, source_optimizations)
     native_source = None
@@ -288,7 +289,7 @@ def lower_model(
     recomputation = recomputation_check = None
     recomputation_check_code = None
     if source_recomputation is not None:
-        from merlin.compiler.lower.model.source_recomputation import (
+        from merlin.compiler.lower.source.source_recomputation import (
             SourceRecomputationPreparation,
             lowering_settings,
         )
@@ -299,7 +300,7 @@ def lower_model(
         recomputation_check_code = recomputation_check.__func__.__code__
     borrowed_source = mlir_text
     if borrowed_buffer_calls is not None:
-        from merlin.compiler.lower.model.borrowed_buffer_calls import BorrowedBufferCalls
+        from merlin.compiler.lower.host.borrowed_buffer_calls import BorrowedBufferCalls
 
         if type(borrowed_buffer_calls) is not BorrowedBufferCalls:
             raise ValueError("explicit original borrowed-buffer selection required")
@@ -346,8 +347,7 @@ def lower_model(
                 audit.stage("source-recomputed", mlir_text)
         graph_report = None
         if graph_optimizations is not None:
-            from merlin.compiler.lower.model.graph_optimizations import optimize_host_graph
-            from merlin.compiler.lower.model.host_graph_policy import HostGraphPolicy
+            from merlin.compiler.lower.host.graph import HostGraphPolicy, optimize_host_graph
 
             (work / "host-graph-input.mlir").write_text(mlir_text, encoding="utf-8")
             if type(graph_optimizations) is HostGraphPolicy:
@@ -356,7 +356,7 @@ def lower_model(
             (work / "host-graph-optimized.mlir").write_text(mlir_text, encoding="utf-8")
             write_pretty_json(work / "host-graph-optimization.json", graph_report)
             audit.stage("host-graph-optimized", mlir_text)
-        from merlin.compiler.lower.model.automatic_rows import prepare_automatic_rows
+        from merlin.compiler.lower.host.automatic_rows import prepare_automatic_rows
 
         # Select after the actual lowering family is known. Vector/parallel
         # schedules and explicit source-bound observers retain their route
@@ -379,7 +379,7 @@ def lower_model(
         )
         if row_report["rewrites"]:
             audit.stage("host-row-scheduled", mlir_text)
-        from merlin.compiler.lower.model.automatic_gathers import prepare_automatic_gathers
+        from merlin.compiler.lower.host.automatic_gathers import prepare_automatic_gathers
 
         mlir_text, gather_report = prepare_automatic_gathers(
             mlir_text,
@@ -391,7 +391,7 @@ def lower_model(
         if gather_report["rewrites"]:
             audit.stage("host-padding-gather-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-gathers.json", gather_report)
-        from merlin.compiler.lower.model.automatic_destinations import prepare_automatic_destinations
+        from merlin.compiler.lower.host.automatic_destinations import prepare_automatic_destinations
         from merlin.compiler.lower.model.toolchain import _env
 
         mlir_text, destination_report = prepare_automatic_destinations(
@@ -406,7 +406,7 @@ def lower_model(
             features = normalize(set(features or ()) | {"reuse_tensor_destination"})
             audit.stage("host-destination-reused", mlir_text)
         write_pretty_json(work / "automatic-host-destinations.json", destination_report)
-        from merlin.compiler.lower.model.automatic_rounding import prepare_automatic_rounding
+        from merlin.compiler.lower.host.automatic_rounding import prepare_automatic_rounding
 
         mlir_text, rounding_report = prepare_automatic_rounding(
             mlir_text, serial=serial_rows, index_bits=64 if index_bits is None else index_bits, data_layout=data_layout
@@ -425,7 +425,7 @@ def lower_model(
         if permutation_report["rewrites"]:
             audit.stage("host-permutation-forwarded", mlir_text)
         write_pretty_json(work / "automatic-host-permutations.json", permutation_report)
-        from merlin.compiler.lower.model.host_pointwise_fusion import prepare_host_pointwise_fusion
+        from merlin.compiler.lower.host.host_pointwise_fusion import prepare_host_pointwise_fusion
         from merlin.compiler.optimizations.registry import FUSE_AFTER_GENERALIZE_NAME
 
         mlir_text, pointwise_fusion_report = prepare_host_pointwise_fusion(
@@ -448,7 +448,7 @@ def lower_model(
 
                 features = normalize(set(features or ()) | {descriptor_preparation.selected_feature()})
                 descriptor_check()
-        from merlin.compiler.lower.model.automatic_copies import select as select_host_copies
+        from merlin.compiler.lower.host.automatic_copies import select as select_host_copies
 
         features, copy_report = select_host_copies(
             features,
@@ -456,7 +456,7 @@ def lower_model(
         )
         if recomputation is not None:
             copy_report["disabled_reason"] = "automatic copy augmentation with source recomputation is not qualified"
-        from merlin.compiler.lower.model.automatic_host_features import select as select_host_features
+        from merlin.compiler.lower.options.automatic_host_features import select as select_host_features
 
         features = select_host_features(
             features,
@@ -466,10 +466,10 @@ def lower_model(
             mlir_text, borrowed_buffer_calls = native_source.prepare(mlir_text, work)
             borrowed_source = mlir_text
         tensor_cse_report = None
-        from merlin.compiler.lower.model.tensor_provenance_cse import FEATURE as tensor_cse_feature
+        from merlin.compiler.lower.options.tensor_provenance_cse import FEATURE as tensor_cse_feature
 
         if tensor_cse_feature in (features or ()):
-            from merlin.compiler.lower.model.tensor_provenance_cse import rewrite_text
+            from merlin.compiler.lower.options.tensor_provenance_cse import rewrite_text
 
             before_cse = sha256_text(mlir_text)
             mlir_text, rewrites = rewrite_text(mlir_text)
@@ -485,10 +485,10 @@ def lower_model(
             write_pretty_json(work / "tensor-preparation-cse.json", tensor_cse_report)
             audit.stage("host-tensor-preparations-shared", mlir_text)
         proved_maximum_report = None
-        from merlin.compiler.lower.model.proved_float_maximum import FEATURE as proved_maximum_feature
+        from merlin.compiler.lower.options.proved_float_maximum import FEATURE as proved_maximum_feature
 
         if proved_maximum_feature in (features or ()):
-            from merlin.compiler.lower.model.proved_float_maximum import rewrite_text
+            from merlin.compiler.lower.options.proved_float_maximum import rewrite_text
 
             before_maximum = sha256_text(mlir_text)
             mlir_text, rewrites = rewrite_text(mlir_text)
@@ -503,16 +503,16 @@ def lower_model(
             write_pretty_json(work / "proved-float-maximum.json", proved_maximum_report)
             audit.stage("host-proved-float-maximum", mlir_text)
         broadcast_divisor_report = None
-        from merlin.compiler.lower.model.broadcast_divisor_hoisting import (
+        from merlin.compiler.lower.options.broadcast_divisor_hoisting import (
             FEATURE as broadcast_divisor_feature,
         )
-        from merlin.compiler.lower.model.broadcast_divisor_hoisting import (
+        from merlin.compiler.lower.options.broadcast_divisor_hoisting import (
             POW2_FEATURE as broadcast_power_two_feature,
         )
-        from merlin.compiler.lower.model.broadcast_divisor_hoisting import (
+        from merlin.compiler.lower.options.broadcast_divisor_hoisting import (
             SUM_UNIT_FEATURE as broadcast_sum_unit_divisor_feature,
         )
-        from merlin.compiler.lower.model.broadcast_divisor_hoisting import (
+        from merlin.compiler.lower.options.broadcast_divisor_hoisting import (
             UNIT_FEATURE as broadcast_unit_divisor_feature,
         )
 
@@ -523,7 +523,7 @@ def lower_model(
             broadcast_power_two_feature,
         }
         if divisor_features & set(features or ()):
-            from merlin.compiler.lower.model.broadcast_divisor_hoisting import rewrite_text
+            from merlin.compiler.lower.options.broadcast_divisor_hoisting import rewrite_text
 
             before_divisors = sha256_text(mlir_text)
             selected_power_two = broadcast_power_two_feature in (features or ())
@@ -566,7 +566,7 @@ def lower_model(
             audit.stage("host-broadcast-divisors-hoisted", mlir_text)
         profile_report = None
         if op_profile:
-            from merlin.compiler.lower.model import op_profile as profiler
+            from merlin.compiler.lower.model import profile as profiler
 
             profile_source_sha = sha256_text(mlir_text)
             mlir_text, profile_table = profiler.instrument(mlir_text, structural=True)
@@ -699,7 +699,7 @@ def lower_model(
                 raise ValueError("selected index lowering lost its effective compiler pipeline")
             stats["index_lowering"] = lowering_selection
         if static_arena is None:
-            from merlin.compiler.lower.model.optional_passes import switched
+            from merlin.compiler.lower.options.optional_passes import switched
 
             static_arena = switched("static-arena", bool(_os.environ.get("MERLIN_STATIC_ARENA")))
         if descriptor_preparation is not None and static_arena:
@@ -710,7 +710,7 @@ def lower_model(
             # measured whole-model path still passes through as text: `runtime.remote_linux.build_binary` calls
             # `lower_model_file` and then compiles the `.ll` it gets back. With the flag off nothing runs
             # and the `.ll` is byte-identical to the frozen baseline.
-            from merlin.compiler.lower.model.arena_bind import bind_arena
+            from merlin.compiler.lower.host.arena import bind_arena
 
             ll_text, arena_report = bind_arena(ll_text, borrowed_lifetime=next(iter(borrowed_arena_lifetimes), None))
             stats["static_arena"] = arena_report.to_dict()
@@ -719,7 +719,7 @@ def lower_model(
         # leaving target backends to materialize an enormous outgoing frame.  Repair that artificial
         # boundary by ABI width before any target compiles the module.  This is model- and target-agnostic
         # and preserves both public symbols; see llvmlower.ciface_inline.
-        from merlin.compiler.lower.model.ciface_inline import inline_wide_ciface_implementations
+        from merlin.compiler.lower.host.transforms import inline_wide_ciface_implementations
 
         before_ciface_inline = ll_text
         ll_text, ciface_inline_report = inline_wide_ciface_implementations(ll_text)

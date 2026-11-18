@@ -19,8 +19,8 @@ import launch_phase1 as P
 import yaml
 
 from merlin.common.digest import sha256_file
-from merlin.development.backend import launch_config as L
-from merlin.development.backend.feedback import capsule_certification as C
+from merlin.development.backend.feedback.certification import capsule_certification as C
+from merlin.development.backend.session import launch_config as L
 
 
 def pin(path):
@@ -52,7 +52,7 @@ def prepare(args, *, started):
     descriptor = fresh.path(fresh.document["inputs"]["descriptor"])
     qualification = getattr(args, "capsule_qualification", None)
     if qualification is not None:
-        from merlin.development.backend.feedback import capsule_qualification_handoff as Q
+        from merlin.development.backend.feedback.certification import capsule_qualification_handoff as Q
 
         technical = Q.verify(qualification, descriptor=descriptor)
         if technical.get("external_validation_ready") is not True:

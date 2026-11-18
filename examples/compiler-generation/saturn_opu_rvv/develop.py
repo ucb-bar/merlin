@@ -22,8 +22,8 @@ from pathlib import Path
 import yaml
 
 from merlin.common.paths import artifacts_dir
-from merlin.common.yaml import write_yaml
-from merlin.development.targetgen import capability_manifests as cm
+from merlin.common.record_formats import write_yaml
+from merlin.target.capabilities import manifest as cm
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,10 +46,11 @@ def main(argv: list[str] | None = None) -> int:
     descriptor = yaml.safe_load((tdir / "descriptor.yaml").read_text(encoding="utf-8"))
     residual = yaml.safe_load((tdir / "residual.yaml").read_text(encoding="utf-8"))
 
-    from merlin.development.targetgen.rtl import mlc_bridge as _mb
+    from merlin.target.rtl.extraction import mlc_discovery as _merlin_mlc_discovery_1
+    from merlin.target.rtl.extraction import mlc_toolchain as _mb
 
-    reader = _mb.resolve_spatial_introspect(a.facts_from)
-    facts = _mb.spatial_fact_bundle(a.facts_from)
+    reader = _merlin_mlc_discovery_1.resolve_spatial_introspect(a.facts_from)
+    facts = _merlin_mlc_discovery_1.spatial_fact_bundle(a.facts_from)
     required = ("tile_dim", "mrf_depth", "element_widths", "dtypes", "fma_latency", "op_categories", "accum_kind")
     missing = [key for key in required if not (facts.get("fields") or {}).get(key, {}).get("derived")]
     inputs = facts.get("inputs") or {}

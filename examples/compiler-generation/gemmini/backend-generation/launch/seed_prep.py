@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import sys
 
-from merlin.development.backend.seed_prep.__main__ import main
+from merlin.development.backend.campaign.seeding.__main__ import main
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -10,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+# ---- sealed_m2m_validation ---------------------------------------------------------------------
+
 
 def _capture_api_missing(m2m_root: Path) -> tuple[str, ...]:
     """Check the selected source API without importing its heavyweight runtime.
@@ -17,9 +19,7 @@ def _capture_api_missing(m2m_root: Path) -> tuple[str, ...]:
     This is only a compatibility gate. The fresh sandbox execution and replay,
     not source signatures, establish whether a selected implementation works.
     """
-    from .sealed_m2m import (
-        _source_api_missing,
-    )
+    from merlin.experiments.capture_execution.m2m_sandbox import _source_api_missing
 
     return _source_api_missing(
         m2m_root,
@@ -35,9 +35,7 @@ def _capture_api_missing(m2m_root: Path) -> tuple[str, ...]:
 
 def _frontend_trace_api_missing(m2m_root: Path) -> tuple[str, ...]:
     """Report the exact optional APIs needed for frontend-op and precision evidence."""
-    from .sealed_m2m import (
-        _source_api_missing,
-    )
+    from merlin.experiments.capture_execution.m2m_sandbox import _source_api_missing
 
     return _source_api_missing(
         m2m_root,
@@ -53,19 +51,14 @@ def _frontend_trace_api_missing(m2m_root: Path) -> tuple[str, ...]:
 
 def _fp32_stage_api_missing(m2m_root: Path) -> tuple[str, ...]:
     """Require the opt-in typed-retarget API before a sealed stage is selected."""
-    from .sealed_m2m import (
-        STAGING_API_REQUIREMENTS,
-        _source_api_missing,
-    )
+    from merlin.experiments.capture_execution.m2m_sandbox import STAGING_API_REQUIREMENTS, _source_api_missing
 
     return _source_api_missing(m2m_root, STAGING_API_REQUIREMENTS)
 
 
 def _static_integer_reference_api_missing(m2m_root: Path) -> tuple[str, ...]:
     """Report APIs needed before a static W8A8 capture can claim integer arithmetic."""
-    from .sealed_m2m import (
-        _source_api_missing,
-    )
+    from merlin.experiments.capture_execution.m2m_sandbox import _source_api_missing
 
     return _source_api_missing(
         m2m_root,
@@ -78,9 +71,7 @@ def _static_integer_reference_api_missing(m2m_root: Path) -> tuple[str, ...]:
 
 def _source_api_missing(m2m_root: Path, required: dict[str, dict[str, set[str]]]) -> tuple[str, ...]:
     """Inspect selected source signatures only; neither execution nor provenance proof."""
-    from .sealed_m2m import (
-        ast,
-    )
+    from merlin.experiments.capture_execution.m2m_sandbox import ast
 
     missing: list[str] = []
     for member, functions in required.items():
@@ -106,9 +97,16 @@ def _source_api_missing(m2m_root: Path, required: dict[str, dict[str, set[str]]]
 
 
 def _validate_snapshots(
-    source: Path, runtime: Path, output_mount: Path, *, schema: str, runtime_reuse: dict | None = None
+    source: Path,
+    runtime: Path,
+    output_mount: Path,
+    *,
+    schema: str,
+    runtime_reuse: dict | None = None,
+    worker_member: str | None = None,
 ) -> None:
-    from .sealed_m2m import (
+    from merlin.experiments.capture_execution.m2m_sandbox import (
+        _WORKER_GUEST_MEMBERS,
         SCHEMA,
         SCHEMA_V1,
         SCHEMA_V3,
@@ -127,9 +125,10 @@ def _validate_snapshots(
     )
     if executable.is_symlink() or not executable.is_file() or executable.read_bytes()[:4] != b"\x7fELF":
         raise SealedM2MError("snapshotted interpreter is not a direct ELF")
-    worker = (
-        source / "worker.py" if schema == SCHEMA_V1 else source / "merlin-src/merlin/targetgen/_m2m_capture_worker.py"
-    )
+    member = _WORKER_GUEST_MEMBERS[0] if worker_member is None else worker_member
+    if member not in _WORKER_GUEST_MEMBERS:
+        raise SealedM2MError("unsupported sealed worker guest layout")
+    worker = source / "worker.py" if schema == SCHEMA_V1 else source / member
     if not worker.is_file() or not (source / "workload/loader.py").is_file():
         raise SealedM2MError("selected source entrypoints are absent")
     if schema in {SCHEMA, SCHEMA_V3} and any(
@@ -145,9 +144,8 @@ def _validate_snapshots(
 def _materialized(
     output: Path, source: Path, output_mount: Path, *, worker_member: str = "worker.py"
 ) -> dict[str, Any]:
-    from merlin.development.targetgen.application_inventory import verify_capture_receipt
-
-    from .sealed_m2m import (
+    from merlin.development.targetgen.applications.inventory import verify_capture_receipt
+    from merlin.experiments.capture_execution.m2m_sandbox import (
         SealedM2MError,
         _file_digest,
         json,
@@ -194,7 +192,7 @@ def _materialized(
             raise SealedM2MError(f"M2M source digest differs: {name}")
     reference_sources = (payload.get("tool") or {}).get("reference_sources")
     if reference_sources is not None:
-        member = "merlin/development/targetgen/_dynamic_integer_reference.py"
+        member = "merlin/development/targetgen/applications/independent_references.py"
         if (
             not isinstance(reference_sources, dict)
             or set(reference_sources) != {member}
@@ -206,20 +204,19 @@ def _materialized(
 
 
 def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
-    from .sealed_m2m import (
+    from merlin.experiments.capture_execution.m2m_plan import _materialized
+    from merlin.experiments.capture_execution.m2m_sandbox import (
         _FLOAT_DTYPES,
         SealedM2MError,
-        _materialized,
         _recipe_selection,
+        _worker_member,
         _worker_options,
         native_integer,
         output_staging_error,
         strict_json,
     )
 
-    result = _materialized(
-        output, source, output_mount, worker_member="merlin-src/merlin/targetgen/_m2m_capture_worker.py"
-    )
+    result = _materialized(output, source, output_mount, worker_member=_worker_member(plan))
     metadata = strict_json.loads((output / "meta.json").read_bytes())
     if not isinstance(metadata, dict) or metadata.get("dtype") != plan.get("dtype"):
         raise SealedM2MError("capture metadata does not identify the selected dtype")
@@ -270,13 +267,9 @@ def _materialized_v2(output: Path, source: Path, output_mount: Path, plan: dict[
 
 def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, exported: int) -> int:
     """Use the same byte-bound recipe/trace census as the application inventory."""
-    from merlin.capture.integerization import dynamic_integerization_count, dynamic_integerization_projection
-    from merlin.development.targetgen.frontend_trace import loads_frontend_trace
-
-    from .sealed_m2m import (
-        SealedM2MError,
-        _file_digest,
-    )
+    from merlin.capture.receipts import dynamic_integerization_count, dynamic_integerization_projection
+    from merlin.development.targetgen.sources.frontend_trace import loads_frontend_trace
+    from merlin.experiments.capture_execution.m2m_sandbox import SealedM2MError, _file_digest
 
     if stats.get("dynamic_contractions") is None:
         return 0  # The caller keeps the historical emitted == exported requirement.
@@ -304,16 +297,18 @@ def _dynamic_integer_census(meta: dict, stats: dict, stage: Path, emitted: int, 
 
 def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[str, Any]) -> dict[str, Any]:
     """Verify the complete saved ABI, including every declared session program."""
-    from merlin.capture.integerization import contraction_partition
-
-    from .sealed_m2m import (
-        _FLOAT_DTYPES,
-        SealedM2MError,
+    from merlin.capture.receipts import contraction_partition
+    from merlin.experiments.capture_execution.m2m_plan import (
         _dynamic_integer_census,
-        _file_digest,
         _materialized,
         _materialized_v2,
+    )
+    from merlin.experiments.capture_execution.m2m_sandbox import (
+        _FLOAT_DTYPES,
+        SealedM2MError,
+        _file_digest,
         _recipe_selection,
+        _worker_member,
         _worker_options,
         native_integer,
         output_staging_error,
@@ -590,7 +585,7 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
             stage,
             source,
             output_mount / "stages" / name,
-            worker_member="merlin-src/merlin/targetgen/_m2m_capture_worker.py",
+            worker_member=_worker_member(plan),
         )
         stage_receipt = strict_json.loads((stage / "capture_receipt.json").read_bytes())
         if (
@@ -625,12 +620,8 @@ def _materialized_v3(output: Path, source: Path, output_mount: Path, plan: dict[
 
 def _stage_source(plan: dict[str, Any], source: Path) -> None:
     """Copy exactly the source members named by the selected v2 plan."""
-    from .sealed_m2m import (
-        SCHEMA_V3,
-        SealedM2MError,
-        _snapshot_tree,
-        shutil,
-    )
+    from merlin.experiments.capture_execution.m2m_plan import _snapshot_tree
+    from merlin.experiments.capture_execution.m2m_sandbox import SCHEMA_V3, SealedM2MError, shutil
 
     shutil.copytree(
         Path(plan["m2m_root"]) / "m2m",

@@ -24,7 +24,7 @@ Contract and numerics policy: [`docs/guides/09-verification.md`](../../../../doc
 | [`binding.yaml`](binding.yaml) | Which files bind Spike to the RTL and to the FPGA build, with citations the receipt re-reads | Default `--spec` of `python -m merlin.evaluation.model binding --out R.json` |
 | Generated `MANIFEST.json` | SHA256 of visible, sealed and derived inputs, plus their selection | Written under the selected `--public` output; select its path and approved digest for verification |
 | Generated `calibration/<model>.json` | Calibration item ids and hashes, disjoint from evaluation inputs | Written under `--public`; calibration arrays stay private |
-| Generated `inputs/<model>/visible.{npz,json}` | Eight visible inputs per model | Read with `merlin.evaluation.model.inputs.stored(public_output, model, "visible")`; generated arrays are not tracked |
+| Generated `inputs/<model>/visible.{npz,json}` | Eight visible inputs per model | Read with `merlin.evaluation.model.bundles.inputs.stored(public_output, model, "visible")`; generated arrays are not tracked |
 | [`QUANTIZATION.md`](QUANTIZATION.md) | Historical r53b quantization and recovery evidence; current recipes are in [`../protocol/`](../protocol/README.md) | Historical guide |
 | [`OFFLOAD_REFORMULATIONS.md`](OFFLOAD_REFORMULATIONS.md) | Analysis of moving non-matmul work onto Gemmini (exact vs approximate) | Guide |
 
@@ -50,7 +50,7 @@ reader, not per-model handwritten checks.
 Reuse a completed all-declared-output audit and its pinned files:
 
 ```sh
-python -m merlin.evaluation.model.numerics_report \
+python -m merlin.evaluation.model.whole_model.numerics_report \
   --audit <previous-qualification>/<model>-all-outputs.json \
   --models examples/compiler-generation/gemmini/numerics/models.yaml \
   --out "$TMPDIR/<model>-section-numerics.json"

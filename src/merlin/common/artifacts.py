@@ -15,8 +15,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from merlin.common.record_formats import dump_yaml, load_yaml
+
 from .paths import artifacts_dir, out_dir, repo_root
-from .yaml import dump_yaml, load_yaml
 
 
 @dataclass(frozen=True)

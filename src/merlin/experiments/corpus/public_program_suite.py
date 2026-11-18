@@ -13,8 +13,10 @@ from pathlib import Path
 import yaml
 
 from merlin.common.digest import sha256_file
-from merlin.common.strict_json import loads
-from merlin.development.targetgen.public_program_timing import is_public_program
+from merlin.common.record_formats import loads
+from merlin.development.targetgen.execution.host.public_program_timing import is_public_program
+
+# ---- public_program_suite ----------------------------------------------------------------------
 
 KEY = "public_program_suite"
 SCHEMA = "merlin.corpus.public_program_suite.v1"
@@ -22,7 +24,7 @@ POLICY = {"engine": "spike", "tiers": ["L0", "L1", "L2"], "purpose": "public_pro
 
 
 def _pin(value):
-    from .preparation import ordinary_tree
+    from merlin.experiments.corpus.source_staging import ordinary_tree
 
     if type(value) is not dict or set(value) != {"path", "sha256"}:
         raise ValueError("public program selection needs an exact operator file pin")
@@ -40,8 +42,11 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
     of this capture. ``screen_written`` checks that original capture binding;
     this helper neither chooses a lane nor substitutes device support claims.
     """
-    from merlin.development.targetgen.frozen_placement import read as read_placement
-    from merlin.development.testgen.program_admission import accelerator_placement_refusal, screen_written
+    from merlin.development.targetgen.execution.host.frozen_placement import read as read_placement
+    from merlin.development.testgen.evidence.program_admission import (
+        accelerator_placement_refusal,
+        screen_written,
+    )
 
     if not is_public_program(capsule) or capsule.get("kind") != "model":
         raise ValueError("public program placement requires an original complete model source")
@@ -60,13 +65,12 @@ def admit_placement(capsule, directory, *, target, evidence, source_context=None
 
 def read(path, *, target):
     """Reopen the full selected tree, declarations and original source/reference bindings."""
-    from merlin.development.backend.capability_inventory import _digest
-    from merlin.development.targetgen.frozen_placement import read as read_placement
-    from merlin.development.testgen import operator_exclusion as exclusion
-    from merlin.development.testgen.public_programs import verify_written
-
-    from ..runner import fingerprint
-    from .preparation import ordinary_tree
+    from merlin.development.backend.session.inputs.capability_inventory import _digest
+    from merlin.development.targetgen.execution.host.frozen_placement import read as read_placement
+    from merlin.development.testgen.public_sources import operator_exclusion as exclusion
+    from merlin.development.testgen.public_sources.programs import verify_written
+    from merlin.experiments.corpus.source_staging import ordinary_tree
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     path = Path(path)
     ordinary_tree(path)
@@ -145,8 +149,8 @@ def selected(experiment):
 
 def stage(selection, destination, *, target):
     """Copy a verified selected tree into a fresh native source bundle without new authority."""
-    from ..runner import fingerprint
-    from .preparation import copy_input
+    from merlin.experiments.corpus.source_staging import copy_input
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     document, _ = read(Path(selection), target=target)
     destination = Path(destination).absolute()
@@ -173,8 +177,8 @@ def stage(selection, destination, *, target):
 
 def public_view(selection, destination, *, target, verify=False):
     """Expose only declared source/loader/profile, never proof dependencies or output artifacts."""
-    from ..runner import fingerprint
-    from .preparation import copy_input
+    from merlin.experiments.corpus.source_staging import copy_input
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     _, members = read(Path(selection), target=target)
     destination = Path(destination)

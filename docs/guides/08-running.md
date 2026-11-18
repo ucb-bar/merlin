@@ -1,21 +1,21 @@
 ---
-title: Run a compiled program
+title: 8. Run a compiled program
 kind: guide
 status: current
 owner: runtime
 last_verified: 2026-11-09
-related: [07-building, 10-compiler-generation, ../reference/repo_structure]
+related: [07-building, 09-verification, ../reference/repo_structure]
 code_refs:
   - src/merlin/api.py
   - src/merlin/cli/service.py
-  - src/merlin/compiler/artifact.py
-  - src/merlin/runtime/service.py
-  - src/merlin/runtime/linux.py
-  - src/merlin/runtime/spike.py
-  - src/merlin/runtime/external.py
-  - src/merlin/runtime/boards.py
-  - src/merlin/runtime/backends/zephyr_model.py
-  - src/merlin/compiler/build/zephyr/config.py
+  - src/merlin/compiler/records.py
+  - src/merlin/runtime/execution/service.py
+  - src/merlin/runtime/execution/linux_runner.py
+  - src/merlin/runtime/execution/spike_runner.py
+  - src/merlin/runtime/boards/catalog.py
+  - src/merlin/runtime/backends/zephyr/application.py
+  - src/merlin/runtime/backends/zephyr/image_build.py
+  - src/merlin/compiler/build/zephyr.py
 ---
 
 # 8. Run a compiled program
@@ -31,11 +31,11 @@ existing product; they do not compile it again.
 For a native Linux build with an executable and a saved deployment description:
 
 ```sh
-merlin inspect out/model-build
-merlin run out/model-build --runner merlin.linux --timeout 60
+merlin inspect out/build/model-build
+merlin run out/build/model-build --runner merlin.linux --timeout 60
 ```
 
-Replace `out/model-build` with your actual build directory. `inspect` checks
+Replace `out/build/model-build` with your actual build directory. `inspect` checks
 recorded file hashes. The run service selects the artifact whose role is
 `executable` and checks its bytes and deployment before invoking the runner.
 A build containing only object files or device commands still needs its
@@ -46,10 +46,10 @@ The same call in Python is:
 ```python
 from pathlib import Path
 from merlin.api import run
-from merlin.runtime.service import RunOptions
+from merlin.runtime.execution.service import RunOptions
 
 result = run(
-    Path("out/model-build"),
+    Path("out/build/model-build"),
     runner="merlin.linux",
     options=RunOptions(timeout=60),
 )
@@ -73,7 +73,8 @@ Additional runtime packages can register `merlin.runners` providers. Their
 `validate` and `run` methods own the supported product/platform combination.
 An ELF suffix does not identify its operating environment or calling convention.
 
-A saved `Compilation` carries a `Deployment`: system, platform, ISA, ABI, hart
+A deployment-bound `Compilation` carries a `Deployment`, defined in
+`compiler/records.py`: system, platform, ISA, ABI, hart
 count, and optional DRAM origin/size. Here ISA means the instruction set and ABI
 means the binary calling convention. These describe the built image, not the
 name of the compiler that produced it.
@@ -104,10 +105,14 @@ and console/exit mechanism. A Zephyr image additionally depends on its board
 port, device tree and kernel configuration. These choices belong to the target
 system and image build; a run-time platform flag cannot convert one into the other.
 
-`runtime/boards.py` holds board-description fields. The existing
-`runtime/backends/zephyr_model.py` build path uses
-`compiler/build/zephyr/config.py` for configuration derived from the selected
-board and execution choices, then supplies its memory/CPU overlays. CPU availability,
+[`runtime/boards/catalog.py`](../../src/merlin/runtime/boards/catalog.py) defines
+board fields and loads a target-owned catalog; Merlin does not supply a default
+board registry. The saved-model
+[`runtime/backends/zephyr/image_build.py`](../../src/merlin/runtime/backends/zephyr/image_build.py)
+build route uses
+[`compiler/build/zephyr.py`](../../src/merlin/compiler/build/zephyr.py)
+for configuration derived from the selected board and execution choices, then
+supplies its memory/CPU overlays. CPU availability,
 vector state, DRAM placement and console support can differ between systems.
 Keep those inputs with the selected system rather than applying one global
 Zephyr configuration to every backend.
@@ -121,7 +126,7 @@ they do not establish that every startup or device behavior matches the hardware
 Given an already built image with its deployment:
 
 ```sh
-merlin run out/model-build --runner firesim --mode prepare --output out/firesim-workload
+merlin run out/build/model-build --runner firesim --mode prepare --output out/artifacts/probes/firesim-workload
 ```
 
 The destination must be fresh. Merlin copies the selected artifacts, records
@@ -140,12 +145,13 @@ After execution, your wrapper supplies `result.json` using the declared
 hashed output artifacts. Collect those existing observations with:
 
 ```sh
-merlin collect out/firesim-workload --results out/firesim-results
+merlin collect out/artifacts/probes/firesim-workload --results out/artifacts/probes/firesim-results
 ```
 
 Collection checks correspondence and retains the files. Its `collected` status
-is not a numerical or timing verdict. Continue to the independent checks for
-the selected workload before reporting correctness or performance.
+is not a numerical or timing verdict or an authenticated execution claim.
+Continue to the independent checks for the selected workload before reporting
+correctness or performance.
 
 For runtime source locations, use the [repository map](../reference/repo_structure.md).
 The [compiler-generation guide](10-compiler-generation.md) explains how generated

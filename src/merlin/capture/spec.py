@@ -9,6 +9,8 @@ from pathlib import Path
 from merlin.common.paths import env as _env
 from merlin.common.paths import repo_root
 
+# ---- spec --------------------------------------------------------------------------------------
+
 
 def _specir_root() -> str:
     """The specir checkout: ``$SPECIR_ROOT``, else a sibling of this repo (same convention as
@@ -226,10 +228,10 @@ class SpecRefSource:
     ) -> SpecArtifacts:
         if not self.available():
             raise SpecProgramUnavailable(f"specir root {self.root} missing; set SPECIR_ROOT")
-        from merlin.integrations.specir import importable
+        from merlin.common.external_tools import specir_importable
 
         selected_emitter = _selected_spec_program_emitter(program_emitter)
-        with importable(self.root):
+        with specir_importable(self.root):
             from specir.gate import load_targets
             from specir.loading import parse_spec_file
             from specir.registry import _SPEC_ROOT

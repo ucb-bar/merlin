@@ -1,6 +1,10 @@
 """Exact bit-level predicate primitives shared by specialization and C emission."""
 
+from __future__ import annotations
+
 from merlin.compiler.semantic.model import TensorType
+
+# ---- predicate_values --------------------------------------------------------------------------
 
 PREDICATE_OPERATIONS = frozenset({"mask", "select", "f32_nonzero"})
 _WIDTHS = {"i1": 1, "i8": 1, "i32": 4, "i64": 8, "fp8_e4m3": 1, "bf16": 2, "f32": 4, "f64": 8}

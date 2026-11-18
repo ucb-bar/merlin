@@ -1,5 +1,7 @@
 """Build and load the explicitly selected compiler-only MPFR power helper."""
 
+from __future__ import annotations
+
 import ctypes
 import hashlib
 import json
@@ -8,6 +10,8 @@ import shutil
 import subprocess
 from importlib.resources import files
 from pathlib import Path
+
+# ---- constant_math_backend ---------------------------------------------------------------------
 
 POLICY = "positive-power-correct-rne-mpfr-v1"
 HELPER_ENV = "MERLIN_CONSTANT_MATH_HELPER"

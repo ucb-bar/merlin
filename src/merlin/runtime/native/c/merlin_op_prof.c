@@ -1,5 +1,5 @@
 /* Per-op whole-model profiler shim (default-OFF; only linked when the K1 build is made with
- * op_profile=True, which also instruments the IR — see merlin/compiler/lower/model/op_profile.py).
+ * op_profile=True, which also instruments the IR — see merlin/compiler/lower/model/profile.py).
  *
  * The instrumented `@forward` calls merlin_prof_mark(id) immediately BEFORE each top-level op,
  * plus a sentinel mark before `func.return`. Each mark samples `rdtime` and credits the elapsed
@@ -25,7 +25,7 @@
  *
  *   K1 (default)      stdio + delegated `rdtime`
  *   Zephyr            printk + `mcycle`   (the Zephyr CMakeLists defines MERLIN_PROF_ZEPHYR)
- *   bare metal        HTIF/UART + `mcycle` (spike_model.build defines MERLIN_PROF_BAREMETAL)
+ *   bare metal        HTIF/UART + `mcycle` (spike_build.build defines MERLIN_PROF_BAREMETAL)
  *
  * The bare-metal harness is -nostdlib: there is no printf to call, and the console is the same
  * four-symbol ABI the rest of the image prints through. It had no profiler at all until now, which is

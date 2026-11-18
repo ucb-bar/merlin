@@ -50,7 +50,7 @@ the provider applies that recorded value, and resume refuses a changed explicit 
 task-skill switch once into `run_config.author_context` (same resume rule). `task_disclosure.py`
 stages verbatim copies of the sealed TASK.md's longer sections as `.agents/skills/` after every
 TASK.md append and before the treatment seal, which binds them; TASK.md itself is never rewritten.
-`skill_staging.py` stages every `author_skills/<name>/` (SKILL.md, optional `reference/*.md`, stdlib
+`authoring/skill_staging.py` stages every `resources/skills/<name>/` (SKILL.md, optional `reference/*.md`, stdlib
 `scripts/*.py`, target-agnostic, procedural) byte-identically into `.agents/skills/` (Codex) and
 `.claude/skills/` (Claude Code) right after them, recorded with its digest in
 `run_config.author_skills` (`--author-skills`, same resume rule) and sealed via `author_skills.json`.
@@ -201,7 +201,7 @@ inputs. Context and schema roots do not freeze independently loaded target/toolc
 or grading-policy resources. This extraction does not qualify the full controller.
 
 `oot_history.py` owns the run's harness-written compiler history at `<run_dir>/oot`
-(`merlin.common.oot_repo`). Loop grading commits the operator-only snapshot it is about to grade,
+(`merlin.common.oot_repository`). Loop grading commits the operator-only snapshot it is about to grade,
 once per graded round, and round records carry that commit sha; the official freeze tags `frozen`
 on the exact submission it hashed. The agent never writes the repo, and it is refused inside the
 agent's writable workspace. Only bwrap runs keep it (copy mode is a tool-free diagnostic). New runs
@@ -326,6 +326,12 @@ is data, so no target name, opcode or regex belongs here. It never starts a run,
 a credential or rewrites a prepared input in place; every disagreement is a listed
 drift, never a silent default. Bind new controller options in one place (`_argv`,
 `SUBAGENT_FLAGS`) and keep the schema in `resources/` fail-closed.
+Launch records and their formatting live together in `session/launch_config.py`.
+`session/launch_drift.py` compares frozen inputs and optionally reads live process
+state. It must not eagerly import launch_config while that module initializes;
+annotation imports belong under TYPE_CHECKING and value imports stay at the
+checking call. Historical schema/call identifiers and rendered bytes remain
+unchanged even when their source owner moves.
 `annotated_spike_evidence.py` is an operator-side, evidence-only pass over a finished run.
 It runs each training-eligible public gSIM program on the observer-enabled Spike with an
 explicitly selected provider and a count-only model (no prices), scoped by counter PCs it

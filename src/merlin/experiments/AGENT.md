@@ -1,59 +1,37 @@
-# src/merlin/experiments
+# Experiments
 
-`spec.py` validates public definitions, `adapters.py` owns allowed options and
-installed/native command mapping, `runner.py` owns frozen process attempts, and `cli.py` owns
-discovery. `spec.default_run_dir` owns declaration-based phase/output navigation;
-`runner` preserves its import API and uses the shared streamed file digest.
-`backend_export.py` is the lazy `export` command adapter to the existing champion
-exporter. Explicit evidence records retain their original phase/source checks;
-preserved project entry points are metadata claims, not installed or qualified
-services. Never synthesize wrappers, import providers, install or push on export.
-New baseline and RTL-check plans use the installed backend generation command with explicit
-authored inputs and treatment selection; stored native plans keep their native command identity. Optional
-operator timing/environment inputs bind absence as well as present bytes. Scientific
-verdicts remain phase-engine evidence, never inferred from process completion. Preserve independent
-measured-claims and model-portfolio modes and their different resume contracts.
-`measured_launch.py` owns the installed measured-claims command and selected Python
-source inventory. The adapter supplies explicit deployment/resource locations;
-it selects the envelope, coordinator, wrapper and interpreter rather than accepting
-user commands. Mutable output roots and the managed endpoint are not immutable
-input trees. Bind logical owners, loaded origins, complete membership and exact
-argv/environment before execution/resume; retain stored native plans unchanged.
-The Ray envelope rechecks source bytes and propagates the pinned Python selection.
-This is not interpreter/startup-hook or external-tool closure, nor managed-host or
-scientific qualification. Keep this admission owner host-private.
+`definition.py` reads experiment definitions and selects test generation,
+backend generation, and the supported whole-model measured workflow.
+`cli.py` exposes those workflows and read-only run navigation.
 
-`portfolio_catalog.py` owns the installed model-portfolio command and deployment-input
-classification. Bind exact command/environment/source selections and template status before
-execution or resume; mutable candidates, segments and leases cannot overlap frozen inputs.
-Historical native commands remain unchanged. Scientific admission stays with the worker;
-catalog preflight never grants a performance verdict or native sandbox qualification.
+`runs/adapters.py` declares the supported options and exact installed/native
+commands. `runs/plans.py` resolves and freezes inputs and performs preflight.
+`runs/plan_sources.py` binds source and corpus membership.
+`runs/plan_execution.py` launches the frozen command, records process attempts,
+and retains ownership when descendants might remain. A successful process exit
+is an execution observation; numerical and performance verdicts belong to the
+engine's independent evidence.
 
-`group_inspect.py` owns `merlin experiment inspect <candidate> --group gN`: it rebuilds one
-group through the core per-group program build inside a compile trace. It reaches every hook
-(whole-model driver, functional-model machine) through the target and says "not available"
-when one is absent; it never names a target. `group_probes.py` owns its `--time` and
-`--profile` probes: one group timed on the elaborated-RTL emulator (a ranking signal, never a
-cycle claim) and its counter facts, trusted counter values and instruction census by role.
+`runs/execution.py` owns shared environment selection. Frozen test generation
+uses its selected-only environment. Installed children and inspection exclude
+an ambient board catalog until a declared frozen input owns it. Preserve this
+policy when reorganizing launch code.
 
-`corpus/admission.py` owns evaluated conformance and default public-cohort tier
-selection. Query actual constructed adapters, never substitute advertised metadata.
-Keep construction order, unknown inventory, empty-declaration behavior and disjoint
-tier refusal unchanged. Copying, admission validation, coverage and leases remain core-owned.
-Legacy adapters resolve patched callbacks at the original observation point; they do
-not copy the core derivation implementation or cache adapter inventories.
+`runs/catalogs.py` provides stored-run discovery, lineage, and compiler-history
+export. Export consumes existing scoped evidence; it does not synthesize a
+backend, import a candidate, install a service, or publish remotely.
 
-`source_snapshot.py` owns private source copying, sealing and verification across phases.
-Creators supply source/import roots, aliases and exclusions; native layout selection
-stays at the caller. V4 binds explicit ownership and full file/directory membership.
-Verification/bootstrap is standard-library-only and never discovers a live checkout.
-Old seals remain inspectable but require a fresh freeze for this verifier's execution;
-never rewrite an archive or substitute current code for its historical verifier.
+The measured-claims and model-portfolio execution adapters are retired. Do not
+restore their coordinators, deployment commands, checkpoint-segment execution,
+or mode definitions. Historical records remain inspectable. The paired tracking
+reader owns only immutable record-format constants and reads stored observations;
+it must not import a retired execution engine or infer scientific qualification.
 
-`runner_process` owns bounded process/group inspection and shutdown; `runner`
-retains its existing imports and overrides at plan execution boundaries.
+Inspection reaches target-specific compiler and functional-model hooks through
+the selected backend. Missing hooks remain unavailable; no target name selects a
+fallback implementation.
 
-
-`runner_records` owns atomic JSON process records and object-shape validation.
-`runner` re-exports the existing helper names and resolves those aliases at its
-original execution boundaries, preserving caller overrides.
+Source snapshots retain original ownership and full membership. Old seals can
+be inspected but cannot be relabeled as a new verifier's execution evidence.
+Managed execution services and console panels are loaded dynamically; absence
+from a static import graph is not evidence that they are unused.

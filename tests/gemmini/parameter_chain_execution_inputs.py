@@ -18,9 +18,9 @@ import parameter_chain_reference as R
 import yaml
 
 from merlin.common.paths import repo_root
-from merlin.common.strict_json import loads
-from merlin.development.targetgen import capsule_common as capsule_capsule_common
-from merlin.evaluation.capsule import bundle as capsule_bundle
+from merlin.common.record_formats import loads
+from merlin.development.targetgen.corpus import capsule_io as capsule_capsule_common
+from merlin.evaluation.capsule.models import bundle as capsule_bundle
 
 SCHEMA = "merlin.test.public_parameter_chain_baseline.v1"
 REQUIRED_TIERS = ("L0", "L1", "L2", "L3")
@@ -99,17 +99,17 @@ def recheck(selected):
 def prepare(selected, destination, monkeypatch):
     """Return a LIVE materialized owner only after genuine source/value/ABI checks."""
     from merlin.capture import pytorch as source_pytorch
-    from merlin.common import quant_formats as QF
-    from merlin.compiler.frontend.materialized import MaterializedModelInputs
-    from merlin.development.targetgen import target_registry as TR
-    from merlin.development.targetgen.contract import schemas as CS
-    from merlin.development.targetgen.corpus_spec import CorpusBinding
-    from merlin.development.testgen import capture_execution_attestation as A
-    from merlin.development.testgen import capture_selection as selection_owner
-    from merlin.development.testgen import sealed_native_program as N
-    from merlin.evaluation.capsule import bundle_worker
+    from merlin.common import target_data as QF
+    from merlin.compiler.frontend.inputs import MaterializedModelInputs
+    from merlin.development.targetgen.corpus.binding import CorpusBinding
+    from merlin.development.testgen.sealed_capture import attestation as A
+    from merlin.development.testgen.sealed_capture import sealed_native_program as N
+    from merlin.development.testgen.sealed_capture import selection as selection_owner
+    from merlin.evaluation.capsule.models import _bundle_worker as bundle_worker
     from merlin.experiments.capture_execution.m2m_origin import git_origin
-    from merlin.experiments.corpus import model_sources as source_model_sources
+    from merlin.experiments.corpus.capsules import model_sources as source_model_sources
+    from merlin.target.contract.interfaces import abi as CS
+    from merlin.target.registry import identity as TR
 
     recheck(selected)
     destination = Path(destination)

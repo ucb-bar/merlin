@@ -7,7 +7,7 @@ makes drift detectable in tests while leaving the frozen experiment untouched.
 Resolution separates three facts which previous metadata-only paths conflated:
 
 * ``implemented`` -- the action has a concrete effect accepted by
-  :func:`merlin.compiler.lower.model.host_policy.materialize_lowering_effects`;
+  :func:`merlin.compiler.lower.host.host_policy.materialize_lowering_effects`;
 * ``partial`` -- related machinery exists, but not the exact action contract; and
 * ``unimplemented`` -- no matching compiler mechanism exists.
 
@@ -23,8 +23,8 @@ from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
 
-from merlin.analysis.kernels.microkernel import MicrokernelSpec
-from merlin.compiler.lower.model.host_policy import (
+from merlin.analysis.mining.microkernel import MicrokernelSpec
+from merlin.compiler.lower.host.host_policy import (
     OUTPUT_TILE_AXIS,
     OUTPUT_TILE_SEMANTICS_VERSION,
     HostLoweringEffects,
@@ -33,6 +33,8 @@ from merlin.compiler.lower.model.host_policy import (
     VectorLengthIntent,
     materialize_lowering_effects,
 )
+
+# ---- host_actions ------------------------------------------------------------------------------
 
 
 class HostActionId(str, Enum):

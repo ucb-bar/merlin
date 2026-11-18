@@ -64,7 +64,7 @@ _EMPTY = ("—", "-", "")
 
 def parser_table() -> dict[str, dict]:
     """``{mnemonic: {opcode, operands}}`` from the reference parser's own tables."""
-    from merlin.development.targetgen.contract import interface_emit as IE
+    from merlin.target.contract.interfaces import grammar as IE
 
     opcodes = {**IE._OP_TO_OPCODE, **IE._NAMED_OP_TO_OPCODE}
     return {

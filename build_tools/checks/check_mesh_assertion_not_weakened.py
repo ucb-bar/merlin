@@ -103,7 +103,7 @@ def _target_of(path: Path, target_dirs: frozenset[str], *, corpus_root: Path) ->
 
 
 def audit(targets=()) -> dict:
-    from merlin.development.targetgen import conformance as CF
+    from merlin.development.targetgen.conformance import requirements as CF
 
     root = capsules_dir()
     default_targets = []

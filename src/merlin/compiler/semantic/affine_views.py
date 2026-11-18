@@ -5,9 +5,13 @@ coverage keeps the set of validated input elements unchanged. No arithmetic
 rounding boundary, output identity or declared input is removed.
 """
 
+from __future__ import annotations
+
 from dataclasses import replace
 
 from merlin.compiler.semantic.model import SemanticNode, TensorType, pointwise_identity_maps
+
+# ---- affine_views ------------------------------------------------------------------------------
 
 SCHEMA = "merlin.affine_view_fusion.v1"
 

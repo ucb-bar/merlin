@@ -5,8 +5,8 @@ from types import ModuleType
 
 import pytest
 
-from merlin.runtime.backends import base
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass
+from merlin.runtime.backends import registry as base
+from merlin.runtime.backends.registry import BackendInfo, BackendKind, TargetClass
 
 
 @pytest.fixture

@@ -168,13 +168,13 @@ capture/reference inputs and instruction selection available at the configured
 paths. The YAML does not regenerate private artifacts or start a supervisor.
 
 ```sh
-python -m merlin.development.backend.launch_config render \
+python -m merlin.development.backend.session.launch_config render \
   --config examples/compiler-generation/gemmini/backend-generation/launch/phase1_el4_config.yaml \
   --task-root "$TASK_ROOT" --prep "$PREP" --run-id "$RUN_ID" \
   --var REPO="$REPO" --out "$PREP/repro-profile" \
   --plan-template "$PREP/phase1-plan.json"
 
-python -m merlin.development.backend.launch_config verify \
+python -m merlin.development.backend.session.launch_config verify \
   --config examples/compiler-generation/gemmini/backend-generation/launch/phase1_el4_config.yaml \
   --task-root "$TASK_ROOT" --prep "$PREP" --run-id "$RUN_ID" \
   --var REPO="$REPO" --controller-pid "$CONTROLLER_PID"

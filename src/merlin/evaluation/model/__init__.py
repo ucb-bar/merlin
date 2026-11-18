@@ -11,4 +11,4 @@ nothing here names a model or a target.
 """
 
 CONTRACT_VERSION = "1.22"
-REPORT_SCHEMA = "merlin.evaluation.model.report.v1"
+REPORT_SCHEMA = "merlin.evaluation.model.cli.v1"

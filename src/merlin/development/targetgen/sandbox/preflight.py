@@ -38,6 +38,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# ---- preflight ---------------------------------------------------------------------------------
+
 #: The sandbox binary is installed and a trivial command ran inside it.
 SANDBOX_OK = "ok"
 #: No such binary on ``PATH`` (or at the explicit path given).
@@ -345,8 +347,8 @@ def probe_snapshot_guards(*, scratch_parent: Path | None = None, include_pressur
     import tempfile
     import time
 
-    from merlin.common import bundle_snapshot as snapshots
-    from merlin.common import read_lease_digest
+    from merlin.common.storage import bundle_snapshots as snapshots
+    from merlin.common.storage import read_leases as read_lease_digest
 
     selected = os.environ.get("MERLIN_SNAPSHOT_LEASE_CACHE") == "1"
     record = {

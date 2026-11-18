@@ -25,8 +25,10 @@ import os
 import time
 from typing import Any
 
-from ... import terminal_probe as probe
-from .. import placement
+from merlin.experiments.tracking.console import discovery as placement
+from merlin.experiments.tracking.terminal import resource_probe as probe
+
+# ---- machine -----------------------------------------------------------------------------------
 
 ALLOC_TTL_S = 10.0
 FIRST_SAMPLE_S = 0.1
@@ -130,4 +132,8 @@ def probe_ranges(cpus: list[int]) -> str:
     return ",".join(out)
 
 
-__all__ = ["probe_ranges", "read", "volume"]
+__all__ = [
+    "probe_ranges",
+    "read",
+    "volume",
+]

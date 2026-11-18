@@ -1,6 +1,6 @@
 """Load a test-selected support provider's plugins, then forget them as a fresh process would.
 
-Plugin ownership is process-immutable by design (:mod:`merlin.runtime.backends.base`): once a backend,
+Plugin ownership is process-immutable by design (:mod:`merlin.runtime.backends.registry`): once a backend,
 dialect or sim-oracle module has loaded from the provider selected on ``MERLIN_TARGET_PATH``, changing
 or removing that selection makes EVERY later registry query raise ``PluginOwnershipError`` and ask for
 a fresh process. A test that selects a provider with ``monkeypatch.setenv`` and loads its backend
@@ -23,17 +23,17 @@ from collections.abc import Iterator
 #: The loader state each plugin seam keeps: ``(module, attribute)``. A registry dict is put back as the
 #: SAME object with its entry-time contents, so a caller holding a reference sees the restored registry.
 _STATE = (
-    ("merlin.runtime.backends.base", "_REGISTRY"),
-    ("merlin.runtime.backends.base", "_LOAD_FAILURES"),
-    ("merlin.runtime.backends.base", "_LOADED_PLUGIN_OWNERS"),
-    ("merlin.runtime.backends.base", "_oot_env_seen"),
-    ("merlin.compiler.dialects.lowering.target_lowering", "_PLUGIN_SPECS"),
-    ("merlin.compiler.dialects.lowering.target_lowering", "_PLUGIN_OPCODES"),
-    ("merlin.compiler.dialects.lowering.target_lowering", "_dialect_env_seen"),
-    ("merlin.development.targetgen.oracle_policy", "_SIM_ORACLES"),
-    ("merlin.development.targetgen.oracle_policy", "_SIM_ADAPTER_FACTORIES"),
-    ("merlin.development.targetgen.oracle_policy", "_sim_oracle_env_seen"),
-    ("merlin.development.targetgen.oracle_policy", "_sim_metadata_env_seen"),
+    ("merlin.runtime.backends.registry", "_REGISTRY"),
+    ("merlin.runtime.backends.registry", "_LOAD_FAILURES"),
+    ("merlin.runtime.backends.registry", "_LOADED_PLUGIN_OWNERS"),
+    ("merlin.runtime.backends.registry", "_oot_env_seen"),
+    ("merlin.compiler.dialects.lowering.target_stage", "_PLUGIN_SPECS"),
+    ("merlin.compiler.dialects.lowering.target_stage", "_PLUGIN_OPCODES"),
+    ("merlin.compiler.dialects.lowering.target_stage", "_dialect_env_seen"),
+    ("merlin.target.simulators.oracle_policy", "_SIM_ORACLES"),
+    ("merlin.target.simulators.oracle_policy", "_SIM_ADAPTER_FACTORIES"),
+    ("merlin.target.simulators.oracle_policy", "_sim_oracle_env_seen"),
+    ("merlin.target.simulators.oracle_policy", "_sim_metadata_env_seen"),
 )
 
 
@@ -42,7 +42,7 @@ def fresh_plugin_state() -> Iterator[None]:
     """Run the block as if in a fresh process with respect to OOT plugins, then restore the caller's."""
     import importlib
 
-    from merlin.runtime.backends import base
+    from merlin.runtime.backends import registry as base
 
     base._ensure_discovered()  # the ambient selection's plugins (and the in-tree ones) are not the block's
     namespaces = tuple(f"{namespace}." for namespace in base._PLUGIN_KEYS)

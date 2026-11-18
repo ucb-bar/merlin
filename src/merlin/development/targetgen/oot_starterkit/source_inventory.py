@@ -12,6 +12,8 @@ import hashlib
 import json
 from typing import Any
 
+# ---- source_inventory --------------------------------------------------------------------------
+
 
 def _inventory(raw, arguments, operations, returns, entry):
     return {
@@ -149,9 +151,9 @@ def interface_inventory(raw: bytes) -> dict[str, Any]:
     from xdsl.dialects.builtin import TensorType
     from xdsl.parser import Parser
 
-    from merlin.common.ir_lock import IR_LOCK
-    from merlin.development.targetgen.contract import interface_emit as I
-    from merlin.development.targetgen.contract.linalg_iface import make_linalg_context
+    from merlin.compiler.ir.xdsl_io import IR_LOCK
+    from merlin.target.contract.interfaces import grammar as I
+    from merlin.target.contract.interfaces.linalg import make_linalg_context
 
     text = raw.decode("utf-8")
     I.parse_interface_mlir(text)  # The owning grammar must accept every opcode.

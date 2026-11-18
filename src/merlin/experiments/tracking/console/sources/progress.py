@@ -20,7 +20,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, epoch, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, epoch, num, obj, rows, scan_dir
+
 from . import downsample
 
 PROGRESS_SCHEMA = "merlin.phase1.grade_progress.v1"
@@ -238,7 +239,7 @@ def _plateau(ctx, run: Path) -> dict[str, Any] | None:
 def _cohorts(ctx, run: Path, workspace: Path | None) -> list[dict[str, Any]]:
     if workspace is None:
         return []
-    from ...terminal_capsules import Capsules
+    from merlin.experiments.tracking.terminal.metadata import Capsules
 
     sampler = ctx.state.get("capsules")
     if sampler is None:
@@ -276,7 +277,7 @@ def _cohorts(ctx, run: Path, workspace: Path | None) -> list[dict[str, Any]]:
 def _health(ctx, run: Path, workspace: Path | None) -> dict[str, Any]:
     if workspace is None:
         return {}
-    from ...progress_health import ProgressHealth
+    from merlin.experiments.tracking.terminal.progress_alerts import ProgressHealth
 
     health = ctx.state.get("health")
     if health is None:
@@ -303,7 +304,7 @@ def read(ctx) -> dict[str, Any]:
     requests = health.get("requests") or []
     latest = obj(requests[0]) if requests else {}
     alerts = []
-    from ...terminal_health import alert as alert_title
+    from merlin.experiments.tracking.terminal.terminal_health import alert as alert_title
 
     for alert in health.get("alerts") or []:
         alert = obj(alert)

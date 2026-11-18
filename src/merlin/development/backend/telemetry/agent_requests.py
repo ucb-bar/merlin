@@ -25,11 +25,14 @@ from pathlib import Path
 
 from merlin.development.backend.telemetry import agent_commands as AC
 
-#: Slack around a command interval when matching a request it wrote (clock granularity, start-up).
+# ---- agent_requests ----------------------------------------------------------------------------
+
 MATCH_SLACK_S = 2.0
+
 _RESULT_SLACK_S = 5.0
-#: A self-check broker promotes within seconds of publishing the verdict that earned the promotion.
+
 PROMOTION_AFTER_S = 60.0
+
 _RUN_STATUSES = frozenset({"pass", "fail"})
 
 

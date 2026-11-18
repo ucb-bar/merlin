@@ -13,24 +13,20 @@ import hashlib
 import json
 import os
 import shutil
+import struct
+import sys
 import tempfile
+import zipfile
 from dataclasses import dataclass
 from io import BytesIO
+from math import prod
 from pathlib import Path
 
+import numpy as np
 from xdsl.dialects.builtin import StringAttr
 
 from merlin.capture.safetensors import read_header
-from merlin.compiler.dialects._common import text as module_text
-from merlin.compiler.frontend.archives import (
-    _archive_info,
-    _ArchiveInfo,
-    _checked_member,
-    _copy_archive,
-    _read_member,
-    _sha,
-)
-from merlin.compiler.frontend.constants import CONSTANT_FILE, materialize_arguments, needs_materialization
+from merlin.compiler.dialects.xdsl_context import text as module_text
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.frontend.signature import (
     _WEIGHT_DTYPES,
@@ -40,6 +36,273 @@ from merlin.compiler.frontend.signature import (
     _payload_bytes,
     _tensor_abi,
 )
+from merlin.runtime.execution.model_inputs import file_sha256
+
+# ---- archives ----------------------------------------------------------------------------------
+# Checked compiler input bytes and bounded tensor-archive identities.
+
+
+@dataclass(frozen=True)
+class _ArchiveInfo:
+    header: dict
+    payload_start: int
+    file_bytes: int
+    checked_sha256: str | None
+
+
+def _archive_info(
+    directory: Path,
+    name: str,
+    *,
+    expected_sha256: str | None = None,
+    typed: bool = True,
+) -> _ArchiveInfo:
+    """Read bounded tensor metadata and, when requested, hash without copying payloads."""
+    member = directory / name
+    if member.is_symlink() or not member.is_file():
+        raise ValueError(f"capture member is absent or a symlink: {name}")
+    with member.open("rb") as stream:
+        before = os.fstat(stream.fileno())
+        header, start = read_header(stream) if typed else ({}, 0)
+        if start > before.st_size:
+            raise ValueError("tensor archive header extends past its file")
+        checked_sha256 = None
+        if expected_sha256 is not None:
+            stream.seek(0)
+            checked_sha256 = hashlib.file_digest(stream, "sha256").hexdigest()
+            if checked_sha256 != expected_sha256:
+                raise ValueError(f"compiler input member differs from manifest: {name}")
+        after = os.fstat(stream.fileno())
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValueError("tensor archive changed while checking its metadata")
+    return _ArchiveInfo(header, start, before.st_size, checked_sha256)
+
+
+def _sha(data: bytes | _ArchiveInfo) -> str:
+    if isinstance(data, _ArchiveInfo):
+        if data.checked_sha256 is None:
+            raise ValueError("tensor archive identity has not been checked")
+        return data.checked_sha256
+    return hashlib.sha256(data).hexdigest()
+
+
+def _copy_archive(source: Path, destination: Path, info: _ArchiveInfo) -> None:
+    """Copy and hash the same bounded chunks before publishing a staged archive."""
+    digest, size = hashlib.sha256(), 0
+    with source.open("rb") as reader, destination.open("xb") as writer:
+        while chunk := reader.read(1024 * 1024):
+            writer.write(chunk)
+            digest.update(chunk)
+            size += len(chunk)
+    if size != info.file_bytes or digest.hexdigest() != _sha(info):
+        raise ValueError("capture archive changed during staging")
+
+
+def _read_member(directory: Path, name: str) -> bytes:
+    member = directory / name
+    if member.is_symlink() or not member.is_file():
+        raise ValueError(f"capture member is absent or a symlink: {name}")
+    return member.read_bytes()
+
+
+def _checked_member(directory: Path, receipt: dict, name: str) -> bytes:
+    entry = (receipt.get("artifacts") or {}).get(name)
+    if not isinstance(entry, dict):
+        raise ValueError(f"capture receipt lacks {name}")
+    raw = _read_member(directory, name)
+    if entry.get("bytes") != len(raw) or entry.get("sha256") != _sha(raw):
+        raise ValueError(f"capture member differs from receipt: {name}")
+    return raw
+
+
+# ---- constants ---------------------------------------------------------------------------------
+# Normalize declared capture constants and buffer initializers for compilation.
+#
+# The capture producer stores these leaves in extra.npz. Only receipt-declared
+# constants and manifest-declared buffers are selected. Runtime inputs, outputs
+# and unrelated archive members never become compiler tensor arguments.
+
+CONSTANT_FILE = "capture-constants.safetensors"
+
+
+def needs_materialization(manifest: dict, receipt: dict) -> bool:
+    lifted = receipt.get("lifted_constants", {})
+    names = (receipt.get("materialized_abi") or {}).get("lifted_constants", [])
+    if (
+        not isinstance(lifted, dict)
+        or not isinstance(names, list)
+        or any(not isinstance(name, str) or not name.startswith("c_lifted_tensor_") for name in lifted)
+        or names != sorted(lifted)
+    ):
+        raise ValueError("capture has unbound lifted constants or an invalid constant declaration")
+    return bool(lifted) or any(
+        isinstance(row, dict)
+        and (row.get("kind") == "constant" or row.get("kind") == "buffer" and set(row) == {"kind", "name"})
+        for row in manifest.values()
+    )
+
+
+def _array(archive: zipfile.ZipFile, key: str, shape: list[int]) -> np.ndarray:
+    """Read one numeric NPY without pickle, extraction or shape inference."""
+    member = key + ".npy"
+    if member not in archive.namelist():
+        raise ValueError("declared capture tensor is absent from the extra archive")
+    with archive.open(member) as stream:
+        version = np.lib.format.read_magic(stream)
+        if version not in {(1, 0), (2, 0)}:
+            raise ValueError("capture tensor has an unsupported NPY version")
+        reader = np.lib.format.read_array_header_1_0 if version == (1, 0) else np.lib.format.read_array_header_2_0
+        stored_shape, fortran, dtype = reader(stream, max_header_size=65536)
+        if stored_shape != tuple(shape) or dtype.hasobject or dtype.fields is not None or dtype.kind not in "biuf":
+            raise ValueError("capture tensor shape or numeric storage differs from parsed IR")
+        if dtype.itemsize not in (1, 2, 4, 8):
+            raise ValueError("capture tensor has an unsupported scalar width")
+        size = prod(shape) * dtype.itemsize
+        if archive.getinfo(member).file_size - stream.tell() != size:
+            raise ValueError("capture tensor payload length differs from its declaration")
+        payload = stream.read(size)
+        if len(payload) != size:
+            raise ValueError("capture tensor payload is truncated")
+    return np.frombuffer(payload, dtype=dtype).reshape(shape, order="F" if fortran else "C")
+
+
+def _encode(array: np.ndarray, actual: dict, dtypes: dict) -> tuple[str, str, bytes, str]:
+    matches = [(name, row) for name, row in dtypes.items() if row[0] == actual["dtype"]]
+    if len(matches) != 1:
+        raise ValueError("capture tensor has an unsupported source dtype")
+    name, (_, encoding, width) = matches[0]
+    canonical = array.astype(array.dtype.newbyteorder("<"), copy=False)
+    if actual["dtype"] == "bf16":
+        # The producer's documented BF16 -> f32 storage cast is invertible for
+        # non-NaNs with zero low bits. Do not round a general f32 payload.
+        if array.dtype.newbyteorder("=") != np.dtype("float32"):
+            raise ValueError("captured BF16 requires its exact f32 storage representation")
+        bits = np.frombuffer(canonical.tobytes(order="C"), dtype="<u4")
+        if np.any(bits & 65535) or np.any((bits & 0x7FFFFFFF) > 0x7F800000):
+            raise ValueError("captured BF16 storage is lossy or has unqualified NaN payloads")
+        return name, encoding, (bits >> 16).astype("<u2").tobytes(), "exact-bf16-from-f32-storage"
+    if array.dtype.newbyteorder("=") != np.dtype(name):
+        raise ValueError("capture tensor dtype differs from parsed IR; no precision conversion is selected")
+    payload = canonical.tobytes(order="C")
+    if len(payload) != prod(actual["shape"]) * width or (actual["dtype"] == "i1" and any(x > 1 for x in payload)):
+        raise ValueError("capture tensor storage differs from its logical type")
+    return name, encoding, payload, "byte-preserving-little-endian-storage"
+
+
+def materialize_arguments(
+    manifest: dict,
+    argument_types: list[dict],
+    receipt: dict,
+    extra: bytes,
+    dtypes: dict,
+) -> tuple[dict, bytes, dict]:
+    """Produce a consumer manifest and one small safetensors archive.
+
+    Existing model weights retain their bytes. Buffers remain state arguments;
+    storing their initializer does not make them immutable parameters.
+    """
+    if set(manifest) != {str(i) for i in range(len(argument_types))}:
+        raise ValueError("capture manifest does not cover the parsed function arguments")
+    lifted = receipt.get("lifted_constants", {})
+    needs_materialization(manifest, receipt)
+    result, tensors, entries, used = {}, {}, [], set()
+    try:
+        archive = zipfile.ZipFile(BytesIO(extra))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("capture extra archive is not a valid NPZ") from exc
+    with archive:
+        names = archive.namelist()
+        if len(names) != len(set(names)):
+            raise ValueError("capture extra archive contains duplicate members")
+        buffers = {}
+        for member in names:
+            if member.startswith("buf::") and member.endswith(".npy"):
+                key = member[:-4]
+                # This is the producer's capture ABI naming rule, not a model
+                # heuristic. Reject collisions rather than choosing one leaf.
+                buffers.setdefault("b_" + key[5:].replace(".", "_"), []).append(key)
+        for index, actual in enumerate(argument_types):
+            row = manifest[str(index)]
+            if not isinstance(row, dict):
+                raise ValueError("capture manifest has a malformed argument row")
+            kind, name = row.get("kind"), row.get("name")
+            if not isinstance(kind, str):
+                raise ValueError("capture manifest has an invalid argument kind")
+            if kind in {"input", "constant"} and isinstance(name, str) and name in lifted:
+                if set(row) != {"kind", "name"}:
+                    raise ValueError("lifted constant has unknown manifest fields")
+                key, role = name, "constant"
+                used.add(name)
+            elif kind == "buffer" and set(row) == {"kind", "name"}:
+                if not isinstance(name, str) or len(buffers.get(name, [])) != 1:
+                    raise ValueError("capture buffer has no unique initializer in the extra archive")
+                key, role = buffers[name][0], "buffer"
+            else:
+                result[str(index)] = {**row, "file": "weights.safetensors"} if kind in {"param", "buffer"} else row
+                continue
+            try:
+                array = _array(archive, key, actual["shape"])
+            except (zipfile.BadZipFile, EOFError) as exc:
+                raise ValueError("capture tensor has invalid or truncated NPY storage") from exc
+            original_sha = hashlib.sha256(array.tobytes(order="C")).hexdigest()
+            if role == "constant":
+                declaration = lifted[name]
+                if (
+                    not isinstance(declaration, dict)
+                    or set(declaration) != {"shape", "dtype", "sha256"}
+                    or declaration["shape"] != list(array.shape)
+                    or declaration["dtype"] != str(array.dtype)
+                    or declaration["sha256"] != original_sha
+                ):
+                    raise ValueError("lifted constant differs from its capture receipt")
+            dtype, encoding, data, codec = _encode(array, actual, dtypes)
+            tensor = (encoding, actual["shape"], data)
+            if name in tensors and tensors[name] != tensor:
+                raise ValueError("shared capture tensor has conflicting types or payloads")
+            tensors[name] = tensor
+            result[str(index)] = {
+                "kind": role,
+                "weight": name,
+                "dtype": dtype,
+                "shape": actual["shape"],
+                "file": CONSTANT_FILE,
+            }
+            entries.append(
+                {
+                    "argument_index": index,
+                    "key": key,
+                    "role": role,
+                    "codec": codec,
+                    "source_tensor_sha256": original_sha,
+                    "tensor_sha256": hashlib.sha256(data).hexdigest(),
+                }
+            )
+    if used != set(lifted) or not tensors:
+        raise ValueError("capture has unbound lifted constants or no declared extra tensors")
+    header, payloads, offset = {}, [], 0
+    for name, (encoding, shape, data) in tensors.items():
+        header[name] = {"dtype": encoding, "shape": shape, "data_offsets": [offset, offset + len(data)]}
+        payloads.append(data)
+        offset += len(data)
+    encoded = json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
+    encoded += b" " * (-len(encoded) % 8)
+    raw = struct.pack("<Q", len(encoded)) + encoded + b"".join(payloads)
+    return (
+        result,
+        raw,
+        {
+            "schema": "merlin.capture_argument_materialization.v1",
+            "extra_npz_sha256": hashlib.sha256(extra).hexdigest(),
+            "entries": entries,
+        },
+    )
+
+
+# ---- inputs ------------------------------------------------------------------------------------
 
 _COPIED = ("weights.safetensors", "weights.safetensors.manifest.json", "frontend-trace.json")
 _SOURCE = "model.mlir"
@@ -163,7 +426,7 @@ def stage_compile_inputs(
         raise ValueError("frontend trace does not bind complete captured IR")
     export_state = None
     if "export_state" in metadata:
-        from merlin.compiler.frontend.state import validate_observation
+        from merlin.compiler.frontend.signature import validate_observation
 
         export_state = validate_observation(
             metadata["export_state"],
@@ -327,7 +590,7 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
     ):
         raise ValueError("compiler input manifest lacks a canonical captured source identity")
     if "export_state" in source_record:
-        from merlin.compiler.frontend.state import validate_observation
+        from merlin.compiler.frontend.signature import validate_observation
 
         validate_observation(
             source_record["export_state"],
@@ -437,3 +700,161 @@ def load_lifted_argument_bytes(
             raise ValueError("tensor archive metadata changed before payload extraction")
         by_weight.update((key, b"".join(parts)) for key, parts in portions.items())
     return {index: by_weight[key] for index, key in indices.items()}
+
+
+# ---- materialized ------------------------------------------------------------------------------
+# Exact input binding for a trusted materializer, separate from M2M receipts.
+#
+# Only the trusted caller selects this binding after its own source/ABI validator
+# has completed. It establishes unchanged materialized bytes, never compiler or
+# numerical qualification and never impersonates the original capture issuer.
+
+
+def _direct_root(root):
+    path = Path(root).absolute()
+    if any(parent.is_symlink() for parent in (path, *path.parents)):
+        raise ValueError("materialized model root must not use symbolic links")
+    return path.resolve(strict=True)
+
+
+@dataclass(frozen=True)
+class MaterializedModelInputs:
+    root: Path
+    identity_bytes: bytes
+    validator_identity_bytes: bytes
+    source_identity_bytes: bytes
+
+    @classmethod
+    def bind(cls, root, *, artifacts, validator_identity, source_identity):
+        root = _direct_root(root)
+        if not isinstance(validator_identity, dict) or not validator_identity.get("worker_sha256"):
+            raise ValueError("trusted model materializer needs its selected validator identity")
+        if (
+            not isinstance(source_identity, dict)
+            or not source_identity.get("content_sha256")
+            or not source_identity.get("artifacts")
+        ):
+            raise ValueError("trusted model materializer needs exact frozen source identities")
+        if not isinstance(artifacts, dict) or not {
+            "model.mlir",
+            "weights.safetensors",
+            "weights.safetensors.manifest.json",
+            "inputs.npz",
+            "input_order.json",
+            "golden.npy",
+            "goldens.npz",
+            "output_order.json",
+        } <= set(artifacts):
+            raise ValueError("materialized model needs complete source, ABI, and output artifacts")
+        bound = cls(
+            root,
+            json.dumps(artifacts, sort_keys=True).encode(),
+            json.dumps(validator_identity, sort_keys=True).encode(),
+            json.dumps(source_identity, sort_keys=True).encode(),
+        )
+        bound.verify(root)
+        return bound
+
+    def verify(self, root):
+        if type(self) is not MaterializedModelInputs or _direct_root(root) != self.root:
+            raise ValueError("materialized model binding names another capture")
+        artifacts = json.loads(self.identity_bytes)
+        for name, record in artifacts.items():
+            if Path(name).name != name or not isinstance(record, dict):
+                raise ValueError("invalid materialized model artifact")
+            path = self.root / name
+            if path.is_symlink() or not path.is_file() or file_sha256(path) != record.get("sha256"):
+                raise ValueError(f"materialized model artifact changed: {name}")
+            if path.stat().st_size != record.get("size_bytes"):
+                raise ValueError(f"materialized model artifact extent changed: {name}")
+        return artifacts
+
+    def record(self):
+        return {
+            "scope": "trusted runtime materialization; no M2M issuer or compiled qualification claim",
+            "artifacts": json.loads(self.identity_bytes),
+            "validator": json.loads(self.validator_identity_bytes),
+            "source": json.loads(self.source_identity_bytes),
+        }
+
+
+# ---- bundle ------------------------------------------------------------------------------------
+# Capture bundles for the RVV whole-model lane, and the scalar datatype a bundle's IR carries.
+#
+# ``_bundle_dir`` resolves the bundle ``merlin-compile`` compiles, ``_capture_python`` picks the interpreter a
+# model is captured with, and ``ir_scalar_dtype`` reads the element type the captured ``model.mlir``
+# actually carries -- which, not the bundle's name, decides the scalar datapath.
+
+
+def _bundle_dir(workload: str, dtype: str):
+    """The capture bundle `merlin-compile` uses, preferring the FULL-FIDELITY recapture.
+
+    Delegates to ``baselines.bundle.resolve``, which prefers ``<w>_<dtype>_full`` (the real/native
+    architecture) and falls back to ``<w>_<dtype>_consistent``. This used to hard-code the
+    ``_consistent`` suffix, which for tiny_llama is a 2-layer RANDOM-INIT stand-in rather than the
+    real 22-layer TinyLlama-1.1B — so `merlin-compile` silently compiled a toy while every baseline
+    arm (which already goes through ``resolve``) compiled the real model.
+    """
+    from merlin.capture.bundle import resolve
+
+    return resolve(workload, dtype).root
+
+
+def ir_scalar_dtype(bundle: "Path") -> str | None:  # noqa: UP037 -- Preserve the original callable annotation.
+    """The dtype the bundle's IR ACTUALLY carries, read off ``model.mlir`` — the fact that decides which
+    scalar/RVV datapath is correct.
+
+    A bundle's NAME states how the model was quantized; it does not state what the compiled IR contains.
+    A weight-only fake-quant capture stores fp8/int8 weights but emits f32 tensors end to end, so the
+    correct scalar package for it is the f32 one — choosing by the name instead asks for a datapath the IR
+    has no operands for. Returns ``None`` when no known element type dominates, so the caller fails closed
+    rather than guessing.
+
+    Selection is by PRESENCE of the narrowest datapath, not by majority. Every weight-only capture is
+    mostly f32 by count -- an int8 bundle measures 46 i8 tensors against 1190 f32 ones -- so a majority vote
+    hands back f32 and silently drops the int8 datapath the i8 operands require. One tensor of a narrow type
+    means the narrow datapath is needed; only a bundle with none of them is an f32 model.
+
+    Structural, not pattern-matched: it counts occurrences of each known tensor element-type spelling.
+    (No regex — see the repo's no-regex rule.)"""
+    mlir = bundle / "model.mlir"
+    if not mlir.is_file():
+        return None
+    text = mlir.read_text(encoding="utf-8", errors="replace")
+    # spelling in the IR -> the --dtype token that selects its datapath, narrowest datapath first
+    present = [tok for tok in _IR_ELEMENT_ORDER if text.count(f"x{_IR_ELEMENT_SPELLING[tok]}>")]
+    return present[0] if present else None
+
+
+def _capture_python(m2m_dir: Path, workload: str) -> Path:
+    """The interpreter to capture ``workload`` with: its own venv when its capture.toml names one.
+
+    A workload's upstream stack is pinned per model (model2MLIR's `capture.toml [venv]`), so the
+    capture must not run under merlin's interpreter just because that is what is executing.
+    Falls back to model2MLIR's own venv, then to this interpreter, and never fails here — the
+    caller surfaces a capture failure with the worker's output attached.
+    """
+    toml = m2m_dir / "workloads" / workload / "capture.toml"
+    if toml.is_file():
+        try:
+            import tomllib
+
+            cfg = tomllib.loads(toml.read_text())
+        except Exception:  # noqa: BLE001
+            cfg = {}
+        venv = cfg.get("venv")
+        if venv:
+            cand = Path(venv)
+            if not cand.is_absolute():
+                cand = m2m_dir / "workloads" / workload / venv
+            if (cand / "bin" / "python").is_file():
+                return cand / "bin" / "python"
+    fallback = m2m_dir / ".venv" / "bin" / "python"
+    return fallback if fallback.is_file() else Path(sys.executable)
+
+
+#: MLIR tensor element-type spelling for each ``--dtype`` token, used to read a bundle's ACTUAL IR dtype
+#: back off ``model.mlir`` (:func:`ir_scalar_dtype`). Keys must stay a subset of ``_DTYPE_STRATEGY``.
+_IR_ELEMENT_SPELLING = {"int8": "i8", "fp32": "f32", "fp16": "f16", "bf16": "bf16"}
+#: narrowest datapath first — the first spelling PRESENT in the IR decides (see :func:`ir_scalar_dtype`).
+_IR_ELEMENT_ORDER = ("int8", "fp16", "bf16", "fp32")

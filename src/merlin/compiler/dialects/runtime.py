@@ -12,7 +12,9 @@ See docs/core_dialects.md and docs/runtime.md.
 
 from __future__ import annotations
 
-from merlin.compiler.dialects._common import HAS_XDSL
+from merlin.compiler.dialects.xdsl_context import HAS_XDSL
+
+# ---- runtime -----------------------------------------------------------------------------------
 
 DIALECT_NAME = "runtime"
 OPS = [

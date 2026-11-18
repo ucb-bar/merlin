@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, replace
 
-from merlin.compiler.transforms.contraction_mnk import LoopedMNKTiling, OrderedMNKTilingError
+from merlin.compiler.transforms.tiling import LoopedMNKTiling, OrderedMNKTilingError
 
 
 def _ceil(value, width):

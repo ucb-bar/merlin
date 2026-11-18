@@ -15,8 +15,8 @@ import stat
 import subprocess
 from pathlib import Path
 
-from merlin.development.backend.joint_control import policy as load_policy
-from merlin.development.backend.optimization.compiler_library_state import restore_selection
+from merlin.development.backend.campaign.control import policy as load_policy
+from merlin.development.backend.optimization.campaign.compiler_library_state import restore_selection
 
 
 def prepare(*, template, release, library_selection, repo, output, policy, run_id):

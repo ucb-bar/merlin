@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
+# ---- codex_transcript --------------------------------------------------------------------------
+
 ITEM_COMMAND_EXECUTION = "command_execution"
 
-
 ITEM_FILE_CHANGE = "file_change"
-
 
 _INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md", "AGENT.md", "TASK.md")
 

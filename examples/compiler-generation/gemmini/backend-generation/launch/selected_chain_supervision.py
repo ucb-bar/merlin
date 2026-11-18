@@ -10,7 +10,7 @@ from merlin.common.digest import sha256_file
 
 
 def selected(launch, run_dir, deadline):
-    from merlin.development.backend.feedback import private_numerical_selection as selection
+    from merlin.development.backend.qualification.provenance import private_numerical_selection as selection
 
     spec = launch.path(launch.document["inputs"]["private_full_model_spec"])
     value = selection.read(spec)

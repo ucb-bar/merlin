@@ -22,9 +22,12 @@ from merlin.compiler.kernel_ir.ir import (
     Var,
     evaluate,
 )
-from merlin.compiler.schedule.periodic_effects import check_drained_period, resolve_drained_period_admission
-from merlin.compiler.schedule.program_limits import AddressWindow, EncodedAccess
-from merlin.compiler.schedule.temporary_storage import StorageAdapter, StorageEffects, TemporaryObject
+from merlin.compiler.schedule.pipeline.program_limits import AddressWindow, EncodedAccess
+from merlin.compiler.schedule.storage.periodic_effects import (
+    check_drained_period,
+    resolve_drained_period_admission,
+)
+from merlin.compiler.schedule.storage.temporaries import StorageAdapter, StorageEffects, TemporaryObject
 from merlin.compiler.semantic.allocation_types import StorageBank
 
 

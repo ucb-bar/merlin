@@ -1,27 +1,19 @@
 # src/merlin/analysis/mining
 
-## Purpose
+This package consumes kernel observations to prepare schedule packages, preserve
+fork lineage and reconstruct optimization proposals. `references/` collects
+reference-package evidence; `reconstruction/` turns observations into proposals.
+These are research consumers, not observer SDK exports.
 
-Compiler/runtime schedule-package primitives retained in core during staged cutover.
-Search, agents, fork creation, campaigns and reports belong to `merlin.analysis.mining`.
-One distribution owns these modules; compiler primitives keep their logical dependency boundary.
-Retained workflow tests and historical ownership notes remain in `packages/merlin-mining/`.
+Host package loading lives in `merlin.compiler.backend.host`. The historical
+`RvvPackage` name is that same class. Target schedule rendering, blocking policy
+and microkernel realization belong to the selected OOT provider; importing this
+package must not select or register one.
 
-## Modules
+`from_strategy.mint_fork` reexports the implementation in `fork.py`. Keep one
+implementation, preserve the public call signature, and bind rendering to the
+selected provider's source identity. Retain parent/evidence lineage and refuse
+changed provider sources during rendering.
 
-- `apply.py` — Apply an RVV package's codegen knobs to a workload build, via the existing build_app seam.
-- `from_strategy.py` — Render a transform-dialect RVV schedule FROM knobs, and mint a versioned fork package.
-- `registry.py` — Loader for ISOLATED, per-run RVV codegen packages.
-
-The other `merlin.analysis.mining.*` implementations live in the optional mining workflow;
-their stable import names do not imply core ownership. The `from_strategy.mint_fork`
-compatibility operation still selects the workflow dependencies; schedule rendering does not.
-
-<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
-     Add hand-written notes (invariants, gotchas) below. -->
-
-## Research workflow responsibilities
-
-Search, agents, campaigns, fork creation, measurement orchestration, and reports live here.
-The compiler-facing initializer and runtime primitives keep their logical owner. Preserve
-historical module names and class identity; do not create another implementation tree.
+One installed Merlin distribution owns this code. Do not restore namespace
+package extension, a separate mining extra or a second implementation tree.

@@ -15,11 +15,18 @@ import threading
 import time
 from pathlib import Path
 
-from merlin.development.backend.compiler_library import child_arguments, join_background, library_thread, selected_child
+from merlin.development.backend.authoring.library.compiler_library import (
+    child_arguments,
+    join_background,
+    library_thread,
+    selected_child,
+)
 from merlin.development.backend.context import add_context_arguments, context_argv, resolve_context
-from merlin.development.backend.run_inputs import strip_build_state
-from merlin.evaluation.model.bundle import Bundle
-from merlin.evaluation.model.models import default_models_path, target_from_contract
+from merlin.development.backend.session.inputs.run_record import strip_build_state
+from merlin.evaluation.model.bundles.models import default_models_path, target_from_contract
+from merlin.evaluation.model.bundles.seal import Bundle
+
+# ---- model_check -------------------------------------------------------------------------------
 
 PROGRAMS = {
     "resnet50": ("model",),
@@ -32,14 +39,12 @@ def _valid_group(value):
     return bool(value) and value.isascii() and all(char.isalnum() or char in "_.@-" for char in value)
 
 
-REPORT_SCHEMA = "merlin.evaluation.model.report.v1"
+REPORT_SCHEMA = "merlin.evaluation.model.cli.v1"
 
-
-#: Modules the full-mode child loads under the model2MLIR capture interpreter. Package manifest
-#: validation imports jsonschema lazily, once per kernel, so an interpreter without it refuses
-#: every kernel of every model while the run itself looks healthy.
 FULL_CHILD_IMPORTS = ("merlin.development.backend.brokers.model_check_worker", "jsonschema", "referencing")
+
 _PROBE = "from merlin.development.backend.brokers.model_check import import_probe; import_probe()"
+
 _READY: set[str] = set()
 
 
@@ -51,7 +56,7 @@ def import_probe() -> None:
         importlib.import_module(name)
     # The child classifies a kernel's gate failure in this interpreter too. A classification that
     # needs a package this interpreter lacks replaces every such failure with an import error.
-    from merlin.development.targetgen.capsule_common import _cat
+    from merlin.development.targetgen.corpus.capsule_io import _cat
 
     _cat("TOOL_CRASH")
 
@@ -92,8 +97,8 @@ def _safe_report(report: object) -> bool:
 
 def _require_compiler_selection(snapshot, manifest, context, *, legacy_library):
     """Both compiler modes require explicit original host selection and inputs."""
-    from merlin.development.backend import full_compiler_workspace as full
-    from merlin.development.backend.feedback.snapshot_execution import selected
+    from merlin.development.backend.authoring.library import compiler_workspace as full
+    from merlin.development.backend.feedback.execution.snapshot_evaluator import selected
 
     implementation = full.selected() if selected() else None
     bound = legacy_library is not None or implementation is not None
@@ -136,8 +141,8 @@ def execute_visible(
     if mode not in {"fast", "full"} or (action != "check" and mode != "fast"):
         return {"status": "rejected", "error": "unknown model-check mode"}
     if mode == "full":
-        from merlin.development.backend.joint_control import require_full_model
-        from merlin.development.backend.joint_control import selected as joint_campaign
+        from merlin.development.backend.campaign.control import require_full_model
+        from merlin.development.backend.campaign.control import selected as joint_campaign
 
         if joint_campaign() is None:
             return {"status": "rejected", "error": "full checks require a selected joint campaign"}
@@ -155,7 +160,7 @@ def execute_visible(
         return {"status": "error", "error": "host TMPDIR is not task-owned"}
     with tempfile.TemporaryDirectory(prefix="model-check-", dir=tmpdir) as scratch:
         snapshot = Path(scratch) / "submission" if snapshot_source is None else snapshot_source
-        from merlin.common.tree_hash import hash_tree
+        from merlin.common.digest import hash_tree
 
         if snapshot_source is None:
             before = hash_tree(source)["sha256"]
@@ -170,7 +175,7 @@ def execute_visible(
         bundle = Bundle.default(target).root
         python, models = sys.executable, default_models_path(target)
         if mode == "full":
-            from merlin.integrations.model2mlir import capture_python
+            from merlin.common.external_tools import capture_python
 
             python = str(capture_python())
             models = bundle / "configuration" / "models.yaml"
@@ -187,8 +192,8 @@ def execute_visible(
                 }
         # A subprocess cannot inherit context-local compiler owners. Carry the
         # original reviewed library and profile explicitly, as selfcheck does.
-        from merlin.development.backend.feedback.compiler_profile_runtime import active_profile_service
-        from merlin.development.targetgen.compiler_library import active_compiler_library
+        from merlin.development.backend.feedback.execution.profile_runtime import active_profile_service
+        from merlin.development.targetgen.authoring.library_admission import active_compiler_library
 
         service = active_profile_service() if compiler_bundle_manifest is None else None
         if service is not None:
@@ -301,7 +306,9 @@ def execute_visible(
 
 
 DEFAULT_MAX_ACTIVE_REQUESTS = 4
+
 MAX_QUEUED_REQUESTS = 32
+
 MAX_REQUEST_BYTES = 64 << 10
 
 
@@ -319,7 +326,7 @@ def _request(path):
 
 
 def _publish(channel, job_id, result):
-    from merlin.development.backend.feedback.author_disclosure import project
+    from merlin.development.backend.feedback.disclosure import project
 
     result = project(result, workspace=Path(channel).parent)
     with tempfile.NamedTemporaryFile(
@@ -360,7 +367,7 @@ def serve(ws, *, poll, stop, context=None, compiler_bundle_manifest=None, max_ac
 
     def work(request, box):
         try:
-            from merlin.development.backend.feedback.author_disclosure import private_work_root, restricted
+            from merlin.development.backend.feedback.disclosure import private_work_root, restricted
 
             private = {}
             if restricted():
@@ -455,10 +462,10 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if not 0.01 <= args.poll <= 10:
         parser.error("poll interval must be0.01..10seconds")
-    from merlin.common.cpu_pool import compute_capacity
+    from merlin.common.process.cpu_pool import compute_capacity
 
     capacity = compute_capacity() or len(os.sched_getaffinity(0))
-    from merlin.development.backend.feedback import snapshot_execution
+    from merlin.development.backend.feedback.execution import snapshot_evaluator as snapshot_execution
 
     default_active = capacity if snapshot_execution.selected() else min(DEFAULT_MAX_ACTIVE_REQUESTS, capacity)
     max_active = default_active if args.max_active is None else args.max_active
@@ -478,10 +485,10 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    from merlin.development.backend.telemetry.resilient_output import install
+    from merlin.development.backend.telemetry.evidence import install
 
     install()  # A full log volume drops log lines, never the broker.
-    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+    from merlin.common.process.cpu_pool import AUTHOR, cpu_priority
 
     with cpu_priority(AUTHOR, export=True):  # Author-requested model checks lease first.
         raise SystemExit(main())

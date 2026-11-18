@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from merlin.common import mlir_query as mq
-from merlin.compiler.dialects.lowering import compute_groups as CG
-from merlin.compiler.lower.model.device_build import DeviceRouting, _accum_from_facts
-from merlin.compiler.lower.model.source_compute_groups import form_source_groups
+from merlin.compiler.ir import mlir_query as mq
+from merlin.compiler.lower.device.build import _accum_from_facts
+from merlin.compiler.lower.device.device_build import DeviceRouting
+from merlin.compiler.lower.device.source_compute_groups import form_source_groups
+from merlin.compiler.partition.groups import compute_groups as CG
+
+# ---- complete ----------------------------------------------------------------------------------
 
 
 def select_complete_group(_shape):

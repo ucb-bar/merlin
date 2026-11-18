@@ -9,21 +9,17 @@ import pytest
 import yaml
 
 from merlin import api
-from merlin.compiler.artifact import Artifact, Compilation, Deployment
 from merlin.compiler.backend import layout
-from merlin.compiler.backend.sourceproposal import (
-    SourceProposal,
-    admit_proposal,
-    source_numerical_identity,
-)
+from merlin.compiler.backend.source_proposals import SourceProposal, admit_proposal, source_numerical_identity
 from merlin.compiler.build.image import CImageLink
+from merlin.compiler.compilation import Artifact, Compilation, Deployment
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.lower.model.offload_plan import bind_source
-from merlin.compiler.pipeline import PlannedCompiler, RegionBackend
-from merlin.compiler.planning.execution import select_execution
+from merlin.compiler.lower.device.plan import bind_source
+from merlin.compiler.planning.cover_selection import select_execution
+from merlin.compiler.system import PlannedCompiler, RegionBackend
 from merlin.compiler.transforms.certificates import ir_text
 from merlin.compiler.transforms.pipeline_state import PipelineContext
-from merlin.target.system.topology import select_topology
+from merlin.target.system import select_topology
 
 SOURCE = "module {func.func @forward(%x:tensor<2x3xf32>)->tensor<2x3xf32> {\n %a=tensor.collapse_shape %x [[0,1]] : tensor<2x3xf32> into tensor<6xf32>\n %b=tensor.expand_shape %a [[0,1]] output_shape [2,3] : tensor<6xf32> into tensor<2x3xf32>\n func.return %b:tensor<2x3xf32>\n}}"
 
@@ -118,7 +114,7 @@ def image_selection(tmp_path):
 
 
 def test_selected_image_links_actual_wrappers_runs_and_prepares_existing_external_handoff(tmp_path):
-    from merlin.runtime.service import RunOptions, RunResult
+    from merlin.runtime.execution.service import RunOptions, RunResult
 
     image = image_selection(tmp_path)
     options = replace(OPTIONS, system="fixture-cpu", platform="linux", harts=1)
@@ -158,8 +154,7 @@ def stateful_control(
     tmp_path, *, corrupt=None, share=False, split_host=False, topology_edit=None, platform=None, image_factory=None
 ):
     """Source-bound software ABI fixture; no device math/execution claim."""
-    from merlin.compiler.backend.cabi import CRegionABI
-    from merlin.compiler.backend.stateful import CContext, CRegionABI2, EmbeddedPayload, render_u32_payload
+    from merlin.compiler.backend.c_abi import CContext, CRegionABI, CRegionABI2, EmbeddedPayload, render_u32_payload
 
     source, hardware, original = selected(tmp_path)
     document = yaml.safe_load(hardware.path.read_text())

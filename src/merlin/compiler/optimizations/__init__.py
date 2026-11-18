@@ -13,15 +13,15 @@ def implementation_paths() -> tuple[Path, ...]:
     """Reviewed implementation sources, without importing or registering strategies."""
     modules = (
         "merlin.compiler.optimizations.registry",
-        "merlin.compiler.optimizations.blocks",
-        "merlin.compiler.optimizations.contraction",
-        "merlin.compiler.optimizations.discovery",
-        "merlin.compiler.optimizations.hoisting",
-        "merlin.compiler.optimizations.loops",
-        "merlin.compiler.optimizations.passes",
-        "merlin.compiler.optimizations.perop",
-        "merlin.compiler.optimizations.pointwise",
-        "merlin.compiler.optimizations.resident",
-        "merlin.compiler.optimizations.variants",
+        "merlin.compiler.optimizations.register_blocking",
+        "merlin.compiler.optimizations.contraction_loops",
+        "merlin.compiler.optimizations.registry",
+        "merlin.compiler.optimizations.accumulator_residency",
+        "merlin.compiler.optimizations.contraction_loops",
+        "merlin.compiler.optimizations.vectorization",
+        "merlin.compiler.optimizations.register_blocking",
+        "merlin.compiler.optimizations.vectorization",
+        "merlin.compiler.optimizations.accumulator_residency",
+        "merlin.compiler.optimizations.contraction_loops",
     )
     return (Path(__file__), *(module_source_path(module) for module in modules))

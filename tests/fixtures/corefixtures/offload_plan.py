@@ -2,7 +2,7 @@ from dataclasses import replace
 
 from corefixtures.dense_source import contraction
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.lower.model.offload_plan import bind_source
+from merlin.compiler.lower.device.plan import bind_source
 from merlin.compiler.transforms.pipeline_state import PipelineContext
 
 

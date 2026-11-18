@@ -425,7 +425,7 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
         arr = words.view(np.float32)
     else:  # fp8 via the shared float-format codec
         try:
-            from merlin.runtime.fp8_formats import _decode as _fp_decode
+            from merlin.common.fp8_formats import _decode as _fp_decode
 
             arr = np.asarray(_fp_decode(np.frombuffer(raw, dtype=np.uint8), dt))
         except Exception as e:  # noqa: BLE001 — present operand we cannot decode: fail closed
@@ -554,7 +554,7 @@ def _args_from_cb_by_opcode(cb: dict) -> tuple[list[TensorArg], list[TensorArg]]
     on operand order + shapes. Returns None (fail-safe) on an unsupported shape (chained matmuls / no matmul).
     Shared by the inline-source path (:func:`program_from_cb`) and the object-kernel path
     (:func:`external_main_from_cb`)."""
-    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.engine.command_buffer import materialize_inputs
 
     all_tensors = cb.get("tensors") or {}
 
@@ -978,7 +978,7 @@ def args_from_cb(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | None:
         derived = _args_from_cb_by_opcode(cb)
     except Exception:
         derived = None  # a malformed/unfamiliar cb must fall through, not abort the harness
-    from merlin.runtime.commandbuffer import materialize_inputs
+    from merlin.runtime.engine.command_buffer import materialize_inputs
 
     canon = cb.get("canonical_inputs")
     if not isinstance(canon, dict):
@@ -1024,7 +1024,7 @@ def _args_from_dataflow(cb: dict) -> tuple[list[TensorArg], list[TensorArg]] | N
     disagrees the mismatch shows up as a shape error at build time, which is loud, rather than as silently
     swapped operands.
     """
-    from merlin.runtime.commandbuffer import dataflow_operands, materialize_inputs
+    from merlin.runtime.engine.command_buffer import dataflow_operands, materialize_inputs
 
     got = dataflow_operands(cb)
     if got is None:
@@ -1312,7 +1312,7 @@ def _validated_external_kernel_launch(
     if not isinstance(resource_claims, dict):
         raise ValueError(f"{kind} launch requires command-buffer resource claims")
 
-    from merlin.development.targetgen.rtl.facts import load_facts
+    from merlin.target.rtl.facts import load_facts
 
     document = load_facts(model.target)
     facts = document.get("facts") if isinstance(document, dict) else None

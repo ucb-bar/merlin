@@ -41,7 +41,8 @@ def _load_interface(path: Path):
     """
     from xdsl.parser import Parser
 
-    from merlin.compiler.dialects import _common, contract, interface, runtime, schedule
+    from merlin.compiler.dialects import contract, interface, runtime, schedule
+    from merlin.compiler.dialects import xdsl_context as _common
 
     # Each dialect module exposes its Dialect INSTANCE as <NAME>_DIALECT; `Dialect` is the xDSL class
     # it imported, which is not what the context wants.
@@ -72,8 +73,8 @@ def _report(verdict, *, shape_note: str = "") -> int:
 
 def cmd_compile(args) -> int:
     """Validate an emitted command buffer against the interface program it came from."""
-    from .refine import validate_compilation
-    from .smt_semantics import UnsupportedSemantics
+    from merlin.verification.translation.refinement import validate_compilation
+    from merlin.verification.translation.smt_encoding import UnsupportedSemantics
 
     cb: dict[str, Any] = json.loads(Path(args.command_buffer).read_text(encoding="utf-8"))
     module = _load_interface(Path(args.interface))
@@ -90,7 +91,7 @@ def cmd_compile(args) -> int:
 
 def cmd_faults(args) -> int:
     """Run the seeded fault corpus past every layer (the detection matrix)."""
-    from .evaluate import main as evaluate_main
+    from merlin.verification.translation.fault_injection import main as evaluate_main
 
     argv = [
         "--m",
@@ -113,7 +114,7 @@ def cmd_faults(args) -> int:
 
 def cmd_lattice(args) -> int:
     """Verify a target's DERIVED extent lattice, the same one the capsule corpus is built from."""
-    from .lattice import main as lattice_main
+    from merlin.verification.translation.extent_lattice import main as lattice_main
 
     argv = ["--target", args.target, "--timeout-ms", str(args.timeout_ms)]
     if args.json:
@@ -125,7 +126,7 @@ def cmd_lattice(args) -> int:
 
 def cmd_capture_coverage(args) -> int:
     """Inventory the source-side SMT subset without treating it as a proof."""
-    from .model_coverage import audit_capture
+    from merlin.verification.translation.refinement import audit_capture
 
     print(json.dumps([audit_capture(path) for path in args.captures], indent=2, sort_keys=True))
     return 0
@@ -133,7 +134,7 @@ def cmd_capture_coverage(args) -> int:
 
 def cmd_compile_receipt(args) -> int:
     """Recheck one exact interface→command-buffer pair and write a replayable receipt."""
-    from .receipts import verify_transformation
+    from merlin.verification.translation.refinement import verify_transformation
 
     source = _load_interface(Path(args.interface))
     target = json.loads(Path(args.command_buffer).read_text(encoding="utf-8"))
@@ -166,7 +167,7 @@ def _emit_receipt(record: dict[str, Any], output: str | None) -> None:
 
 def cmd_scalar_receipt(args) -> int:
     """Validate two exact MLIR files in the supported pure scalar-integer subset."""
-    from merlin.verification.scalar_ir import verify_scalar_transform
+    from merlin.verification.translation.pass_validation import verify_scalar_transform
 
     receipt = verify_scalar_transform(
         Path(args.before).read_bytes(),
@@ -180,7 +181,7 @@ def cmd_scalar_receipt(args) -> int:
 
 def cmd_qualify_scalar_receipt(args) -> int:
     """Replay a saved scalar proof against the exact before/after file bytes."""
-    from merlin.verification.scalar_ir import ScalarTransformReceipt, qualify_scalar_receipt
+    from merlin.verification.translation.pass_validation import ScalarTransformReceipt, qualify_scalar_receipt
 
     try:
         record = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
@@ -195,7 +196,7 @@ def cmd_qualify_scalar_receipt(args) -> int:
 
 def cmd_outline_receipt(args) -> int:
     """Check beta-equivalence of one actual pure outlining pass output."""
-    from merlin.verification.outline_ir import verify_outline_transform
+    from merlin.verification.translation.pass_validation import verify_outline_transform
 
     receipt = verify_outline_transform(Path(args.before).read_bytes(), Path(args.after).read_bytes(), entry=args.entry)
     _emit_receipt(receipt.to_dict(), args.output)
@@ -204,7 +205,7 @@ def cmd_outline_receipt(args) -> int:
 
 def cmd_qualify_outline_receipt(args) -> int:
     """Replay a saved outlining receipt against the exact before/after bytes."""
-    from merlin.verification.outline_ir import OutlineTransformReceipt, qualify_outline_receipt
+    from merlin.verification.translation.pass_validation import OutlineTransformReceipt, qualify_outline_receipt
 
     try:
         record = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
@@ -228,7 +229,7 @@ def cmd_split_reduction(args) -> int:
     """Prove or refute one signed split-K accumulation at the declared widths, for every input."""
     from dataclasses import asdict
 
-    from merlin.verification.split_reduction import maximum_safe_chunk, verify_split_reduction
+    from merlin.verification.translation.pass_validation import maximum_safe_chunk, verify_split_reduction
 
     try:
         verdict = verify_split_reduction(
@@ -335,25 +336,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 # Preserve historical object lookup; implementation and completion state live here.
-for _compat_definition in (
-    _load_interface,
-    _report,
-    cmd_compile,
-    cmd_faults,
-    cmd_lattice,
-    cmd_capture_coverage,
-    cmd_compile_receipt,
-    _emit_receipt,
-    cmd_scalar_receipt,
-    cmd_qualify_scalar_receipt,
-    cmd_outline_receipt,
-    cmd_qualify_outline_receipt,
-    _chunk_sizes,
-    cmd_split_reduction,
-    main,
-):
-    _compat_definition.__module__ = "merlin.verification.cli"
-del _compat_definition
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Mapping
 
-from merlin.common import quant_formats
+from merlin.common import target_data as quant_formats
 from merlin.target.spec.quantization import (
     _BOOL_PARAMETERS as _BOOL_PARAMETERS,
 )
@@ -41,6 +41,8 @@ from merlin.target.spec.quantization import (
 from merlin.target.spec.quantization import (
     validate_quantization_declarations as validate_quantization_declarations,
 )
+
+# ---- admission ---------------------------------------------------------------------------------
 
 SCHEMA = "merlin.phase0.quantization_contract.v1"
 _IDENTITY_FIELDS = frozenset(
@@ -223,7 +225,7 @@ def _observations(accounting: Mapping | None, declaration_id: str) -> list[dict]
 def _operation_eligibility(
     spec: Mapping, declaration: dict, matches: list[dict], accounting: Mapping | None
 ) -> list[dict]:
-    from merlin.development.targetgen.software_spec import admit_operation
+    from merlin.target.spec.software import admit_operation
 
     eligible_ids = set(declaration["eligible_operations"])
     decisions = []
@@ -406,8 +408,8 @@ def build_quantization_contract(
             "recipe_schema": "quant_recipe_v1",
             "layer_plan_schema": "quant_layer_plan_v1",
             "extension_points": ["torchao.quantization.pt2e.quantizer.Quantizer", "torchao.core.config.AOBaseConfig"],
-            "existing_adapter": "merlin.development.targetgen._recipe_quantizer",
-            "layer_planner": "merlin.development.targetgen.quant_layer_plan.plan",
+            "existing_adapter": "merlin.compiler.quantization.torchao._recipe_quantizer",
+            "layer_planner": "merlin.compiler.quantization.quant_layer_plan.plan",
             "requirements": [
                 "complete operation signatures and explicit accelerator placement",
                 "matching format-specific recipe and layer shape plan",
@@ -453,7 +455,7 @@ def build_quantization_contract(
 def __getattr__(name):
     """Expose the original projection callable without importing its framework owner at intake."""
     if name == "capture_recipe_candidates":
-        from .torchao.recipes import capture_recipe_candidates
+        from merlin.compiler.quantization.torchao.recipes import capture_recipe_candidates
 
         return capture_recipe_candidates
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

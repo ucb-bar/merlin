@@ -11,7 +11,9 @@
 # (merlin.perf -> merlin.analysis.perf, merlin.targetgen -> merlin.development.targetgen, ...),
 # so long import lines re-wrapped; ceilings of already-recorded modules were re-measured. No
 # code changed; each is split during its folder review.
-merlin/python/merlin/common/storage_cli.py  # 1099
+# growth-accepted: the provenance split (2026-11-12) moved the pin registry's byte claims (PinsError,
+# built artifacts, lost bytes) to merlin.common.provenance_claims, so two recorded modules that used
+# them through the provenance module object gained one by-name import line each. No code changed.
 merlin/python/merlin/compiler/schedule/schedule_pipeline.py  # 1354
 merlin/python/merlin/kernels/decoded_effects.py  # 1074
 merlin/python/merlin/llvmlower/device_build.py  # 1105
@@ -29,7 +31,7 @@ merlin/python/merlin/runtime/backends/spike_model.py  # 1225
 merlin/python/merlin/runtime/backends/zephyr_model.py  # 1962
 merlin/python/merlin/runtime/dispatch_runtime.py  # 1007
 merlin/python/merlin/targetgen/_m2m_capture_worker.py  # 1071
-merlin/python/merlin/targetgen/capability_discovery.py  # 2311
+merlin/python/merlin/targetgen/capability_discovery.py  # 2312
 merlin/python/merlin/targetgen/capsule_grade.py  # 1796
 merlin/python/merlin/targetgen/conformance.py  # 1883
 merlin/python/merlin/targetgen/contract/compile.py  # 1100
@@ -42,7 +44,7 @@ merlin/python/merlin/targetgen/publish.py  # 1473
 merlin/python/merlin/targetgen/rtl/circt_introspect.py  # 1042
 merlin/python/merlin/targetgen/rtl/introspect.py  # 1065
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # 1418
-merlin/python/merlin/targetgen/rtl/semantic_facts.py  # 1025
+merlin/python/merlin/targetgen/rtl/semantic_facts.py  # 1026
 merlin/python/merlin/targetgen/sandbox/bwrap.py  # 1018
 merlin/python/merlin/xdsl_dialects/lowering/compute_groups.py  # 1064
 packages/merlin-experiments/src/merlin/experiments/capture_execution/sealed_m2m.py  # 1484

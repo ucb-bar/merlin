@@ -21,7 +21,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, epoch, is_dir, mtime, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, epoch, is_dir, mtime, num, obj, rows, scan_dir
+
 from .insight_common import ago, campaign_log, duration, line, log_scan, panel, quantile, row, series, table
 
 MAX_RECORDS = 512

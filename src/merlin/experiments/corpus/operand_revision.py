@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import copy
 
-from merlin.development.targetgen.rocc.selected_operand_protocol import _json, _read_pin
-from merlin.runtime.backends.rocc_selection import select_operand_protocol
+from merlin.runtime.backends.rocc.tool_selection import select_operand_protocol
+from merlin.target.isa.rocc.operand_protocol import _json, _read_pin
+
+# ---- operand_revision --------------------------------------------------------------------------
 
 SCHEMA = "merlin.operand_observer_revision.v1"
 

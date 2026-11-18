@@ -27,7 +27,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, is_file, mtime, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, is_file, mtime, num, obj, rows, scan_dir
+
 from . import STAGE_STATES
 
 LEDGER_SCHEMA = "merlin.compiler_stage_ledger.v1"

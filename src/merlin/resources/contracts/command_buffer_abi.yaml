@@ -51,7 +51,7 @@ opcodes:
     operands: {src: acc_handle, dst: output_tensor, bias: "tensor (optional)"}
     attributes:
       # THE epilogue vocabulary of this ABI. It has exactly ONE definition --
-      # merlin.runtime.commandbuffer.EPILOGUE_STAGES -- from which this line, the strict validator's enum
+      # merlin.runtime.engine.command_buffer.EPILOGUE_STAGES -- from which this line, the strict validator's enum
       # in schemas/command_buffer.schema.json, interface_dialect_contract.yaml and the dialect verifiers
       # are all derived; build_tools/checks/check_epilogue_vocabulary.py fails if any of them drifts.
       # It is deliberately NOT derived per-target: this schema is target-INDEPENDENT (one validator for

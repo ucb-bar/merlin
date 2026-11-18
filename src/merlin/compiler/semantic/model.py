@@ -12,6 +12,8 @@ from hashlib import sha256
 from math import prod
 from typing import Any
 
+# ---- model -------------------------------------------------------------------------------------
+
 JsonScalar = str | int | float | bool | None
 
 

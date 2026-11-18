@@ -19,7 +19,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, epoch, num, obj, rows
+from merlin.experiments.tracking.console.snapshot import clean, epoch, num, obj, rows
+
 from .insight_common import campaign_log, line, log_scan, panel, proc_env, row, table
 
 #: ``(code, label, level when present)`` of the log counts shown, in order.

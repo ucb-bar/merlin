@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from xdsl.dialects import builtin, func
 from xdsl.ir import Attribute
 
-from merlin.compiler.sourceguard import validator_identity
+from merlin.compiler.compilation import validator_identity
 from merlin.compiler.transforms.certificates import ir_digest
 
 
@@ -161,7 +161,7 @@ class BoundSourceSemantics:
     """One original callback/options owner bound to an unchanged source program."""
 
     def __init__(self, module, entry, callback, options):
-        from merlin.compiler.sourceguard import observe
+        from merlin.compiler.compilation import observe
 
         self._sources = observe("semantics", _source_members)
         self.module, self.entry, self.callback, self.options = module, entry, callback, options

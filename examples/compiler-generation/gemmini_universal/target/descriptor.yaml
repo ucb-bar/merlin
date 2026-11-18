@@ -161,7 +161,7 @@ grading:
   # readout-dtype axis in the capability model, so that recompute reproduces exactly the 11 bf16 rows
   # and nothing else -- and the 70 int32-output rows read back as `extra_hardware`, declared-but-not-
   # proven. Two ways to close it existed:
-  #   (a) a readout/output dtype axis in `merlin.development.targetgen.eligibility` that this target's contract
+  #   (a) a readout/output dtype axis in `merlin.target.capabilities.eligibility` that this target's contract
   #       `readout:` block feeds -- the derive-first fix, and the one that would make the gate PROVE
   #       the list. NOT taken: it edits `capsule_runner`, which two live runs import on every grade
   #       interval, and a shared-module change for one target's launch is the wrong trade.

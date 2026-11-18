@@ -20,7 +20,7 @@ from setuptools.command.sdist import sdist
 
 _ROOT = Path(__file__).resolve().parent
 
-_SKILL_PACKAGE = Path("merlin/development/backend/author_skills/pass-library")
+_SKILL_PACKAGE = Path("merlin/resources/skills/pass-library")
 _SKILL_OUTPUT = Path("out/build/author-skills/pass-library")
 
 

@@ -23,7 +23,17 @@ import math
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, is_dir, mtime, num, obj, positive, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import (
+    clean,
+    is_dir,
+    mtime,
+    num,
+    obj,
+    positive,
+    rows,
+    scan_dir,
+)
+
 from .insight_common import (
     chain,
     line,

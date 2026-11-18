@@ -24,8 +24,9 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from merlin.common import owned_children
-from merlin.common.cpu_pool import (
+from merlin.common.access import scrub_host_paths
+from merlin.common.process import ownership as owned_children
+from merlin.common.process.cpu_pool import (
     VERIFICATION,
     CompilerCPUTransfer,
     borrow_compiler_cpu,
@@ -35,13 +36,18 @@ from merlin.common.cpu_pool import (
     shared_compute_pool,
     transfer_compiler_cpu,
 )
-from merlin.common.path_scrub import scrub_host_paths
-from merlin.development.backend.brokers.common_transforms import CommonTransformService
+from merlin.development.targetgen.execution.host.common_transforms import CommonTransformService
+
+# ---- compiler_call_channel ---------------------------------------------------------------------
 
 SCHEMA = "merlin.compiler_call_channel.v1"
+
 MAX_REQUEST_BYTES = 256 * 1024
+
 MAX_REQUESTS = 64
+
 MAX_PENDING_ENTRIES = 256
+
 COMMON_ACTIONS = frozenset({"common-transform", "common-check"})
 
 
@@ -78,7 +84,7 @@ def _sha(path):
 
 
 def _sources(package):
-    from merlin.development.backend.optimization.retained_revisions import source_inventory
+    from merlin.development.backend.optimization.search.retained_revisions import source_inventory
 
     return source_inventory(package, max_bytes=32 << 20, max_files=8192, exclude_generated=True)["sha256"]
 
@@ -193,8 +199,8 @@ def _verify_owner_selection(owner):
     """
     import yaml
 
-    from merlin.common.bundle_snapshot import MARKER, bundle_snapshot_root
-    from merlin.development.targetgen.tool_profile import verify_tool_profile
+    from merlin.common.storage.bundle_snapshots import MARKER, bundle_snapshot_root
+    from merlin.development.targetgen.authoring.tool_profile import verify_tool_profile
 
     if type(owner) is not dict or set(owner) != {
         "workspace",
@@ -331,9 +337,6 @@ def _serve_requests(selection, control):
     finally:
         _write(descriptor, "STOP", {"stopped": True})
         os.close(descriptor)
-        # Parent reopens profile/package/input after observing completed child
-        # reaping. Avoid hashing a large snapshot before cancellation can reap
-        # a proof process which started its own session.
 
 
 def main(argv=None):

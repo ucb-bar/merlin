@@ -32,7 +32,7 @@ observe actual implementations and aliases. Preserve reduction sequence, origina
 boundaries, tail/head padding and explicit accumulator-carry obligations.
 
 `recomputation.py` owns bounded source recomputation. Its independent full-module
-checker remains in `merlin.compiler.transforms.recomputation_check` during verification
+checker remains in `merlin.compiler.transforms.source_rewrites.recomputation_check` during verification
 ownership migration. Keep the checker and actual implementation sources pinned;
 candidate construction is not execution, cost or hardware qualification.
 
@@ -41,7 +41,7 @@ function and monkeypatch identity. Historical SDK inventories remain immutable.
 
 `multioutput.py` owns connected source fanout discovery and checked compilation
 with two live outputs. Its independent semantic checker remains in
-`merlin.compiler.schedule.multioutput_fusion_check`. Pin the actual algorithm,
+`merlin.compiler.schedule.elementwise.multioutput_checks`. Pin the actual algorithm,
 compatibility alias and existing checker/source roster; the old module aliases
 this owner exactly, including issued-record state. Preserve published record
 pickle spellings. Missing composition permission retains individual lowering.
@@ -49,7 +49,7 @@ pickle spellings. Missing composition permission retains individual lowering.
 `row_normalization.py` owns exact row-island materialization and ordinary pass
 orchestration. `row_normalization_source.py` reads closed source islands and
 their affine row projections. Independent replay remains in
-`merlin.compiler.transforms.row_normalization_check`; source admission is not its proof.
+`merlin.compiler.transforms.source_rewrites.row_normalization_check`; source admission is not its proof.
 The historical module aliases the orchestration owner exactly. Its dispatch
 bindings (including matcher and emitter) remain patchable there; pure matching
 helpers now resolve globals in their defining source-analysis module and are
@@ -72,7 +72,7 @@ Exact integer row batching preserves the original typed module quantization
 annotation without interpreting it or granting any numerical transformation.
 
 `recomputation.py` is an exact compatibility module alias. The active algorithm
-and its source custody live in `merlin.compiler.transforms.recomputation`.
+and its source custody live in `merlin.compiler.transforms.source_rewrites.recomputation`.
 `recomputation_check.py` retains the independent full-module checker during the
 separate verification ownership migration; do not move its authority into the
 candidate transform or grant additional authoring access to make imports pass.

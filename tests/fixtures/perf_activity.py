@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.analysis.perf.decompose import ResourceKind, activity_from_busy
+from merlin.analysis.perf.bounds.decomposition import ResourceKind, activity_from_busy
 from merlin.common.paths import env, repo_root
 
 BUCKET_KINDS = {

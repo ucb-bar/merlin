@@ -9,16 +9,17 @@ import json
 from dataclasses import replace
 
 from merlin.compiler.transforms.certificates import ir_text, parse_ir
-from merlin.compiler.transforms.evaluated_exploration import (
+from merlin.compiler.transforms.exploration.branch_policy import PipelineVariant, PolicyFacts, RegisteredPass
+from merlin.compiler.transforms.exploration.cycle_feedback import (
     CompletedObservation,
     ExplorationIdentity,
     exploration_context_identity,
 )
-from merlin.compiler.transforms.pass_exploration import ExplorationGeometry, ValidationPartition
+from merlin.compiler.transforms.exploration.pass_orders import ExplorationGeometry, ValidationPartition
+from merlin.compiler.transforms.exploration.shape_assessment import PerformanceDomain, ShapeCaseFeedback
+from merlin.compiler.transforms.exploration.shape_proposals import propose_shape_policies
 from merlin.compiler.transforms.pipeline import PipelineOptions, apply_common_pipeline
-from merlin.compiler.transforms.pipeline_policy import PipelineVariant, PolicyFacts, RegisteredPass
 from merlin.compiler.transforms.pipeline_state import PassSpec, PipelineContext, PipelineSession
-from merlin.compiler.transforms.shape_policy import PerformanceDomain, ShapeCaseFeedback, propose_shape_policies
 
 CONTEXT = PipelineContext(library="example_simulated_domain")
 PATHS = (PipelineVariant("original", ("emit",)), PipelineVariant("normalize", ("normalize", "emit")))

@@ -4,11 +4,15 @@ The caller supplies environment, timeout policy, error type and extra source
 dependencies. This owner selects no compiler, target flags or lowering.
 """
 
+from __future__ import annotations
+
 import math
 import subprocess
 from pathlib import Path
 
-from merlin.common import proc as _proc
+from merlin.common.process import invocation_records as _proc
+
+# ---- process -----------------------------------------------------------------------------------
 
 
 def run(
@@ -24,9 +28,9 @@ def run(
     limit = timeout_limit_s or None
     if timeout_s is not None:
         limit = min(limit, timeout_s) if limit is not None else timeout_s
-    from merlin.common import invocation_record
-    from merlin.common.cpu_pool import shared_compute_pool
-    from merlin.runtime.build_runtime import run_in_build_view
+    from merlin.common.process import invocation_records as invocation_record
+    from merlin.common.process.cpu_pool import shared_compute_pool
+    from merlin.runtime.views.build_lookup import run_in_build_view
 
     if not outputs:
         with shared_compute_pool(timeout_s=limit):

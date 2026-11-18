@@ -8,6 +8,8 @@ from pathlib import Path
 
 from merlin.common.paths import ext_path, repo_root
 
+# ---- toolchain ---------------------------------------------------------------------------------
+
 
 def _env(key: str, default: str | None = None) -> str | None:
     """Process env wins, then the gitignored ``<repo>/.env`` (same source ``ext_path`` reads), then
@@ -33,7 +35,7 @@ def llvm_install() -> Path:
 
 
 def m2m_dir() -> Path:
-    from merlin.integrations.model2mlir import root
+    from merlin.common.external_tools import root
 
     return root(default=DEFAULT_M2M_DIR)
 

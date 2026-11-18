@@ -11,6 +11,8 @@ from pathlib import Path
 from merlin.development.backend.context import InvocationContext, add_context_arguments, resolve_context
 from merlin.development.backend.telemetry import author_agents, evidence, timeline, token_budget
 
+# ---- report ------------------------------------------------------------------------------------
+
 
 def transcript_paths(run_dir: Path) -> list[Path]:
     """The transcripts of one run, preferring the per-round files (they cannot interleave rounds).
@@ -297,10 +299,6 @@ def report_run(run_dir: Path, *, write: bool = False) -> dict:
         print(f"  wrote {write_run_timing(run_dir)}")
     return rec
 
-
-# --- legacy cross-arm view ------------------------------------------------------------------------
-# The original purpose of this file: the per-tier SIM cost the operator paid, alongside the agent split.
-# Kept, but the agent split now comes from `decompose` so it is correct for every driver.
 
 TIER_TOOL = {"L2": "spike", "L3": "verilator/VCS", "L4": "verilator/VCS"}
 

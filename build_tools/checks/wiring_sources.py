@@ -80,8 +80,8 @@ def _staged_rtl_sources(root: Path, tree: ast.AST) -> set[str]:
     }
     if not {(1, "tool_registry", "spec", None), (0, "merlin.common.access", "author_inaccessible", None)} <= imports:
         return set()
-    producer = root / "src/merlin/experiments/corpus/preparation.py"
-    registry = root / "src/merlin/development/targetgen/tool_registry.py"
+    producer = root / "src/merlin/experiments/corpus/source_staging.py"
+    registry = root / "src/merlin/development/targetgen/authoring/tool_registry.py"
     policy = root / "src/merlin/common/access.py"
     if not all(path.is_file() for path in (producer, registry, policy)):
         return set()
@@ -226,9 +226,9 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
         relative = path.relative_to(root).as_posix()
     except ValueError:
         return set()
-    if relative == "src/merlin/development/backend/author_profiles.py":
+    if relative == "src/merlin/development/backend/authoring/profiles.py":
         return _granted_modules(tree)
-    if relative == "src/merlin/development/targetgen/tool_profile_shared.py":
+    if relative == "src/merlin/development/targetgen/authoring/shared_sources.py":
         return _staged_rtl_sources(root, tree)
     if relative == "src/merlin/compiler/quantization/torchao/portable.py":
         helper, prepare = _function(tree, "helper"), _function(tree, "prepare_helpers")
@@ -264,8 +264,8 @@ def closed_source_imports(path: Path, root: Path, tree: ast.AST) -> set[str]:
             return set()
         return {"merlin.development.targetgen." + name for name in _strings(tree, "DEPENDENCIES")}
     if relative not in {
-        "src/merlin/development/backend/full_compiler_workspace.py",
-        "src/merlin/development/backend/raw_interface_sources.py",
+        "src/merlin/development/backend/authoring/library/compiler_workspace.py",
+        "src/merlin/development/backend/session/inputs/raw_interface_sources.py",
     }:
         return set()
     prepare = _function(tree, "prepare")
@@ -290,9 +290,9 @@ def compiler_source_inputs(root: Path) -> set[str]:
     """Current closed source-copy rosters."""
     names = set()
     for relative in (
-        "src/merlin/development/targetgen/tool_profile_shared.py",
-        "src/merlin/development/backend/full_compiler_workspace.py",
-        "src/merlin/development/backend/raw_interface_sources.py",
+        "src/merlin/development/targetgen/authoring/shared_sources.py",
+        "src/merlin/development/backend/authoring/library/compiler_workspace.py",
+        "src/merlin/development/backend/session/inputs/raw_interface_sources.py",
     ):
         path = root / relative
         if path.is_file():

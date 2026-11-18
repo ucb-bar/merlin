@@ -31,7 +31,7 @@ def _run(code: str, *, target_path: str | None, targets_dir: str | None = None) 
     return json.loads(last)
 
 
-_PROBE = '\nimport json, sys\nimport merlin.runtime.backends.base as base\nresult = {\n    "backends": base.list_backends(),\n    "oot_in_sys_modules": "merlin._oot_backends.fixture_npu" in sys.modules,\n}\nif "fixture_npu" in base.list_backends():\n    mod = base.get_backend("fixture_npu")\n    result["fixture_module_name"] = getattr(mod, "__name__", None)\n    result["fixture_class"] = base.class_of("fixture_npu").value\nprint(json.dumps(result))\n'
+_PROBE = '\nimport json, sys\nimport merlin.runtime.backends.registry as base\nresult = {\n    "backends": base.list_backends(),\n    "oot_in_sys_modules": "merlin._oot_backends.fixture_npu" in sys.modules,\n}\nif "fixture_npu" in base.list_backends():\n    mod = base.get_backend("fixture_npu")\n    result["fixture_module_name"] = getattr(mod, "__name__", None)\n    result["fixture_class"] = base.class_of("fixture_npu").value\nprint(json.dumps(result))\n'
 
 
 def _require_fixture() -> None:

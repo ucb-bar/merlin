@@ -117,9 +117,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # L3 RTL-cert tier: the mlc arc model must resolve (this is what makes not_run_is_not_pass real).
     try:
-        from merlin.development.targetgen.rtl import mlc_bridge
+        from merlin.target.rtl.extraction import mlc_discovery as _merlin_mlc_discovery_1
+        from merlin.target.rtl.extraction import mlc_toolchain as mlc_bridge
 
-        arc = mlc_bridge.arc_available("atlas")
+        arc = _merlin_mlc_discovery_1.arc_available("atlas")
         print(f"mlc arc(atlas) [L3 RTL cert] : {'OK' if arc else 'UNAVAILABLE'}")
         ok = ok and arc
     except Exception as e:  # noqa: BLE001
@@ -138,8 +139,8 @@ def main(argv: list[str] | None = None) -> int:
     chip = Path(a.bringup_chipyard or _env("MERLIN_EXT_BRINGUP_CHIPYARD") or _BRINGUP_CHIPYARD_DEFAULT)
     import yaml
 
-    from merlin.development.targetgen.rtl.declared_revision import verify_declared_revision
-    from merlin.development.targetgen.rtl.introspect import RtlSourceInvalid
+    from merlin.target.rtl.extraction.census import RtlSourceInvalid
+    from merlin.target.rtl.extraction.source_custody import verify_declared_revision
 
     selected = yaml.safe_load((ROOT / "examples/compiler-generation/atlas/target/descriptor.yaml").read_text())["rtl"][
         "elaboration"
@@ -159,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
     # MERLIN_TARGET_PATH. See docs/guides/02-targets.md.
     if ok and (a.materialize_target_package or a.target_package_dir):
         try:
-            from merlin.development.targetgen import capability_manifests as _cm
+            from merlin.target.capabilities import manifest as _cm
 
             # The SAME target-agnostic materialization every target uses (atlas / gemmini / ...): drop the
             # OOT package into the zero-env generated home so target_registry.resolve finds it with no env.

@@ -7,135 +7,57 @@ and execution qualification retain distinct contracts.
 
 from __future__ import annotations
 
+import json
 import sys
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from merlin.common import quant_formats as qf
+from merlin.common import target_data as qf
+from merlin.compiler.quantization.recipe import (
+    _MAX_PLANES,
+    _OBSERVERS,
+    _observer_valid,
+    _static_int8,
+    site_agreement_of,
+    static_planes_block,
+    with_activation_contractions,
+    with_activation_observer,
+    with_dynamic_contractions,
+    with_gptq_weights,
+    with_integer_extension,
+    with_native_output_quantization,
+    with_shared_grid_operand_sums,
+    with_site_agreement,
+    with_static_planes,
+)
+from merlin.compiler.quantization.recipe import ACTIVATION_CONTRACTION as ACTIVATION_CONTRACTION
+from merlin.compiler.quantization.recipe import CANDIDATE_SCHEMA as CANDIDATE_SCHEMA
+from merlin.compiler.quantization.recipe import CONTRACTION as CONTRACTION
+from merlin.compiler.quantization.recipe import DERIVED as DERIVED
+from merlin.compiler.quantization.recipe import DYNAMIC as DYNAMIC
+from merlin.compiler.quantization.recipe import DYNAMIC_SCHEMA as DYNAMIC_SCHEMA
+from merlin.compiler.quantization.recipe import NON_REDUCTION as NON_REDUCTION
+from merlin.compiler.quantization.recipe import OPERAND as OPERAND
+from merlin.compiler.quantization.recipe import OPERAND_SUM as OPERAND_SUM
+from merlin.compiler.quantization.recipe import RESIDUAL_OPERAND as RESIDUAL_OPERAND
+from merlin.compiler.quantization.recipe import SCHEMA as SCHEMA
+from merlin.compiler.quantization.recipe import SITE_AGREEMENT as SITE_AGREEMENT
+from merlin.compiler.quantization.recipe import SITE_AGREEMENT_SCHEMA as SITE_AGREEMENT_SCHEMA
+from merlin.compiler.quantization.recipe import SOFTMAX_AXIS as SOFTMAX_AXIS
+from merlin.compiler.quantization.recipe import SOFTMAX_OUTPUT as SOFTMAX_OUTPUT
+from merlin.compiler.quantization.recipe import SOFTMAX_PARTNER as SOFTMAX_PARTNER
+from merlin.compiler.quantization.recipe import STATIC_HEADS as STATIC_HEADS
+from merlin.compiler.quantization.recipe import STATIC_PLANES as STATIC_PLANES
+from merlin.compiler.quantization.recipe import STATIC_PLANES_SCHEMA as STATIC_PLANES_SCHEMA
+from merlin.compiler.quantization.recipe import UNDERIVABLE as UNDERIVABLE
+from merlin.compiler.quantization.recipe import WEIGHT as WEIGHT
+from merlin.compiler.quantization.recipe import WINDOW_MEAN as WINDOW_MEAN
+from merlin.compiler.quantization.recipe import QuantCandidate as QuantCandidate
+from merlin.compiler.quantization.recipe import QuantRecipe as QuantRecipe
+from merlin.compiler.quantization.recipe import TensorSpec as TensorSpec
+from merlin.compiler.quantization.recipe import digest as digest
 
-from .dynamic import (
-    _MAX_PLANES as _MAX_PLANES,
-)
-from .dynamic import (
-    site_agreement_of as site_agreement_of,
-)
-from .dynamic import (
-    with_dynamic_contractions as with_dynamic_contractions,
-)
-from .dynamic import (
-    with_site_agreement as with_site_agreement,
-)
-from .recipe import (
-    ACTIVATION_CONTRACTION as ACTIVATION_CONTRACTION,
-)
-from .recipe import (
-    CANDIDATE_SCHEMA as CANDIDATE_SCHEMA,
-)
-from .recipe import (
-    CONTRACTION as CONTRACTION,
-)
-from .recipe import (
-    DERIVED as DERIVED,
-)
-from .recipe import (
-    DYNAMIC as DYNAMIC,
-)
-from .recipe import (
-    DYNAMIC_SCHEMA as DYNAMIC_SCHEMA,
-)
-from .recipe import (
-    NON_REDUCTION as NON_REDUCTION,
-)
-from .recipe import (
-    OPERAND as OPERAND,
-)
-from .recipe import (
-    OPERAND_SUM as OPERAND_SUM,
-)
-from .recipe import (
-    RESIDUAL_OPERAND as RESIDUAL_OPERAND,
-)
-from .recipe import (
-    SCHEMA as SCHEMA,
-)
-from .recipe import (
-    SITE_AGREEMENT as SITE_AGREEMENT,
-)
-from .recipe import (
-    SITE_AGREEMENT_SCHEMA as SITE_AGREEMENT_SCHEMA,
-)
-from .recipe import (
-    SOFTMAX_AXIS as SOFTMAX_AXIS,
-)
-from .recipe import (
-    SOFTMAX_OUTPUT as SOFTMAX_OUTPUT,
-)
-from .recipe import (
-    SOFTMAX_PARTNER as SOFTMAX_PARTNER,
-)
-from .recipe import (
-    STATIC_HEADS as STATIC_HEADS,
-)
-from .recipe import (
-    STATIC_PLANES as STATIC_PLANES,
-)
-from .recipe import (
-    STATIC_PLANES_SCHEMA as STATIC_PLANES_SCHEMA,
-)
-from .recipe import (
-    UNDERIVABLE as UNDERIVABLE,
-)
-from .recipe import (
-    WEIGHT as WEIGHT,
-)
-from .recipe import (
-    WINDOW_MEAN as WINDOW_MEAN,
-)
-from .recipe import (
-    QuantCandidate as QuantCandidate,
-)
-from .recipe import (
-    QuantRecipe as QuantRecipe,
-)
-from .recipe import (
-    TensorSpec as TensorSpec,
-)
-from .recipe import (
-    digest as digest,
-)
-from .static import (
-    _OBSERVERS as _OBSERVERS,
-)
-from .static import (
-    _observer_valid as _observer_valid,
-)
-from .static import (
-    _static_int8 as _static_int8,
-)
-from .static import (
-    static_planes_block as static_planes_block,
-)
-from .static import (
-    with_activation_contractions as with_activation_contractions,
-)
-from .static import (
-    with_activation_observer as with_activation_observer,
-)
-from .static import (
-    with_gptq_weights as with_gptq_weights,
-)
-from .static import (
-    with_integer_extension as with_integer_extension,
-)
-from .static import (
-    with_native_output_quantization as with_native_output_quantization,
-)
-from .static import (
-    with_shared_grid_operand_sums as with_shared_grid_operand_sums,
-)
-from .static import (
-    with_static_planes as with_static_planes,
-)
+# ---- capabilities ------------------------------------------------------------------------------
 
 _WEIGHT_GRANULARITY = {"column": "channel", "row": "channel", "rank1": "channel", "tensor": "tensor", "block": "block"}
 
@@ -281,7 +203,7 @@ def derive(facet: Any, *, prefer_activation_mode: str | None = None) -> QuantRec
 
     applied = {stage for readout in facet.readouts for stage in readout.get("applies") or ()}
     if applied:
-        from merlin.runtime.commandbuffer import BIAS_STAGES
+        from merlin.runtime.engine.command_buffer import BIAS_STAGES
 
         recipe.bias_domain = "accumulator" if applied & set(BIAS_STAGES) else None
         recipe.why["bias_domain"] = (
@@ -324,11 +246,12 @@ def for_target(
     target: str, *, facts: Mapping[str, Any] | None = None, prefer_activation_mode: str | None = None
 ) -> list[QuantRecipe]:
     """One recipe per compute unit that contracts, in the contract's unit order."""
-    from merlin.development.targetgen import readout_facet
+    from merlin.target.capabilities import readout_derivation as _merlin_readout_derivation_1
+    from merlin.target.capabilities import readout_facet
 
     return [
         derive(facet, prefer_activation_mode=prefer_activation_mode)
-        for facet in readout_facet.for_target(target, facts=facts)
+        for facet in _merlin_readout_derivation_1.for_target(target, facts=facts)
     ]
 
 
@@ -346,7 +269,7 @@ def derive_candidates(
     underivable until format-specific readout evidence exists. No candidate is selected for a
     whole-model capture here; :func:`select` retains its existing behavior.
     """
-    from merlin.development.targetgen.compute_units import compute_units
+    from merlin.target.capabilities.compute_units import compute_units
 
     by_unit: dict[str, list[Any]] = {}
     for facet in facets:
@@ -471,13 +394,14 @@ def candidates_for_target(
     prefer_activation_mode: str | None = None,
 ) -> list[QuantCandidate]:
     """Target-facing candidate inventory; it does not change capture recipe selection."""
-    from merlin.development.targetgen import readout_facet
+    from merlin.target.capabilities import readout_derivation as _merlin_readout_derivation_2
+    from merlin.target.capabilities import readout_facet
 
     if contract is None:
-        from merlin.development.targetgen.target_experiment import load_capability_manifest
+        from merlin.target.registry.experiment_descriptor import load_capability_manifest
 
         contract = load_capability_manifest(target).contract
-    facets = readout_facet.for_target(target, contract=contract, facts=facts)
+    facets = _merlin_readout_derivation_2.for_target(target, contract=contract, facts=facts)
     return derive_candidates(contract, facets, prefer_activation_mode=prefer_activation_mode)
 
 
@@ -489,6 +413,119 @@ def select(recipes: Sequence[QuantRecipe]) -> QuantRecipe | None:
 def _main(argv: Sequence[str] | None = None) -> int:
     """``python -m merlin.compiler.quantization.capabilities {activation-contractions|dynamic-contractions|static-planes|
     shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
-    from .cli import main
 
     return main(argv, api=sys.modules[__name__])
+
+
+# ---- cli ---------------------------------------------------------------------------------------
+# The existing recipe JSON transformation command and its exact option surface.
+
+
+def main(argv: Sequence[str] | None = None, *, api=None) -> int:
+    """``python -m merlin.compiler.quantization.capabilities {activation-contractions|dynamic-contractions|static-planes|
+    shared-grid-sums|native-outputs|site-agreement|activation-observer|gptq-weights} IN OUT``."""
+    if api is None:
+        api = sys.modules[__name__]
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(prog="python -m merlin.compiler.quantization.capabilities")
+    sub = parser.add_subparsers(dest="command", required=True)
+    variant = sub.add_parser("activation-contractions", help=api.with_activation_contractions.__doc__.splitlines()[0])
+    variant.add_argument("recipe", type=Path)
+    variant.add_argument("out", type=Path)
+    variant.add_argument(
+        "--minimum-reduction",
+        type=int,
+        default=None,
+        help="explicit inclusive activation reduction minimum; default retains the profitability screen",
+    )
+    residual = sub.add_parser("shared-grid-sums", help=api.with_shared_grid_operand_sums.__doc__.splitlines()[0])
+    residual.add_argument("recipe", type=Path)
+    residual.add_argument("out", type=Path)
+    residual.add_argument(
+        "--output-boundary",
+        default="quantized_readers",
+        choices=("quantized_readers", "dequantize"),
+        help="dequantize explicitly permits floating-point consumers after the new INT8 residual output",
+    )
+    residual.add_argument("--residual-selection", default=None, choices=("distinct_contraction_frontiers",))
+    outputs = sub.add_parser("native-outputs", help=api.with_native_output_quantization.__doc__.splitlines()[0])
+    outputs.add_argument("recipe", type=Path)
+    outputs.add_argument("out", type=Path)
+    outputs.add_argument("--operators", nargs="+", default=["linear"], choices=("linear", "conv2d"))
+    outputs.add_argument("--reader-policy", default="non_add_compute", choices=("compute", "non_add_compute"))
+    dynamic = sub.add_parser("dynamic-contractions", help=api.with_dynamic_contractions.__doc__.splitlines()[0])
+    dynamic.add_argument("recipe", type=Path)
+    dynamic.add_argument("out", type=Path)
+    dynamic.add_argument("--families", default=ACTIVATION_CONTRACTION, help="comma-separated contraction families")
+    dynamic.add_argument("--planes", default="", help=f"selector=k pairs, e.g. {SOFTMAX_OUTPUT}=2")
+    dynamic.add_argument("--smooth", action="store_true", help="subtract the mean over a softmax's axis")
+    dynamic.add_argument("--static-families", default=None, help="families kept static (default: the recipe's)")
+    dynamic.add_argument("--scales", default=NON_REDUCTION, choices=(NON_REDUCTION, STATIC_HEADS))
+    dynamic.add_argument("--context-output", choices=("int8_value_grid",))
+    wide = sub.add_parser("static-planes", help=api.with_static_planes.__doc__.splitlines()[0])
+    wide.add_argument("recipe", type=Path)
+    wide.add_argument("out", type=Path)
+    wide.add_argument("--planes", type=int, default=2)
+    wide.add_argument("--observer", default="minmax")
+    wide.add_argument("--owners", default=None, help="comma-separated module-path prefixes (default: all)")
+    observe = sub.add_parser("activation-observer", help=api.with_activation_observer.__doc__.splitlines()[0])
+    observe.add_argument("recipe", type=Path)
+    observe.add_argument("out", type=Path)
+    observe.add_argument("observer")
+    bar = sub.add_parser("site-agreement", help=api.with_site_agreement.__doc__.splitlines()[0])
+    bar.add_argument("recipe", type=Path)
+    bar.add_argument("out", type=Path)
+    bar.add_argument("--cosine-min", type=float, required=True, dest="cosine_min")
+    bar.add_argument("--rel-rmse-max", type=float, required=True, dest="rel_rmse_max")
+    bar.add_argument("--basis", required=True, help="where the bar came from (recorded in the recipe's why)")
+    gptq = sub.add_parser("gptq-weights", help=api.with_gptq_weights.__doc__.splitlines()[0])
+    gptq.add_argument("recipe", type=Path)
+    gptq.add_argument("out", type=Path)
+    gptq.add_argument("--calibration-samples", type=int, dest="calibration_samples")
+    gptq.add_argument("--act-order", action=argparse.BooleanOptionalAction, dest="act_order")
+    gptq.add_argument("--damp", type=float)
+    gptq.add_argument("--block", type=int)
+    args = parser.parse_args(argv)
+    source = json.loads(args.recipe.read_text(encoding="utf-8"))
+    if args.command == "shared-grid-sums":
+        body = api.with_shared_grid_operand_sums(
+            source, output_boundary=args.output_boundary, residual_selection=args.residual_selection
+        )
+    elif args.command == "native-outputs":
+        body = api.with_native_output_quantization(source, operators=args.operators, reader_policy=args.reader_policy)
+    elif args.command == "activation-contractions":
+        body = api.with_activation_contractions(source, minimum_reduction=args.minimum_reduction)
+    elif args.command == "static-planes":
+        owners = None if args.owners is None else [o for o in args.owners.split(",") if o]
+        body = api.with_static_planes(source, planes=args.planes, observer=args.observer, owners=owners)
+    elif args.command == "gptq-weights":
+        chosen = {name: getattr(args, name) for name in ("calibration_samples", "act_order", "damp", "block")}
+        body = api.with_gptq_weights(source, **{name: value for name, value in chosen.items() if value is not None})
+    elif args.command == "site-agreement":
+        body = api.with_site_agreement(
+            source, cosine_min=args.cosine_min, rel_rmse_max=args.rel_rmse_max, basis=args.basis
+        )
+    elif args.command == "activation-observer":
+        body = api.with_activation_observer(source, args.observer)
+    else:
+        planes = {k: int(v) for k, _, v in (p.partition("=") for p in args.planes.split(",") if p)}
+        static = None if args.static_families is None else [f for f in args.static_families.split(",") if f]
+        body = api.with_dynamic_contractions(
+            source,
+            families=[f for f in args.families.split(",") if f],
+            planes=planes,
+            smooth=args.smooth,
+            static_families=static,
+            scales=args.scales,
+            context_output=args.context_output,
+        )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"{args.out}: recipe_sha256 {body['recipe_sha256']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -27,7 +27,7 @@ then turns it into a reviewed source-only joint seed (``merlin.experiments.phase
 * gSIM is optional: continuous gSIM promotion is turned off for the seeded policy;
 * with verdicts carried, ``MERLIN_SEEDED_GRADE`` names the seed run: grades carry the screen tier for
   byte-identical executables too, grade changed cases first, then timing work by largest gap, then
-  carried cases, and label carried passes ``carried from <run>`` (``merlin.development.targetgen.seeded_grade``).
+  carried cases, and label carried passes ``carried from <run>`` (``merlin.development.targetgen.grading.seeded_grade``).
 
 The runtime's preflight-only mode refuses a seed, so ``preflight`` checks the seed itself (bytes,
 review, option validation and a scratch placement exactly as the session stages it, whose compiler
@@ -115,8 +115,8 @@ def settings(ctx) -> dict:
 
 def verify_source(path: Path, digest: str) -> str:
     """The pinned seed digest names this tree (``hash_tree`` or the graded source hash)."""
-    from merlin.common.tree_hash import hash_tree
-    from merlin.development.backend import run_inputs
+    from merlin.common.digest import hash_tree
+    from merlin.development.backend.session.inputs import run_record as run_inputs
 
     if not path.is_dir():
         raise SeedError(f"seed source is unavailable: {path}")
@@ -247,7 +247,7 @@ def build_evidence(seed: dict, source: Path, copy: Path, out: Path) -> dict:
     if not any(out.iterdir()):
         return summary
     _sibling("seed_carry").write_index(out, summary)
-    from merlin.common.tree_hash import hash_tree
+    from merlin.common.digest import hash_tree
 
     summary["pin"] = {"path": str(out), "sha256": hash_tree(out)["sha256"]}
     return summary
@@ -273,7 +273,7 @@ def carry_certificates(ctx, seed: dict, environment: dict, report: Path) -> dict
         ctx.x("${PYTHON}"),
         "-B",
         "-m",
-        "merlin.development.backend.seed_certificates",
+        "merlin.development.backend.campaign.seeding.seed_certificates",
         "--seed-framework",
         run["framework"],
         "--seed-run-id",
@@ -345,7 +345,7 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
     # Seed bytes: the pinned tree without stripped members, old-harness notes moved out.
     copy_source(source, dest, seed["strip"])
     evidence = build_evidence(seed, source, dest, out / "seed-evidence")
-    from merlin.development.backend import run_inputs
+    from merlin.development.backend.session.inputs import run_record as run_inputs
 
     graded = run_inputs.graded_source_hash(dest)
 
@@ -353,7 +353,7 @@ def apply(ctx, record: dict, *, validate_policy, check_campaign, reserve, carry_
     if carry["certificates"] or carry["results"]:
         environment["MERLIN_TIER_CERT_PORTABLE"] = "1"
         # Seeded grades carry the screen for byte-identical executables, grade what changed first and
-        # label carried passes (merlin.development.targetgen.seeded_grade). Never set for a from-scratch plan.
+        # label carried passes (merlin.development.targetgen.grading.seeded_grade). Never set for a from-scratch plan.
         environment["MERLIN_SEEDED_GRADE"] = seed["run"]["run_id"]
         # The seeded order (changed first, then timing by gap, then carried) applies only to an
         # unselected order; the base specs select information-first, which would keep it off.
@@ -444,7 +444,9 @@ VERIFY_SCRIPT = HERE / "fresh_seed.py"
 
 def options_from_argv(argv):
     """The runtime's options for the exact planned argv (the arguments the module parses)."""
-    from merlin.development.backend.optimization.compiler_library_state import add_selection_arguments
+    from merlin.development.backend.optimization.campaign.compiler_library_state import (
+        add_selection_arguments,
+    )
     from merlin.development.backend.options import RunOptions, build_parser
 
     parser = build_parser()
@@ -474,7 +476,9 @@ def options_from_argv(argv):
 
 def verify_in_runtime(record: dict) -> dict:
     """Inside the campaign runtime: the runtime accepts the seed and stages it as the session does."""
-    from merlin.development.backend import fresh_backend, joint_control, joint_seed
+    from merlin.development.backend.authoring import fresh_backend
+    from merlin.development.backend.campaign import control as joint_control
+    from merlin.development.backend.campaign.seeding import joint_seed
 
     options = options_from_argv(record["argv"])
     fresh_backend.validate(options)
@@ -482,7 +486,7 @@ def verify_in_runtime(record: dict) -> dict:
     origin = joint_seed.selected(options)
     if origin != record["origin"]:
         raise SeedError("the runtime selects another seed origin than the plan recorded")
-    from merlin.development.backend.session import validate_options
+    from merlin.development.backend.session.admission import validate_options
 
     validate_options(options)
     with tempfile.TemporaryDirectory(prefix="seed-placement-") as scratch:
@@ -512,12 +516,12 @@ def compile_staged(record: dict, options, submission: Path, scratch: Path) -> di
     """Complete the session's staging (the full compiler beside the seed), then compile one small case."""
     import yaml
 
-    from merlin.development.targetgen.contract.materialize import descriptor_corpus_roots
-    from merlin.development.targetgen.target_experiment import load_target_experiment
+    from merlin.development.targetgen.corpus.materialization import descriptor_corpus_roots
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     probe = _sibling("seed_compile_probe")
     if options.compiler_access == "full_compiler":
-        from merlin.development.backend import full_compiler_workspace as FCW
+        from merlin.development.backend.authoring.library import compiler_workspace as FCW
 
         FCW.stage(
             FCW.select(

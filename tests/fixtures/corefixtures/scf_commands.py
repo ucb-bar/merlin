@@ -1,4 +1,4 @@
-from merlin.compiler.schedule.scf_commands import emit_scf_commands
+from merlin.compiler.schedule.loops.scf_commands import emit_scf_commands
 
 
 class ExecuteIndices:

@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 from merlin.common import digest
-from merlin.compiler.lower.model.device_build import (
+from merlin.compiler.lower.device.device_build import (
     DeviceRouting,
     admit_linked_device_elf,
     freeze_device_elf_admission,
     freeze_device_elf_custody,
     revalidate_device_elf_custody,
 )
-from merlin.development.targetgen.contract.elf_admission import LinkedElfAdmissionService
+from merlin.target.contract.build.object_admission import LinkedElfAdmissionService
 
 
 class MarkerPolicy:

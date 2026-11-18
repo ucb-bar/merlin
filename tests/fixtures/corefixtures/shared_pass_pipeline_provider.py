@@ -12,10 +12,15 @@ from xdsl.printer import Printer
 import corefixtures.copy_pipeline as leaf
 from corefixtures.shared_pass_fusion_provider import verify_artifact_image
 from merlin.compiler.kernel_ir.ir import Const, evaluate
-from merlin.compiler.schedule.program_limits import DecodedInstruction, EncodedAccess, ProgramDecoder, ProgramLimits
-from merlin.compiler.schedule.schedule_pipeline import ScheduleEncoding
-from merlin.compiler.schedule.selected_contracts import read_scheduling_contracts
-from merlin.development.targetgen.isa_dialect_gen import build_dialect, decode_instruction, encode_instruction
+from merlin.compiler.schedule.pipeline.contracts import ScheduleEncoding
+from merlin.compiler.schedule.pipeline.program_limits import (
+    DecodedInstruction,
+    EncodedAccess,
+    ProgramDecoder,
+    ProgramLimits,
+)
+from merlin.compiler.schedule.pipeline.selected_contracts import read_scheduling_contracts
+from merlin.target.isa.dialect_generation import build_dialect, decode_instruction, encode_instruction
 
 KEYS = ("address", "width", "host", "token", "view")
 NAMES = ("setup", "fetch", "await", "affine", "store", "descriptor")
@@ -255,7 +260,7 @@ def fixture(directory, *, width=7, panels=7, slots=2, alias=True, bits=64, big=F
 
 
 def target_text(kernel, selected):
-    from merlin.compiler.lower.model.target_schedule import instruction_module
+    from merlin.compiler.lower.device.target import instruction_module
 
     module = instruction_module(replace(kernel, name="target_program", args=(), attrs=()), selected)
     stream = io.StringIO()

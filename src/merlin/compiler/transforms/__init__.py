@@ -2,3 +2,5 @@
 
 Target-independent xDSL transformations with explicit verification handoff.
 """
+
+from __future__ import annotations

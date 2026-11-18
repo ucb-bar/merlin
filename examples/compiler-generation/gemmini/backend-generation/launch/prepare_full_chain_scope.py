@@ -15,7 +15,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.development.backend.feedback.private_numerical_selection import MODE, POLICY
+from merlin.development.backend.qualification.provenance.private_numerical_selection import MODE, POLICY
 
 
 def pin(path):

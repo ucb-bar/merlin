@@ -15,8 +15,18 @@ import math
 from pathlib import Path
 from typing import Any
 
-from ...terminal_metadata import capsule_metric
-from ..io import clean, epoch, is_sha256, num, obj, positive, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import (
+    clean,
+    epoch,
+    is_sha256,
+    num,
+    obj,
+    positive,
+    rows,
+    scan_dir,
+)
+from merlin.experiments.tracking.terminal.metadata import capsule_metric
+
 from .insight_common import share_rows
 
 MAX_RESPONSES = 160

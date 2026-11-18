@@ -1,4 +1,3 @@
-"""Shared utilities: schema loading/validation, IO, common types.
-
-Shared infrastructure: schema load/validate, yaml, advisory llm summary.
+"""Shared infrastructure: paths, run and product layout, provenance, content identity, agent access,
+record readers, owned child processes and generated-output storage.
 """

@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
 
 import yaml
 
-from merlin.development.targetgen import conformance
+from merlin.common.digest import is_sha256
+from merlin.development.targetgen.conformance import axes as _merlin_axes_1
+from merlin.development.targetgen.conformance import gaps as _merlin_gaps_1
+from merlin.development.targetgen.conformance import requirements as conformance
+from merlin.experiments.corpus.source_staging import _members, source_run
 from merlin.experiments.definition import SpecError
 
-from .preparation import _members, source_run
+# ---- coverage ----------------------------------------------------------------------------------
 
 
 def _selected_contract(spec_doc: dict, inputs: dict | None) -> dict | None:
@@ -70,11 +75,10 @@ def selected_cohort_coverage(
     host-lane placement use the byte-bound selected contract, and memory regimes
     use selected facts.
     """
-    from merlin.development.targetgen.contract.materialize import cert_capsule_cover
+    from merlin.development.targetgen.corpus.materialization import cert_capsule_cover
 
     if phase not in {"phase1", "phase2"}:
         raise ValueError("cohort coverage phase must be phase1 or phase2")
-    from .accelerator_scope import conformance_for_scope, selected_scope
 
     scope = selected_scope(inputs)
     spec_doc = conformance_for_scope(spec_doc, inputs)
@@ -93,12 +97,12 @@ def selected_cohort_coverage(
     if scope is not None:
         result["capsule_scope"] = {**scope, "standalone_host_tests": "outside_selected_scope"}
     readers = {
-        "shape_geometry": conformance._geometry_gap,
+        "shape_geometry": _merlin_axes_1._geometry_gap,
         "scope": conformance._scope_gap,
-        "epilogue": conformance._epilogue_gap,
-        "groups": conformance._group_gap,
-        "carried_state": conformance._carried_state_gap,
-        "conv_geometry": conformance._conv_geometry_gap,
+        "epilogue": _merlin_gaps_1._epilogue_gap,
+        "groups": _merlin_gaps_1._group_gap,
+        "carried_state": _merlin_gaps_1._carried_state_gap,
+        "conv_geometry": _merlin_gaps_1._conv_geometry_gap,
     }
     for axis, reader in readers.items():
         if axis == "scope" and phase == "phase2":
@@ -112,7 +116,7 @@ def selected_cohort_coverage(
                     "reason": "selected requirement lacks exact SW/emitter-derived Phase 2 scope",
                 }
                 continue
-            from merlin.development.testgen.performance_scope import validate_performance_scope
+            from merlin.development.testgen.performance.scope import validate_performance_scope
 
             performance = validate_performance_scope(spec_doc["scope"])
             if performance.get("status") == "unresolved":
@@ -205,7 +209,7 @@ def selected_cohort_coverage(
             digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
             if digest != selected_digest or digest != required_digest:
                 raise ValueError("selected RTL facts differ from the frozen requirement or coverage inputs")
-            from merlin.development.targetgen import memory_regime as MR
+            from merlin.development.targetgen.policies import memory_regime as MR
 
             corpus = MR.corpus_regimes(roots, str(spec_doc.get("target") or ""), labels=labels, facts=json.loads(raw))
             if corpus["capacity_rows"] is None:
@@ -286,7 +290,7 @@ def inspect_run(run_dir: Path, spec_path: Path) -> dict:
     if edge is not None and (type(edge) is not int or edge < 1):
         raise SpecError("conformance spec tile_edge must be a positive integer or absent")
     category_roots, n_public = _public_category_roots(corpus)
-    from merlin.development.testgen.coverage_commitment import read_inputs
+    from merlin.development.testgen.evidence.coverage_obligations_coverage_commitment import read_inputs
 
     inputs = read_inputs(corpus)
     if inputs is not None and inputs.get("target") != target:
@@ -304,3 +308,80 @@ def inspect_run(run_dir: Path, spec_path: Path) -> dict:
         "n_public_capsules_scanned": n_public,
         "coverage": result,
     }
+
+
+# ---- accelerator_scope -------------------------------------------------------------------------
+# Explicit release selection of accelerator work, including its required host glue.
+
+SCHEMA = "merlin.corpus.accelerator_scope.v1"
+
+
+def validate_scope(scope: str, *, generated_only: bool) -> None:
+    if not isinstance(scope, str) or scope not in {"all", "accelerator"}:
+        raise SpecError("capsule_scope must be all or accelerator")
+    if scope == "accelerator" and not generated_only:
+        raise SpecError("accelerator capsule selection requires a generated-only release")
+
+
+def has_accelerator_work(capsule: dict) -> bool:
+    """Select from the reviewed program screen, never a name or a previous grade."""
+    screen = capsule.get("software_screen") or {}
+    placements = screen.get("placements")
+    if (
+        not isinstance(placements, dict)
+        or set(placements) - {"accelerator", "host"}
+        or any(type(value) is not int or value < 0 for value in placements.values())
+    ):
+        raise SpecError("accelerator selection requires an admitted, resolved software screen")
+    accelerator = placements.get("accelerator", 0) > 0
+    if screen.get("status") == "admitted" and screen.get("constraints_status") == "matched":
+        return accelerator
+    # A Gemmini refusal test can contain an admitted contraction followed by an
+    # unsupported epilogue. Keep the test; selecting it never grants whole-program
+    # admission or changes the refusal the ordinary native checker must enforce.
+    if accelerator and any(
+        row.get("placement") == "accelerator"
+        and row.get("classification") == "accelerator_candidate"
+        and row.get("status") == "admitted"
+        for row in screen.get("decisions") or []
+    ):
+        return True
+    raise SpecError("accelerator selection requires an admitted, resolved software screen")
+
+
+def select_members(emitted: dict, *, fingerprint) -> tuple[dict, dict]:
+    kept, rows = {}, []
+    for member, (source, capsule) in sorted(emitted.items()):
+        selected = has_accelerator_work(capsule)
+        if selected:
+            kept[member] = (source, capsule)
+        rows.append({"member": member, "sha256": fingerprint(source), "selected": selected})
+    if not kept:
+        raise SpecError("accelerator capsule selection is empty")
+    digest = hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return kept, {"schema": SCHEMA, "kind": "accelerator", "selection_sha256": digest, "members": rows}
+
+
+def selected_scope(inputs: dict | None) -> dict | None:
+    scope = (inputs or {}).get("capsule_scope")
+    if scope is None:
+        return None
+    if (
+        not isinstance(scope, dict)
+        or scope.get("schema") != SCHEMA
+        or scope.get("kind") != "accelerator"
+        or not is_sha256(scope.get("selection_sha256"))
+        or not is_sha256(scope.get("source_coverage_inputs_sha256"))
+    ):
+        raise ValueError("unsupported or unbound capsule scope")
+    return scope
+
+
+def conformance_for_scope(requirement: dict, inputs: dict | None) -> dict:
+    """Keep original source obligations; standalone CPU coverage is outside this selection."""
+    if selected_scope(inputs) is None:
+        return requirement
+    result = copy.deepcopy(requirement)
+    for axis, key in (("host_lane", "required"), ("host_only", "families")):
+        result.setdefault(axis, {})[key] = []
+    return result

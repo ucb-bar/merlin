@@ -8,8 +8,8 @@ from xdsl.interpreters.arith import ArithFunctions
 from xdsl.interpreters.linalg import LinalgFunctions
 
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.lower.model.automatic_host import optimize_host_quantization, prepare_automatic_host
-from merlin.compiler.lower.model.quant_round_check import verify_quantization_rewrite
+from merlin.compiler.lower.host.automatic_host import optimize_host_quantization, prepare_automatic_host
+from merlin.compiler.lower.quant.readout import verify_quantization_rewrite
 from merlin.compiler.transforms.certificates import ir_text
 
 

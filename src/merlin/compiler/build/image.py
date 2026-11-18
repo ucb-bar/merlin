@@ -15,8 +15,10 @@ import struct
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
 
-from merlin.compiler.artifact import Artifact, Compilation, Deployment, digest
 from merlin.compiler.build.contextentry import CImageEntry
+from merlin.compiler.compilation import Artifact, Compilation, Deployment, digest
+
+# ---- image -------------------------------------------------------------------------------------
 
 
 def _json(value):

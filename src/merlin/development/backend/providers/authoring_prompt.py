@@ -1,5 +1,9 @@
 """Standing author instructions shared by the native Codex and OpenCode transports."""
 
+from __future__ import annotations
+
+# ---- authoring_prompt --------------------------------------------------------------------------
+
 COEVOLUTION_FEEDBACK_GUIDANCE = (
     "The performance objective is complete-call or complete-region elapsed cycles under a matched "
     "timing provider, inputs and scope. Lead performance comparisons and iteration summaries with "
@@ -78,7 +82,7 @@ def profile_authoring_prompt(*, continuation: bool = False) -> str | None:
     Counts, budgets, source availability and routing come from the selected sealed
     task and runtime guidance. None is inferred from historical experiment levels.
     """
-    from merlin.development.backend.author_profiles import current
+    from merlin.development.backend.authoring.profiles import current
 
     profile = current()
     if profile is None or profile.modern:
@@ -117,8 +121,10 @@ def authoring_prompt() -> str:
     if selected_profile_prompt is not None:
         return selected_profile_prompt
 
-    from merlin.development.backend import joint_control
-    from merlin.development.backend.full_compiler_workspace import selected as full_compiler_selected
+    from merlin.development.backend.authoring.library.compiler_workspace import (
+        selected as full_compiler_selected,
+    )
+    from merlin.development.backend.campaign import control as joint_control
 
     if full_compiler_selected() is not None:
         return _full_compiler_prompt(joint_control.selfcheck_routing_guidance() if joint_control.selected() else "")

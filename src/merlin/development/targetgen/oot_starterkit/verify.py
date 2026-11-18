@@ -23,6 +23,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# ---- verify ------------------------------------------------------------------------------------
+
 
 def verify_module(module) -> list[str]:
     """Run xDSL's native verifier on an xDSL ModuleOp (or parse MLIR text first). Returns problems

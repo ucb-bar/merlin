@@ -11,10 +11,11 @@ from dataclasses import dataclass, field
 from inspect import getsourcefile
 from pathlib import Path, PurePosixPath
 
-from merlin.compiler.artifact import Artifact, Compilation
-from merlin.compiler.backend.stateful import CContext, CRegionABI2, read_c_abi
-from merlin.compiler.backend.workspace import CWorkspaceABI
+from merlin.compiler.backend.c_abi import CContext, CRegionABI2, CWorkspaceABI, read_c_abi
+from merlin.compiler.compilation import Artifact, Compilation
 from merlin.compiler.ir.semantics import validator_identity
+
+# ---- contextentry ------------------------------------------------------------------------------
 
 
 def _json(value):

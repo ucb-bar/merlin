@@ -15,6 +15,8 @@ from pathlib import Path, PurePosixPath
 
 from merlin.development.backend.optimization.contracts import StageGateError
 
+# ---- container_policy --------------------------------------------------------------------------
+
 
 def _tree(path):
     path = Path(path)

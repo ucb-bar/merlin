@@ -8,7 +8,8 @@ from merlin.compiler.quantization.admission import (
     capture_recipe_candidates,
     validate_quantization_declarations,
 )
-from merlin.development.targetgen import readout_facet, software_spec
+from merlin.target.capabilities import readout_facet
+from merlin.target.spec import software as software_spec
 
 
 def test_mx_software_spec_keeps_three_formats_separate_and_epilogues_on_host():

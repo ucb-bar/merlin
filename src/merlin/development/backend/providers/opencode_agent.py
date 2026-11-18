@@ -33,12 +33,13 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.common import arrival_stamp as _AS  # the one arrival-time convention
+from merlin.development.backend.providers import agent_bridge as _BR  # noqa: E402 - preserve env observation order
+from merlin.development.backend.providers import execution as _AS  # the one arrival-time convention
 from merlin.development.backend.providers import model_tiers as _MT
 from merlin.development.backend.providers.authoring_prompt import authoring_prompt
 
-# opencode's provider id for Amazon Bedrock (the @ai-sdk/amazon-bedrock provider). Overridable via env for a
-# differently-registered provider. A model value that already carries a provider ("prov/model") is respected.
+# ---- opencode_agent ----------------------------------------------------------------------------
+
 _BEDROCK_PROVIDER = os.environ.get("OPENCODE_BEDROCK_PROVIDER", "amazon-bedrock")
 
 
@@ -121,39 +122,16 @@ def _parse_run_error(stdout: str) -> str | None:
     return None
 
 
-# A round is killed when the agent makes NO PROGRESS for this long, independently of the wall-clock
-# round timeout. Measured: a stalled agent held a 4h round open having emitted nothing for 28 min.
-#
-# The threshold is generous ON PURPOSE. Progress is now bytes OR CPU, so anything the agent does locally
-# -- building, self-checking, writing files -- keeps the round alive. The only thing left for this timer
-# to catch is a model call that is genuinely wedged, and while waiting on one the process burns no CPU and
-# emits nothing, which is indistinguishable from a long turn. Raising reasoning effort makes long turns
-# the normal case, so a tight bound here would kill working rounds; the wall-clock round timeout still
-# bounds the damage either way. Overridable via MERLIN_OPENCODE_STALL_S; 0 disables the detector.
 _STALL_SECONDS = int(os.environ.get("MERLIN_OPENCODE_STALL_S", "1800"))
+
 _POLL_SECONDS = 10
-#: How often the capture file is tailed for ARRIVAL STAMPS. Separate from _POLL_SECONDS on purpose: the
-#: stall/CPU bookkeeping wants a long window (a 1 s CPU delta is noise), while an activity-share plot wants
-#: the finest honest resolution we can pay for. Every line seen in one drain shares that drain's timestamp,
-#: so a stamp means "arrived within the last _TAIL_POLL_SECONDS" -- coarse, but MEASURED, not interpolated.
+
 _TAIL_POLL_SECONDS = 1.0
-# Progress must clear this much CPU to count. opencode block-buffers stdout when it is redirected to a
-# file, so a quiet round can do real work while the byte count stands still (measured: a GLM-5 round wrote
-# three source files and ran selfchecks while its transcript sat at 109 bytes for 15 min). CPU is the
-# signal that separates that from a hang: a process blocked on a socket burns none, a working agent burns
-# plenty. Small enough that idle poll jitter cannot reach it, large enough that real work always does.
+
 _CPU_EPSILON_S = 1.0
+
 _CLK_TCK = os.sysconf("SC_CLK_TCK")
 
-# A WEDGED process defeats both signals above. MEASURED (GLM-5 relaunch, 2026-08-19): 99 tool calls, then
-# 95 minutes with no new session part, two tool calls left forever in `running`, and **zero open sockets**
-# -- while still burning 0.49 s of CPU per minute across 42 idle threads. That trickle clears
-# _CPU_EPSILON_S at every poll, so the detector re-armed forever and the round burned its whole budget.
-#
-# Zero sockets is the fact that separates it: an agent between provider calls is either holding a
-# connection or doing local work, and local work is not free. So a tree with NO sockets counts as making
-# progress only if it is genuinely busy -- above a fraction of one core. 0.008 cores (the wedge) is not;
-# a compile or a simulator run is far above.
 _BUSY_CPU_FRACTION = float(os.environ.get("MERLIN_OPENCODE_BUSY_CPU", "0.10"))
 
 
@@ -243,7 +221,7 @@ def _capture(
 
     ``stamps``, when given, is FILLED with one ISO-8601 UTC arrival time per stdout line, in order, as the
     lines appear in the capture file -- the same ``arrived_at`` convention :mod:`codex_agent` and
-    :mod:`merlin.common.arrival_stamp` use. opencode's stream cannot be piped (see above), so the file is
+    :mod:`merlin.development.backend.providers.execution` use. opencode's stream cannot be piped (see above), so the file is
     tailed instead of read; the resolution is therefore ``_TAIL_POLL_SECONDS``, not per-line."""
     tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".out", prefix="oc_out_", delete=False)
     tmp.close()
@@ -614,28 +592,6 @@ def opencode_runtime_binds(data_home: Path, config_path: Path | None = None) -> 
     return binds
 
 
-# ---------------------------------------------------------------------------------------------------
-# Context-window budgeting.
-#
-# MEASURED (gemmini arm-4, 2026-08-19): opencode asks the provider for its registry ``limit.output``
-# tokens of completion on EVERY step. For nemotron-super-3-120b that registry value is 32_000 against a
-# 131_072 window, so the largest prompt the session can ever send is 99_072 tokens -- 24% of the window
-# is reserved for output that never arrives (the measured completion is 200-400 tokens/step). The round
-# then dies on a provider 400 ("maximum context length is 131072 ... you requested 32000 output tokens
-# and your prompt contains at least 99073 input tokens") rather than compacting, because opencode's
-# auto-compaction threshold is computed against ``limit.context`` and not against the usable
-# ``context - output`` budget. Two rounds of the nemotron campaign and six steps of its smoke died here.
-#
-# Both are configuration, not code: declare a realistic per-model ``limit.output``, and give compaction
-# an explicit ``reserved`` buffer at least as large as that output ask so it triggers BEFORE the
-# provider refuses. ``prune`` additionally drops superseded tool output, which is where the context
-# actually goes (a full 20-capsule self-check returns 20-50 KB and is re-sent every subsequent step).
-#
-# Values are per-model overrides keyed by the BARE provider model id. A model absent here keeps
-# opencode's registry defaults -- this never invents a window, it only stops us reserving one we do not
-# use. ``OPENCODE_MAX_OUTPUT_TOKENS`` overrides the output ask for a one-off.
-from merlin.development.backend.providers import agent_bridge as _BR  # noqa: E402 - preserve env observation order
-
 _DEFAULT_MAX_OUTPUT = int(os.environ.get("OPENCODE_MAX_OUTPUT_TOKENS", str(_BR.DEFAULT_MAX_OUTPUT)))
 
 
@@ -657,10 +613,6 @@ def _window_config(mid: str) -> tuple[dict, dict]:
     return {prov: {"models": {bare: {"limit": {"context": ctx, "output": out}}}}}, compaction
 
 
-# Context windows MEASURED from the provider's own 400 response ("This model's maximum context length is
-# N tokens"), not from a vendor page. Owned by agent_bridge so the opencode, codex and claude paths all
-# budget against the SAME number -- a per-driver copy is how one arm ends up with a different effective
-# window than another arm of the same campaign.
 _CONTEXT_WINDOWS: dict[str, int] = _BR.CONTEXT_WINDOWS
 
 

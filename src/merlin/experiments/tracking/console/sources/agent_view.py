@@ -24,8 +24,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ...progress_health import policy_refusal
-from ..io import clean, epoch, mtime, num
+from merlin.experiments.tracking.console.snapshot import clean, epoch, mtime, num
+from merlin.experiments.tracking.terminal.progress_alerts import policy_refusal
 
 #: Grade files examined in the operator history and self-check responses opened per refresh.
 MAX_GRADES = 4096

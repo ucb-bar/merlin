@@ -1,10 +1,10 @@
 """TargetGen command-line interface.
 
-    python -m merlin.development.targetgen.cli build \\
-        --target-name toy_npu \\
-        --source-dir examples/targets/toy_npu/target/docs \\
-        --examples-dir examples/targets/toy_npu/target/examples \\
-        --out out/build/generated/merlin-target-toy-npu \\
+    python -m merlin.development.targetgen.cli build \
+        --target-name toy_npu \
+        --source-dir examples/targets/toy_npu/target/docs \
+        --examples-dir examples/targets/toy_npu/target/examples \
+        --out out/build/generated/merlin-target-toy-npu \
         --emit xdsl,mlir,zephyr,llvm-plan,runtime
 
     python -m merlin.development.targetgen.cli inspect --target out/build/generated/merlin-target-toy-npu
@@ -21,12 +21,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-from merlin.compiler.frontend.native import _load_native_request
-from merlin.development.targetgen import pipeline
-from merlin.development.targetgen.dialect_source_scope import audit_dialect_source_scope
-from merlin.development.targetgen.isa_census import derive_source_census
-from merlin.development.targetgen.isa_mode_audit import audit_mode_inventory
-from merlin.development.targetgen.validate import check_generated_target
+from merlin.compiler.frontend.staged import _load_native_request
+from merlin.development.targetgen.checks.isa_census import derive_source_census
+from merlin.development.targetgen.checks.isa_modes import audit_dialect_source_scope, audit_mode_inventory
+from merlin.development.targetgen.generation import pipeline
+from merlin.development.targetgen.generation.generated_target import check_generated_target
+
+# ---- cli ---------------------------------------------------------------------------------------
 
 
 def _cmd_build(args: argparse.Namespace) -> int:
@@ -215,12 +216,12 @@ def _cmd_stage_capture(args: argparse.Namespace) -> int:
 
 
 def _cmd_native_build(args: argparse.Namespace) -> int:
-    from merlin.compiler.semantic.snapshot import (
+    from merlin.compiler.semantic.target_binding import (
         NativeTargetProfile,
         build_native_snapshot,
+        load_native_target_binding,
         packaged_egg_bridge_path,
     )
-    from merlin.compiler.semantic.target_binding import load_native_target_binding
 
     try:
         if bool(args.profile) == bool(args.support):
@@ -250,7 +251,7 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
 
 
 def _load_native_search_limits(path: str | None):
-    from merlin.compiler.semantic.search import SearchLimits
+    from merlin.compiler.semantic.search.exploration import SearchLimits
 
     return SearchLimits.from_record(json.loads(Path(path).read_text())) if path else SearchLimits()
 
@@ -266,7 +267,7 @@ def _load_native_select_abi(path: str | None):
     the caller already owns, so no selected value may be placed there. A
     malformed row is refused rather than dropped.
     """
-    from merlin.compiler.semantic.allocate import Reservation
+    from merlin.compiler.semantic.search.allocation import Reservation
 
     abi = json.loads(Path(path).read_text()) if path else {"fixed_inputs": {}, "fixed_outputs": None}
     if (
@@ -284,12 +285,10 @@ def _load_native_select_abi(path: str | None):
 
 
 def _cmd_native_select(args: argparse.Namespace) -> int:
-    from merlin.compiler.frontend.layouts import bind_physical_layouts
-    from merlin.compiler.frontend.native import load_selected_request
-    from merlin.compiler.frontend.tiling import prepare_ordered_request
-    from merlin.compiler.semantic.linalg_bridge import LinalgBridgeError
-    from merlin.compiler.semantic.search import SearchAblations
-    from merlin.compiler.semantic.snapshot import open_native_snapshot
+    from merlin.compiler.frontend.staged import bind_physical_layouts, load_selected_request, prepare_ordered_request
+    from merlin.compiler.semantic.linalg.linalg_bridge import LinalgBridgeError
+    from merlin.compiler.semantic.search.exploration import SearchAblations
+    from merlin.compiler.semantic.target_binding import open_native_snapshot
 
     output = Path(args.out)
     try:
@@ -436,7 +435,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
                 _write_status(Path(args.status_file), report)
             print(json.dumps(report, sort_keys=True))
             return 2
-        from merlin.development.targetgen.native_application import compile_command
+        from merlin.development.targetgen.execution.native.native_application import compile_command
 
         return compile_command(args, write_status=_write_status, search_limits=_load_native_search_limits)
     from merlin.compiler.build.native import compile_report
@@ -450,7 +449,7 @@ def _cmd_native_compile(args: argparse.Namespace) -> int:
 
 def _cmd_native_bridge_graph(args: argparse.Namespace) -> int:
     """Publish the checked graph boundary through the ordinary builder."""
-    from merlin.compiler.build.graphbridge import publish_graph_bridge
+    from merlin.compiler.build.host_bridge import publish_graph_bridge
 
     status, response = publish_graph_bridge(
         args.linalg,
@@ -480,10 +479,10 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
             )
         )
     ):
-        from merlin.development.targetgen.native_application_cli import verify_command
+        from merlin.development.targetgen.execution.native.native_application_cli import verify_command
 
         return verify_command(args)
-    from merlin.verification.native import verify_report
+    from merlin.verification.references.saved_model import verify_report
 
     report, safe_status = verify_report(args, load_request=_load_native_request)
     if safe_status:
@@ -565,7 +564,9 @@ def build_parser() -> argparse.ArgumentParser:
     stage.add_argument("--precision-policy", help="explicit source-bound numerical preparation policy")
     stage.set_defaults(func=_cmd_stage_capture)
 
-    from merlin.development.targetgen.native_codegen_cli import add_arguments as add_native_arguments
+    from merlin.development.targetgen.execution.native.native_codegen_cli import (
+        add_arguments as add_native_arguments,
+    )
 
     add_native_arguments(
         sub,

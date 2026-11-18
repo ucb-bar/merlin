@@ -184,7 +184,8 @@ def render(case, readout, *, seed):
 
 
 def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=None, source_integer_proof=None):
-    from merlin.development.testgen import public_programs, workload_roster
+    from merlin.development.testgen.performance import workload_roster
+    from merlin.development.testgen.public_sources import programs as public_programs
 
     document = yaml.safe_load(Path(profile).read_bytes())
     if (
@@ -207,7 +208,9 @@ def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=
         source_mode="native_integer_v1",
     )
     if source_integer_proof is not None:
-        from merlin.development.testgen.connected_integer_qualification import AFFINE_COPY_SELECTION
+        from merlin.development.testgen.sealed_capture.connected_integer_qualification import (
+            AFFINE_COPY_SELECTION,
+        )
 
         if source_integer_proof != AFFINE_COPY_SELECTION:
             raise ValueError("unsupported prospective public source arithmetic proof selection")
@@ -294,7 +297,7 @@ def prepare(profile, *, descriptor, base_roster, software_spec, output, readout=
             "ordinary HW/SW derivation, writer and performance generation admission",
             "matched external baseline reference, timing boundary and hardware",
         ],
-        "capture_api": "merlin.development.testgen.capture_selection.select",
+        "capture_api": "merlin.development.testgen.sealed_capture.selection.select",
         "capture_kwargs": {"dtype": "int8", "recipe": None, "worker_options": {"source_mode": "native_integer_v1"}},
     }
     for row in rows:
@@ -319,7 +322,7 @@ def select_capture(
     bwrap_binary=None,
 ):
     """Opt-in stock preselection only; never issue a model/target execution."""
-    from merlin.development.testgen.capture_selection import select
+    from merlin.development.testgen.sealed_capture.selection import select
 
     def reopen():
         if pin(preparation)["sha256"] != expected_sha256:

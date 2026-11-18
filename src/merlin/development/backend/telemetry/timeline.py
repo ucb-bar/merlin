@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Where an agentic run's WALL TIME went — think/generate vs tool-and-wait — derived from the
 transcript's own arrival stamps, for ANY driver.
 
@@ -39,19 +38,19 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
-#: Content-block / item vocabularies, matched EXACTLY (never substring-matched, never regex).
+# ---- timeline ----------------------------------------------------------------------------------
+
 _BLOCK_TOOL_USE = "tool_use"
+
 _BLOCK_TOOL_RESULT = "tool_result"
-#: Item types that denote a tool call in a raw `codex exec --json` stream. Adding a driver is adding a
-#: name here, not editing the timeline algebra.
+
 _RAW_TOOL_ITEMS = frozenset({"command_execution", "file_change", "mcp_tool_call", "web_search"})
+
 _RAW_ITEM_STARTED = "item.started"
+
 _RAW_ITEM_COMPLETED = "item.completed"
 
 OPEN, CLOSE = "open", "close"
-
-
-# --- stamps ---------------------------------------------------------------------------------------
 
 
 def _stamp(value) -> float | None:
@@ -71,9 +70,6 @@ def _event_time(evt: dict) -> float | None:
         if t is not None:
             return t
     return None
-
-
-# --- structural extraction ------------------------------------------------------------------------
 
 
 def _json_chars(value) -> int:
@@ -158,9 +154,6 @@ def read_events(paths) -> list[dict]:
             if isinstance(obj, dict):
                 evts.append(obj)
     return evts
-
-
-# --- timeline algebra -----------------------------------------------------------------------------
 
 
 def _union_seconds(intervals: list[tuple[float, float]]) -> float:

@@ -21,7 +21,8 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ..io import clean, epoch, is_file, mtime, num, obj, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, epoch, is_file, mtime, num, obj, scan_dir
+
 from .insight_common import ago, chain, duration, line, log_scan, panel, row, table
 
 UNITS = (("ms", 0.001), ("us", 1e-6), ("min", 60.0), ("d", 86400.0), ("h", 3600.0), ("s", 1.0))

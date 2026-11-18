@@ -77,7 +77,7 @@ checks every int8 input value at a non-power-of-two scale; each has one result b
 qualifier currently accepts one exact FP32 result ABI. Both exercise int8 inputs
 and the PyTorch `quantized_decomposed.dequantize_per_tensor` frontend path.
 Capture it with `--dtype int8 --already-quantized`; the saved MLIR and golden can
-then be checked through `merlin.experiments.model_qualification --native-host-only`.
+then be checked through `merlin.experiments.inspection.qualification_workflow --native-host-only`.
 That exact-input native-host result helps review a host fallback, but is not a
 generated backend generation capsule, a sealed source capture, or evidence of accelerator
 execution or every scale and input value.
@@ -95,7 +95,7 @@ Run the existing worker using an isolated model2MLIR interpreter with frontend
 tracing enabled by its public API. No target code is needed in these loaders:
 
 ```bash
-"$CAPTURE_PYTHON" src/merlin/development/targetgen/_m2m_capture_worker.py \
+"$CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/causal_decoder/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \

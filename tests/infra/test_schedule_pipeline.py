@@ -5,13 +5,14 @@ import pytest
 from corefixtures.private_copy_elimination import ADAPTER, SPACES, command, fixture, project
 
 from merlin.compiler.kernel_ir.ir import evaluate
-from merlin.compiler.schedule.program_limits import (
+from merlin.compiler.schedule.pipeline.contracts import ScheduleBudgets, ScheduleEncoding
+from merlin.compiler.schedule.pipeline.program_limits import (
     AddressWindow,
     DecodedInstruction,
     ProgramDecoder,
     ProgramLimits,
 )
-from merlin.compiler.schedule.schedule_pipeline import ScheduleBudgets, ScheduleEncoding, compile_schedule
+from merlin.compiler.schedule.pipeline.stages import compile_schedule
 
 
 def encoding(word_format="<BBBQQQ"):

@@ -42,3 +42,10 @@ source demand/interface correspondence. Neither imports corpus orchestration.
 `loaders` owns public deterministic templates and `spec` captures authored
 reference programs. Capsule construction and workload declarations live under
 `merlin.experiments.corpus`, with unchanged source and numerical obligations.
+
+`contraction_formats.py` also owns pinned-file snapshots: it reopens explicitly selected regular
+files and creates exclusive owner-private streamed snapshots with exact source/output hashes.
+Callers own protected parent directories, resource locking, complete input membership and
+actual consumer correspondence. A file snapshot is never a compiler, hardware, runtime,
+numerical or timing qualification. Failed attempts are retained by the caller and return no
+snapshot selection; mode bits alone do not prove immutability.

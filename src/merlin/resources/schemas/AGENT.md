@@ -7,7 +7,7 @@ workstreams coordinate through these schemas, not prose. Hand-authored (cannot b
 
 ## What lives here
 - `*.schema.yaml`, each with title, purpose, required top-level fields, and an example.
-- Loaded via `merlin.common.schemas`. Presence is pinned by `check_structure.py` `REQUIRED_SCHEMAS`.
+- Loaded via `merlin.common.record_formats`. Presence is pinned by `check_structure.py` `REQUIRED_SCHEMAS`.
 - Some are target-family-flavored (`rvv_package_manifest`, `rvv_result`) — that's the reusable schema
   for that family, not a leak.
 
@@ -28,7 +28,7 @@ Two legitimate kinds live here, and **every schema must be one of them** — a s
 dead and gets retired (as `runtime_abi` was, to `docs/guides/08-running.md`, for having zero code
 reference):
 - **Validators** — instance-carrying artifacts that code builds + runs through
-  `merlin.common.schemas.validate_or_raise` at the producer (most schemas: the plan family,
+  `merlin.common.record_formats.validate_or_raise` at the producer (most schemas: the plan family,
   `command_buffer`, `workload_region`, `evidence_report`, `dse_axis_triage`, …).
 - **Vocabulary / reference specs** — the canonical structured contract that *code mirrors* rather than
   instance-validates (`metrics` ↔ `KNOWN_METRICS`/`COMMON_METRIC_NAMES` + generated C views; `trace`;

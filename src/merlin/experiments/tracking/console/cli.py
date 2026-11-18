@@ -9,9 +9,12 @@ import sys
 import time
 from argparse import Namespace
 
-from . import launch, placement, plain
-from .discovery import Discovery, default_selection
-from .model import REFRESH_BUDGET, Collector
+from merlin.experiments.tracking.console import discovery as placement
+from merlin.experiments.tracking.console import launch, plain
+from merlin.experiments.tracking.console.discovery import Discovery, default_selection
+from merlin.experiments.tracking.console.snapshot import REFRESH_BUDGET, Collector
+
+# ---- cli ---------------------------------------------------------------------------------------
 
 SLOW_INTERVAL_S = 8.0
 
@@ -93,4 +96,6 @@ def run(args: Namespace) -> int:
         return 0
 
 
-__all__ = ["run"]
+__all__ = [
+    "run",
+]

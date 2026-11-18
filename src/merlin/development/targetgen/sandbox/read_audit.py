@@ -46,9 +46,11 @@ from pathlib import Path
 
 from merlin.common.access import audit_token_in
 from merlin.common.paths import repo_root
-from merlin.development.backend.providers import codex_agent as _codex
+from merlin.development.backend.providers import codex_launch_codex_agent as _codex
 from merlin.development.targetgen.sandbox.answer_surfaces import answer_surfaces, audit_hit_is_violation, audit_tokens
-from merlin.development.targetgen.target_experiment import TargetExperiment
+from merlin.target.registry.experiment_descriptor import TargetExperiment
+
+# ---- read_audit --------------------------------------------------------------------------------
 
 #: Hit kinds meaning "a withheld path was NAMED but we cannot tell whether bytes came back". They are
 #: neither a clearance nor a finding, and they drive UNKNOWN.
@@ -516,7 +518,7 @@ def audit_event_logs(
 
     allowed: list[Path] = []
     if bundle:
-        from merlin.development.targetgen.sandbox.bwrap import resolve_grant
+        from merlin.development.targetgen.sandbox.grants import resolve_grant
 
         for entry in bundle.get("allowed") or []:
             if isinstance(entry, Mapping) and isinstance(entry.get("path"), str):

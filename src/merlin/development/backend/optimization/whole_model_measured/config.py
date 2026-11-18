@@ -33,25 +33,34 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from merlin.analysis.perf import whole_model_builder
-from merlin.development.backend.optimization.whole_model_measured import capabilities as CAP
-from merlin.development.backend.optimization.whole_model_measured import gates as G
-from merlin.development.backend.optimization.whole_model_measured import registry as R
-from merlin.development.backend.optimization.whole_model_measured.identity import builder_identity, store_root_for
-from merlin.development.backend.optimization.whole_model_measured.objective import WholeModelObjective
-from merlin.development.backend.optimization.whole_model_measured.service import MeasurementService
-from merlin.development.testgen import instruction_roles as IR
+from merlin.analysis.whole_model.build import builder as whole_model_builder
+from merlin.development.backend.optimization.whole_model_measured.measurement import capabilities as CAP
+from merlin.development.backend.optimization.whole_model_measured.measurement import registry as R
+from merlin.development.backend.optimization.whole_model_measured.measurement.identity import (
+    builder_identity,
+    store_root_for,
+)
+from merlin.development.backend.optimization.whole_model_measured.measurement.service import (
+    MeasurementService,
+)
+from merlin.development.backend.optimization.whole_model_measured.scoring import gates as G
+from merlin.development.backend.optimization.whole_model_measured.scoring.objective import WholeModelObjective
+from merlin.development.testgen.performance import scope as IR
+
+# ---- config ------------------------------------------------------------------------------------
 
 CONFIG_SCHEMA = "merlin_whole_model_objective_config_v1"
+
 DERIVED_MECHANISMS = "derive_from_capture"
-#: The production builder (the core's service builder over the whole-model build); a config may name
-#: another (a test double, a second target's).  Imported, not only named, so the dependency is real.
+
 DEFAULT_BUILDER = f"{whole_model_builder.__name__}:{whole_model_builder.build.__name__}"
+
 DEFAULT_REFERENCE_BUILDER = f"{whole_model_builder.__name__}:{whole_model_builder.build_reference.__name__}"
+
 CANDIDATE_SECTIONS = ("screen", "certifier")
-#: The sealed Phase 0 instruction policy, carried by value in a config that declares roles.
+
 SEALED_POLICY = "instruction_policy"
-#: Optional config key naming the sealed Phase 0 corpus manifest the policy is read from.
+
 SEALED_POLICY_MANIFEST = "phase0_manifest"
 
 
@@ -113,7 +122,7 @@ def sealed_policy_source(document: Mapping[str, Any], *, target: str, manifest: 
         return Path(manifest)
     if document.get(SEALED_POLICY_MANIFEST):
         return Path(str(document[SEALED_POLICY_MANIFEST]))
-    from merlin.development.targetgen.target_experiment import descriptor_for, load_target_experiment
+    from merlin.target.registry.descriptor_loading import descriptor_for, load_target_experiment
 
     descriptor = document.get("descriptor") or descriptor_for(target)
     if descriptor is None:
@@ -185,8 +194,6 @@ def with_policy(document: Mapping[str, Any], roles: list[str]) -> dict[str, Any]
     return out
 
 
-#: The operator's opt-out of fused regions (``fused_regions: false`` in the objective config, or the
-#: CLI's ``--no-fused-regions``); a section's own ``build_options.allow_regions: false`` opts it out too.
 FUSED_REGIONS = "fused_regions"
 
 
@@ -219,7 +226,7 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
     if out.get(FUSED_REGIONS) not in (None, True, False):
         raise ConfigError(f"{FUSED_REGIONS} is true or false, not {out.get(FUSED_REGIONS)!r}")
 
-    from merlin.analysis.perf.whole_model_open import is_open_model
+    from merlin.analysis.whole_model.build.open_program import is_open_model
 
     decisions, regions = {}, {}
     sections = [(name, out.get(name)) for name in CANDIDATE_SECTIONS]
@@ -237,7 +244,7 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
             open_model = is_open_model(capsule, target)
         elif has_capsule:
             try:
-                from merlin.analysis.perf.whole_model_capsule import load_model_capsule
+                from merlin.analysis.whole_model.build.inputs import load_model_capsule
 
                 load_model_capsule(capsule)  # a directory that is not a whole model capsule is refused first
                 open_model = is_open_model(capsule, target)
@@ -278,23 +285,20 @@ def prepare_document(document: Mapping[str, Any], *, target: str) -> dict[str, A
             }
     if policy == DERIVED_MECHANISMS:
         out["mechanism_derivation"] = {
-            "source": "merlin.analysis.perf.whole_model_open.is_open_model",
+            "source": "merlin.analysis.whole_model.build.open_program.is_open_model",
             "sections": decisions,
         }
     out["fused_region_decision"] = {"default": "allowed", "opted_out": opted_out, "sections": regions}
     return out
 
 
-#: The objective config's exactness contract: a path to the target's reviewed contract when authored,
-#: carried BY VALUE once a run is prepared (:func:`seal_exactness`), so a run is graded under the contract
-#: it was launched with however the file changes afterwards.
 EXACTNESS = "exactness"
 
 
 def exactness_contract(document: Mapping[str, Any], *, target: str):
-    """The :class:`merlin.analysis.perf.exactness.Contract` a config declares: by value, by path, or the default
+    """The :class:`merlin.analysis.whole_model.grading.exactness.Contract` a config declares: by value, by path, or the default
     (every form exact) when it declares none.  A declared contract that cannot be read is an error."""
-    from merlin.analysis.perf import exactness as EX
+    from merlin.analysis.whole_model.grading import exactness as EX
 
     declared = document.get(EXACTNESS)
     try:
@@ -429,10 +433,10 @@ __all__ = [
     "check_policy",
     "declared_roles",
     "exactness_contract",
-    "seal_exactness",
     "from_config",
     "read_sealed_policy",
     "resolve_machine",
+    "seal_exactness",
     "seal_policy",
     "sealed_policy_source",
     "store_roots",

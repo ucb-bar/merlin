@@ -7,7 +7,7 @@ scripts. Routing is by compute-unit KIND / sim FAMILY (never a target name):
   * :mod:`.answer_surfaces` — the DERIVED answer-surface mask set (goldens/model weights/hidden/prior/
     oracle/grader/memory) + the single declared oracle/grader registry + the coverage guard's audit tokens.
   * :mod:`.toolchain`       — the legit tools bound back, universal + the descriptor's ``sim_via`` family,
-    cross-checked by ``kind`` via :mod:`merlin.development.targetgen.families`.
+    cross-checked by ``kind`` via :mod:`merlin.target.capabilities.families`.
   * :mod:`.bwrap`           — deny-by-default argv assembly + the hermetic mount-replay coverage proof.
   * :mod:`.preflight`       — whether the sandbox can actually be BUILT on this host, as a named condition.
   * :mod:`.cleanroom`       — prevention WITHOUT a kernel: a workspace in which the answer key is absent.
@@ -30,7 +30,8 @@ from pathlib import Path
 
 import yaml
 
-from merlin.development.targetgen.sandbox import bwrap, host_surfaces, toolchain
+from merlin.development.targetgen.sandbox import grants as bwrap
+from merlin.development.targetgen.sandbox import host_surfaces, toolchain
 from merlin.development.targetgen.sandbox.answer_surfaces import (
     AUDIT_ADVISORY_KINDS,
     AUDIT_VIOLATION_KINDS,
@@ -49,7 +50,6 @@ from merlin.development.targetgen.sandbox.answer_surfaces import (
     require_declarations_in_force,
     weight_files,
 )
-from merlin.development.targetgen.sandbox.bwrap import snapshot_input_paths
 from merlin.development.targetgen.sandbox.cleanroom import (
     CleanRoom,
     CleanRoomRefused,
@@ -57,6 +57,7 @@ from merlin.development.targetgen.sandbox.cleanroom import (
     build_clean_room,
     verify_clean_room,
 )
+from merlin.development.targetgen.sandbox.grants import snapshot_input_paths
 from merlin.development.targetgen.sandbox.preflight import (
     SANDBOX_ABSENT,
     SANDBOX_INOPERABLE,
@@ -77,7 +78,8 @@ from merlin.development.targetgen.sandbox.read_audit import (
     audit_run,
 )
 from merlin.development.targetgen.sandbox.toolchain import ToolProbe, required_tool_probes
-from merlin.development.targetgen.target_experiment import TargetExperiment, load_target_experiment
+from merlin.target.registry.descriptor_loading import load_target_experiment
+from merlin.target.registry.experiment_descriptor import TargetExperiment
 
 __all__ = [
     "Sandbox",
@@ -134,10 +136,10 @@ def resolve_kind(te: TargetExperiment) -> str | None:
     names (some targets register their contract under a ``*_oot`` id the roster registry
     does not yet resolve). Returns None if no contract is reachable (the sandbox still builds — routing
     then rests on ``sim_via`` alone, and the isolation test records 'kind: unknown')."""
-    from merlin.development.targetgen.families import family_profile  # noqa: F401 — ensures kind is a known family
+    from merlin.target.capabilities.families import family_profile  # noqa: F401 — ensures kind is a known family
 
     try:
-        from merlin.development.targetgen.target_experiment import load_capability_manifest
+        from merlin.target.registry.experiment_descriptor import load_capability_manifest
 
         return load_capability_manifest(te.target).kind
     except Exception:  # noqa: BLE001 — registry miss / no contract; fall through to the declared contract
@@ -148,8 +150,8 @@ def resolve_kind(te: TargetExperiment) -> str | None:
         if not contract_rel:
             return None
         from merlin.common.paths import repo_root
-        from merlin.development.targetgen import compute_units
-        from merlin.development.targetgen.target_experiment import _primary_kind
+        from merlin.target.capabilities import compute_units
+        from merlin.target.registry.experiment_descriptor import _primary_kind
 
         contract = yaml.safe_load((repo_root() / contract_rel).read_text()) or {}
         units = compute_units.compute_units(contract)
@@ -176,7 +178,7 @@ class Sandbox:
         return bwrap.full_argv(self.te, self.ws, self.bundle, _policy_test_live_inputs=self._policy_test_live_inputs)
 
     def env(self) -> str:
-        from merlin.development.backend import author_toolchain
+        from merlin.development.backend.authoring import author_toolchain
 
         return author_toolchain.sandbox_env(self.te, self.ws, bundle=self.bundle)
 
@@ -219,7 +221,7 @@ def build_sandbox(
     """Build the sandbox for a target from its descriptor (path or loaded ``TargetExperiment``) + an
     optional arm bundle. This is the single seam the experiment scripts + the CI isolation test call."""
     te = descriptor if isinstance(descriptor, TargetExperiment) else load_target_experiment(descriptor)
-    from merlin.development.backend import author_toolchain
+    from merlin.development.backend.authoring import author_toolchain
 
     return Sandbox(
         te=te,

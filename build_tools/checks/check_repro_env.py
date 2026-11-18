@@ -110,7 +110,7 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
     # variable names derive from the board name, so a new board needs a catalog entry, not an edit here.
     try:
         from merlin.common.paths import target_env_name
-        from merlin.runtime import boards as board_catalog
+        from merlin.runtime.boards import catalog as board_catalog
 
         for board_name, board in board_catalog.BOARDS.items():
             if board.flow == board_catalog.FLOW_LINUX:
@@ -123,7 +123,7 @@ def _build_capabilities() -> tuple[dict[str, tuple[str, str, list[str]]], dict[s
         caps["linux_boards"] = ("WS-A/D", "flow: linux boards of the selected board catalog", ["MERLIN_BOARD_CATALOG"])
         derived["linux_boards"] = (detail, _CATALOG_ERROR)
     try:
-        from merlin.development.targetgen import target_registry as tr
+        from merlin.target.registry import identity as tr
 
         names = tr.all_targets()
     except Exception:
@@ -156,7 +156,7 @@ def _backend_probe(target: str, backend: str) -> tuple[str, str]:
         return ("error", target)
     try:
         if backend == _REMOTE_LINUX:
-            rl = importlib.import_module("merlin.runtime.remote_linux")
+            rl = importlib.import_module("merlin.runtime.backends.linux.remote_session")
             board = rl.resolve_board(target)
             host = rl.profile(board).host
             return (
@@ -164,19 +164,19 @@ def _backend_probe(target: str, backend: str) -> tuple[str, str]:
                 host or f"{rl.env_name(board, 'HOST')} unset",
             )
         if backend == "simulator":
-            return ("available", "pure-Python model (merlin.runtime.simulator)")
+            return ("available", "pure-Python model (merlin.runtime.engine.simulator)")
         if backend == "vcs":
-            ho = importlib.import_module("merlin.development.targetgen.heavy_oracles")
+            ho = importlib.import_module("merlin.development.targetgen.oracles.heavy_oracles")
             return ("available" if ho.vcs_available(target) else "unavailable", "")
         if backend == "zephyr":
-            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            zm = importlib.import_module("merlin.runtime.backends.zephyr.application")
             return ("available" if zm.available() else "unavailable", "")
         if backend == "baremetal":
-            sp = importlib.import_module("merlin.runtime.backends.spike")
+            sp = importlib.import_module("merlin_rvv.src.rvv.runtime.spike")
             return ("available" if sp.available() else "unavailable", "rv64gcv spike (baremetal RVV)")
         if backend == "verilator" or backend.startswith("spike_"):
             sim = "verilator" if backend == "verilator" else "spike"
-            base = importlib.import_module("merlin.runtime.backends.base")
+            base = importlib.import_module("merlin.runtime.backends.registry")
             if target not in base.list_backends():
                 return ("unavailable", f"no kernel backend registered for target '{target}'")
             mod = base.get_backend(target)
@@ -194,24 +194,24 @@ def _probe(key: str) -> tuple[str, str]:
     """Return (status, detail) for a capability. status in {available, unavailable, error}."""
     try:
         if key == "xdsl":
-            m = importlib.import_module("merlin.compiler.dialects._common")
+            m = importlib.import_module("merlin.compiler.dialects.xdsl_context")
             return ("available" if getattr(m, "HAS_XDSL", False) else "unavailable", "")
         if key == "llvm_m2m_toolchain":
             tc = importlib.import_module("merlin.compiler.lower.model.toolchain")
             return ("available" if tc.available() else "unavailable", "")
         if key == "spike_rv64gcv":
-            sp = importlib.import_module("merlin.runtime.backends.spike")
+            sp = importlib.import_module("merlin_rvv.src.rvv.runtime.spike")
             return ("available" if sp.available() else "unavailable", "")
         if key == "firesim":
-            ho = importlib.import_module("merlin.development.targetgen.heavy_oracles")
+            ho = importlib.import_module("merlin.development.targetgen.oracles.heavy_oracles")
             return ("available" if ho.firesim_queue_alive() else "unavailable", "")
         if key == "zephyr_spike":
-            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            zm = importlib.import_module("merlin.runtime.backends.zephyr.application")
             return ("available" if zm.available() else "unavailable", "")
         if key == "zephyr_multicore":
             # Same toolchain as zephyr_spike plus the in-repo OpenMP shim the multicore image
             # links; spike -pN provides V on every hart, so no extra simulator is needed.
-            zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
+            zm = importlib.import_module("merlin.runtime.backends.zephyr.application")
             paths_mod = importlib.import_module("merlin.common.paths")
             shim = paths_mod.runtime_dir() / "c" / "libomp_zephyr.c"
             if not shim.is_file():
@@ -227,11 +227,11 @@ def _probe(key: str) -> tuple[str, str]:
         if key == "chia":
             # Import-only probe in the selected environment: a Python executable alone
             # does not establish Chia compatibility. Never initialize Ray here.
-            from merlin.evaluation.harness.chia_bridge import chia_python
+            from merlin.evaluation.harness.chia import chia_python
 
             chia_py = chia_python()
             probe = subprocess.run(
-                [chia_py, "-I", "-c", "from merlin.evaluation.harness.chia_bridge import require_chia; require_chia()"],
+                [chia_py, "-I", "-c", "from merlin.evaluation.harness.chia import require_chia; require_chia()"],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -265,7 +265,7 @@ def _interpreters() -> dict[str, str]:
     """Report the three isolated interpreters the reproduction flow keeps separate."""
     out: dict[str, str] = {}
     try:
-        from merlin.evaluation.harness.chia_bridge import chia_python, driver_python
+        from merlin.evaluation.harness.chia import chia_python, driver_python
 
         for label, resolve in (
             ("driver (MERLIN_EXPERIMENT_PYTHON)", driver_python),

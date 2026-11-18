@@ -7,7 +7,9 @@ observed execution. Those claims remain with the build and independent evaluator
 
 from __future__ import annotations
 
-from .groups import GroupPlan
+from merlin.compiler.planning.groups import GroupPlan
+
+# ---- reports -----------------------------------------------------------------------------------
 
 
 def group_reports(grouping: GroupPlan, offload=None) -> dict:
@@ -19,9 +21,9 @@ def group_reports(grouping: GroupPlan, offload=None) -> dict:
     except Exception as error:  # noqa: BLE001 -- diagnostics do not authorize or block emission
         reports["compute_groups"] = {"error": f"{type(error).__name__}: {error}"}
     try:
-        from merlin.compiler.dialects.lowering import stream_plan
-        from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
-        from merlin.compiler.dialects.lowering.outline import OutlineResult, outline_dispatches
+        from merlin.compiler.partition import memory_plan as stream_plan
+        from merlin.compiler.partition.dispatch_program import build_dispatch_program
+        from merlin.compiler.partition.outline import OutlineResult, outline_dispatches
 
         grouping.require_current(grouping.source, grouping.target, weight_args=grouping.weight_args)
         if offload is not None and offload.module is not None:
@@ -40,7 +42,7 @@ def group_reports(grouping: GroupPlan, offload=None) -> dict:
     except Exception as error:  # noqa: BLE001 -- unavailable analysis remains unavailable
         reports["stream_plan"] = {"error": f"{type(error).__name__}: {error}"}
     try:
-        from merlin.development.targetgen import group_capsule_entries
+        from merlin.development.targetgen.corpus import group_entries as group_capsule_entries
 
         grouping.require_current(grouping.source, grouping.target, weight_args=grouping.weight_args)
         report = group_capsule_entries.entries(

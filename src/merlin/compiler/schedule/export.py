@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import hashlib
 import json
 from importlib.metadata import distribution
 from importlib.metadata import version as package_version
 from pathlib import Path
 
+from merlin.common.paths import module_source_path, python_source_dir
 from merlin.compiler.schedule.library_sources import (
     CURRENT_SDK_VERSION,
     library_modules,
@@ -16,137 +18,134 @@ from merlin.compiler.schedule.library_sources import (
     shared_library_sources,
 )
 
+# ---- export ------------------------------------------------------------------------------------
+
 SCHEMA = "merlin.shared_scheduling_library.v21"
 
 PUBLIC_MODULES = (
+    "merlin.compiler.records",
+    "merlin.compiler.backend.protocol",
+    "merlin.compiler.backend.interface",
+    "merlin.compiler.ir.interface_contract",
+    "merlin.compiler.ir.readout",
+    "merlin.compiler.lower.quant.requantization",
+    "merlin.compiler.lower.interface_materialization",
+    "merlin.compiler.dialects.interface",
     "merlin.compiler.schedule.blocks",
-    "merlin.compiler.schedule.shared_input_verification",
-    "merlin.compiler.schedule.shared_input_schedule",
-    "merlin.compiler.schedule.shared_input_groups",
-    "merlin.compiler.schedule.panel_transfers",
-    "merlin.compiler.schedule.copy_pipeline",
-    "merlin.compiler.schedule.configuration_loops",
-    "merlin.compiler.schedule.command_compaction",
-    "merlin.compiler.schedule.compact_dense",
-    "merlin.compiler.schedule.compact_loaded_sum",
-    "merlin.compiler.schedule.spatial_gather",
-    "merlin.compiler.schedule.dense_source",
-    "merlin.compiler.schedule.configuration",
-    "merlin.compiler.schedule.configuration_ir",
-    "merlin.compiler.schedule.device_spills",
-    "merlin.compiler.schedule.fusion",
-    "merlin.compiler.schedule.fusion_semantics",
+    "merlin.compiler.schedule.shared_operands.shared_inputs",
+    "merlin.compiler.schedule.panels.transfers",
+    "merlin.compiler.schedule.storage.buffer_pipelines",
+    "merlin.compiler.schedule.loops.configuration_loops",
+    "merlin.compiler.schedule.loops.command_compaction",
+    "merlin.compiler.schedule.dense.compact",
+    "merlin.compiler.schedule.dense.loaded_sums",
+    "merlin.compiler.schedule.spatial.max_stripes",
+    "merlin.compiler.schedule.dense.source",
+    "merlin.compiler.schedule.loops.configuration",
+    "merlin.compiler.schedule.loops.configuration_ir",
+    "merlin.compiler.schedule.storage.spills",
+    "merlin.compiler.schedule.elementwise.fusion",
     "merlin.compiler.schedule.library_sources",
-    "merlin.compiler.schedule.llvm_program",
-    "merlin.compiler.schedule.pointwise_source",
-    "merlin.compiler.schedule.program_limits",
-    "merlin.compiler.schedule.row_softmax",
-    "merlin.compiler.schedule.schedule_pipeline",
-    "merlin.compiler.schedule.staged_dense",
-    "merlin.compiler.schedule.selected_contracts",
-    "merlin.compiler.schedule.spill_conformance",
-    "merlin.compiler.schedule.temporary_storage",
-    "merlin.compiler.schedule.window_transfer",
-    "merlin.compiler.lower.model.cpu_softmax",
+    "merlin.compiler.schedule.loops.counted_loops",
+    "merlin.compiler.schedule.elementwise.pointwise_source",
+    "merlin.compiler.schedule.pipeline.program_limits",
+    "merlin.compiler.schedule.elementwise.row_softmax_checks",
+    "merlin.compiler.schedule.elementwise.row_softmax",
+    "merlin.compiler.schedule.pipeline.stages",
+    "merlin.compiler.schedule.dense.staged",
+    "merlin.compiler.schedule.pipeline.selected_contracts",
+    "merlin.compiler.schedule.storage.temporaries",
+    "merlin.compiler.schedule.convolution.windows",
+    "merlin.compiler.lower.options.nonlinear",
     "merlin.compiler.kernel_ir.ir",
     "merlin.compiler.kernel_ir.parse",
     "merlin.compiler.semantic.allocation_types",
-    "merlin.development.targetgen.isa_dialect_gen",
-    "merlin.development.targetgen.isa_spec",
-    "merlin.compiler.transforms.dense_ir",
-    "merlin.compiler.transforms.dense_planning",
+    "merlin.target.isa.dialect_generation",
+    "merlin.target.isa.spec",
+    "merlin.compiler.transforms.dense.ir",
+    "merlin.compiler.transforms.dense.planning",
     "merlin.compiler.transforms.pipeline_state",
-    "merlin.compiler.schedule.periodic_dense",
-    "merlin.compiler.schedule.spatial_producer",
-    "merlin.compiler.schedule.spatial_readout",
-    "merlin.compiler.lower.model.spatial_scratch_abi",
-    "merlin.compiler.lower.model.fresh_tensor_writer",
-    "merlin.compiler.lower.model.private_workspace_pool",
-    "merlin.compiler.lower.model.borrowed_effects",
-    "merlin.compiler.schedule.schedule_ir",
+    "merlin.compiler.schedule.spatial.producer",
+    "merlin.compiler.schedule.spatial.readouts",
+    "merlin.compiler.lower.host.storage",
+    "merlin.compiler.lower.host.writers",
+    "merlin.compiler.lower.host.borrowed_effects",
+    "merlin.compiler.schedule.dense.plans",
     "merlin.compiler.dialects.schedule",
-    "merlin.compiler.schedule.loop_schedule",
-    "merlin.compiler.schedule.dense_panel_pipeline",
-    "merlin.compiler.schedule.dense_panel_contracts",
-    "merlin.compiler.schedule.dense_panel_ir",
-    "merlin.compiler.schedule.dense_retained",
-    "merlin.compiler.schedule.scf_commands",
-    "merlin.compiler.schedule.configuration_contexts",
-    "merlin.compiler.schedule.configuration_loop_cleanup",
-    "merlin.compiler.schedule.dense_panel_readout",
-    "merlin.compiler.schedule.tile_load_coalescing",
-    "merlin.compiler.schedule.panel_tile_loads",
-    "merlin.compiler.schedule.dense_segmented_pipeline",
-    "merlin.compiler.schedule.dense_array_retention",
+    "merlin.compiler.schedule.panels.pipeline",
+    "merlin.compiler.schedule.panels.construction",
+    "merlin.compiler.schedule.panels.retained",
+    "merlin.compiler.schedule.loops.scf_commands",
+    "merlin.compiler.schedule.loops.configuration_contexts",
+    "merlin.compiler.schedule.panels.readouts",
+    "merlin.compiler.schedule.panels.load_coalescing",
+    "merlin.compiler.schedule.panels.tile_loads",
+    "merlin.compiler.schedule.panels.segmented_pipeline",
+    "merlin.compiler.schedule.panels.array_retention",
     "merlin.compiler.schedule.api_catalog",
-    "merlin.compiler.schedule.rolling_window",
-    "merlin.compiler.schedule.rolling_spatial",
-    "merlin.compiler.dialects.rolling_window",
-    "merlin.compiler.schedule.spatial_readout_cache",
-    "merlin.compiler.schedule.dense_readout_overlap",
-    "merlin.compiler.lower.model.host_builder",
-    "merlin.compiler.schedule.projection_views",
-    "merlin.compiler.transforms.tensor_views",
-    "merlin.compiler.lower.model.source_region",
-    "merlin.compiler.lower.model.source_region_host",
-    "merlin.compiler.passes.composition",
-    "merlin.compiler.schedule.dense_ready_readout",
-    "merlin.compiler.schedule.scf_carried_events",
+    "merlin.compiler.schedule.spatial.rolling_window",
+    "merlin.compiler.lower.host.builder",
+    "merlin.compiler.schedule.shared_operands.projections",
+    "merlin.compiler.transforms.canonicalization",
+    "merlin.compiler.lower.source.region",
+    "merlin.compiler.schedule.panels.ready_readout",
+    "merlin.compiler.schedule.panels.ready_schedule",
+    "merlin.compiler.schedule.loops.completion_events",
     "merlin.compiler.kernel_ir.loops",
     "merlin.compiler.frontend.preprocess",
-    "merlin.compiler.dialects.lowering.outline",
-    "merlin.compiler.schedule.completion_streams",
-    "merlin.compiler.schedule.configuration_motion",
-    "merlin.compiler.schedule.spatial_max_stripes",
+    "merlin.compiler.partition.outline",
     "merlin.compiler.ir.logical_abi",
-    "merlin.compiler.schedule.convolution_exploration",
-    "merlin.compiler.schedule.convolution_choices",
-    "merlin.compiler.schedule.dense_rhs_residency",
-    "merlin.compiler.transforms.pipeline_policy",
-    "merlin.compiler.transforms.pass_exploration",
-    "merlin.compiler.transforms.evaluated_exploration",
-    "merlin.compiler.transforms.shape_policy",
-    "merlin.compiler.schedule.dense_panel_epochs",
-    "merlin.compiler.schedule.pointwise_convolution",
-    "merlin.compiler.schedule.batched_dense",
-    "merlin.compiler.schedule.convolution_output_groups",
-    "merlin.compiler.schedule.loaded_sum_epochs",
+    "merlin.compiler.schedule.convolution.exploration",
+    "merlin.compiler.schedule.convolution.choices",
+    "merlin.compiler.schedule.shared_operands.shared_rhs",
+    "merlin.compiler.transforms.exploration.branch_policy",
+    "merlin.compiler.transforms.exploration.pass_orders",
+    "merlin.compiler.transforms.exploration.cycle_feedback",
+    "merlin.compiler.transforms.exploration.shape_assessment",
+    "merlin.compiler.transforms.exploration.shape_proposals",
+    "merlin.compiler.schedule.panels.epochs",
+    "merlin.compiler.schedule.convolution.dense_views",
+    "merlin.compiler.schedule.dense.batched",
+    "merlin.compiler.schedule.convolution.output_groups",
     "merlin.compiler.selection.knobs",
-    "merlin.compiler.transforms.tuning_selection",
-    "merlin.compiler.transforms.dense_reduction_layout",
-    "merlin.compiler.lower.model.layout_propagation",
-    "merlin.compiler.schedule.convolution_input_reuse",
-    "merlin.analysis.perf.factored_storage",
-    "merlin.compiler.lower.model.constant_panel_layout",
-    "merlin.compiler.schedule.dense_loaded_sum_composition",
-    "merlin.compiler.lower.model.quantized_sum_source",
-    "merlin.compiler.lower.model.generated_private_workspace",
-    "merlin.development.targetgen.oot_starterkit.llvm_context",
-    "merlin.compiler.lower.model.late_quant_rne",
-    "merlin.compiler.lower.model.source_expression_interval",
-    "merlin.compiler.lower.model.source_expression_interval_llvm",
-    "merlin.compiler.lower.model.bounded_rne_word_cells",
-    "merlin.compiler.lower.model.scaled_integer_finite",
-    "merlin.compiler.lower.model.scaled_integer_finite_llvm",
-    "merlin.compiler.schedule.projection_dense",
-    "merlin.compiler.schedule.rolling_lookahead",
-    "merlin.compiler.schedule.convolution_input_first_use",
-    "merlin.compiler.schedule.operand_slots",
-    "merlin.compiler.schedule.dense_shared_rhs",
-    "merlin.compiler.schedule.horizontal_convolution",
-    "merlin.compiler.lower.model.repeated_pointwise",
-    "merlin.compiler.lower.model.contraction_row_slice",
-    "merlin.compiler.lower.model.weight_prepack_runtime",
-    "merlin.compiler.transforms.dense_row_batching",
-    "merlin.compiler.transforms.shared_rhs_views",
+    "merlin.compiler.transforms.dense.row_batching",
+    "merlin.compiler.lower.host.propagation",
+    "merlin.compiler.schedule.convolution.input_residency",
+    "merlin.analysis.programs.storage_encoding",
+    "merlin.compiler.lower.host.layout",
+    "merlin.compiler.schedule.panels.loaded_sums",
+    "merlin.compiler.lower.device.outline",
+    "merlin.compiler.ir.llvm_context",
+    "merlin.compiler.lower.quant.late_quant_rne",
+    "merlin.compiler.lower.source.interval",
+    "merlin.compiler.lower.source.interval_llvm",
+    "merlin.compiler.lower.source.finite",
+    "merlin.compiler.schedule.spatial.rolling_lookahead",
+    "merlin.compiler.lower.source.repeated_pointwise",
+    "merlin.compiler.lower.source.row_slice",
+    "merlin.compiler.lower.options.weight_prepack_runtime",
+    "merlin.compiler.transforms.dense.shared_rhs_views",
     "merlin.compiler.frontend.repairs",
     "merlin.compiler.ir.provenance",
     "merlin.compiler.quantization.linalg",
-    "merlin.compiler.transforms.matmul",
-    "merlin.compiler.transforms.dead",
-    "merlin.compiler.lower.scalar.casts",
-    "merlin.compiler.schedule.affine_gather_runs",
-    "merlin.compiler.schedule.compact_dense_group",
+    "merlin.compiler.schedule.convolution.input_rows",
+    "merlin.compiler.schedule.shared_operands.shared_lhs",
+    "merlin.compiler.schedule.pipeline.contracts",
+    "merlin.compiler.ir.static_cfg",
+    "merlin.compiler.transforms.radix_product",
+    "merlin.compiler.lower.quant.guarded_mean",
+    "merlin.compiler.lower.quant.enclosed_readout",
+    "merlin.compiler.lower.quant.affine_joint",
+    "merlin.compiler.lower.quant.affine_rectifier",
+    "merlin.compiler.lower.quant.affine_domain",
+    "merlin.compiler.lower.source.integer_domains",
+    "merlin.compiler.lower.source.shared_permutation",
+    "merlin.compiler.lower.source.segmented_inputs",
+    "merlin.compiler.frontend.quantized",
+    "merlin.compiler.partition.callback_regions",
+    "merlin.compiler.build.host_regions",
+    "merlin.compiler.build.llvm_bundle",
+    "merlin.compiler.lower.quant.affine_pair",
 )
 
 # These package initializers expose only shared leaf implementations. They
@@ -154,7 +153,7 @@ PUBLIC_MODULES = (
 # any pass, checker, instruction declaration or numerical implementation.
 _PREPROCESSING_NAMESPACE = '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n'
 NAMESPACES = {
-    "merlin.compiler.schedule": '"""Shared scheduling namespace; public APIs are explicit leaf modules."""\n',
+    "merlin.compiler.backend": '"""Public compiler declaration and protocol records; no provider discovery or source admission."""\n',
     "merlin.compiler.transforms": '"""Shared transforms and selected preprocessing leaves; host proof orchestration is not exported."""\n',
     "merlin.compiler.dialects": '"""Shared xDSL helpers; dialect modules are explicitly selected."""\n',
     "merlin.runtime": '"""Selected host arithmetic helpers; execution and oracle modules are not exported."""\n',
@@ -162,14 +161,50 @@ NAMESPACES = {
     "merlin.development.targetgen.oot_starterkit": '"""Selected generic LLVM parsing leaf; no package invocation or grading."""\n',
     "merlin.analysis.perf": '"""Selected storage-layout leaf; performance analyses and measurement are not exported."""\n',
     "merlin": '"""Selected shared compiler SDK; public APIs are explicit leaf modules."""\n',
-    "merlin.compiler.frontend": _PREPROCESSING_NAMESPACE,
-    "merlin.compiler.quantization": _PREPROCESSING_NAMESPACE,
-    "merlin.compiler.lower": _PREPROCESSING_NAMESPACE,
-    "merlin.compiler.lower.scalar": _PREPROCESSING_NAMESPACE,
+    "merlin.compiler.frontend": '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n',
+    "merlin.compiler.quantization": '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n',
+    "merlin.compiler.lower": '"""Selected shared preprocessing leaves; no driver or backend discovery."""\n',
+    "merlin.compiler": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.ir": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.shared_operands": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.panels": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.storage": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.loops": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.dense": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.spatial": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.elementwise": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.pipeline": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.convolution": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.options": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.kernel_ir": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.semantic": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.semantic.search": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.development": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.target": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.target.isa": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.transforms.dense": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.verification": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.verification.references": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.quant": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.host": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.source": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.common": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.model": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.partition": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.transforms.exploration": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.selection": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.analysis": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.analysis.programs": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.device": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.development.targetgen": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.capture": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.lower.c": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.schedule.nests": '"""Selected shared compiler leaves; public APIs belong to explicit modules."""\n',
+    "merlin.compiler.build": '"""Selected callback compilation leaves; no operator build or evaluator."""\n',
 }
 
 SOURCE_BINDING_PROTOCOL = "merlin.shared_source_binding.v1"
-SOURCE_BINDING_MODULES = ("merlin.compiler.schedule.direct_source", "merlin.compiler.schedule.source_tokens")
+SOURCE_BINDING_MODULES = ("merlin.compiler.schedule.source_binding",)
 
 
 def public_modules(version=CURRENT_SDK_VERSION):
@@ -242,7 +277,7 @@ def export_shared_scheduling(
     if any(directory.iterdir()):
         raise ValueError("shared compiler export requires an empty output directory")
     exporter = Path(__file__).read_bytes()
-    source_root = Path(__file__).resolve().parents[3]
+    source_root = python_source_dir().resolve()
     sources = _source_identities(source_root, source_binding=source_binding)
     if license_directory is None:
         license_directory = _license_root(source_root)
@@ -274,6 +309,14 @@ def export_shared_scheduling(
         "replaced_namespace_source_sha256": namespace_changes,
         "external_package_versions": {name: package_version(name) for name in ("xdsl", "numpy", "PyYAML", "z3-solver")},
         "dependency_qualification": "versions_only; external implementations and optional native resources unqualified",
+        "interface_compiler_api": {
+            "schema": "merlin.interface_sdk.v1",
+            "source_kind": "merlin.interface.v1",
+            "parser": "merlin.compiler.ir.interface_contract.parse_interface",
+            "declarations": "merlin.compiler.backend.interface",
+            "records": "merlin.compiler.records",
+            "host_source_preparation": "not_exported",
+        },
         "admission": "requires_separate_host_review_and_explicit_compiler_library_contract",
         "review_resources": ["shared-library.json"],
     }
@@ -301,13 +344,16 @@ def export_dense_planner(directory: Path, *, include_block_schedule: bool = Fals
     directory.mkdir(parents=True, exist_ok=True)
     files = {}
     for name in ("dense_planning", "dense_ir"):
-        source = (Path(__file__).parents[2] / "compiler" / "transforms" / (name + ".py")).read_bytes()
+        source = module_source_path(
+            {
+                "dense_planning": "merlin.compiler.transforms.dense.planning",
+                "dense_ir": "merlin.compiler.transforms.dense.ir",
+            }[name]
+        ).read_bytes()
         destination = directory / ("common_" + name + ".py")
         destination.write_bytes(source)
         files[destination.name] = hashlib.sha256(source).hexdigest()
     if include_block_schedule:
-        from merlin.compiler.schedule.standalone import block_schedule_source
-
         source = block_schedule_source()
         destination = directory / "common_block_schedule.py"
         destination.write_bytes(source)
@@ -356,3 +402,45 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
+
+
+# ---- standalone --------------------------------------------------------------------------------
+# Assemble a stdlib-only scheduling artifact from the actual editable owners.
+#
+# Generated packages may vendor this derived module without depending on Merlin.
+# The artifact contains the original definitions, with only internal imports and
+# owner docstrings removed. Source hashes identify every contributing owner;
+# the generated file is not a second editable implementation.
+
+OWNERS = (
+    "merlin.compiler.schedule.nests.model",
+    "merlin.compiler.schedule.nests.construction",
+    "merlin.compiler.schedule.nests.execution",
+)
+
+
+def block_schedule_source() -> bytes:
+    """Return one closed, inspectable module with no Merlin runtime imports."""
+    pieces = [
+        '"""Generated shared block schedule; edit the recorded source owners."""\n',
+        "from __future__ import annotations\n",
+        "from dataclasses import dataclass, field, replace\n",
+        "from typing import Any\n",
+    ]
+    for owner in OWNERS:
+        source = module_source_path(owner).read_bytes()
+        text = source.decode("utf-8")
+        lines = text.splitlines(keepends=True)
+        pieces.append(f"\n# Owner: {owner}; sha256={hashlib.sha256(source).hexdigest()}\n")
+        for node in ast.parse(text).body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if (
+                isinstance(node, ast.Expr)
+                and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)
+            ):
+                continue
+            first = min([node.lineno, *(item.lineno for item in getattr(node, "decorator_list", ()))])
+            pieces.append("\n" + "".join(lines[first - 1 : node.end_lineno]) + "\n")
+    return "".join(pieces).encode("utf-8")

@@ -12,8 +12,8 @@ proves the discover -> import-as-package -> register plumbing).
 
 from __future__ import annotations
 
-from merlin.runtime.backends import base
-from merlin.runtime.backends.base import BackendInfo
+from merlin.runtime.backends import registry as base
+from merlin.runtime.backends.registry import BackendInfo
 
 from .capabilities import BACKEND_CLASS, BACKEND_KIND  # RELATIVE import — the thing under test
 

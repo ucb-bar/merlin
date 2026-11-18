@@ -17,7 +17,9 @@ import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from merlin.common import strict_json
+from merlin.common import record_formats as strict_json
+
+# ---- python_preflight --------------------------------------------------------------------------
 
 SCHEMA = "merlin.python_capture_preflight.v1"
 _CACHE_ENV = {"HF_HOME", "TORCH_HOME", "TRANSFORMERS_CACHE"}

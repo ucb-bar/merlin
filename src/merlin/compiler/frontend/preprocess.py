@@ -5,9 +5,11 @@ Preserve source ordering, numerical/effect obligations and explicit selection.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from merlin.compiler.frontend.linalg_mlir import (  # noqa: F401 -- exact historical preprocessing namespace
     make_context,
@@ -42,23 +44,21 @@ from merlin.compiler.frontend.repairs import (  # noqa: F401 -- exact historical
     preprocess_text_textual,
 )
 from merlin.compiler.ir.provenance import carry_provenance as carry_provenance
-from merlin.compiler.lower.scalar.casts import (  # noqa: F401 -- exact historical preprocessing namespace
-    fix_bool_fptosi,
-    fix_bool_sitofp,
-)
 from merlin.compiler.quantization.linalg import (  # noqa: F401 -- exact historical preprocessing namespace
     _DEQUANT_KINDS,
     _QUANT_KINDS,
     lower_quant_ext,
 )
-from merlin.compiler.transforms.dead import (  # noqa: F401 -- exact historical preprocessing namespace
+from merlin.compiler.transforms.canonicalization import (
     _dead_tensor_operation_is_pure,
+    collapse_overrank_matmul,
+    fix_bool_fptosi,
+    fix_bool_sitofp,
+    lower_bf16_matmul_f32acc,
     prune_dead_pure_tensor_ops,
 )
-from merlin.compiler.transforms.matmul import (  # noqa: F401 -- exact historical preprocessing namespace
-    collapse_overrank_matmul,
-    lower_bf16_matmul_f32acc,
-)
+
+# ---- preprocess --------------------------------------------------------------------------------
 
 
 def implementation_paths() -> tuple[Path, ...]:
@@ -70,11 +70,10 @@ def implementation_paths() -> tuple[Path, ...]:
     """
     from merlin.compiler.frontend import repairs
     from merlin.compiler.ir import provenance
-    from merlin.compiler.lower.scalar import casts
     from merlin.compiler.quantization import linalg
-    from merlin.compiler.transforms import dead, matmul
+    from merlin.compiler.transforms import canonicalization
 
-    owners = (repairs, provenance, casts, linalg, dead, matmul)
+    owners = (repairs, provenance, canonicalization, linalg)
     selected = (globals()[name] for _, _, name in _PREPROCESS)
     return tuple(
         dict.fromkeys(
@@ -129,7 +128,7 @@ def _layer_norm_chunked_sums_selected() -> bool:
     """Whether the numerics-changing ``layer-norm-chunked-sums`` pass runs (default off)."""
     import os
 
-    from merlin.compiler.lower.model.optional_passes import switched
+    from merlin.compiler.lower.options.optional_passes import switched
 
     return switched("layer-norm-chunked-sums", os.environ.get("MERLIN_LAYER_NORM_CHUNKED_SUMS") == "1")
 
@@ -137,8 +136,7 @@ def _layer_norm_chunked_sums_selected() -> bool:
 def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
     from functools import partial
 
-    from merlin.compiler.dialects.ir_inspection import record_stage
-    from merlin.compiler.passes.xdsl import Rewrite, run_rewrites
+    from merlin.compiler.dialects.xdsl_context import record_stage
 
     def selected():
         for statistic, stage, name in _PREPROCESS:
@@ -149,7 +147,7 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
             if statistic == "quant_ext_lowered" and _layer_norm_chunked_sums_selected():
                 # Optional and default off. Its numerical permissions and transform-map
                 # ownership remain here; the result lands in the next recorded stage.
-                from merlin.compiler.lower.model.normalization_reassociation import chunk_layer_norm_sums
+                from merlin.compiler.lower.options.nonlinear import chunk_layer_norm_sums
 
                 yield Rewrite(
                     "layer_norm_sums_chunked",
@@ -172,7 +170,7 @@ def _preprocess_module(module, *, audit=None, on_quant_rewrite=None) -> dict:
 
 def preprocess_text(mlir_text: str, *, audit=None) -> tuple[str, dict]:
     """Run Merlin xDSL passes, optionally observing each completed rewrite without changing it."""
-    from merlin.compiler.dialects._common import text as module_to_text
+    from merlin.compiler.dialects.xdsl_context import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
     transform_map = None
@@ -218,7 +216,7 @@ def preprocess_text_with_transform_map(mlir_text: str) -> tuple[str, dict, dict]
     A rewrite must explicitly register every generated helper and its result
     replacement; an unowned emitted operation causes refusal.
     """
-    from merlin.compiler.dialects._common import text as module_to_text
+    from merlin.compiler.dialects.xdsl_context import text as module_to_text
 
     module = parse_mlir_text(mlir_text)
     transform_map = _SourceTransformMap(mlir_text, module)
@@ -305,3 +303,52 @@ class _SourceTransformMap:
             "preprocessed_op_count": len(processed),
             "operations": operations,
         }
+
+
+# ---- xdsl --------------------------------------------------------------------------------------
+# Ordered invocation of Merlin's in-process xDSL rewrites.
+#
+# These existing rewrites mutate a module and report a count; they are not xDSL
+# ModulePass registrations. Native xDSL pass pipelines should continue to use its
+# pass manager. This adapter only preserves rewrite order, counters and observation
+# points for callers which already own their policy and selected transforms.
+
+if TYPE_CHECKING:
+    from xdsl.dialects.builtin import ModuleOp
+
+
+@dataclass(frozen=True)
+class Rewrite:
+    """One selected rewrite and its existing reporting names.
+
+    A missing stage intentionally leaves the rewrite inside the next observed
+    stage, as the optional numerical preprocessing currently requires.
+    """
+
+    statistic: str
+    stage: str | None
+    apply: Callable[[ModuleOp], int]
+
+
+def run_rewrites(
+    module: ModuleOp,
+    rewrites: Iterable[Rewrite],
+    *,
+    observe: Callable[[str, ModuleOp], None] | None = None,
+    initial_stage: str | None = None,
+) -> dict[str, int]:
+    """Run each occurrence, observing only successfully completed rewrites.
+
+    The iterable may resolve later transforms after earlier ones execute.
+    Repeated transforms remain repeated. Counter names retain the existing
+    last-write behavior; this is reporting, not pass-name deduplication.
+    Exceptions propagate before subsequent rewrites or their observations.
+    """
+    if observe is not None and initial_stage is not None:
+        observe(initial_stage, module)
+    statistics = {}
+    for rewrite in rewrites:
+        statistics[rewrite.statistic] = rewrite.apply(module)
+        if observe is not None and rewrite.stage is not None:
+            observe(rewrite.stage, module)
+    return statistics

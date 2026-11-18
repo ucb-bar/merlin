@@ -9,7 +9,9 @@ from math import prod
 from merlin.common.digest import is_sha256
 from merlin.compiler.ir.boundary import live_values
 from merlin.compiler.transforms.certificates import ir_digest
-from merlin.verification.lean_contract import document_digest
+from merlin.verification.lean.contract import document_digest
+
+# ---- frontiers ---------------------------------------------------------------------------------
 
 
 def _materialization(operations, ordinals):
@@ -219,7 +221,7 @@ def _structural_family(op):
         return "elementwise_map"
     from xdsl.dialects.linalg.ops import GenericOp
 
-    from merlin.compiler.transforms.dense_ir import recognize_signed_integer_matmul
+    from merlin.compiler.transforms.dense.ir import recognize_signed_integer_matmul
 
     # Parser subclasses are normalized only at this read-only observation
     # boundary, retaining exact scalar operations, maps and unknown attributes.
@@ -246,9 +248,12 @@ def _structural_family(op):
 def _frontier(module, members, *, max_region_operations):
     from xdsl.dialects import func
 
-    from merlin.compiler.schedule.fusion_semantics import UnsupportedElementwise
-    from merlin.compiler.schedule.shared_input_groups import find_shared_input_groups, grow_shared_input_group
-    from merlin.compiler.transforms.multioutput import read_source_multioutput
+    from merlin.compiler.schedule.elementwise.fusion import UnsupportedElementwise
+    from merlin.compiler.schedule.shared_operands.shared_inputs import (
+        find_shared_input_groups,
+        grow_shared_input_group,
+    )
+    from merlin.compiler.transforms.source_rewrites.multioutput import read_source_multioutput
 
     ordinals = {op: i for i, op in enumerate(members)}
     typed = {op: family for op in members if (family := _structural_family(op)) is not None}
@@ -406,8 +411,8 @@ def discover(
     shared-input prefix; it deliberately does not enumerate all graph subsets.
     Row indices are stable within this bound scope, not persistent operation IDs.
     """
-    from merlin.compiler import observations as C
-    from merlin.compiler.planning.explore import ROUTES
+    from merlin.compiler import diagnostics as C
+    from merlin.compiler.planning.exploration import ROUTES
 
     if (
         not is_sha256(numerical_policy_sha256)

@@ -7,463 +7,24 @@ their verdicts. Review is an attributed local acknowledgement, not a signature.
 
 from __future__ import annotations
 
-import fcntl
-import hashlib
-import json
-import os
-from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
-from merlin.experiments.definition import SpecError, read_yaml
-
-from .preparation import (
-    admission,
-    assemble,
-    compiler_source_selection,
-    copy_input,
+from merlin.experiments.corpus.scaffold import scaffold, compiler_source_selection
+from merlin.experiments.corpus.admission import admission
+from merlin.experiments.corpus.preparation import assemble
+from merlin.experiments.corpus.release_binding import VerifiedCorpusSnapshot
+from merlin.experiments.corpus.source_staging import (
     generation_lineage,
     ordinary_tree,
     private_json,
-    scaffold,
     source_run,
     stage_phase1_policy_descriptor,
 )
+from merlin.experiments.definition import SpecError
 
-_INSTRUCTION_MODEL = "instruction-semantics.json"
-_PHASE1_POLICY = "phase1-policy-descriptor.yaml"
-
-
-@dataclass(frozen=True)
-class VerifiedCorpusSnapshot:
-    """Separate the public review identity from an optional host-only input."""
-
-    review: dict
-    private_instruction_model: Path | None
-
-
-@dataclass(frozen=True)
-class ExactOffloadReleaseBinding:
-    """Reopen the reviewed source lineage whenever exact offload is used.
-
-    The seal alone approves a corpus, not an arbitrary model. This adapter also
-    requires the model and both authored contracts to be exact selected Phase 0
-    evidence sources. A transformed model needs its own selected capture receipt.
-    """
-
-    seal_path: Path
-    descriptor: Path
-    application: str
-    review_digest: str
-
-    def verify(self, selection) -> None:
-        from merlin.common.digest import sha256_bytes
-        from merlin.development.testgen.evidence import load_exported_evidence
-
-        from ..runner import fingerprint
-
-        review = verify(self.seal_path, self.descriptor)
-        if review["review_digest"] != self.review_digest:
-            raise SpecError("exact offload release review identity changed")
-        root = Path(review["release"])
-        prepared = _read(root / "private" / "preparation.json")
-        lineage = prepared.get("generation_lineage")
-        if not isinstance(lineage, dict):
-            raise SpecError("exact offload requires a lineage-bound Phase 0 release")
-        plan, attempt, generated = source_run(Path(prepared["source_run"]))
-        phase = plan["phases"]["0"]
-        selected = phase["inputs"]
-        if (
-            plan.get("target") != selection.target
-            or prepared.get("target") != selection.target
-            or prepared.get("source_plan_sha256") != fingerprint(Path(prepared["source_run"]) / "resolved-plan.json")
-            or prepared.get("source_output_sha256") != attempt["output_sha256"]
-            or prepared.get("source_descriptor_sha256") != fingerprint(Path(selected["descriptor"]))
-            or generation_lineage(plan, generated) != lineage
-        ):
-            raise SpecError("exact offload differs from the sealed Phase 0 source run")
-        bundle_path = plan.get("phase0_evidence_bundle")
-        if not isinstance(bundle_path, str) or not bundle_path:
-            raise SpecError("exact offload release has no selected Phase 0 evidence bundle")
-        bundle = Path(bundle_path)
-        if fingerprint(bundle / "evidence-manifest.json") != lineage.get("evidence_manifest_sha256"):
-            raise SpecError("exact offload Phase 0 evidence differs from sealed generation lineage")
-        evidence = load_exported_evidence(bundle)
-        if evidence.target != selection.target or evidence.status != "verified":
-            raise SpecError("exact offload requires verified same-target Phase 0 evidence")
-        inventory_identity = evidence.application_inventory_identity
-        inventory = evidence.application_inventory
-        if (
-            not isinstance(inventory_identity, dict)
-            or inventory_identity.get("status") != "digest_bound"
-            or not isinstance(inventory, dict)
-            or not isinstance(inventory.get("applications"), dict)
-        ):
-            raise SpecError("exact offload requires a digest-bound application inventory")
-        application = inventory["applications"].get(self.application)
-        if not isinstance(application, dict) or application.get("capture_sha256") != selection.model_sha256:
-            raise SpecError("exact offload model is not the selected Phase 0 application capture")
-        inventory_sources = [source for source in evidence.source_snapshots if source.role == "application-inventory"]
-        if len(inventory_sources) != 1:
-            raise SpecError("exact offload application inventory has no unique selected source")
-        capture_source = application.get("capture_source_path")
-        if not isinstance(capture_source, str) or not capture_source:
-            raise SpecError("exact offload application capture has no selected source path")
-        capture_path = Path(capture_source)
-        if not capture_path.is_absolute():
-            capture_path = inventory_sources[0].path.parent / capture_path
-        for role, selected_path, expected in (
-            ("software-spec", selected.get("software_spec"), selection.software_spec_sha256),
-            ("target-contract", selected.get("capability_contract"), selection.capability_contract_sha256),
-            (f"application-capture:{self.application}", str(capture_path), selection.model_sha256),
-        ):
-            sources = [source for source in evidence.source_snapshots if source.role == role]
-            if (
-                len(sources) != 1
-                or not isinstance(selected_path, str)
-                or sources[0].path.resolve() != Path(selected_path).resolve()
-                or sha256_bytes(sources[0].content) != expected
-            ):
-                raise SpecError(f"exact offload {role} bytes are not selected by the reviewed Phase 0 release")
-        if (
-            verify(self.seal_path, self.descriptor) != review
-            or fingerprint(bundle / "evidence-manifest.json") != lineage["evidence_manifest_sha256"]
-        ):
-            raise SpecError("exact offload release or selected evidence changed during verification")
-
-
-def verify_exact_offload_binding(binding, selection) -> str:
-    """Installed host verifier for core's data-only exact release binding."""
-    from merlin.compiler.lower.model.exact_offload import ReleaseBinding
-
-    if type(binding) is not ReleaseBinding:
-        raise SpecError("exact offload release binding must be core's data-only record")
-    ExactOffloadReleaseBinding(
-        binding.seal_path, binding.descriptor, binding.application, binding.review_digest
-    ).verify(selection)
-    return binding.review_digest
-
-
-def bind_exact_offload(selection, *, seal_path: Path, descriptor: Path, application: str):
-    """Attach the host-owned reviewed release verifier to a core exact selection.
-
-    This is a read-only trusted-host gate, not an in-process sandbox. Core has no
-    dependency on experiment orchestration; its numerical oracle and rewrite
-    resolve the installed verifier again at use time.
-    """
-    if not isinstance(application, str) or not application:
-        raise SpecError("exact offload requires an explicit application label")
-    from merlin.compiler.lower.model.exact_offload import ReleaseBinding
-
-    review = verify(seal_path, descriptor)
-    binding = ReleaseBinding(
-        seal_path.expanduser().absolute(),
-        descriptor.expanduser().absolute(),
-        application,
-        review["review_digest"],
-    )
-    verify_exact_offload_binding(binding, selection)
-    return replace(selection, release_binding=binding)
-
-
-def _read(path: Path) -> dict:
-    from ..runner import _read_json
-
-    ordinary_tree(path)
-    if path.stat().st_mode & 0o077:
-        raise SpecError("corpus release metadata must be owner-only")
-    document = _read_json(path)
-    if document.get("schema_version") != 1:
-        raise SpecError("unsupported corpus release record version")
-    return document
-
-
-def _digest(document: dict) -> str:
-    return hashlib.sha256(json.dumps(document, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-
-
-def _private_root(path: Path) -> Path:
-    lexical = path.expanduser().absolute()
-    if lexical.is_symlink():
-        raise SpecError("corpus release root may not be a symlink")
-    root = lexical.resolve(strict=True)
-    if (root / "private").is_symlink() or not (root / "private").is_dir():
-        raise SpecError("corpus release private metadata directory is missing or symlinked")
-    if root.stat().st_mode & 0o077 or (root / "private").stat().st_mode & 0o077:
-        raise SpecError("corpus release and private metadata directories must be owner-only")
-    return root
-
-
-@contextmanager
-def _review_lock(root: Path):
-    descriptor = os.open(root / "private" / ".review.lock", os.O_CREAT | os.O_RDWR, 0o600)
-    with os.fdopen(descriptor, "a") as stream:
-        try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise SpecError("another process is reviewing this corpus release") from exc
-        yield
-
-
-def _content(root: Path, prepared: dict) -> dict:
-    from ..runner import fingerprint
-
-    ordinary_tree(root / "payload")
-    observed = fingerprint(root / "payload")
-    if prepared.get("payload_sha256") != observed:
-        raise SpecError("prepared corpus payload changed; prepare a new release")
-    model = prepared.get("instruction_semantics")
-    member = root / "private" / _INSTRUCTION_MODEL
-    if model is None:
-        if member.exists() or member.is_symlink():
-            raise SpecError("unrecorded private instruction model in corpus release")
-    else:
-        if not isinstance(model, dict) or not isinstance(model.get("sha256"), str):
-            raise SpecError("invalid private instruction model commitment")
-        ordinary_tree(member)
-        if not member.is_file() or member.stat().st_mode & 0o077:
-            raise SpecError("private instruction model must be an owner-only ordinary file")
-        if fingerprint(member) != model["sha256"]:
-            raise SpecError("private instruction model changed; prepare a new release")
-    policy = prepared.get("phase1_policy")
-    retained = root / "private" / _PHASE1_POLICY
-    if policy is None:
-        if retained.exists() or retained.is_symlink():
-            raise SpecError("unrecorded Phase 1 policy descriptor in corpus release")
-    else:
-        if not isinstance(policy, dict) or not isinstance(policy.get("sha256"), str):
-            raise SpecError("invalid Phase 1 policy descriptor commitment")
-        ordinary_tree(retained)
-        if not retained.is_file() or retained.stat().st_mode & 0o077:
-            raise SpecError("retained Phase 1 policy descriptor must be owner-only")
-        if fingerprint(retained) != policy["sha256"]:
-            raise SpecError("retained Phase 1 policy descriptor changed; prepare a new release")
-        selected = read_yaml(retained)
-        promoted = read_yaml(root / "payload" / "experiment" / "target_experiment.yaml")
-        if (
-            not isinstance(selected, dict)
-            or not isinstance(promoted, dict)
-            or selected.get("phase1_gates") != promoted.get("phase1_gates")
-        ):
-            raise SpecError("promoted Phase 1 gates differ from retained policy descriptor")
-    selected_host = (prepared.get("scaffolding") or {}).get("host_capability_selection")
-    if selected_host is not None:
-        from .preparation import verify_host_capability
-
-        descriptor = root / "payload/experiment/target_experiment.yaml"
-        verify_host_capability(read_yaml(descriptor), selected_host, descriptor=descriptor)
-    _verify_public_programs(root, prepared)
-    return {"preparation_sha256": _digest(prepared), "payload_sha256": observed}
-
-
-def _verify_public_programs(root: Path, prepared: dict) -> None:
-    """Reopen private program custody and its answer-free payload before review."""
-    from merlin.development.targetgen.target_experiment import load_target_experiment
-
-    from . import public_program_suite as programs
-
-    te = load_target_experiment(root / "payload/experiment/target_experiment.yaml")
-    binding = (te.workload_spec or {}).get(programs.KEY)
-    expected = (prepared.get("assembly") or {}).get("public_programs")
-    if binding is None and expected is None:
-        return
-    if binding != expected:
-        raise SpecError("public program descriptor differs from its prepared source selection")
-    selected = programs.selected(te)
-    if selected is None:
-        raise SpecError("prepared public program selection is absent")
-    programs.public_view(selected[0], root / "payload/experiment/public-program-sources", target=te.target, verify=True)
-
-
-def _stage_instruction_model(plan: dict, private: Path) -> dict | None:
-    """Copy only a selected Phase 0 consumer model into host-private release input."""
-    from ..runner import fingerprint
-
-    location = plan.get("phase0_evidence_bundle")
-    if location is None:
-        return None
-    if not isinstance(location, str) or not location:
-        raise SpecError("selected Phase 0 evidence bundle path is invalid")
-    from merlin.development.testgen.evidence import load_exported_evidence
-
-    bundle = Path(location).expanduser().absolute()
-    selected = load_exported_evidence(bundle)
-    if selected.target != plan["target"]:
-        raise SpecError("selected instruction model target differs from corpus release")
-    member = bundle / "software" / "instruction-semantics.json"
-    if member.is_symlink() or not member.is_file():
-        raise SpecError("selected Phase 0 instruction model is missing or symlinked")
-    destination = private / _INSTRUCTION_MODEL
-    digest = copy_input(member, destination, private=True)
-    archived = dict(selected.archived_artifacts)
-    selected_bytes = archived.get("software/instruction-semantics.json")
-    if selected_bytes is None or digest != hashlib.sha256(selected_bytes).hexdigest():
-        raise SpecError("selected Phase 0 instruction model changed after evidence verification")
-    manifest_bytes = archived.get("evidence-manifest.json")
-    manifest_sha = fingerprint(bundle / "evidence-manifest.json")
-    if manifest_bytes is None or manifest_sha != hashlib.sha256(manifest_bytes).hexdigest():
-        raise SpecError("selected Phase 0 evidence manifest changed after verification")
-    destination.chmod(0o400)
-    return {"sha256": digest, "source_evidence_sha256": manifest_sha}
-
-
-def _selected_rtl_facts(plan: dict, generated: Path) -> Path | None:
-    """Use the exact facts exported by the selected Phase 0 evidence bundle."""
-    location = plan.get("phase0_evidence_bundle")
-    if location is None:
-        # Historical diagnostic runs could emit facts directly in their
-        # generated corpus. Never use this path when evidence was selected.
-        legacy = generated / "hardware/effective-views/loaded-facts.json"
-        return legacy if legacy.is_file() and not legacy.is_symlink() else None
-    from merlin.development.testgen.evidence import load_exported_evidence
-
-    bundle = Path(location).expanduser().absolute()
-    evidence = load_exported_evidence(bundle)
-    relative = Path("hardware/effective-views/loaded-facts.json")
-    selected = dict(evidence.archived_artifacts).get(relative.as_posix())
-    path = bundle / relative
-    if selected is None or path.is_symlink() or not path.is_file() or path.read_bytes() != selected:
-        raise SpecError("selected Phase 0 RTL facts are absent or differ from verified evidence")
-    try:
-        document = json.loads(selected)
-    except (TypeError, ValueError) as error:
-        raise SpecError("selected Phase 0 RTL facts are not JSON") from error
-    facts = document.get("facts") if isinstance(document, dict) else None
-    if not isinstance(facts, dict) or facts.get("target") != plan["target"]:
-        raise SpecError("selected Phase 0 RTL facts name a different target")
-    return path
-
-
-def _selected_capability_contract(plan: dict, generated: Path) -> tuple[Path, str] | None:
-    """Carry the effective Phase 0 view, never re-resolve a live provider contract."""
-    location = plan.get("phase0_evidence_bundle")
-    relative = Path("software/contract.json")
-    if location is None:
-        legacy = generated / relative
-        if not legacy.exists():
-            if plan["phases"]["0"]["inputs"].get("capability_contract"):
-                raise SpecError("selected Phase 0 capability contract has no exported view; freeze a new run")
-            return None
-        path = legacy
-        ordinary_tree(path)
-        raw = path.read_bytes()
-    else:
-        from merlin.development.testgen.evidence import load_exported_evidence
-
-        bundle = Path(location).expanduser().absolute()
-        evidence = load_exported_evidence(bundle)
-        raw = dict(evidence.archived_artifacts).get(relative.as_posix())
-        path = bundle / relative
-        if raw is None or path.is_symlink() or not path.is_file() or path.read_bytes() != raw:
-            raise SpecError("selected Phase 0 capability contract is absent or differs from verified evidence")
-    try:
-        document = json.loads(raw)
-    except (TypeError, ValueError) as error:
-        raise SpecError("selected Phase 0 capability contract is not JSON") from error
-    if not isinstance(document, dict) or document.get("name") != plan["target"]:
-        raise SpecError("selected Phase 0 capability contract names a different target")
-    return path, hashlib.sha256(raw).hexdigest()
-
-
-def _freeze_payload(root: Path) -> None:
-    from merlin.common.content_store import is_shared
-
-    payload = root / "payload"
-    ordinary_tree(payload)
-    for path in sorted(payload.rglob("*"), key=lambda member: len(member.parts), reverse=True):
-        if path.is_file() and is_shared(path):
-            if path.stat().st_mode & 0o222:
-                raise SpecError("shared corpus payload is unexpectedly writable")
-            continue
-        mode = 0o500 if path.is_dir() or path.stat().st_mode & 0o111 else 0o400
-        path.chmod(mode)
-    payload.chmod(0o500)
-
-
-def _member_digests(payload: Path) -> dict[str, str]:
-    """Every payload file's digest, so a later verification can name what changed or vanished."""
-    out = {}
-    for member in sorted(payload.rglob("*")):
-        if member.is_file() and not member.is_symlink():
-            out[member.relative_to(payload).as_posix()] = hashlib.sha256(member.read_bytes()).hexdigest()
-    return out
-
-
-def _payload_drift(root: Path, sealed: dict) -> str | None:
-    """Which sealed payload members are missing, tampered or new; host-private names are withheld."""
-    recorded = sealed.get("members")
-    if not isinstance(recorded, dict):
-        return None
-    payload = root / "payload"
-    observed = _member_digests(payload)
-    try:
-        from merlin.development.targetgen.target_experiment import load_target_experiment
-
-        private = [
-            Path(p) for p in load_target_experiment(payload / "experiment/target_experiment.yaml").hidden_roots()
-        ]
-    except Exception:  # noqa: BLE001 -- with no readable descriptor every name is withheld
-        private = None
-
-    def shown(member: str) -> str:
-        path = payload / member
-        if private is None or any(path.is_relative_to(r) for r in private):
-            return "a host-private member"
-        return member
-
-    rows = {
-        "missing": sorted(m for m in recorded if m not in observed),
-        "tampered": sorted(m for m in recorded if m in observed and observed[m] != recorded[m]),
-        "unsealed": sorted(m for m in observed if m not in recorded),
-    }
-    if not any(rows.values()):
-        return None
-    parts = []
-    for kind, members in rows.items():
-        if members:
-            names = sorted({shown(m) for m in members})
-            parts.append(f"{kind} {len(members)}: " + ", ".join(names[:20]) + (" ..." if len(names) > 20 else ""))
-    return "; ".join(parts)
-
-
-def inspect_release(path: Path) -> dict:
-    """Return only safe counts/commitments, never member identities or review text."""
-    root = _private_root(path)
-    prepared = _read(root / "private" / "preparation.json")
-    identity = _content(root, prepared)
-    sealed = (root / "private" / "seal.json").is_file()
-    if sealed:
-        verify(root / "private" / "seal.json", root / "payload" / "experiment" / "target_experiment.yaml")
-    return {
-        "schema_version": 1,
-        "release": str(root),
-        "target": prepared["target"],
-        "state": "sealed" if sealed else "awaiting_operator_review",
-        "review_digest": _digest(identity),
-        "payload_sha256": identity["payload_sha256"],
-        "generation_lineage_sha256": (
-            _digest(prepared["generation_lineage"]) if prepared.get("generation_lineage") is not None else None
-        ),
-        "descriptor": str(root / "payload" / "experiment" / "target_experiment.yaml"),
-        "counts": prepared["admission"],
-        "engine_readiness": "not_executed",
-    }
-
-
-#: The storage contract's ``product_roots`` entry for sealed phase-0 releases.
-RELEASES_HOME = "phase0-releases"
-
-
-def default_release_root(target: str, *, timestamp: str | None = None, sha: str | None = None) -> Path:
-    """``out/artifacts/protocols/<target>/phase0-<TS>-<sha7>/``: the target axis of a new release."""
-    from merlin.common.artifacts import declared_home, git_sha7, utc_stamp
-    from merlin.common.paths import repo_root
-
-    if not target or Path(target).name != target or target in (".", ".."):
-        raise SpecError(f"corpus release target must be one path component: {target!r}")
-    stamp = timestamp or utc_stamp()
-    return declared_home(RELEASES_HOME) / target / f"phase0-{stamp}-{sha or git_sha7(repo_root())}"
+# ---- release -----------------------------------------------------------------------------------
 
 
 def prepare(
@@ -502,11 +63,17 @@ def prepare(
 ) -> dict:
     """Assemble a fresh complete source pool; neither canonical inputs nor approval change."""
     from merlin.common.paths import out_dir
-    from merlin.common.storage_lifecycle import lease
-    from merlin.development.targetgen.target_experiment import load_target_experiment
-
-    from ..runner import fingerprint
-    from .accelerator_scope import validate_scope
+    from merlin.common.storage.retention import lease
+    from merlin.experiments.corpus.coverage import validate_scope
+    from merlin.experiments.corpus.release_binding import (
+        RELEASES_HOME,
+        _selected_capability_contract,
+        _selected_rtl_facts,
+        _stage_instruction_model,
+        default_release_root,
+    )
+    from merlin.experiments.runs.plan_sources import fingerprint
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     validate_scope(capsule_scope, generated_only=generated_only)
 
@@ -532,7 +99,6 @@ def prepare(
     plan, attempt, generated = source_run(source)
     lineage = generation_lineage(plan, generated)
     te = load_target_experiment(plan["phases"]["0"]["inputs"]["descriptor"])
-    from .generated_source import bind_generated_corpus
 
     te = bind_generated_corpus(te, generated, generated_only=generated_only)
     from merlin.common.artifacts import declared_home
@@ -590,7 +156,7 @@ def prepare(
             )
             supplement = None
             if public_supplement is not None:
-                from .public_supplement import stage
+                from merlin.experiments.corpus.public_supplement import stage
 
                 private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
                 if private_baseline is not None:
@@ -605,7 +171,7 @@ def prepare(
             selected_facts = _selected_rtl_facts(plan, generated)
             scalability = None
             if public_scalability is not None:
-                from .public_scalability import stage as stage_scalability
+                from merlin.experiments.corpus.public_scalability import stage as stage_scalability
 
                 private_sources = [*te.hidden_roots(), generated / "hidden", payload / "corpus/hidden"]
                 if private_baseline is not None:
@@ -619,7 +185,7 @@ def prepare(
                 assembly["public_scalability"] = scalability
             programs = None
             if public_program_suite is not None:
-                from .public_program_suite import stage as stage_programs
+                from merlin.experiments.corpus.public_program_suite import stage as stage_programs
 
                 programs = stage_programs(public_program_suite, root / "private/public_programs", target=te.target)
                 assembly["public_programs"] = programs
@@ -671,7 +237,7 @@ def prepare(
                 **({"cca_bank": cca_bank} if cca_bank is not None else {}),
             )
             if public_reference_manifest is not None:
-                from .performance_baselines import verify_corpus
+                from merlin.experiments.corpus.performance_baselines import verify_corpus
 
                 # Staged reference-compiler cycles must name public cases of THIS corpus, same interface.
                 baselines = verify_corpus(payload / "experiment" / "reference-kernels", payload / "corpus")
@@ -684,7 +250,7 @@ def prepare(
             if generation_lineage(checked_plan, checked_generated) != lineage:
                 raise SpecError("Phase-0 generation lineage changed during corpus preparation")
             if supplement is not None:
-                from .public_supplement import verify as verify_supplement
+                from merlin.experiments.corpus.public_supplement import verify as verify_supplement
 
                 verify_supplement(supplement, payload / "corpus")
             private_json(
@@ -723,7 +289,15 @@ def prepare(
 
 def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str) -> dict:
     """Record an explicit operator review of these exact bytes; never called by prepare/run."""
-    from merlin.common.storage_lifecycle import lease, pin
+    from merlin.common.storage.retention import lease, pin
+    from merlin.experiments.corpus.release_binding import (
+        _content,
+        _freeze_payload,
+        _member_digests,
+        _private_root,
+        _read,
+        _review_lock,
+    )
 
     if not reviewed_by.strip() or not review_note.strip():
         raise SpecError("sealing requires an explicit reviewer and review note")
@@ -740,19 +314,19 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         # operator review must not upgrade them to verified corpus provenance.
         # source_run rechecks the frozen plan, source/output receipts and every
         # input fingerprint before these selected bytes are interpreted.
-        from ..runner import _phase0_synthesis_status
+        from merlin.experiments.runs.plan_sources import _phase0_synthesis_status
 
         plan, _, generated = source_run(Path(prepared["source_run"]))
         if generation_lineage(plan, generated) != prepared.get("generation_lineage"):
             raise SpecError("Phase-0 generation lineage differs from the operator-reviewed preparation")
         supplement = (prepared.get("assembly") or {}).get("public_supplement")
         if supplement is not None:
-            from .public_supplement import verify as verify_supplement
+            from merlin.experiments.corpus.public_supplement import verify as verify_supplement
 
             verify_supplement(supplement, root / "payload/corpus")
         phase = plan["phases"]["0"]
         if phase.get("phase0_evidence"):
-            from merlin.development.testgen.evidence import load_exported_evidence
+            from merlin.development.testgen.evidence.evidence import load_exported_evidence
 
             observed = load_exported_evidence(plan["phase0_evidence_bundle"])
             if observed.status != "verified":
@@ -783,7 +357,7 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
         token = pin(root, reason="explicitly reviewed corpus release")
         # Read-only is what verification requires; the immutable attribute is what stops a cleanup
         # that restores write bits first. Whether the host granted it is recorded, never assumed.
-        from merlin.common.immutability import seal_tree
+        from merlin.experiments.corpus.evidence_custody import seal_tree
 
         immutability = seal_tree([root / "payload"])
         private_json(
@@ -807,6 +381,8 @@ def seal(path: Path, *, expected_digest: str, reviewed_by: str, review_note: str
 
 def verify(seal_path: Path, descriptor: Path) -> dict:
     """Validate a sealed release selected explicitly by a functional experiment."""
+    from merlin.experiments.corpus.release_binding import _content, _digest, _payload_drift, _private_root, _read
+
     path = seal_path.expanduser().absolute()
     if path.name != "seal.json" or path.parent.name != "private":
         raise SpecError("corpus seal must name the release's private seal.json record")
@@ -847,16 +423,18 @@ def verify(seal_path: Path, descriptor: Path) -> dict:
 
 def _verify_workload_coverage(root: Path, prepared: dict) -> dict:
     """Require the deterministic handoff, without pre-certifying Phase 1."""
-    from merlin.development.targetgen.target_experiment import load_target_experiment
-    from merlin.development.testgen.coverage_commitment import (
+    from merlin.development.testgen.evidence.coverage_commitment import (
         build_phase0_readiness,
         phase0_readiness_identity,
-        read_inputs,
         require_phase0_ready,
+    )
+    from merlin.development.testgen.evidence.coverage_obligations_coverage_commitment import (
+        read_inputs,
         requires_workload_coverage,
     )
-
-    from ..runner import _read_json
+    from merlin.experiments.corpus.release_binding import _digest
+    from merlin.experiments.runs.plan_sources import _read_json
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     descriptor = root / "payload" / "experiment" / "target_experiment.yaml"
     te = load_target_experiment(descriptor)
@@ -890,10 +468,10 @@ def _verify_snapshot(
     seal_path: Path, descriptor: Path, ws: Path, bundle: dict, *, repo: Path | None = None
 ) -> VerifiedCorpusSnapshot:
     """Bind actual private snapshot bytes to the operator-reviewed source bytes."""
-    from merlin.development.targetgen.sandbox.bwrap import snapshot_input_paths
-    from merlin.development.targetgen.target_experiment import load_target_experiment
-
-    from ..runner import fingerprint
+    from merlin.development.targetgen.sandbox.grants import snapshot_input_paths
+    from merlin.experiments.corpus.release_binding import _INSTRUCTION_MODEL, VerifiedCorpusSnapshot, _digest
+    from merlin.experiments.runs.plan_sources import fingerprint
+    from merlin.target.registry.descriptor_loading import load_target_experiment
 
     identity = verify(seal_path, descriptor)
     te = load_target_experiment(descriptor)
@@ -913,7 +491,7 @@ def _verify_snapshot(
             raise SpecError("native corpus snapshot differs from the operator-reviewed release")
     # Review metadata is a host-only snapshot input too. Read its frozen copy,
     # never an absent-copy fallback to mutable release metadata on resume.
-    from ..runner import _read_json
+    from merlin.experiments.runs.plan_sources import _read_json
 
     frozen_prepared = _read_json(snapshots[-1] / "preparation.json")
     frozen_sealed = _read_json(snapshots[-1] / "seal.json")
@@ -954,4 +532,60 @@ def verify_snapshot_for_phase1(
     seal_path: Path, descriptor: Path, ws: Path, bundle: dict, *, repo: Path | None = None
 ) -> VerifiedCorpusSnapshot:
     """Trusted Phase 1 host gate with an explicit, separately typed private input."""
+
     return _verify_snapshot(seal_path, descriptor, ws, bundle, repo=repo)
+
+
+# ---- generated_source --------------------------------------------------------------------------
+# Release-local corpus selection for a run with no historical corpus input.
+
+
+def bind_generated_corpus(te, generated: Path, *, generated_only: bool):
+    """Choose a public category without discovering any historical source pool.
+
+    The primary category is an anchor: native discovery also includes every
+    public sibling category. Its spelling therefore does not select a subset
+    of the generated public cohort. Private and feedback categories stay out.
+    """
+    if te.capsule_corpus is not None:
+        return te
+    if not generated_only:
+        raise SpecError("a release without a source corpus requires generated-only preparation")
+    categories = [
+        directory
+        for directory in sorted(generated.iterdir())
+        if directory.is_dir()
+        and not directory.is_symlink()
+        and directory.name != "hidden"
+        and not directory.name.startswith(("_", "."))
+        and next(directory.glob("*/capsule.yaml"), None) is not None
+    ]
+    if not categories:
+        raise SpecError("generated-only release has no public capsule category")
+    return replace(te, capsule_corpus=categories[0])
+
+
+def inspect_release(path: Path) -> dict:
+    """Return only safe counts/commitments, never member identities or review text."""
+    from merlin.experiments.corpus.release_binding import _private_root, _read, _content, _digest
+
+    root = _private_root(path)
+    prepared = _read(root / "private" / "preparation.json")
+    identity = _content(root, prepared)
+    sealed = (root / "private" / "seal.json").is_file()
+    if sealed:
+        verify(root / "private" / "seal.json", root / "payload" / "experiment" / "target_experiment.yaml")
+    return {
+        "schema_version": 1,
+        "release": str(root),
+        "target": prepared["target"],
+        "state": "sealed" if sealed else "awaiting_operator_review",
+        "review_digest": _digest(identity),
+        "payload_sha256": identity["payload_sha256"],
+        "generation_lineage_sha256": (
+            _digest(prepared["generation_lineage"]) if prepared.get("generation_lineage") is not None else None
+        ),
+        "descriptor": str(root / "payload" / "experiment" / "target_experiment.yaml"),
+        "counts": prepared["admission"],
+        "engine_readiness": "not_executed",
+    }

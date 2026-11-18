@@ -22,7 +22,8 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
-from ..io import bounded_glob, clean, epoch, is_dir, is_file, obj
+from merlin.experiments.tracking.console.snapshot import bounded_glob, clean, epoch, is_dir, is_file, obj
+
 from . import downsample
 
 LEVELS = ("ok", "info", "warn", "bad")

@@ -1,6 +1,6 @@
 """The ANSWER SURFACE — every file/dir the agent-under-test must NOT be able to read, DERIVED.
 
-The isolation sandbox is deny-by-default (see :mod:`merlin.development.targetgen.sandbox.bwrap`): all of
+The isolation sandbox is deny-by-default (see :mod:`merlin.development.targetgen.sandbox.grants`): all of
 ``/scratch*`` is tmpfs-masked and only the legit toolchain + the arm's declared inputs are bound back.
 But a few answer surfaces are RE-EXPOSED by a broad legit bind (the goldens/hidden sit under the
 allowed ``src/merlin/resources/contracts/`` tree; the experimenter memory sits under the bound ``~/.claude``), so they
@@ -72,21 +72,23 @@ from merlin.common.access import (
     module_name_for as module_name_for,
 )
 from merlin.common.paths import artifacts_dir, repo_root
-from merlin.development.targetgen import capsule_privacy
-from merlin.development.targetgen.capsule_privacy import capsule_answer_members
-from merlin.development.targetgen.sandbox.mount_paths import (
+from merlin.development.targetgen.corpus import declarations as capsule_privacy
+from merlin.development.targetgen.corpus.declarations import capsule_answer_members
+from merlin.development.targetgen.sandbox.mounts import (
     _CallPathResolution,
     _MountPathIndex,
     _resolved_bind_mounts,
+    path_kind,
 )
-from merlin.development.targetgen.sandbox.mount_visibility import path_kind
-from merlin.development.targetgen.target_experiment import TargetExperiment
-from merlin.experiments.access_policy import (
+from merlin.experiments.definition import (
     MODULE_ACCESS,
     declared_modules,
     legacy_module_paths,
     require_current_policy,
 )
+from merlin.target.registry.experiment_descriptor import TargetExperiment
+
+# ---- answer_surfaces ---------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------- the DECLARED registry
 # The oracle + grader modules are a PROPERTY OF THE HARNESS, not of any target — one declared constant,
@@ -166,7 +168,7 @@ class CapsuleMetadata:
         self._documents: dict[bytes, object] = {}
         self._lock = threading.Lock()
         self.module_location_plan = None
-        from merlin.development.targetgen.sandbox.guarded_inventory import GuardedInventory
+        from merlin.development.targetgen.sandbox.mounts import GuardedInventory
 
         self.inventory = GuardedInventory()
         self._derived = {}
@@ -487,7 +489,7 @@ def _evicted_oracle_modules_result() -> tuple[list[Path], str | None]:
     """
     paths: list[Path] = []
     try:
-        from merlin.runtime.backends import base as _bk
+        from merlin.runtime.backends import registry as _bk
 
         for key in ("backend", "sim_oracle"):
             for _name, p in _bk._oot_plugin_modules(key):
@@ -651,8 +653,8 @@ def _support_package_dirs() -> list[Path]:
     propagates: an unknown support mask must not become an empty mask. Candidate
     compiler and host-schedule packages are not support providers.
     """
-    from merlin.compiler.backend.load import ProviderRole
-    from merlin.development.targetgen import target_registry
+    from merlin.compiler.backend.providers import ProviderRole
+    from merlin.target.registry import identity as target_registry
 
     roots: set[Path] = set()
     references = target_registry.reference_targets()

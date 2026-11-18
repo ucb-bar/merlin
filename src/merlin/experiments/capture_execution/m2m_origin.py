@@ -13,7 +13,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from merlin.common import strict_json
+from merlin.common import record_formats as strict_json
+
+# ---- m2m_origin --------------------------------------------------------------------------------
 
 ORIGIN_SCHEMA = "merlin.selected_m2m_git_origin.v1"
 FROZEN_SCHEMA = "merlin.phase0.frozen_m2m_origin.v1"

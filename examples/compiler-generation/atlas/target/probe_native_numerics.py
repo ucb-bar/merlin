@@ -16,7 +16,7 @@ import sys
 from functools import cache
 from pathlib import Path
 
-from merlin.integrations.specir import importable
+from merlin.common.external_tools import specir_importable
 
 
 def _sha(path: Path) -> str:
@@ -154,7 +154,7 @@ def main() -> int:
         or receipt["case"]["compared_elements"] != 1024
     ):
         raise ValueError("saved native program ABI differs from fixed 32x32 probe")
-    with importable(specir):
+    with specir_importable(specir):
         from specir.oracle import dtypes
         from specir.oracle.refmodel import fp_reduce
 

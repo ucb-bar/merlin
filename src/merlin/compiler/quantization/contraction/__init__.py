@@ -4,3 +4,5 @@ The selected numerical transformation remains explicit and diagnostic. Target
 implementations supply arithmetic/geometry; independent quality and execution
 qualification stay with their existing owners.
 """
+
+from __future__ import annotations

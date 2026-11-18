@@ -16,7 +16,7 @@ authority:
   numerical_policy_enforcement: Comparators read the selected models file; conflicting explicit tolerance overrides are refused.
   launcher_enforcement: Launch selections remain independently bound; editing these definitions does not rewrite sealed runs.
 baseline_comparison:
-  checker: python -m merlin.evaluation.model.baseline_numerics
+  checker: python -m merlin.evaluation.model.whole_model.baseline_numerics
   manifest_template: baseline-outputs.template.yaml
   instructions: baselines.md
   resolved_export: python examples/compiler-generation/gemmini/protocol/check.py --export PATH

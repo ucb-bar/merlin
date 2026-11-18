@@ -12,6 +12,8 @@ from time import perf_counter_ns
 
 from merlin.compiler.transforms.certificates import ir_digest
 
+# ---- pipeline_state ----------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class PipelineContext:

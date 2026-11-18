@@ -9,8 +9,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ..terminal_views import clip_ansi, paint
-from .discovery import STATES
+from merlin.experiments.tracking.console.discovery import STATES
+from merlin.experiments.tracking.terminal.terminal_views import clip_ansi, paint
+
+# ---- plain -------------------------------------------------------------------------------------
 
 GLYPHS = {"LIVE": "◉", "STALLED": "◐", "ACTIVE": "◎", "INTERRUPTED": "✖", "FINISHED": "✔", "ENDED": "◌", "STORED": "▣"}
 COLOURS = {
@@ -50,7 +52,7 @@ def _dur(seconds: Any) -> str:
 def _ranges(cpus: Any) -> str:
     if not isinstance(cpus, list) or not cpus:
         return "—"
-    from .sources.machine import probe_ranges
+    from merlin.experiments.tracking.console.sources.machine import probe_ranges
 
     return probe_ranges([c for c in cpus if isinstance(c, int)])
 
@@ -82,8 +84,13 @@ CASE_ROWS = 15
 
 def _cases_text(section: dict, color: bool) -> list[str]:
     """The CASES insight panel: its summary lines and the first rows of its table, in columns."""
-    return _panel_text(section, color, " CASES", "per test case (the console's insight page shows every row; "
-                       "Enter: history)", "test cases")
+    return _panel_text(
+        section,
+        color,
+        " CASES",
+        "per test case (the console's insight page shows every row; Enter: history)",
+        "test cases",
+    )
 
 
 def _panel_text(section: dict, color: bool, title: str, subtitle: str, noun: str) -> list[str]:
@@ -184,8 +191,13 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
     if lead and isinstance(window, int | float) and window > 0:
         shares = "  ".join(
             f"{label} {100 * (lead.get(f'{key}_s') or 0) / window:.0f}%"
-            for key, label in (("setup", "setup"), ("think", "outside commands"),
-                               ("tool", "command lifetime"), ("wait", "recorded wait"), ("idle", "idle"))
+            for key, label in (
+                ("setup", "setup"),
+                ("think", "outside commands"),
+                ("tool", "command lifetime"),
+                ("wait", "recorded wait"),
+                ("idle", "idle"),
+            )
         )
         para = tl.get("parallelism") or {}
         out.append(
@@ -268,9 +280,13 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
         )
 
     out += _cases_text(_section(snapshot, "cases"), color)
-    out += _panel_text(_section(snapshot, "library"), color, " LIBRARY",
-                       "library passes: imported by submission/, author tool calls, A/B effect (least touched first)",
-                       "passes")
+    out += _panel_text(
+        _section(snapshot, "library"),
+        color,
+        " LIBRARY",
+        "library passes: imported by submission/, author tool calls, A/B effect (least touched first)",
+        "passes",
+    )
 
     caps = _section(snapshot, "capsules")
     counts = (caps.get("counts") or {}).get("status") or {}
@@ -297,4 +313,7 @@ def render(snapshot: dict[str, Any], *, color: bool = False, width: int = 160) -
     return "\n".join(clip_ansi(line, width) for line in out)
 
 
-__all__ = ["experiments_text", "render"]
+__all__ = [
+    "experiments_text",
+    "render",
+]

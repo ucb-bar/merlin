@@ -4,16 +4,16 @@ import sys
 
 import pytest
 
-from merlin.common.yaml import write_yaml
-from merlin.compiler.backend.composition import (
+from merlin.common.record_formats import write_yaml
+from merlin.compiler.backend.providers import (
     BackendCompositionError,
     ComposeError,
     composition,
     materialize,
     validate_backend_composition,
 )
-from merlin.development.targetgen import plugins
-from merlin.development.targetgen import target_registry as registry
+from merlin.target.registry import identity as registry
+from merlin.target.registry import plugins
 
 REVISION = "a" * 40
 

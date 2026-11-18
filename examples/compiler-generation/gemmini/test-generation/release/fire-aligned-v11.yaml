@@ -1,7 +1,7 @@
 # Operator-only release preparation for the fire-aligned EL4 Phase 1 launch.
 #
 # This is the single source of the arguments passed to
-# merlin.experiments.corpus.release.prepare(...) and of the seal statement for
+# merlin.experiments.corpus.release_binding.prepare(...) and of the seal statement for
 # the reviewed Phase 0 release that the Phase 1 launch config
 # (../../backend-generation/launch/el4-fire-aligned.yaml) consumes. It selects inputs; it
 # does not review a corpus, qualify numerics or replace the release's own seal.

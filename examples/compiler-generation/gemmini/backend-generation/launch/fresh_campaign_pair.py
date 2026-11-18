@@ -162,7 +162,7 @@ def _normalized(value, normalize):
 
 def _seeded_identity(plan, arm):
     """Reopen the existing reviewed-seed boundary; compare content, not arm-local paths."""
-    from merlin.development.backend import joint_seed
+    from merlin.development.backend.campaign.seeding import joint_seed
 
     options, env, _, _, normalize = arm
     seed, origin = plan["seed"], plan.get("origin")

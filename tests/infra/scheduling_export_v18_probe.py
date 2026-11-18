@@ -6,29 +6,29 @@ from xdsl.dialects import llvm
 from xdsl.dialects.builtin import ModuleOp, i64
 
 from merlin.compiler.kernel_ir.ir import Call, Const, Kernel, Loop, Var, as_expr
-from merlin.compiler.lower.model.host_builder import FnBuilder
+from merlin.compiler.lower.host.builder import FnBuilder
 from merlin.compiler.schedule.blocks import Compute, Load, Preload, Store
-from merlin.compiler.schedule.compact_dense import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
-from merlin.compiler.schedule.dense_panel_pipeline import (
-    DensePanelOverlapAdmission,
-    DenseReadoutComputeAdmission,
-    DenseRetainedReductionAdmission,
-)
-from merlin.compiler.schedule.dense_readout_overlap import schedule_dense_readout_overlap
-from merlin.compiler.schedule.dense_segmented_pipeline import (
-    DenseSegmentedAdmission,
-    batch_dense_segmented_readouts,
-    schedule_dense_segmented_pipeline,
-)
-from merlin.compiler.schedule.llvm_program import FnBuilderIndexAdapter
-from merlin.compiler.schedule.scf_commands import (
+from merlin.compiler.schedule.dense.compact import DenseLoopAdapter, DenseLoopStorage, DenseMemoryView
+from merlin.compiler.schedule.dense.plans import make_dense_schedule_plan
+from merlin.compiler.schedule.loops.counted_loops import FnBuilderIndexAdapter
+from merlin.compiler.schedule.loops.scf_commands import (
     emit_scf_commands,
     materialize_scf_commands,
     unroll_small_command_loops,
     verify_scf_commands,
 )
-from merlin.compiler.schedule.schedule_ir import make_dense_schedule_plan
-from merlin.compiler.transforms.dense_planning import DenseProblem, DenseResources, dense_blocks
+from merlin.compiler.schedule.panels.pipeline import (
+    DensePanelOverlapAdmission,
+    DenseReadoutComputeAdmission,
+    DenseRetainedReductionAdmission,
+)
+from merlin.compiler.schedule.panels.readouts import schedule_dense_readout_overlap
+from merlin.compiler.schedule.panels.segmented_pipeline import (
+    DenseSegmentedAdmission,
+    batch_dense_segmented_readouts,
+    schedule_dense_segmented_pipeline,
+)
+from merlin.compiler.transforms.dense.planning import DenseProblem, DenseResources, dense_blocks
 
 
 def encode(op):

@@ -8,17 +8,19 @@ related: [10-compiler-generation, 12-experiments]
 code_refs:
   - src/merlin/compiler/transforms/pipeline.py
   - src/merlin/compiler/transforms/pipeline_state.py
-  - src/merlin/compiler/transforms/pipeline_policy.py
-  - src/merlin/compiler/schedule/block.py
-  - src/merlin/compiler/schedule/derive.py
+  - src/merlin/compiler/transforms/exploration/branch_policy.py
+  - src/merlin/compiler/schedule/nests/construction.py
+  - src/merlin/compiler/schedule/__init__.py
   - src/merlin/compiler/optimizations/registry.py
-  - src/merlin/analysis/kernels/cca.py
-  - src/merlin/analysis/kernels/cca_compare.py
-  - src/merlin/analysis/kernels/action_catalog.py
-  - src/merlin/development/backend/optimization_suggestions.py
-  - src/merlin/development/backend/operation_optimizations.py
-  - src/merlin/development/backend/authoring.py
+  - src/merlin/analysis/kernels/cca/abstraction.py
+  - src/merlin/analysis/kernels/cca/comparison.py
+  - src/merlin/analysis/kernels/cca/action_catalog.py
+  - src/merlin/development/backend/tools/optimization_suggestions.py
+  - src/merlin/development/backend/authoring/library/operation_optimizations.py
+  - src/merlin/development/backend/authoring/session.py
+  - src/merlin/development/backend/authoring/skill_staging.py
   - src/merlin/resources/optimizations
+  - src/merlin/resources/skills
   - examples/tutorials/05_cca.ipynb
 ---
 
@@ -37,15 +39,15 @@ difference. The inputs are authored examples; running it needs no hardware.
 
 ## Find the implementation
 
-Three things have different jobs:
+The implementation, strategy selection and authoring advice have separate owners:
 
 | What | Where | What to open |
 | --- | --- | --- |
 | Callable transformations | `src/merlin/compiler/transforms/` | `pipeline.py`, then the pass owner |
-| Command scheduling | `src/merlin/compiler/schedule/` | `block.py`, `residency.py`, `derive.py` |
+| Command scheduling | `src/merlin/compiler/schedule/` | `blocks.py`, then `nests/`, `panels/` or `pipeline/` |
 | Selectable optimization strategies | `src/merlin/compiler/optimizations/` | `registry.py`, then the selected strategy |
 | Authoring advice | `src/merlin/resources/optimizations/` | The four JSON catalogs below |
-| Agent instructions | `src/merlin/development/backend/author_skills/` | `pass-library`, `scheduling-api`, and the relevant skill |
+| Agent instructions | `src/merlin/resources/skills/` | `compose-pass-pipeline`, `scheduling-api`, and the relevant skill |
 
 A catalog entry describes a mechanism and points to code; it is not the pass
 implementation. A prompt tells the agent how to work; it does not make a missing
@@ -65,7 +67,7 @@ records changes and their witnesses. Options cover shape normalization, integer
 simplification, loop segmentation, storage reuse and explicit pass order.
 
 `PipelineSession` tracks pass requirements and analysis freshness. For a policy
-with alternatives, `pipeline_policy.py` defines `RegisteredPass`,
+with alternatives, `transforms.exploration.branch_policy` defines `RegisteredPass`,
 `PipelineVariant`, `PipelinePolicy`, and `evaluate_variants`. These are explicit
 registered choices, not a search through every possible pass sequence.
 
@@ -86,8 +88,9 @@ access to that file nor permission to edit it.
 
 The software specification describes the operations and numerical forms the
 compiler must implement. Reviewed hardware facts constrain capacities, features
-and command behavior. For scheduling, `schedule.derive` projects selected facts
-into geometry; unknown capacity or unsupported lifetimes must remain refusals.
+and command behavior. For scheduling, `schedule.geometry_from_machine` and
+`schedule.geometry_from_address_space` project selected facts into geometry;
+unknown capacity or unsupported lifetimes must remain refusals.
 
 For authoring advice, `optimization_suggestions.prepare` reads the workspace's
 public software declarations, selected contract, available RTL facts and staged
@@ -110,10 +113,10 @@ The current catalog inputs are:
 | `operations.schema.json` | Structure and cross-reference requirements |
 | `extensions.json` | Additional capability-dependent suggestions |
 
-The readers use the explicitly selected source repository. The operation advice
-stager still skips when no repository is supplied or its catalog is absent.
-This cleanup changes the catalogs' location, not those defaults. Catalog advice
-does not choose a schedule, rank a candidate, or establish correctness.
+The readers use the explicitly selected source repository.
+`operation_optimizations.stage_selected` skips when no repository is supplied or
+its catalog is absent. Catalog advice does not choose a schedule, rank a
+candidate, or establish correctness.
 
 ## Compare what the compiler actually emitted
 
@@ -137,27 +140,28 @@ Lifters consume supported disassembly, source or schedule representations with
 selected decoding information. Their available observations determine which
 fields they can populate. `None` means unknown, rather than zero or false.
 
-`cca_compare.compare` reports populated differences; `uncomparable_axes` reports
+`cca.comparison.compare` reports populated differences; `uncomparable_axes` reports
 fields missing on one side. `compare_evidence` requires per-axis witnesses and
 compatible scopes. The notebook's authored listings have no such witnesses, so
 its strict comparison reports unknown with zero comparable axes.
 
 ## Follow the edit and feedback
 
-`action_catalog.build_catalog` returns proposed actions and unrouted differences.
-`seam_location` points to the defining compiler edit site. In the mining beam,
-`fork_from_action.action_to_fork` turns supported actions into actual overrides.
-A missing pass or unsupported override remains a work item requiring code.
+`cca.action_catalog.build_catalog` returns proposed actions and unrouted
+differences. `seam_location` identifies the compiler edit site and whether new
+code is needed. An action describes a possible change; the caller must apply it
+through the admitted compiler interface and rebuild the candidate.
 
 After rebuilding, `achieved_residual` compares a proposed action's promised
-properties with the new emitted CCA. `search_step.make_step` distinguishes an
-unmet promise from an action with no checkable promise. Correctness and measured
-speedup enter separately through the evaluator's result.
+properties with the new emitted CCA. Check `action.intended_facet` as well as the
+residual: an empty residual can also mean that the action made no checkable
+promise. Correctness and measured speedup enter separately through the
+evaluator's result.
 
-The backend generation assisted authoring loop exposes public CCA/action queries and stages
-library advice. `authoring.execute` runs admitted author rounds, certification
-and completion. The mining beam and explicit backend optimization component feedback are
-separate existing consumers; CCA is not automatically run by every compile call.
+The backend-generation authoring loop exposes public CCA/action queries and
+stages library advice. `backend.authoring.session.execute` runs admitted author
+rounds, certification and completion. Explicit component feedback and reference
+analysis also consume CCA; it is not automatically run by every compile call.
 
 A property match is useful feedback, not independent execution evidence.
 Verification must still check the realized numerical contract, actual selected

@@ -9,13 +9,15 @@ from __future__ import annotations
 
 from typing import Any
 
+# ---- iface -------------------------------------------------------------------------------------
+
 try:
-    from merlin.development.targetgen.contract import interface_emit as _IE
+    from merlin.target.contract.interfaces import grammar as _IE
 except ImportError:  # sandbox: staged flat on sys.path (no parent package) — use the flat interface_emit shim
     import interface_emit as _IE  # type: ignore[no-redef]
 
 try:
-    from merlin.development.targetgen.contract import linalg_iface as _LI
+    from merlin.target.contract.interfaces import linalg as _LI
 except ImportError:  # sandbox: staged flat on sys.path
     import linalg_iface as _LI  # type: ignore[no-redef]
 
@@ -43,7 +45,7 @@ def parse_linalg(mlir_text: str) -> dict[str, Any]:
     {level, entry, args, results, returns, ops:[{kind, op, family, prov, ins, outs, results, extents,
     body_ops, reduction_dims}]}.
 
-    Thin pass-through to the contract reader (:func:`merlin.development.targetgen.contract.linalg_iface`).
+    Thin pass-through to the contract reader (:func:`merlin.target.contract.interfaces.linalg`).
     Parses the real IR with xDSL — use it instead of hand-rolling a linalg text parser. It is a
     READER, not a lowering: you author the lowering from the inventory (matmul-family records reuse
     the residency command path; elementwise/reduction ops name their semantics in ``body_ops``)."""

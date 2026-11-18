@@ -33,6 +33,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# ---- window_maps -------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class UnboundWindow:
@@ -100,7 +102,7 @@ def unbound_iteration_dims(maps) -> tuple[int, ...]:
 
 def unbound_windows(src: Any) -> list[UnboundWindow]:
     """Every op in ``src`` (module, MLIR text, or path) whose iteration space is unbound."""
-    from merlin.common.mlir_query import op_name, parse, walk
+    from merlin.compiler.ir.mlir_query import op_name, parse, walk
 
     found: list[UnboundWindow] = []
     for op in walk(parse(src)):

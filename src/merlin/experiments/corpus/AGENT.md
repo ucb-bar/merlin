@@ -1,9 +1,11 @@
 # src/merlin/experiments/corpus
 
-`preparation.py` verifies derivation receipts, assembles complete source pools and
-stages declared resources. `release.py` owns explicit prepare/inspect/reviewed seal
-and snapshot verification. `admission.py` observes actual evaluator construction
-for conformance and public-cohort selection; advertised tiers are not evidence.
+`preparation.py` assembles complete source pools and selected contract copies.
+`scaffold.py` selects the SDK/bundle declarations and stages task resources.
+`admission.py` owns cohort admission, source-derived resource requirements and
+actual evaluator construction; advertised tiers are not evidence.
+`release.py` owns prepare, inspect, reviewed seal and snapshot verification.
+`release_binding.py` owns private review records and exact-offload bindings.
 
 These are host-only workflows, not candidate tools or numerical implementations.
 `publication.py` rejects held-out source identities in public members before
@@ -39,8 +41,9 @@ through the native interface IR API. All source occurrences remain attached.
 Independent stimuli grant no captured-boundary, connected-cut or whole-model
 equivalence. It selects no target schedule and performs no simulation.
 
-`preparation_io` owns private JSON writes and ordinary-tree validation.
-`preparation` retains its existing callable names and copying workflow.
+`source_staging.py` owns private JSON writes, ordinary-tree validation, source
+lineage and copying. Keep callers bound to these actual owners rather than
+copying the former module's import list into each extracted file.
 
 `pytorch_sources`, `model_sources` and `spec_sources` construct capsules from
 shared captured artifacts. `model_inputs` resolves declared workload/loader

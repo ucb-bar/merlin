@@ -10,6 +10,8 @@ import secrets
 import time
 from pathlib import Path
 
+# ---- model_check -------------------------------------------------------------------------------
+
 
 def compact_result(result, *, artifact):
     """Summarize an already-public report; retain full detail in its original file."""

@@ -1,6 +1,6 @@
 """Decision procedure for the capacity cohort's per-regime PREDICTS claim.
 
-A capacity-family member (:mod:`merlin.development.testgen.capacity_families`) carries, frozen at
+A capacity-family member (:mod:`merlin.development.testgen.performance.capacity_families`) carries, frozen at
 generation from the target's facts, its family, variant, regime, the regime variable ``x`` and its
 staged roofline floor. The claim is a SCALING law per regime, never a single point and never a
 monotone "fewer is better":
@@ -24,8 +24,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+# ---- capacity ----------------------------------------------------------------------------------
+
 ANALYZER = "perf_capacity_claim.analyze_capacity_claim/v1"
+
 ACCEPTED, REFUTED, REFUSED = "ACCEPTED", "REFUTED", "REFUSED"
+
 _GROUP_FIELDS = ("family", "variant", "regime")
 
 

@@ -20,9 +20,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ... import terminal_probe as probe
-from ... import terminal_views
-from ..io import clean, epoch, is_dir, num, obj, rows, scan_dir
+from merlin.experiments.tracking.console.snapshot import clean, epoch, is_dir, num, obj, rows, scan_dir
+from merlin.experiments.tracking.terminal import resource_probe as probe
+from merlin.experiments.tracking.terminal import terminal_views
+
 from . import downsample
 
 TELEMETRY_NOTE = "Host telemetry only: not simulation, numerical or performance evidence."
@@ -132,7 +133,7 @@ def _companions(cpus: list[int]) -> list[int]:
 
     A run's own services (a calibration owner, say) are often launched beside the runner rather than
     under it, inside the reservation that confines the run; they are this experiment's work."""
-    from .. import placement
+    from merlin.experiments.tracking.console import discovery as placement
 
     mine = set(cpus)
     if not mine:

@@ -12,6 +12,8 @@ import struct
 from pathlib import Path
 from typing import BinaryIO
 
+# ---- safetensors -------------------------------------------------------------------------------
+
 MAX_HEADER_BYTES = 16 * 1024 * 1024  # Merlin's metadata bound, not a file-format limit.
 
 

@@ -25,13 +25,14 @@ from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from typing import Any
 
+# ---- affine ------------------------------------------------------------------------------------
+
 SCHEMA_VERSION = 1
+
 ANALYZER = "perf_affine_claim.analyze_affine_claim/v1"
 
 ACCEPTED, REFUTED, REFUSED = "ACCEPTED", "REFUTED", "REFUSED"
 
-#: How the independent variable is read off a capsule descriptor.  Each kind is a STRUCTURAL read of
-#: the declared operand shapes -- never a parse of the capsule's name, which is a label and not data.
 _VARIABLE_KINDS = ("output_elements", "input_elements", "input_dim")
 
 
@@ -268,22 +269,6 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
     return {"verdict": ACCEPTED, "measured": measured, "family": sorted(families)[0]}
 
 
-# ---------------------------------------------------------------------------------------------
-# PREFLIGHT: is this cohort admissible BEFORE a single cycle is spent measuring it?
-#
-# The decision procedure above refuses bad evidence.  That is too late to be the only guard: a
-# campaign that discovers at report time that its contract omits a threshold, or that its cohort
-# holds the independent variable constant, has already paid for every L3 cell.  The preflight asks
-# the same questions of the DECLARATION alone, so an inadmissible family is refused at launch.
-#
-# Everything below is read from the frozen declaration.  Nothing about a family, an axis, an
-# operation or a target is written here: the independent variable comes from ``fit.variable_source``,
-# the cohort size from ``cohort.exact_points``, the schedule from ``replicates``, and the bounds from
-# ``thresholds`` -- and a declaration that omits any of them is REFUSED rather than completed with a
-# value this module chose.
-# ---------------------------------------------------------------------------------------------
-
-
 class _Refusal(ValueError):
     """One named reason a declaration cannot be admitted."""
 
@@ -345,9 +330,6 @@ def _shape_of(descriptor: Mapping[str, Any], name: str) -> tuple[int, ...]:
     return tuple(extents)
 
 
-#: The cohort-control fields a descriptor states about itself, each read STRUCTURALLY from the block
-#: that declares it.  A contract naming a field absent from this table is REFUSED rather than having
-#: that part of its control silently skipped -- an unread control is not a control.
 def _fixed_field(descriptor: Mapping[str, Any], field: str) -> Any:
     operation = _mapping(descriptor.get("operation"), f"member {descriptor.get('name')!r} operation")
     attributes = _mapping(operation.get("attributes"), f"member {descriptor.get('name')!r} operation attributes")
@@ -442,7 +424,7 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
     if not _is_number(bound.get("absolute_floor_cycles")) or not _is_number(bound.get("observed_cycle_fraction")):
         raise _Refusal("the residual bound is not fully specified")
 
-    from merlin.analysis.perf import claim_reach
+    from merlin.analysis.perf.claims import reach as claim_reach
 
     try:
         schedule = claim_reach.replicate_contract(members[0]["performance"])

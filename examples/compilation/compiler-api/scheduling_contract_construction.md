@@ -9,7 +9,7 @@ specific requirements must actually hold.
 Use the same API offline or from the selected compiler library:
 
 ```python
-from merlin.compiler.schedule.selected_contracts import (
+from merlin.compiler.schedule.pipeline.selected_contracts import (
     scheduling_spec_draft, inspect_scheduling_draft, read_scheduling_contracts,
 )
 
@@ -28,7 +28,7 @@ report = inspect_scheduling_draft(
 formats, resources, instruction bindings, effects, support and completion. Null
 configuration is deliberate: `{}` would assert no configuration effects. Fill
 fields using explicit facts references and authored semantics; inspect again.
-`resolve_fact_integer` in `merlin.development.targetgen.isa_spec` resolves a supplied reference
+`resolve_fact_integer` in `merlin.target.isa.spec` resolves a supplied reference
 against those exact facts. The aid never picks a fact by name similarity, chooses
 scratch space, inserts a preferred schedule or changes the ISA's facts hash.
 

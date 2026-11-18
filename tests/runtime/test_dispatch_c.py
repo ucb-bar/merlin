@@ -5,11 +5,10 @@ from dataclasses import replace
 
 import pytest
 
-from merlin.compiler.dialects.lowering.dispatch_program import Buffer, DispatchProgram, Node
-from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
-from merlin.compiler.lower.c.dispatch import DispatchCall, emit_program_c
-from merlin.compiler.schedule.arena import ArenaRequirements
-from merlin.runtime.program import build_program
+from merlin.compiler.lower.c.dispatch import DispatchCall, build_program, emit_program_c
+from merlin.compiler.partition.dispatch_program import Buffer, DispatchProgram, Node
+from merlin.compiler.partition.global_plan_emission import dispatch_digest
+from merlin.compiler.schedule.storage.arena import ArenaRequirements
 
 
 def program():

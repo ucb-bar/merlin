@@ -136,7 +136,7 @@ def check(staged: bool) -> list[str]:
     ratcheted = {_source_layout.policy_path(path) for path in _ratcheted()}
     violations: list[str] = []
     for rel in _tracked(staged):
-        if _source_layout.policy_path(rel) in ratcheted or rel.endswith(_SKIP_SUFFIXES):
+        if _source_layout.policy_covered(rel, ratcheted) or rel.endswith(_SKIP_SUFFIXES):
             continue
         p = ROOT / rel
         if not p.is_file():
@@ -146,9 +146,8 @@ def check(staged: bool) -> list[str]:
         # owner, not to arbitrary links outside the checkout.
         if p.is_symlink():
             resolved = p.resolve(strict=False)
-            if (
-                resolved.is_relative_to(ROOT)
-                and _source_layout.policy_path(resolved.relative_to(ROOT).as_posix()) in ratcheted
+            if resolved.is_relative_to(ROOT) and _source_layout.policy_covered(
+                resolved.relative_to(ROOT).as_posix(), ratcheted
             ):
                 continue
         try:

@@ -4,9 +4,9 @@ import pytest
 from corefixtures.selected_execution import roster
 
 from merlin import api
-from merlin.compiler.artifact import Artifact, Compilation
-from merlin.compiler.pipeline import PlannedCompiler, RegionBackend
-from merlin.compiler.planning.execution import select_execution
+from merlin.compiler.compilation import Artifact, Compilation
+from merlin.compiler.planning.cover_selection import select_execution
+from merlin.compiler.system import PlannedCompiler, RegionBackend
 from merlin.compiler.transforms.certificates import ir_text
 
 
@@ -68,7 +68,7 @@ def test_all_providers_compile_exact_regions_with_binary_products_and_no_image_c
         "merlin.compiler.ir.region",
         "merlin.compiler.ir.semantics",
         "merlin.compiler.partition.regions",
-        "merlin.verification.partition",
+        "merlin.verification.translation.pass_validation",
     } <= owners
     assert report["regions"][0]["source_ordinals"] != report["regions"][1]["source_ordinals"]
     assert "region_abi_adaptation" in report["remaining"]

@@ -6,7 +6,7 @@ two drift, nothing notices, and both directions cost a real number:
 
   UNDER-DECLARED  the sources evidence a capability the manifest omits. This does NOT show up as a
                   failing capsule — the conformance requirement is ``admitted INTERSECT observed``
-                  (:mod:`merlin.development.targetgen.conformance`), so an unadmitted family is EXCLUDED from the
+                  (:mod:`merlin.development.targetgen.conformance.requirements`), so an unadmitted family is EXCLUDED from the
                   requirement rather than missed, and the bar for the whole corpus quietly drops.
                   Measured here: a systolic target's contract says in a comment "No general reduction /
                   softmax / attention / normalization hardware" while its own ISA header enumerates
@@ -62,13 +62,15 @@ for _p in (_HERE.parents[2] / "merlin" / "python",):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from merlin.development.targetgen import capability_discovery as CD  # noqa: E402
+from merlin.target.capabilities.discovery import delta as _merlin_delta_1
+from merlin.target.capabilities.discovery import facts as _merlin_facts_1
+from merlin.target.capabilities.discovery import sources as CD  # noqa: E402
 
 
 def audit(target: str, *, require_pin: bool = False) -> dict:
     """The declared-vs-discovered delta for one target, or the reason there is none."""
     try:
-        return CD.delta(target, require_pin=require_pin)
+        return _merlin_delta_1.delta(target, require_pin=require_pin)
     except CD.ProvenanceRefused as e:
         return {
             "target": target,
@@ -193,7 +195,7 @@ def main(argv=None) -> int:
     # DEFAULT TARGET SET IS DISCOVERED, not named: every target that has an RTL fact bundle. A hardcoded
     # default here would make this gate silently about one target forever, which is the overfitting the
     # whole module exists to prevent (and the no-target-name gate rightly rejects it).
-    targets = a.target or CD.targets_with_facts()
+    targets = a.target or _merlin_facts_1.targets_with_facts()
     if not targets:
         print(
             "no --target given and no target in this checkout has a readable RTL fact bundle; pass "

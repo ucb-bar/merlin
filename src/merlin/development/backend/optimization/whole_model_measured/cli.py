@@ -37,7 +37,9 @@ from typing import Any
 
 from merlin.development.backend.optimization.whole_model_measured import MODE
 
-DEFAULT_ROUND_DRIVER = "merlin.development.backend.optimization.whole_model_measured.rounds:round_driver"
+# ---- cli ---------------------------------------------------------------------------------------
+
+DEFAULT_ROUND_DRIVER = "merlin.development.backend.optimization.whole_model_measured.runs.rounds:round_driver"
 
 
 def _price_table(explicit: Path | None) -> Path:
@@ -75,15 +77,15 @@ def _latest_run(target: str, method: str) -> Path:
 
 
 def _oot():
-    from merlin.common import oot_repo
+    from merlin.common import oot_repository as oot_repo
 
     return oot_repo
 
 
 def machine_warnings(run_dir: Path) -> list[str]:
     """The capability warnings the run's launch recorded (``machine_capabilities.json``)."""
-    from merlin.development.backend.optimization.whole_model_measured import capabilities as CAP
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.measurement import capabilities as CAP
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
 
     return list((read_json(Path(run_dir) / CAP.RECORD) or {}).get("warnings") or ())
 
@@ -97,7 +99,7 @@ def print_machine_warnings(warnings: list[str] | tuple[str, ...]) -> None:
 
 
 def _prepare(args: argparse.Namespace):
-    from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
+    from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
 
     manifest = Path(args.phase0_manifest) if getattr(args, "phase0_manifest", None) else None
     if args.resume:
@@ -136,17 +138,17 @@ def _regions_opt_out(config: dict[str, Any], opted_out: bool) -> dict[str, Any]:
 
 def start(run_dir: Path, *, profile_name: str, round_driver: str, price_table: Path | None) -> dict[str, Any]:
     """Run the authoring sessions of a prepared run, after checking its launch profile."""
-    from merlin.development.backend.optimization.whole_model_measured import profiles as P
-    from merlin.development.backend.optimization.whole_model_measured import rounds as RND
-    from merlin.development.backend.optimization.whole_model_measured import sessions as SES
-    from merlin.development.backend.optimization.whole_model_measured.identity import load_builder
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import load_builder
+    from merlin.development.backend.optimization.whole_model_measured.runs import launch as LAUNCH
+    from merlin.development.backend.optimization.whole_model_measured.runs import rounds as RND
+    from merlin.development.backend.optimization.whole_model_measured.runs import sessions as SES
 
-    profile = P.load(profile_name)
-    checked = P.check(profile, price_table=_price_table(price_table))
+    profile = LAUNCH.load_profile(profile_name)
+    checked = LAUNCH.check_profile(profile, price_table=_price_table(price_table))
     print_machine_warnings(machine_warnings(Path(run_dir)))
     _record, objective = _objective_of(Path(run_dir))
     # THIS PROCESS IS THE LAUNCHER: it writes the run's heartbeat (pid, last activity, last measurement).
-    from merlin.development.backend.optimization.whole_model_measured import liveness as LIVE
+    from merlin.development.backend.optimization.whole_model_measured.runs import liveness as LIVE
 
     objective.heartbeat = LIVE.Heartbeat(
         Path(run_dir),
@@ -179,8 +181,8 @@ def start(run_dir: Path, *, profile_name: str, round_driver: str, price_table: P
 def _recover_killed_rounds(run_dir: Path, objective) -> list[dict[str, Any]]:
     """Close the rounds a killed driver left open: this run's own (a relaunched ``start``) and the run it
     was resumed from (a relaunch by the watchdog), whose store this run keeps."""
-    from merlin.development.backend.optimization.whole_model_measured import rounds as RND
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.runs import rounds as RND
 
     recovered = RND.recover_killed_rounds(run_dir / "stage", attribute=objective.attribute, run_name=run_dir.name)
     previous = (read_json(run_dir / "resumed_seed.json") or {}).get("resumed_from_run")
@@ -194,9 +196,9 @@ def _recover_killed_rounds(run_dir: Path, objective) -> list[dict[str, Any]]:
 
 def _objective_of(run_dir: Path):
     from merlin.development.backend.optimization.whole_model_measured import config as CFG
-    from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
-    from merlin.development.backend.optimization.whole_model_measured.ledger import ITERATIONS, OotLedger
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
+    from merlin.development.backend.optimization.whole_model_measured.runs.ledger import ITERATIONS, OotLedger
 
     record = read_json(Path(run_dir) / "run.json") or {}
     if record.get("schema") != RUNS.RUN_SCHEMA:
@@ -236,8 +238,8 @@ def objective_or_error(run_dir: Path) -> tuple[Any, str | None]:
 
 def resume_run(args: argparse.Namespace) -> dict[str, Any]:
     """Prepare the next run of ``args.run_dir`` and, with ``--launch``, start it detached."""
-    from merlin.development.backend.optimization.whole_model_measured import launch as LAUNCH
-    from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
+    from merlin.development.backend.optimization.whole_model_measured.runs import launch as LAUNCH
+    from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
 
     if args.launch and not args.profile:
         raise SystemExit("--launch needs --profile")  # refused before a run is prepared, not after
@@ -274,9 +276,9 @@ def resume_run(args: argparse.Namespace) -> dict[str, Any]:
 def roofline_report(args: argparse.Namespace) -> Path:
     """Write the roofline report as a versioned product and return its path."""
     from merlin.common.artifacts import new_product
-    from merlin.development.backend.optimization.whole_model_measured import roofline as ROOF
-    from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
+    from merlin.development.backend.optimization.whole_model_measured.scoring import roofline as ROOF
 
     target, capsule = args.target, args.model_capsule
     if args.run is not None:
@@ -300,7 +302,7 @@ def roofline_report(args: argparse.Namespace) -> Path:
 
 
 def export_champion(args: argparse.Namespace) -> Path:
-    from merlin.development.backend.optimization.whole_model_measured.ledger import export_best
+    from merlin.development.backend.optimization.whole_model_measured.runs.ledger import export_best
 
     record, objective = _objective_of(args.run_dir)
     if objective.ledger is None:
@@ -320,7 +322,7 @@ def export_champion(args: argparse.Namespace) -> Path:
 
 
 def _spawn_start(prepared, *, profile: str, round_driver: str, price_table: Path | None) -> int:
-    from merlin.development.backend.optimization.whole_model_measured import launch as LAUNCH
+    from merlin.development.backend.optimization.whole_model_measured.runs import launch as LAUNCH
 
     return int(
         LAUNCH.launch(prepared.run_dir, profile=profile, round_driver=round_driver, price_table=price_table)["pid"]
@@ -330,8 +332,8 @@ def _spawn_start(prepared, *, profile: str, round_driver: str, price_table: Path
 def resolve_run(path: Path) -> Path:
     """The measured run ``path`` names: a prepared run directory itself, or a phase orchestration
     directory whose phase-2 record points at one (``phase2/phase_run.json``)."""
-    from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
 
     path = Path(path).expanduser().resolve()
     if (read_json(path / "run.json") or {}).get("schema") == RUNS.RUN_SCHEMA:
@@ -345,7 +347,7 @@ def resolve_run(path: Path) -> Path:
 def successors(run_dir: Path) -> list[str]:
     """The runs prepared by resuming ``run_dir`` (a watchdog relaunch continues in a NEW directory)."""
     from merlin.common.paths import phase_runs_root
-    from merlin.development.backend.optimization.whole_model_measured.identity import read_json
+    from merlin.development.backend.optimization.whole_model_measured.measurement.identity import read_json
 
     record = read_json(Path(run_dir) / "run.json") or {}
     if not record.get("target"):
@@ -362,8 +364,8 @@ def stop(run_dir: Path, *, why: str) -> dict[str, Any]:
     """Ask the run to stop at its next session boundary.  The request names the run it was written to;
     when that run was already resumed into a newer one, the newer run is named so the operator can stop
     the run that is actually going."""
-    from merlin.development.backend.optimization.whole_model_measured import launch as LAUNCH
-    from merlin.development.backend.optimization.whole_model_measured import sessions as SES
+    from merlin.development.backend.optimization.whole_model_measured.runs import launch as LAUNCH
+    from merlin.development.backend.optimization.whole_model_measured.runs import sessions as SES
 
     run_dir = resolve_run(run_dir)
     try:
@@ -515,7 +517,7 @@ def _functional_model(loop: Mapping[str, Any], name: str | None) -> dict[str, An
     or batched machine's local half, a single machine as itself. None when no name is given."""
     if not name:
         return None
-    from merlin.development.backend.optimization.whole_model_measured import registry as REG
+    from merlin.development.backend.optimization.whole_model_measured.measurement import registry as REG
 
     registry = ((loop.get("screen") or {}).get("machine") or {}).get("registry")
     if not registry:
@@ -527,7 +529,9 @@ def _functional_model(loop: Mapping[str, Any], name: str | None) -> dict[str, An
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     if raw[:1] == ["admin"]:
-        from merlin.development.backend.optimization.whole_model_measured.store_admin import main as admin
+        from merlin.development.backend.optimization.whole_model_measured.measurement.store_admin import (
+            main as admin,
+        )
 
         return admin(raw[1:])
     args = _parser().parse_args(raw)
@@ -566,7 +570,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(resume_run(args), default=str))
         return 0
     if args.command == "status":
-        from merlin.development.backend.optimization.whole_model_measured import progress as PROGRESS
+        from merlin.development.backend.optimization.whole_model_measured.runs import progress as PROGRESS
 
         run_dir = resolve_run(args.run_dir)
         objective, error = objective_or_error(run_dir)
@@ -578,7 +582,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(document, indent=1, default=str) if args.json else PROGRESS.format_status(document))
         return 0
     if args.command == "follow":
-        from merlin.development.backend.optimization.whole_model_measured import progress as PROGRESS
+        from merlin.development.backend.optimization.whole_model_measured.runs import progress as PROGRESS
 
         run_dir = resolve_run(args.run_dir)
         objective, error = objective_or_error(run_dir)
@@ -594,7 +598,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(ended))
         return 0
     if args.command == "audit-round":
-        from merlin.development.backend.optimization.whole_model_measured import round_audit as AUDIT
+        from merlin.development.backend.optimization.whole_model_measured.runs import round_audit as AUDIT
 
         run_dir = resolve_run(args.run_dir)
         try:
@@ -611,7 +615,7 @@ def main(argv: list[str] | None = None) -> int:
         print(roofline_report(args))
         return 0
     if args.command == "launch":
-        from merlin.development.backend.optimization.whole_model_measured import launch as LAUNCH
+        from merlin.development.backend.optimization.whole_model_measured.runs import launch as LAUNCH
 
         try:
             document = LAUNCH.launch(
@@ -630,8 +634,8 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(stop(args.run_dir, why=args.why), default=str))
         return 0
     if args.command == "watch":
-        from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
-        from merlin.development.backend.optimization.whole_model_measured import watchdog as WD
+        from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
+        from merlin.development.backend.optimization.whole_model_measured.runs import watchdog as WD
 
         document = WD.watch(
             args.run_dir,
@@ -653,9 +657,9 @@ def main(argv: list[str] | None = None) -> int:
         print(export_champion(args))
         return 0
     if args.command == "cell-prepare":
-        from merlin.development.backend.optimization.whole_model_measured import cell_prep as CP
-        from merlin.development.backend.optimization.whole_model_measured import forms as FORMS
-        from merlin.development.backend.optimization.whole_model_measured import runs as RUNS
+        from merlin.development.backend.optimization.whole_model_measured.runs import runs as RUNS
+        from merlin.development.backend.optimization.whole_model_measured.scoring import cell_prep as CP
+        from merlin.development.backend.optimization.whole_model_measured.scoring import forms as FORMS
 
         record = json.loads((args.run_dir / "run.json").read_text(encoding="utf-8"))
         loop = json.loads((args.run_dir / RUNS.CONFIG_NAME).read_text(encoding="utf-8"))
@@ -694,19 +698,31 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "fast":
-        from merlin.development.backend.optimization.whole_model_measured import fast as FAST
+        from merlin.development.backend.optimization.whole_model_measured.scoring import fast_tiers as FAST
 
         FAST.run(args.root)
         return 0
     if args.command == "work":
-        from merlin.development.backend.optimization.whole_model_measured.worker import worker_main
+        from merlin.development.backend.optimization.whole_model_measured.measurement.worker import (
+            worker_main,
+        )
 
         return worker_main(args.job_dir.resolve())
     if args.command == "batch":
-        from merlin.development.backend.optimization.whole_model_measured.batch import batch_main
+        from merlin.development.backend.optimization.whole_model_measured.measurement.board_batches import (
+            batch_main,
+        )
 
         return batch_main(args.root.resolve())
     return 2
 
 
-__all__ = ["main", "objective_or_error", "resolve_run", "resume_run", "start", "stop", "successors"]
+__all__ = [
+    "main",
+    "objective_or_error",
+    "resolve_run",
+    "resume_run",
+    "start",
+    "stop",
+    "successors",
+]

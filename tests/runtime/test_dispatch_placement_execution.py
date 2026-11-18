@@ -3,12 +3,13 @@ import ctypes
 import numpy as np
 import pytest
 
-from merlin.compiler.dialects.lowering.compute_groups import Group
-from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
-from merlin.compiler.dialects.lowering.outline import outline_dispatches
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.lower.model import kernel_backend
-from merlin.runtime import dispatch_runtime as runtime
+from merlin.compiler.lower.model import oracle as kernel_backend
+from merlin.compiler.partition.dispatch_program import build_dispatch_program
+from merlin.compiler.partition.groups.compute_groups import Group
+from merlin.compiler.partition.outline import outline_dispatches
+from merlin.runtime.dispatch import executor as dispatch_execute
+from merlin.runtime.dispatch import whole_model as runtime
 
 COPY = "builtin.module {\n  func.func @forward(%x: tensor<2x3xi32>, %dst: tensor<2x3xi32>) -> tensor<2x3xi32> {\n    %y = linalg.copy ins(%x : tensor<2x3xi32>) outs(%dst : tensor<2x3xi32>) -> tensor<2x3xi32>\n    func.return %y : tensor<2x3xi32>\n  }\n}"
 
@@ -59,5 +60,5 @@ def test_explicit_nonhost_intent_refuses_before_any_host_or_backend_selection(tm
     calls = _host(monkeypatch)
     counters = {}
     with pytest.raises(runtime.DispatchRuntimeError, match="explicitly requires placement.*host execution"):
-        runtime.execute(outlined, _copy_inputs(), tmp_path, kernel_backend=backend, counters=counters)
+        dispatch_execute.execute(outlined, _copy_inputs(), tmp_path, kernel_backend=backend, counters=counters)
     assert calls == [] and (not counters.get("dispatch_ledger"))

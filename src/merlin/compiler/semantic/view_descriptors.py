@@ -11,6 +11,8 @@ from typing import Any
 from merlin.compiler.semantic.instruction import AddressConstraint
 from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
 
+# ---- view_descriptors --------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class ViewDescriptor:

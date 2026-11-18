@@ -7,7 +7,7 @@ it holds.
 
 from __future__ import annotations
 
-from merlin.compiler.dialects.lowering import compute_groups as CG
+from merlin.compiler.partition.groups import compute_groups as CG
 
 _ELEMENTWISE = (
     'linalg.generic {{indexing_maps = [{maps}], iterator_types = ["parallel", '
@@ -335,10 +335,11 @@ class Oracle:
 
     def declared_readout(self):
         """This synthetic target's ``readout_epilogue_capability``, as the facet a real one derives."""
-        from merlin.development.targetgen import readout_facet as RF
+        from merlin.target.capabilities import readout_derivation as _merlin_readout_derivation_1
+        from merlin.target.capabilities import readout_facet as RF
 
         declared = ({"selector": "out", "applies": list(self.applies)},) if self.applies is not None else ()
-        return RF.TargetReadout((RF.ReadoutFacet(target=self.target, readouts=declared),))
+        return _merlin_readout_derivation_1.TargetReadout((RF.ReadoutFacet(target=self.target, readouts=declared),))
 
     def ask(self, *, op, family, in_dtype, weight_dtype=None, rank=None, attached, granularity=None, form=None):
         self.asked.append({"op": op, "family": family, "in_dtype": in_dtype, "attached": attached})

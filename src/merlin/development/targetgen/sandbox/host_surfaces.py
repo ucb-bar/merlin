@@ -3,7 +3,7 @@
 A sandbox binds selected host inputs read-only; a private file among them, or a hardlink to one under a
 bound tree, would expose an answer the arm must not read. This module derives those surfaces from the
 mount plan and the bundle's own records (:func:`host_input_surfaces`, :func:`private_file_surfaces`);
-:func:`merlin.development.targetgen.sandbox.bwrap.apply_final_answer_masks` masks them last.
+:func:`merlin.development.targetgen.sandbox.grants.apply_final_answer_masks` masks them last.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from pathlib import Path
 
 from merlin.common.paths import repo_root
 from merlin.development.targetgen.sandbox.answer_surfaces import AnswerSurface
-from merlin.development.targetgen.sandbox.bwrap import (
+from merlin.development.targetgen.sandbox.grants import (
     _SNAPSHOT_COMPLETE,
     _bind_alias,
     _host_input_paths,
@@ -30,6 +30,8 @@ from merlin.development.targetgen.sandbox.bwrap import (
     require_snapshot_ownership,
 )
 
+# ---- host_surfaces -----------------------------------------------------------------------------
+
 
 def _final_answer_policy(
     argv, te, ws, bundle, *, repo, capsules=None, _policy_test_live_inputs=False, selected_surfaces=()
@@ -39,8 +41,8 @@ def _final_answer_policy(
     Only internal policy composition consumes the roster; no unmasked policy
     object is created. Explicit selected-input surfaces supplement live discovery.
     """
-    from merlin.development.backend.feedback import setup_timing as timing
-    from merlin.development.targetgen.sandbox import bwrap as BW
+    from merlin.development.targetgen.sandbox import grants as BW
+    from merlin.evaluation.capsule.operations import setup_timing as timing
 
     with timing.stage("package_policy.private_alias_discovery"):
         private = host_input_surfaces(
@@ -72,7 +74,7 @@ def _final_answer_policy(
             raise RuntimeError("selected support package remains exposed after final masking")
 
     if bundle.get("author_profile") is not None:
-        from merlin.development.backend.author_profiles import runtime_masks
+        from merlin.development.backend.authoring.profiles import runtime_masks
 
         result = runtime_masks(result, bundle, target=te)
     return [*result, "--unsetenv", "MERLIN_FROZEN_PYTHON_CONTEXT"], tuple(answers)

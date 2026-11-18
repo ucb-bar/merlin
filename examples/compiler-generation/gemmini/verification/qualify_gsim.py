@@ -17,9 +17,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
-from merlin.development.backend.optimization import gsim_certificate as certificate
-from merlin.development.targetgen import gsim_emulator
-from merlin.runtime.backends.base import get_backend
+from merlin.development.backend.optimization.measurement import gsim_certificate as _merlin_gsim_certificate_1
+from merlin.development.backend.optimization.measurement import gsim_certificate_receipts as certificate
+from merlin.runtime.backends.registry import get_backend
+from merlin.target.simulators import gsim_emulator
 
 
 def main() -> None:
@@ -114,7 +115,7 @@ def main() -> None:
                 (case / f"{simulator}.console.log").write_text(console)
                 return console
 
-        capture = certificate.capture_case(
+        capture = _merlin_gsim_certificate_1.capture_case(
             target="gemmini",
             capsule_manifest=manifest,
             artifact_dir=case,
@@ -138,7 +139,9 @@ def main() -> None:
                     previous_console = previous / "verilator.console.log"
                     if not previous_capture.is_file() or not previous_console.is_file():
                         continue
-                    saved = certificate.validate_capture(previous_capture, target="gemmini", pins=artifacts.pinned())
+                    saved = _merlin_gsim_certificate_1.validate_capture(
+                        previous_capture, target="gemmini", pins=artifacts.pinned()
+                    )
                     if saved["elf_sha256"] == sha256_file(elf) and saved["reference"]["console_sha256"] == sha256_file(
                         previous_console
                     ):

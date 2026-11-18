@@ -13,7 +13,7 @@ The provisioned `native_supervisor` is the direct parent/reaper of every guardia
 `native_guardian` owns only its descendant tree. `chia_native` adapts public Chia
 hooks; no worker-side Popen or private upstream tracker mutation is permitted.
 `_protocol` owns bounded local packets, descriptor transfer and peer identity.
-`owned_children` reexports the original `merlin.common.owned_children` kernel
+`owned_children` reexports the original `merlin.common.process.ownership` kernel
 subreaper setup and direct/adopted child
 pidfd termination and waitpid/ECHILD completion check. Both the existing native
 guardian and the separately forked component feedback guardian use this primitive;

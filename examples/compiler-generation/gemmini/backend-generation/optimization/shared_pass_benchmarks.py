@@ -101,8 +101,8 @@ def preflight(document, destination, *, compiler, compiler_sha256, python, mlir_
     """Invoke the original public compiler only; never launch target work."""
     import yaml
 
-    from merlin.common.proc import run_checked
-    from merlin.runtime.modelinputs import file_sha256, strict_tree_sha256
+    from merlin.common.process.invocation_records import run_checked
+    from merlin.runtime.execution.model_inputs import file_sha256, strict_tree_sha256
 
     compiler = Path(compiler).resolve(strict=True)
     # Keep the selected venv invocation path; resolving its interpreter symlink

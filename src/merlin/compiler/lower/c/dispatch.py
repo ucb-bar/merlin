@@ -8,15 +8,303 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
-from dataclasses import dataclass
+import posixpath
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from math import lcm
+from pathlib import PurePosixPath
+from typing import Any
 
-from merlin.compiler.dialects.lowering.global_plan_emission import dispatch_digest
-from merlin.compiler.schedule.arena import check_bounded_arena
-from merlin.runtime.program import MerlinProgram
+from merlin.compiler.partition.dispatch_program import DispatchProgram
+from merlin.compiler.partition.global_plan import GlobalPlan, verify_global_plan
+from merlin.compiler.partition.global_plan_emission import (
+    GlobalPlanEmission,
+    GlobalPlanEmitter,
+    dispatch_digest,
+    emit_global_plan,
+)
+from merlin.compiler.partition.memory_plan import MemoryPlan, plan_arena
+from merlin.compiler.schedule.storage.arena import ArenaRequirements, check_bounded_arena, plan_bounded_arena
 
-from .sources import c_source_pair
+# ---- sources -----------------------------------------------------------------------------------
+# Combine explicitly selected C sources into a standalone source/header pair.
+#
+# This is packaging, not a C preprocessor. Providers supply headers in dependency
+# order. Literal project includes must resolve to an already supplied header;
+# system includes and preprocessor conditions remain for the consumer's compiler.
+
+
+def c_source_pair(
+    name: str,
+    *,
+    public_headers: Mapping[str, str],
+    private_headers: Mapping[str, str],
+    sources: Mapping[str, str],
+    declarations: str = "",
+    implementation: str = "",
+) -> dict[str, str]:
+    """Render C/H files without checkout includes or a generated main function.
+
+    File names are logical source names used in diagnostics, not local paths.
+    The caller owns source selection, symbol compatibility and platform ABI.
+    The consumer still supplies any required C library and platform services.
+    """
+    letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    identifier_chars = letters + "0123456789_"
+    if not name or len(name) > 64 or name[0] not in letters or any(c not in identifier_chars for c in name):
+        raise ValueError("package name must be a C identifier beginning with a letter")
+    members = (*public_headers, *private_headers, *sources)
+    if not sources or len(set(members)) != len(members):
+        raise ValueError("C package needs sources and distinct logical member names")
+    for member in members:
+        path = PurePosixPath(member)
+        if (
+            not member
+            or path.is_absolute()
+            or path.as_posix() != member
+            or ".." in path.parts
+            or any(c not in identifier_chars + "./-" for c in member)
+        ):
+            raise ValueError("invalid logical C source name")
+
+    available: set[str] = set()
+
+    def flatten(member: str, text: str) -> str:
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("empty C package member")
+        lines = [f"#line 1 {json.dumps(member)}"]
+        for line in text.splitlines():
+            directive = line.lstrip()
+            if directive.startswith("#"):
+                directive = directive[1:].lstrip()
+                end = 0
+                while end < len(directive) and directive[end] in identifier_chars:
+                    end += 1
+                keyword, operand = directive[:end], directive[end:].strip()
+            else:
+                keyword, operand = "", ""
+            if keyword in ("include", "include_next"):
+                if keyword != "include" or len(operand) < 3 or operand[0] not in ('"', "<"):
+                    raise ValueError(f"nonliteral or unsupported include in {member}")
+                closing = '"' if operand[0] == '"' else ">"
+                if not operand.endswith(closing) or closing in operand[1:-1]:
+                    raise ValueError(f"nonliteral or unsupported include in {member}")
+                if operand[0] == '"':
+                    target = posixpath.normpath(str(PurePosixPath(member).parent / operand[1:-1]))
+                    if target not in available:
+                        raise ValueError(f"unresolved or out-of-order include {operand!r} in {member}")
+                    # Keep line numbering for diagnostics after removing it.
+                    lines.append("")
+                    continue
+            lines.append(line)
+        return "\n".join(lines) + "\n"
+
+    public = []
+    for member, text in public_headers.items():
+        public.append(flatten(member, text))
+        available.add(member)
+    guard = "MERLIN_C_PACKAGE_" + name.upper() + "_H"
+    header = (
+        f"#ifndef {guard}\n#define {guard}\n\n"
+        + "\n".join(public)
+        + '\n#ifdef __cplusplus\nextern "C" {\n#endif\n'
+        + declarations
+        + "\n#ifdef __cplusplus\n}\n#endif\n#endif\n"
+    )
+    body = [f'#include "{name}.h"\n']
+    # Clang normally suppresses unused inline helpers in included headers.
+    # Preserve that behavior for private headers embedded in a C translation
+    # unit, without suppressing warnings in the implementation below them.
+    body.append(
+        '#ifdef __clang__\n#pragma clang diagnostic push\n#pragma clang diagnostic ignored "-Wunused-function"\n#endif'
+    )
+    for member, text in private_headers.items():
+        body.append(flatten(member, text))
+        available.add(member)
+    body.append("#ifdef __clang__\n#pragma clang diagnostic pop\n#endif")
+    for member, text in sources.items():
+        body.append(flatten(member, text))
+    body.append(implementation)
+    return {name + ".h": header, name + ".c": "\n".join(body) + "\n"}
+
+
+# ---- program -----------------------------------------------------------------------------------
+# ``MerlinProgram`` — the target-independent, lean whole-model PROGRAM the HW-agnostic runtime
+# replays.
+#
+# This is the superset of :class:`~merlin.compiler.partition.dispatch_program.DispatchProgram`
+# (the DAG-verified command buffer of dispatch/view nodes over stable buffer ids) plus the two things
+# a LEAN runtime needs that the bare dispatch program lacks:
+#
+# * a compile-time **static memory plan** (:mod:`~merlin.compiler.partition.memory_plan`) — one
+#   arena + per-intermediate-buffer offsets, so the runtime binds ``arena_base()+offset`` with ZERO
+#   per-op allocation (vs the ~4391 per-op mallocs today); and
+# * **target/dispatch metadata** — a kernel table (id → compiled symbol + fused roots + required
+#   capability), per-node parallel annotation (``none|forall|launch``), an extensible/namespaced
+#   opcode set, and per-program capability flags — the hooks that let custom-ISA / SIMT / research
+#   HW plug in via an adapter without changing the program format.
+#
+# The program is serializable data. The explicitly selected C dispatcher in
+# :mod:`merlin.compiler.lower.c.dispatch` consumes a checked bounded-memory plan
+# and compiled wrappers. It supplies no operator interpreter or automatic target
+# lowering. The ordinary monolithic model path remains separate.
+#
+# The arena the measured whole-model build actually gets does NOT come through here. It is planned
+# directly over the emitted LLVM IR by :mod:`merlin.compiler.lower.host.arena`, which shares this module's
+# placement core (``arena_plan.pack_disjoint``) but derives liveness from the ``malloc``/``free`` pairs
+# the build emits rather than from a dispatch DAG.
+# Default-off and additive — the existing monolithic/outlined paths are untouched.
+
+PROGRAM_ABI_VERSION = "0.1"
+
+
+@dataclass
+class KernelEntry:
+    id: str  # stable kernel id (== dispatch symbol)
+    symbol: str  # compiled C symbol the replay invokes
+    roots: list[str] = field(default_factory=list)  # fused root op names (provenance)
+    capability: str = "scalar"  # required target capability (scalar|rvv|systolic|simt|...)
+    # Model-layer provenance carried from the dispatch node's ``prov.*`` (see the outliner). The
+    # same key the section slicer joins on. ``role``
+    # is intentionally NOT stored here — it is derived from ``fqn`` downstream (``dse_guidance``) to
+    # keep ``runtime`` free of an analysis-layer import (``dse_guidance`` already imports ``runtime``).
+    region_id: str = ""  # prov.region_id (e.g. "matmul_3")
+    fqn: str = ""  # prov.fqn (deepest nn.Module path, e.g. "blocks.0.attn.q")
+
+
+@dataclass
+class MerlinProgram:
+    abi_version: str
+    entry: str
+    dispatch: DispatchProgram  # the DAG (buffers, nodes, args, results)
+    memory_plan: MemoryPlan  # static arena + offsets
+    kernels: dict[str, KernelEntry]  # symbol -> KernelEntry
+    capabilities: list[str]  # capabilities this program requires of a target
+    parallel: dict[int, dict] = field(default_factory=dict)  # node index -> {mode, grid, ...}
+    opcodes: list[str] = field(default_factory=list)  # namespaced opcode set used
+    # Optional because the legacy program ABI remains byte-identical unless the production compiler
+    # explicitly elects the global-plan path.  ``shadow`` mode can therefore analyse a model without
+    # changing the command buffer that executes it; ``emit`` attaches the exact plan lowering consumed.
+    global_plan: GlobalPlan | None = None
+    global_plan_emission: GlobalPlanEmission | None = None
+    memory_requirements: ArenaRequirements | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        result = {
+            "abi_version": self.abi_version,
+            "entry": self.entry,
+            "dispatch": self.dispatch.to_dict(),
+            "memory_plan": self.memory_plan.to_dict(),
+            "kernels": {k: vars(v) for k, v in self.kernels.items()},
+            "capabilities": list(self.capabilities),
+            "parallel": {str(k): v for k, v in self.parallel.items()},
+            "opcodes": list(self.opcodes),
+        }
+        if self.global_plan is not None:
+            result["global_plan"] = self.global_plan.to_dict()
+        if self.global_plan_emission is not None:
+            result["global_plan_emission"] = self.global_plan_emission.receipt()
+        return result
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+    @property
+    def stats(self) -> dict[str, Any]:
+        d = self.dispatch
+        return {
+            "n_nodes": len(d.nodes),
+            "n_dispatches": d.n_dispatches,
+            "n_views": sum(1 for n in d.nodes if n.kind == "view"),
+            "n_buffers": len(d.buffers),
+            "n_kernels": len(self.kernels),
+            "arena_bytes": self.memory_plan.arena_bytes,
+            "arena_reuse_factor": self.memory_plan.stats.get("reuse_factor"),
+            "mallocs_eliminated": self.memory_plan.stats.get("n_intermediate_buffers"),
+            "capabilities": list(self.capabilities),
+            "global_plan": self.global_plan.digest if self.global_plan is not None else None,
+            "global_plan_emitted": self.global_plan_emission is not None,
+        }
+
+
+def build_program(
+    dispatch: DispatchProgram,
+    *,
+    capability: str = "rvv",
+    abi_version: str = PROGRAM_ABI_VERSION,
+    global_plan: GlobalPlan | None = None,
+    global_plan_emitter: GlobalPlanEmitter | None = None,
+    memory_requirements: ArenaRequirements | Callable[[DispatchProgram], ArenaRequirements] | None = None,
+    memory_plan: MemoryPlan | None = None,
+) -> MerlinProgram:
+    """Assemble a :class:`MerlinProgram` from a dispatch program: plan the arena, build the kernel
+    table from the dispatch nodes, and tag the required capability. The opcode set is the distinct
+    node ops (namespaced as needed by a target adapter); v1 parallel annotation is empty (the replay
+    runs nodes serially; multi-core is layered in via ``parallel`` later, node-level).
+    """
+    if global_plan is not None:
+        problems = verify_global_plan(dispatch, global_plan)
+        if problems:
+            raise ValueError("cannot attach invalid global plan: " + "; ".join(problems))
+    if global_plan_emitter is not None and global_plan is None:
+        raise ValueError("a global-plan emitter requires a selected global plan")
+    emission = (
+        emit_global_plan(dispatch, global_plan, global_plan_emitter)
+        if global_plan is not None and global_plan_emitter is not None
+        else None
+    )
+    # An emitter changes the program that is actually replayed. Without one, attaching a plan is
+    # explicitly shadow analysis and preserves the legacy dispatch byte-for-byte.
+    if emission is not None:
+        dispatch = emission.dispatch
+    # Recompute requirements after outlining so lifetimes bind the actual graph.
+    if callable(memory_requirements):
+        memory_requirements = memory_requirements(dispatch)
+    if memory_plan is not None:
+        if memory_requirements is None:
+            raise ValueError("reusing a memory plan requires explicit memory requirements")
+        check_bounded_arena(dispatch, memory_requirements, memory_plan)
+        mem = memory_plan
+    else:
+        mem = (
+            plan_bounded_arena(dispatch, memory_requirements)
+            if memory_requirements is not None
+            else plan_arena(dispatch)
+        )
+    kernels: dict[str, KernelEntry] = {}
+    opcodes: set[str] = set()
+    for node in dispatch.nodes:
+        opcodes.add(node.op if node.kind == "view" else f"dispatch:{node.op}")
+        if node.kind == "dispatch" and node.op not in kernels:
+            # The dispatch node's prov keys are the model2MLIR ``prov.*`` spellings (``prov.op`` /
+            # ``prov.fqn`` / ``prov.region_id``), NOT bare ``root``/``op``/``name`` — the old filter
+            # matched none of them, so ``roots`` was silently always ``[]`` and the layer identity was
+            # dropped when building the kernel table. Read the real keys and carry region_id/fqn through.
+            prov = node.prov or {}
+            roots = [prov[k] for k in ("prov.op", "prov.name") if k in prov]
+            kernels[node.op] = KernelEntry(
+                id=node.op,
+                symbol=node.op,
+                roots=roots,
+                capability=capability,
+                region_id=prov.get("prov.region_id", ""),
+                fqn=prov.get("prov.fqn", ""),
+            )
+    return MerlinProgram(
+        abi_version=abi_version,
+        entry=dispatch.entry,
+        dispatch=dispatch,
+        memory_plan=mem,
+        kernels=kernels,
+        capabilities=[capability],
+        opcodes=sorted(opcodes),
+        global_plan=global_plan,
+        global_plan_emission=emission,
+        memory_requirements=memory_requirements,
+    )
+
+
+# ---- dispatch ----------------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)

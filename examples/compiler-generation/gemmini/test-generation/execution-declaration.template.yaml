@@ -1,6 +1,6 @@
 # Operator-only deployment template, NOT a reviewed or runnable contract.
 # Replace every REVIEWED_* path/value, attach independently derived capability
-# declarations, then prepare pins with merlin.runtime.backends.rocc_selection.
+# declarations, then prepare pins with merlin.runtime.backends.rocc.tool_selection.
 # Merlin performs no interpolation. Do not copy legacy harness includes, issue
 # order, compiler obligations or vendor routines from the diagnostic prototype.
 name: gemmini

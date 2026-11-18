@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from merlin.common import facts_view
+from merlin.common import target_data as facts_view
 
 # ---- model -------------------------------------------------------------------------------------
 
@@ -666,7 +666,7 @@ def _memories(space: Any) -> tuple[tuple[Memory, ...], tuple[Unknown, ...]]:
 def _accumulator_name(space: Any) -> str | None:
     """The store the accumulate datapath fills, when one is addressable; else ``None``."""
     try:
-        from merlin.development.targetgen.address_space import ADDRESSABLE, accumulator_kind
+        from merlin.target.capabilities.address_space import ADDRESSABLE, accumulator_kind
     except ImportError:  # pragma: no cover - the address space is always importable in-tree
         return None
     kind = accumulator_kind(space)
@@ -913,8 +913,8 @@ def derive(
     Every input is injectable so the derivation is testable without an RTL toolchain -- which matters,
     because an absent extractor must read as an absent MEASUREMENT, never as an absent unit.
     """
-    from merlin.development.targetgen.address_space import derive_address_space
-    from merlin.development.targetgen.rtl import facts as rtl_facts
+    from merlin.target.capabilities.address_space import derive_address_space
+    from merlin.target.rtl import facts as rtl_facts
 
     if space is None:
         space = derive_address_space(target, facts=facts)
@@ -985,7 +985,8 @@ def _contract_for(target: str) -> Mapping[str, Any]:
     materialised package. A target with neither gets an empty mapping, and every quantity a contract
     would have supplied becomes an ``Unknown`` -- never a family default wearing a contract's clothes.
     """
-    from merlin.development.targetgen import capability_manifests, target_registry
+    from merlin.target.capabilities import manifest as capability_manifests
+    from merlin.target.registry import identity as target_registry
 
     try:
         selected = target_registry.resolve(target)
@@ -1065,7 +1066,7 @@ def crosscheck_declared_geometry(declared: Mapping[str, int], target: str | None
             "call site rather than widening this one."
         )
     try:
-        from merlin.compiler.schedule.derive import geometry_from_machine
+        from merlin.compiler.schedule import geometry_from_machine
 
         geometry = geometry_from_machine(derive(target))
     except Exception as exc:  # noqa: BLE001 - an unavailable derivation is recorded, never fatal

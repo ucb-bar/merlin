@@ -461,3 +461,8 @@ def is_external_path_unset(exc: BaseException | None) -> bool:
             return True
         exc = exc.__cause__
     return False
+
+
+def reports_root(*parts: str) -> Path:
+    """Generated reports under out/artifacts, honoring the selected output root."""
+    return artifacts_dir().joinpath(*parts)

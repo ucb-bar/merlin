@@ -94,7 +94,7 @@ packages/merlin-experiments/src/merlin/experiments/phase2/whole_model_measured/g
 packages/merlin-experiments/src/merlin/experiments/phase2/whole_model_measured/gates.py::coverage_assessment::get-default::g~2
 packages/merlin-experiments/src/merlin/experiments/phase2/whole_model_measured/gates.py::coverage_gate::get-default::g~2
 src/merlin/common/artifacts.py::finish_run::swallowed-error::Exception
-src/merlin/common/provenance.py::load_artifacts::get-default::repo_relative
+src/merlin/common/provenance_claims.py::load_artifacts::get-default::repo_relative
 src/merlin/verify/ablation.py::check_unit::get-default::status
 src/merlin/verify/ablation.py::render::get-default::shape
 src/merlin/verify/ablation.py::check_unit::get-default::load_error_kind

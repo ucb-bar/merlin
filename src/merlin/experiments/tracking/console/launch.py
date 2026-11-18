@@ -15,6 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+# ---- launch ------------------------------------------------------------------------------------
+
 BINARY = "merlin-console"
 
 
@@ -105,4 +107,13 @@ def exec_frontend(argv: list[str]) -> int:
     return 0  # pragma: no cover -- execv does not return
 
 
-__all__ = ["BINARY", "binary", "build", "build_root", "exec_frontend", "frontend_argv", "go_tool", "source_dir"]
+__all__ = [
+    "BINARY",
+    "binary",
+    "build",
+    "build_root",
+    "exec_frontend",
+    "frontend_argv",
+    "go_tool",
+    "source_dir",
+]

@@ -13,13 +13,17 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from merlin.evaluation.model import bundle as B
-from merlin.evaluation.model import engines as EN
-from merlin.evaluation.model import metrics as M
-from merlin.evaluation.model import replay as RP
-from merlin.evaluation.model import variants as VAR
+import yaml
+
+from merlin.evaluation.model.bundles import models as M
+from merlin.evaluation.model.bundles import seal as B
+from merlin.evaluation.model.bundles.models import load as load_models
 from merlin.evaluation.model.cli import register
-from merlin.evaluation.model.models import load as load_models
+from merlin.evaluation.model.kernels import replay as RP
+from merlin.evaluation.model.kernels import simulation_engines as EN
+from merlin.evaluation.model.kernels import variants as VAR
+
+# ---- commands ----------------------------------------------------------------------------------
 
 #: ``fast``: per unique kernel, at most this many calls on at most this many inputs.
 FAST_CALLS_PER_SYMBOL = 3
@@ -65,7 +69,7 @@ def bundle_build(args: argparse.Namespace, report: dict) -> dict:
     bundle = _bundle(args)
     keep = None if args.keep == "all" else (lambda _symbol, ordinal: ordinal < FAST_CALLS_PER_SYMBOL)
     engine = {"host_package": str(args.host_package), "contract": str(args.contract), "rtl_facts": str(args.rtl_facts)}
-    from merlin.evaluation.model import binding as BD
+    from merlin.evaluation.model.binding import receipt as BD
 
     binding = BD.write(BD.receipt_for(args), bundle.root / "binding.json")
     report["binding"] = {k: binding[k] for k in ("receipt_sha256", "status")}
@@ -90,7 +94,7 @@ def bundle_build(args: argparse.Namespace, report: dict) -> dict:
 
 @register("binding")
 def binding(args: argparse.Namespace, report: dict) -> dict:
-    from merlin.evaluation.model import binding as BD
+    from merlin.evaluation.model.binding import receipt as BD
 
     receipt = BD.receipt_for(args)
     report["binding"] = {**BD.record(receipt), "receipt": receipt}
@@ -118,7 +122,7 @@ def variants_build(args: argparse.Namespace, report: dict) -> dict:
 @register("bundle-admission")
 def bundle_admission(args: argparse.Namespace, report: dict) -> dict:
     """Re-judge a built bundle's reference admission under the models file's current rules (§4.5)."""
-    from merlin.evaluation.model import references as REF
+    from merlin.evaluation.model.bundles import references as REF
 
     model = load_models(args.models).model(args.model)
     bundle = _bundle(args)
@@ -134,7 +138,7 @@ def bundle_admission(args: argparse.Namespace, report: dict) -> dict:
 
 @register("bundle-seal")
 def bundle_seal(args: argparse.Namespace, report: dict) -> dict:
-    from merlin.evaluation.model import seal as SL
+    from merlin.evaluation.model.bundles import seal as SL
 
     bundle = _bundle(args)
     record = SL.seal(bundle, jobs=args.jobs)
@@ -145,7 +149,7 @@ def bundle_seal(args: argparse.Namespace, report: dict) -> dict:
 
 @register("bundle-verify")
 def bundle_verify(args: argparse.Namespace, report: dict) -> dict:
-    from merlin.evaluation.model import seal as SL
+    from merlin.evaluation.model.bundles import seal as SL
 
     bundle = _bundle(args)
     result = SL.verify(bundle, jobs=args.jobs)
@@ -321,16 +325,16 @@ def _replay_cases(
     Spike, then on that RTL engine, within ``deadline``; those runs are never answered from the
     console store, and a mismatch is not localized (each localizing run would be another RTL run).
     """
-    from merlin.evaluation.model import cache as KC
-    from merlin.evaluation.model import diagnostics as DG
-    from merlin.evaluation.model import export as EX
+    from merlin.evaluation.model.kernels import diagnostics as DG
+    from merlin.evaluation.model.kernels import diagnostics as EX
+    from merlin.evaluation.model.kernels import replay as KC
 
     symbols = sorted({c.symbol for c in cases})
     toolchain = RP.toolchain_for(args.host_package)
     use_cache = not getattr(args, "no_cache", False)
     mandatory_build = getattr(args, "mode", None) == "full"
     started = time.monotonic()
-    built = KC.build_kernels(
+    built = KC.build_cached_kernels(
         catalog,
         symbols,
         package_dir=args.submission,
@@ -486,9 +490,9 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
             raise B.BundleError("gsim replay needs the RTL facts: pass --rtl-facts or use a bundle that records them")
         engine = EN.GsimEngine(models.target, args.rtl_facts, board_catalog=getattr(args, "board_catalog", None))
         report["engine"] = engine.identity()
-    # A run gets its own directory: two checks of one model started in the same second shared one and
-    # overwrote each other's replay images. Absolute: the image's compilers and the emulator run inside
-    # it, and every gSIM file (image, console, emulator logs) lives under it.
+        # A run gets its own directory: two checks of one model started in the same second shared one and
+        # overwrote each other's replay images. Absolute: the image's compilers and the emulator run inside
+        # it, and every gSIM file (image, console, emulator logs) lives under it.
     root = Path(args.work or (build_dir() / "model_check")).resolve()
     root.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -516,7 +520,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
         ):
             report["programs_unattempted"] = programs[program_index + 1 :]
             break
-        # The sealed split also carries the program's shape variants, judged like recorded calls.
+            # The sealed split also carries the program's shape variants, judged like recorded calls.
         if args.split != "visible":
             varied = VAR.load(bundle.root, model.name, program, bundle.catalog(model.name, program))
             if varied is not None:
@@ -574,7 +578,7 @@ def _replay(args, report, *, all_calls: bool, group: str | None, unique: bool = 
             **({"split": "sealed"} if "variant_of" in kernel else {}),
         }
         if "diagnosis" in kernel:  # a visible input's: any other split's stays under the kernel's sealed key
-            from merlin.evaluation.model.diagnostics import summary
+            from merlin.evaluation.model.kernels.diagnostics import summary
 
             failure["where"] = summary(kernel["diagnosis"])
         report["failures"].append(failure)
@@ -646,7 +650,7 @@ def _reference_metrics(bundle: B.Bundle, model: str, split: str) -> dict[str, An
 @register("check")
 def check(args: argparse.Namespace, report: dict) -> dict:
     if args.mode == "full":  # fast's kernel replay, then every program's linked image and chain
-        from merlin.evaluation.model import full
+        from merlin.evaluation.model.whole_model import check as full
 
         full.validate(args)
         report = _replay(args, report, all_calls=False, group=None)
@@ -667,7 +671,6 @@ def check(args: argparse.Namespace, report: dict) -> dict:
             bundle=_bundle(args),
             build_provider=getattr(args, "_full_build_provider", None),
         )
-    from merlin.evaluation.model.approximations import declared
 
     approximations = declared(Path(args.submission))
     report = _replay(args, report, all_calls=False, group=None, unique=args.engine == "gsim")
@@ -692,7 +695,7 @@ def check(args: argparse.Namespace, report: dict) -> dict:
 
 @register("bundle-twins")
 def bundle_twins(args: argparse.Namespace, report: dict) -> dict:
-    from merlin.evaluation.model import twins
+    from merlin.evaluation.model.bundles import host_twins as twins
 
     bundle = _bundle(args)
     _bind_engine_inputs(args, bundle.manifest())
@@ -701,7 +704,7 @@ def bundle_twins(args: argparse.Namespace, report: dict) -> dict:
 
 @register("kernels-export")
 def kernels_export(args: argparse.Namespace, report: dict) -> dict:
-    from merlin.evaluation.model import export as EX
+    from merlin.evaluation.model.kernels import diagnostics as EX
 
     models = load_models(args.models)
     model = models.model(args.model)
@@ -730,7 +733,7 @@ def kernels_export(args: argparse.Namespace, report: dict) -> dict:
 @register("inputs-prepare")
 def inputs_prepare(args: argparse.Namespace, report: dict) -> dict:
     from merlin.common.paths import build_dir
-    from merlin.evaluation.model import inputs as INP
+    from merlin.evaluation.model.bundles import inputs as INP
 
     models = load_models(args.models)
     models.model(args.model)
@@ -768,3 +771,48 @@ def inputs_prepare(args: argparse.Namespace, report: dict) -> dict:
         "detail": f"generated public inputs hold {size} bytes (budget {INP.PUBLIC_BUDGET})",
     }
     return report
+
+
+# ---- approximations ----------------------------------------------------------------------------
+# A submission's declared approximate kernels (``manifest.yaml`` key ``numerics.approximations``).
+#
+# Every kernel whose interface opcode is listed is judged by the ratio rule; every other kernel must be
+# bit-exact (contract §5). Unknown keys are refused: a misspelled declaration must not silently turn a
+# kernel back into an exact one, or the reverse.
+
+_KEYS = {"id", "opcodes", "description", "reason"}
+
+
+class ApproximationError(ValueError):
+    """The ``numerics`` block of a submission manifest is malformed."""
+
+
+def declared(submission: Path) -> list[dict[str, Any]]:
+    """The submission's approximation declarations, validated; ``[]`` when it declares none."""
+    manifest = Path(submission) / "manifest.yaml"
+    if not manifest.is_file():
+        raise ApproximationError(f"{manifest}: no manifest")
+    data = yaml.safe_load(manifest.read_text()) or {}
+    numerics = data.get("numerics")
+    if numerics is None:
+        return []
+    if not isinstance(numerics, dict) or set(numerics) - {"approximations"}:
+        raise ApproximationError("numerics may only declare 'approximations'")
+    rows = numerics.get("approximations") or []
+    if not isinstance(rows, list):
+        raise ApproximationError("numerics.approximations must be a list")
+    seen: set[str] = set()
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != _KEYS:
+            raise ApproximationError(f"each approximation declares exactly {sorted(_KEYS)}")
+        ident = str(row["id"])
+        if not ident or any(not (ch.islower() or ch.isdigit() or ch == "_") for ch in ident) or ident in seen:
+            raise ApproximationError(f"approximation id {ident!r} must be unique and [a-z0-9_]+")
+        seen.add(ident)
+        if (
+            not isinstance(row["opcodes"], list)
+            or not row["opcodes"]
+            or not all(isinstance(o, str) for o in row["opcodes"])
+        ):
+            raise ApproximationError(f"approximation {ident!r}: opcodes must be a non-empty list of names")
+    return rows

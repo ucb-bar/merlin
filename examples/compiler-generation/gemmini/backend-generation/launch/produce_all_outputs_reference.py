@@ -3,7 +3,7 @@
 Run this operator outside the candidate workspace. It uses existing captures and
 inputs, never modifies the selected bundle, and requires every judged output to
 bitmatch its sealed reference before publishing the supplementary manifest. The
-manifest is compatible with ``merlin.evaluation.model.full_output_audit``. The caller
+manifest is compatible with ``merlin.evaluation.model.whole_model.output_audit``. The caller
 must admit and protect its SHA before using it as an offline comparison oracle.
 
 This is the reusable form of the operator that produced the v1 supplements;
@@ -40,7 +40,7 @@ def save(path, value):
 
 
 def selected(args):
-    from merlin.development.backend import launch_config as L
+    from merlin.development.backend.session import launch_config as L
 
     config = Path(args.config).resolve()
     launch = L.build(L.load(config), task_root=args.task_root, prep=args.prep, run_id=args.run_id)
@@ -53,13 +53,13 @@ def selected(args):
 def worker(args):
     import numpy as np
 
-    from merlin.common.cpu_pool import AUXILIARY, cpu_priority, shared_compute_pool
-    from merlin.evaluation.model import bundle as B
-    from merlin.evaluation.model import chain as CH
-    from merlin.evaluation.model import full as F
-    from merlin.evaluation.model import models as M
-    from merlin.evaluation.model import references as REF
-    from merlin.runtime import linalg_numpy as LN
+    from merlin.common.process.cpu_pool import AUXILIARY, cpu_priority, shared_compute_pool
+    from merlin.evaluation.model import linalg_semantics as LN
+    from merlin.evaluation.model.bundles import models as M
+    from merlin.evaluation.model.bundles import references as CH
+    from merlin.evaluation.model.bundles import references as REF
+    from merlin.evaluation.model.bundles import seal as B
+    from merlin.evaluation.model.whole_model import check as F
 
     launch, operator = selected(args)
     if args.worker_model not in args.model:
@@ -74,7 +74,10 @@ def worker(args):
         if any(not path_component(program.name) or program.steps < 1 for program in model.programs):
             raise ValueError("programs need safe names and a positive complete step roster")
         input_id = args.input
-        if Path(CH.__file__).resolve() != Path(args.repo).resolve() / "src/merlin/evaluation/model/chain.py":
+        if (
+            Path(CH.__file__).resolve()
+            != Path(args.repo).resolve() / "src/merlin/evaluation/model/bundles/references.py"
+        ):
             raise ValueError("imported reference engine is outside the selected source checkout")
         input_path = F.derived_input(bundle, model.name, input_id)
         with np.load(input_path, allow_pickle=False) as data:
@@ -91,15 +94,15 @@ def worker(args):
             bundle.root / model.name / input_id / "int8.npz",
         ]
         for name in (
-            "merlin.evaluation.model.chain",
-            "merlin.evaluation.model.catalog",
-            "merlin.evaluation.model.references",
-            "merlin.evaluation.model.full",
-            "merlin.evaluation.model.models",
-            "merlin.runtime.linalg_numpy",
-            "merlin.runtime.dispatch_runtime",
+            "merlin.evaluation.model.bundles.references",
+            "merlin.evaluation.model.bundles.program_catalog",
+            "merlin.evaluation.model.bundles.references",
+            "merlin.evaluation.model.whole_model.check",
+            "merlin.evaluation.model.bundles.models",
+            "merlin.evaluation.model.linalg_semantics",
+            "merlin.runtime.dispatch.whole_model",
             "merlin.runtime.host_math",
-            "merlin.runtime.host_math_reference",
+            "merlin.runtime.host_math",
         ):
             sources.append(Path(importlib.import_module(name).__file__))
         for program in model.programs:
@@ -112,7 +115,7 @@ def worker(args):
                     catalog.stage / "inputs.npz",
                 ]
             )
-            from merlin.runtime.dispatch_runtime import ForwardArgsCache
+            from merlin.runtime.dispatch.whole_model import ForwardArgsCache
 
             for name in (
                 *ForwardArgsCache.FILES,
@@ -248,7 +251,7 @@ def worker(args):
 
 
 def supervise(args):
-    from merlin.common.owned_children import become_child_subreaper, reap_owned_children
+    from merlin.common.process.ownership import become_child_subreaper, reap_owned_children
 
     become_child_subreaper()
     ctypes.CDLL(None).prctl(1, signal.SIGTERM)
@@ -399,7 +402,7 @@ def path_component(value):
 def main(argv=None):
     args = arguments(argv)
     if args.worker:
-        from merlin.common.owned_children import become_child_subreaper, reap_owned_children
+        from merlin.common.process.ownership import become_child_subreaper, reap_owned_children
 
         become_child_subreaper()
         ctypes.CDLL(None).prctl(1, signal.SIGTERM)

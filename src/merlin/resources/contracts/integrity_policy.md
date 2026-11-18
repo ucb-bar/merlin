@@ -8,8 +8,8 @@ by the structure of the contract (subprocess + file boundary).
 
 1. **No harness imports.** A package's tool sources must not import or load the Merlin runtime
    reference/simulator or any Merlin internal that computes the expected answer. Forbidden
-   substrings in package sources (Python or C++): `merlin.runtime.reference`,
-   `merlin.runtime.simulator`, `reference_outputs`; and (Python, AST-checked) any `import merlin` /
+   substrings in package sources (Python or C++): `merlin.runtime.engine.reference`,
+   `merlin.runtime.engine.simulator`, `reference_outputs`; and (Python, AST-checked) any `import merlin` /
    `from merlin …` — **except the one public input dialect `merlin.compiler.dialects.interface`**, which a
    package MAY import to parse the input structurally (the assisted arms are meant to *use the
    interface*, not regex-scrape it; the input GRAMMAR is the fixed public contract, not the answer).

@@ -1,7 +1,0 @@
-  if(rhs_zero_representation&&aep.l1==0&&used==0){
-   for(int j=0;j<n;j++){
-    merlin_fma_chunk chunk={center[r*n+j],center[r*n+j],merlin_dot_norms_admitted_product_upper(&anp,&bnp[j]),zero_representation_error,k};
-    if(!merlin_fma_zero_gamma_batch_apply(&gamma,chunk,&lo[r*n+j],&hi[r*n+j]))return 0;
-   }
-   continue;
-  }

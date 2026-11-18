@@ -9,6 +9,8 @@ from __future__ import annotations
 import string
 from dataclasses import dataclass
 
+# ---- repairs -----------------------------------------------------------------------------------
+
 _IDENT_CHARS = frozenset(string.ascii_letters + string.digits + "_")
 
 _DEQUANT_HEAD = ' = "quant_ext.dequantize_per_channel"('

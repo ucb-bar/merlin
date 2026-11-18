@@ -14,14 +14,14 @@ from xdsl.ir import Block, Region
 from merlin.compiler.ir.boundary import live_values
 from merlin.compiler.ir.semantics import region_semantic_attributes
 from merlin.compiler.transforms.certificates import ir_digest
-from merlin.verification.partition import verify_region_preview
+from merlin.verification.translation.pass_validation import verify_region_preview
 
 
 def _source_members():
     import sys
 
     from merlin.compiler.ir import boundary, semantics
-    from merlin.verification import partition as checker
+    from merlin.verification.translation import pass_validation as checker
 
     owner = sys.modules[__name__]
     return (
@@ -56,7 +56,7 @@ class SourceRegion:
 
 def preview_region(module, entry, operations, *, symbol, inputs=None, outputs=None):
     """Clone complete contiguous operations without dropping their annotations."""
-    from merlin.compiler.sourceguard import observe
+    from merlin.compiler.compilation import observe
 
     sources = observe("preview", _source_members)
     operations = tuple(operations)

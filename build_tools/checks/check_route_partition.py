@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Gate: does every produced command buffer identify exactly one admission route?
 
-The obligation is :mod:`merlin.runtime.route_partition` — a compiler must land in ``A`` (target work
+The obligation is :mod:`merlin.evaluation.route_admission` — a compiler must land in ``A`` (target work
 emitted), ``H`` (an explicit host/composed route) or ``D`` (an explicit decline with no target effect),
 the routes must be disjoint, and a decline must SAY so. An empty command list plus a zero exit code
 identifies nothing.
@@ -36,14 +36,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "merlin" / "python"))
 
 from merlin.common.paths import capsules_dir, repo_root, runs_dir
-from merlin.development.targetgen.corpora import descriptor_paths  # noqa: E402
-from merlin.runtime.route_partition import (  # noqa: E402
+from merlin.evaluation.route_admission import (  # noqa: E402
     ROUTE_ACCEPT,
     ROUTE_DECLINE,
     ROUTE_VIOLATION,
     VIOLATION_KINDS,
     route_of,
 )
+from merlin.target.registry.descriptor_loading import descriptor_paths  # noqa: E402
 
 BUFFER_NAME = "command_buffer.json"
 
@@ -56,7 +56,7 @@ UNATTRIBUTED = "?"
 
 def known_targets() -> list[str]:
     """Declared descriptor identities, independently of generated test requirements."""
-    from merlin.development.targetgen.target_experiment import _declared_target
+    from merlin.target.registry.descriptor_loading import _declared_target
 
     return sorted({name for path in descriptor_paths() if (name := _declared_target(path))})
 

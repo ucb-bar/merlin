@@ -9,8 +9,8 @@ carries no real toolchain — the test only proves the discover -> import -> reg
 
 from __future__ import annotations
 
-from merlin.runtime.backends import base
-from merlin.runtime.backends.base import BackendInfo, BackendKind, TargetClass
+from merlin.runtime.backends import registry as base
+from merlin.runtime.backends.registry import BackendInfo, BackendKind, TargetClass
 
 # Module-level self-registration: BackendInfo.module is this module's own synthetic __name__,
 # so base.get_backend("fixture_npu") re-resolves it from sys.modules without core knowing the

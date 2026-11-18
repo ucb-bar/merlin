@@ -4,10 +4,14 @@ These operations read only compiler-owned bytes. They do not interpret runtime
 regions, change numerical policies or erase physical storage obligations.
 """
 
+from __future__ import annotations
+
 from itertools import product
 from math import prod
 
 from merlin.compiler.semantic.model import TensorType, pointwise_identity_maps
+
+# ---- tensor_constants --------------------------------------------------------------------------
 
 OPERATIONS = frozenset({"identity", "reshape", "gather", "ordered_f32_scan_f64"})
 

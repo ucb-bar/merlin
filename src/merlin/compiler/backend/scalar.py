@@ -13,7 +13,9 @@ import json
 import os
 from pathlib import Path
 
-from merlin.compiler.artifact import Artifact, Compilation, digest
+from merlin.compiler.compilation import Artifact, Compilation, digest
+
+# ---- scalar ------------------------------------------------------------------------------------
 
 name = "merlin.scalar"
 _OPTIONS = {
@@ -133,8 +135,8 @@ def _call_selection(request):
     entry = request.options.parameters.get("scalar.call-entry")
     if entry is None:
         return None
-    from merlin.compiler.lower.llvm.call import prepare
     from merlin.compiler.lower.model import toolchain
+    from merlin.compiler.lower.native.call import prepare
 
     if request.source.kind != "mlir":
         raise ValueError("scalar call requires the original tensor MLIR source, not prepared buffer IR")
@@ -157,9 +159,9 @@ def validate(request):
 
 
 def _call_artifacts(call, native, output, values, tools):
-    from merlin.compiler.lower.llvm import call as owner
-    from merlin.compiler.lower.llvm import copies as memory_owner
     from merlin.compiler.lower.model import codegen
+    from merlin.compiler.lower.native import call as owner
+    from merlin.compiler.lower.native import caller_buffers as memory_owner
 
     original = native / "model.llvm.mlir"
     before = digest(original)
@@ -199,7 +201,7 @@ def _call_artifacts(call, native, output, values, tools):
         memory_source: memory_digest,
     }
     if call.workspace is not None:
-        from merlin.compiler.lower.llvm import workspace as workspace_owner
+        from merlin.compiler.lower.native import caller_buffers as workspace_owner
 
         path = Path(workspace_owner.__file__)
         if call.workspace_implementation != {"path": str(path), "sha256": digest(path)}:

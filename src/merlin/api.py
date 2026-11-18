@@ -12,10 +12,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from merlin.compiler.artifact import Artifact, Compilation, Deployment
+from merlin.compiler.compilation import Artifact, Compilation, CompileOptions, CompileRequest, Deployment, Source
+from merlin.compiler.frontend.export import SavedExport
 from merlin.compiler.frontend.staged import StagedProgram
-from merlin.compiler.frontend.torch.export import SavedExport
-from merlin.compiler.request import CompileOptions, CompileRequest, Source
 
 __all__ = [
     "Artifact",
@@ -56,8 +55,8 @@ def compile(
     and requires explicit provider admission of their precision policy. It runs
     no capture or quantization. Framework imports are lazy for ordinary MLIR users.
     """
-    from merlin.compiler.backend.service import resolve
-    from merlin.compiler.invocation import invoke
+    from merlin.compiler.backend.providers import resolve
+    from merlin.compiler.compilation import invoke
 
     target = Path(output).resolve()
     if target.exists():
@@ -103,7 +102,7 @@ def compile(
         if example_inputs is not None or capture_output is not None:
             raise ValueError("example_inputs and capture_output apply to Python framework objects")
     else:
-        from merlin.compiler.frontend.torch.program import freeze
+        from merlin.compiler.frontend.program import freeze
 
         source, frozen = freeze(
             source,
@@ -117,7 +116,7 @@ def compile(
 
         source, preparation = prepare_staged(source, max_initialization_bytes=budget)
     if isinstance(source, SavedExport):
-        from merlin.compiler.frontend.torch.export import prepare
+        from merlin.compiler.frontend.export import prepare
 
         source, stage, record, bound = prepare(
             source,
@@ -137,7 +136,7 @@ def compile(
     name, provider = resolve(backend, group="merlin.backends", methods=("validate", "compile"))
     result = invoke(request, name, provider)
     if preparation is not None:
-        from merlin.compiler.frontend.torch.export import publish
+        from merlin.compiler.frontend.export import publish
 
         try:
             preparation.revalidate(source)
@@ -149,7 +148,7 @@ def compile(
             result.manifest.unlink(missing_ok=True)
             raise
     if prepared is not None:
-        from merlin.compiler.frontend.torch.export import publish
+        from merlin.compiler.frontend.export import publish
 
         try:
             result = publish(result, *prepared)
@@ -168,7 +167,7 @@ def inspect(compilation: str | Path | Compilation) -> dict[str, Any]:
 
 def inspect_backends() -> dict[str, Any]:
     """List installed backend names and declared origins without loading code."""
-    from merlin.compiler.backend.service import inventory
+    from merlin.compiler.backend.providers import inventory
 
     return inventory()
 
@@ -189,13 +188,13 @@ def inspect_spec(path: str | Path, *, expanded: bool = False) -> dict[str, Any]:
 
 def run(artifact: str | Path | Compilation | Artifact, *, runner: str | Any, options=None):
     """Execute an existing admitted product; this operation never compiles it."""
-    from merlin.runtime.service import run_artifact
+    from merlin.runtime.execution.service import run_artifact
 
     return run_artifact(artifact, runner=runner, options=options)
 
 
 def collect(prepared, *, results):
     """Collect externally produced observations without submitting runtime work."""
-    from merlin.runtime.external import collect as collect_external
+    from merlin.runtime.execution.service import collect as collect_external
 
     return collect_external(prepared, results=results)

@@ -43,11 +43,11 @@ start disagreeing about one state.
   - `service` / `worker` / `batch`: asynchronous jobs keyed by exact package bytes, one detached job run
     to a result document, and one board batch judged by the reference control measured inside it (a
     batch whose control drifted re-measures its candidates alone before the drift refuses them).
-  - `merlin.analysis.perf.whole_model_builder` and `merlin.analysis.perf.whole_model_verdict` (core, shared with the
+  - `merlin.analysis.whole_model.build.builder` and `merlin.analysis.whole_model.grading.verdict` (core, shared with the
     whole-model build and the reference arm): the service builder and the protocol-log reader, which
     makes any failure `MEASURED_INVALID`.
   - `fast`: the fast tiers (structure on the functional model, the changed groups timed on the RTL
-    emulator through `merlin.analysis.perf.whole_model_group_timing`, one group's check), exposed as broker
+    emulator through `merlin.analysis.whole_model.grading.group_programs`, one group's check), exposed as broker
     actions and never the objective.
   - `retention` / `store_admin`: what a finished job keeps, and logged operator edits to a store that
     state why and delete nothing.
@@ -60,15 +60,15 @@ start disagreeing about one state.
     coverage of the forms that hold a model's cycles. Data for the agent, never a remedy.
   - `ledger`: the run's `oot/` history. The harness commits each candidate (tree digest equals the
     store's package digest), tags `measured/<n>` when it lands, moves `best` only on a confirmed win,
-    and assembles champion evidence for `merlin.development.targetgen.champions`.
+    and assembles champion evidence for `merlin.development.targetgen.packaging.champions`.
 - Cell mode
   - `cells` / `cell_prep` / `cell_runs` / `group_capsules` / `group_capsules_board`: a cell's groups (and
     held-out and collateral groups) built as one-group programs by the target's own driver, both arms
     timed on the emulator or in one board batch with the control; a cell run's config is composed from
     a measured run's own (`merlin-experiment cell prepare|launch`).
 - Runs and sessions
-  - `runs` / `snapshot` / `profiles` / `launch`: a run on disk (prepared, resumed, relaunched), its
-    frozen source taken from a commit, its launch profile as data, and a detached launcher found again
+  - `runs` / `snapshot` / `launch`: a run on disk (prepared, resumed, relaunched), its
+    frozen source taken from a commit, its validated launch profile and detached launcher in `runs/launch.py`, found again
     by its own record.
   - `rounds` / `round_audit`: one authoring session over the run's candidate (fresh workspace, broker,
     bwrap boundary, transcript audit joined to receipts, edit authority) and the replay of a recorded

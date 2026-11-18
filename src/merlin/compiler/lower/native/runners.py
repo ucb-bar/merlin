@@ -48,6 +48,8 @@ from merlin.compiler.lower.native.stages import (
     fusion_guard,
 )
 
+# ---- runners -----------------------------------------------------------------------------------
+
 _SET_LAYOUT = (
     "len(sys.argv) > 17 and sys.argv[17] and module.operation.attributes.__setitem__("
     "'llvm.data_layout', ir.StringAttr.get(sys.argv[17], ctx)); "
@@ -60,15 +62,11 @@ EMIT_TRANSLATE = _SET_LAYOUT + "f.write(str(llvm.translate_module_to_llvmir(modu
 EMIT_DUMP = _SET_LAYOUT + "f.write(str(module.operation))"
 
 
-_RUNNER_SRC = (
-    r"""
-import sys
-
-from torch_mlir import ir
-from torch_mlir.passmanager import PassManager
-from torch_mlir.dialects import llvm
-"""
-    + _SELFCOPY_PRELUDE
+# Keep the common prelude order in one place. The ordinary runner inserts its
+# ordered-reduction and RHS-column preludes between these two shared portions;
+# the activation-polynomial runner retains its original omission of both.
+_RUNNER_PRELUDE_PREFIX = (
+    _SELFCOPY_PRELUDE
     + _TRANSPOSE_FUSE_PRELUDE
     + _TRANSPOSE_MAPS_PRELUDE
     + _BROADCAST_FOLD_PRELUDE
@@ -98,9 +96,11 @@ from torch_mlir.dialects import llvm
     + _MASKED_CONTRACTION_PRELUDE
     + _MASKED_CONTRACTION_STAGE_RUNNER
     + _SCALAR_SQUARED_SUM_PRELUDE
-    + _SCALAR_ORDERED_REDUCTION_PRELUDE
-    + _RHS_COLUMN_REUSE_PRELUDE
-    + _SCALAR_POINTWISE_UNROLL_PRELUDE
+)
+
+
+_RUNNER_PRELUDE_SUFFIX = (
+    _SCALAR_POINTWISE_UNROLL_PRELUDE
     + _SCALAR_POINTWISE_PACKET_PRELUDE
     + _BROADCAST_MATH_HOIST_PRELUDE
     + _AUTOMATIC_HOST_FEATURES_PRELUDE
@@ -110,6 +110,21 @@ from torch_mlir.dialects import llvm
     + SPLIT_FRESH_DEALLOCS_RUNNER
     + SLICED_OUTPUT_PRELUDE
     + SLICED_OUTPUT_RUNNER
+)
+
+
+_RUNNER_SRC = (
+    r"""
+import sys
+
+from torch_mlir import ir
+from torch_mlir.passmanager import PassManager
+from torch_mlir.dialects import llvm
+"""
+    + _RUNNER_PRELUDE_PREFIX
+    + _SCALAR_ORDERED_REDUCTION_PRELUDE
+    + _RHS_COLUMN_REUSE_PRELUDE
+    + _RUNNER_PRELUDE_SUFFIX
     + r'''
 
 def _residual_vector_ops(module):
@@ -200,46 +215,8 @@ from torch_mlir.dialects import llvm
 
 
 _RUNNER_ACT_POLY_TAIL = (
-    _SELFCOPY_PRELUDE
-    + _TRANSPOSE_FUSE_PRELUDE
-    + _TRANSPOSE_MAPS_PRELUDE
-    + _BROADCAST_FOLD_PRELUDE
-    + _NAMED_BROADCAST_FOLD_PRELUDE
-    + _COPY_EXPAND_PRELUDE
-    + _UNIFORM_FILL_COPY_PRELUDE
-    + _CONTIGUOUS_COPY_PRELUDE
-    + _CONCAT_DPS_PRELUDE
-    + _PARALLEL_GRAIN_PRELUDE
-    + _PARALLEL_TEAM_PRELUDE
-    + _PARALLEL_COARSEN_PRELUDE
-    + _PANEL_PARALLEL_PRELUDE
-    + _MID_STAGE_SRC
-    + _CONTIGUOUS_COPY_MID_SRC
-    + _UNIFORM_FILL_COPY_MID_SRC
-    + _PANEL_PARALLEL_MID_SRC
-    + _PARALLEL_GRAIN_LATE_SRC
-    + _PARALLEL_TEAM_STAGE_SRC
-    + _PARALLEL_COARSEN_STAGE_SRC
-    + _ALLOCA_SCOPE_LOWER_PRELUDE
-    + _ROUND_INTRINSIC_PRELUDE
-    + _INT_SOFTMAX_TABLE_PRELUDE
-    + _FMA_INTRINSIC_PRELUDE
-    + _SCALAR_CONTRACTION_PRELUDE
-    + _GUARDED_ZERO_CONTRACTION_PRELUDE
-    + _ADJACENT_EXP_PRELUDE
-    + _MASKED_CONTRACTION_PRELUDE
-    + _MASKED_CONTRACTION_STAGE_RUNNER
-    + _SCALAR_SQUARED_SUM_PRELUDE
-    + _SCALAR_POINTWISE_UNROLL_PRELUDE
-    + _SCALAR_POINTWISE_PACKET_PRELUDE
-    + _BROADCAST_MATH_HOIST_PRELUDE
-    + _AUTOMATIC_HOST_FEATURES_PRELUDE
-    + DEALLOC_CHECK_PRELUDE
-    + DEALLOC_CHECK_RUNNER
-    + SPLIT_FRESH_DEALLOCS_PRELUDE
-    + SPLIT_FRESH_DEALLOCS_RUNNER
-    + SLICED_OUTPUT_PRELUDE
-    + SLICED_OUTPUT_RUNNER
+    _RUNNER_PRELUDE_PREFIX
+    + _RUNNER_PRELUDE_SUFFIX
     + r"""
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -316,7 +293,7 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
     The marker and the runner belong to the selected vector support provider. With none selected no
     feature edit can have spliced the marker, and a v3 feature still selects this runner, whose
     provider lookup then refuses with the reason."""
-    from merlin.compiler.backend import provided
+    from merlin.compiler.backend import providers as provided
 
     selected = provided.optional_provider()
     if selected is not None and selected.accum_microkernel_marker() in pipeline:
@@ -327,7 +304,7 @@ def _needs_scalarize_runner(pipeline: str, feats: "frozenset[str]") -> bool:
 def _activation_poly_runner(emit: str = EMIT_TRANSLATE, *, fused: bool = False) -> str:
     """The lowering runner with the transcendental->polynomial rewriter spliced in (default-off
     feature). Imported here (not at module top) so importing pipeline never pulls act_poly."""
-    from merlin.compiler.lower.model.act_poly import rewrite_source
+    from merlin.compiler.lower.options.nonlinear import rewrite_source
 
     return _RUNNER_ACT_POLY_HEAD + rewrite_source(fused=fused) + _RUNNER_ACT_POLY_TAIL.replace("__MERLIN_EMIT__", emit)
 
@@ -348,15 +325,17 @@ def _select_runner(
     translate vs dump-for-mlir-translate). Keeping the two independent is what lets the
     multicore path carry the feature rewrites — see the EMIT_* comment.
     """
-    from merlin.compiler.lower.model.ir_inspection import bind_inspection
-    from merlin.compiler.lower.model.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
-    from merlin.compiler.lower.model.source_observation_stage import bind_runner as _bind_source_observation_runner
+    from merlin.compiler.lower.model.oracle import bind_inspection
+    from merlin.compiler.lower.options.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
+    from merlin.compiler.lower.options.source_observation_stage import (
+        bind_runner as _bind_source_observation_runner,
+    )
 
     if {"approximate_transcendental_activation", "vectorized_transcendental_activation"} & feats:
         source = _activation_poly_runner(emit, fused="fuse_activation_polynomial_fma" in feats)
     elif _needs_scalarize_runner(pipeline, feats):
-        from merlin.compiler.backend import provided
-        from merlin.compiler.optimizations.resident import WHOLEMODEL_VF_BMMPAD_NAME
+        from merlin.compiler.backend import providers as provided
+        from merlin.compiler.optimizations.accumulator_residency import WHOLEMODEL_VF_BMMPAD_NAME
 
         selected = provided.provider(purpose="the accumulator micro-kernel runner")
         source = selected.accum_microkernel_runner_source(tag_bmm_tails=WHOLEMODEL_VF_BMMPAD_NAME in feats).replace(
@@ -364,10 +343,12 @@ def _select_runner(
         )
     else:
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
-    from merlin.compiler.lower.model.automatic_host_features import bind_runner as bind_automatic_host_runner
+    from merlin.compiler.lower.options.automatic_host_features import (
+        bind_runner as bind_automatic_host_runner,
+    )
 
     source = bind_automatic_host_runner(source, features=feats)
-    from merlin.compiler.lower.model.adjacent_exp import bind_runner as bind_exact_exp_runner
+    from merlin.compiler.lower.options.adjacent_exp import bind_runner as bind_exact_exp_runner
 
     source = bind_exact_exp_runner(source, features=feats)
     source = _bind_source_observation_runner(source, selected=_SOURCE_OBSERVATION_FEATURE in feats)

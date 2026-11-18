@@ -24,7 +24,7 @@ To inspect the actual generated Atlas package on a held-out capture, install
 the experiments package and use its deterministic evaluator:
 
 ```sh
-python -m merlin.experiments.model_qualification \
+python -m merlin.experiments.inspection.qualification_workflow \
   --bundle /absolute/held-out-capture \
   --package /absolute/generated-atlas-compiler \
   --target atlas \

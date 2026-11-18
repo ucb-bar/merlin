@@ -18,10 +18,10 @@ import numpy as np
 
 from merlin.common.digest import sha256_file
 from merlin.common.paths import repo_root
-from merlin.common.strict_json import loads
+from merlin.common.record_formats import loads
+from merlin.compiler.frontend.inputs import MaterializedModelInputs
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.compiler.frontend.materialized import MaterializedModelInputs
-from merlin.runtime.modelinputs import strict_tree_sha256
+from merlin.runtime.execution.model_inputs import strict_tree_sha256
 
 SCHEMA = "merlin.test.gemmini_packing_pair.v1"
 PUBLIC_COMPILER_SHA = "29213759089b71de26f8a5ab26ca6ef1b8071dc0bb690041eb7de5d0efb53f24"
@@ -228,7 +228,7 @@ def materialize(destination, *, epoch, state, source, reference, source_pins, ca
 
 
 def actual_observation(directory, stage, *, before=()):
-    from merlin.common import invocation_record as I
+    from merlin.common.process import invocation_records as I
 
     records = []
     for path in (directory / "invocations").glob("*/invocation.json"):
@@ -261,7 +261,7 @@ def committed_custom_words(raw, *, match, mask):
 
 def verify_event_bytes(elf, events):
     """Join every retired word to a unique actual executable section."""
-    from merlin.development.targetgen.elf_lanes import executable_sections
+    from merlin.development.targetgen.grading.elf_lanes import executable_sections
 
     blob = canonical(str(elf)).read_bytes()
     assert blob[:4] == b"\x7fELF" and blob[5] == 1, "only little-endian ELF trace joins supported"
@@ -280,7 +280,7 @@ def verify_event_bytes(elf, events):
 
 def recheck_artifacts(pins, *, invocations=(), decoder_receipts=()):
     """Callback-free final byte custody; this does not issue admission."""
-    from merlin.common import invocation_record as I
+    from merlin.common.process import invocation_records as I
 
     for row in pins:
         assert pin(canonical(row["path"])) == row, "retained artifact changed"

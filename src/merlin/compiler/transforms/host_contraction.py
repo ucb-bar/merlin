@@ -3,6 +3,10 @@
 Native source executes in the caller-selected MLIR context; no tool discovery.
 """
 
+from __future__ import annotations
+
+# ---- host_contraction --------------------------------------------------------------------------
+
 CONTRACTION_SOURCE = r"""
 def _scalar_contraction_spec(op):
     from torch_mlir import ir as _sc_ir

@@ -6,9 +6,9 @@ import json
 import yaml
 
 from merlin.capture import contraction_formats as F
-from merlin.common import mlir_query as Q
-from merlin.common.ir_lock import IR_LOCK
-from merlin.common.pinned_files import PinnedFile
+from merlin.capture.contraction_formats import PinnedFile
+from merlin.compiler.ir import mlir_query as Q
+from merlin.compiler.ir.xdsl_io import IR_LOCK
 
 
 def _pin(path):

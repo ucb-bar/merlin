@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-from merlin.common import owned_process
+from merlin.common.process import ownership as owned_process
 
 TASK = ROOT = CONFIG = None
 STOP = False

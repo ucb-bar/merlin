@@ -4,9 +4,9 @@ Saturn is a **Merlin runtime adapter**, not its own runtime. The Merlin command 
 (RES_PACK / MATMUL_RESIDENT / COMMIT / EVICT + tensors table) is executed by:
 
 - **simulator** — the Python engine (`merlin.runtime.simulate`), reference oracle.
-- **baremetal (spike)** — `merlin.runtime.backends.spike`: the command buffer is
+- **baremetal (spike)** — `merlin_rvv.src.rvv.runtime.spike`: the command buffer is
   compiled into a bare-metal driver around the hand-written RVV kernel
-  (`src/merlin/runtime/native/baremetal/spike/rvv_matmul_i8.S`), partitioned row-wise across
+  (`../merlin-backends/rvv-mlir/src/rvv/runtime/rvv_matmul_i8.S`), partitioned row-wise across
   harts, and run with `spike --isa=rv64gcv_zfh_zvfh -pN`. Outputs are gated on
   equality with `reference_outputs(cb)`.
 - **vcs** — `merlin.runtime.backends.vcs`: the *same ELF* replayed on a pre-built

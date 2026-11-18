@@ -28,6 +28,8 @@ from pathlib import Path
 from merlin.compiler.lower.model import codegen
 from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
 
+# ---- custom_isa --------------------------------------------------------------------------------
+
 MERLIN_INLINE_ASM = "merlin.inline_asm"
 
 
@@ -101,7 +103,9 @@ def build_rvv_object(
 
 def disassemble(obj: str | Path) -> str:
     """objdump -d of an rv64gcv object (via the chipyard toolchain)."""
-    from merlin.runtime.backends import spike
+    from merlin_rvv.src.rvv.runtime import spike
 
-    objdump = spike.gcc_path().with_name("riscv64-unknown-elf-objdump")
+    from merlin.runtime.backends.baremetal import spike_launcher as _merlin_spike_launcher_1
+
+    objdump = _merlin_spike_launcher_1.gcc_path().with_name("riscv64-unknown-elf-objdump")
     return subprocess.run([str(objdump), "-d", str(obj)], capture_output=True, text=True).stdout

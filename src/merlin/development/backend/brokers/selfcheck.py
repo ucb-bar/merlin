@@ -1,7 +1,7 @@
 """Driver-side self-check BROKER — lets a bwrap-sandboxed agent get a REDACTED self-check verdict without
 the oracle ever entering its sandbox.
 
-The redacted self-check (agent_selfcheck.py) internally needs the oracle (merlin.runtime.reference) to
+The redacted self-check (agent_selfcheck.py) internally needs the oracle (merlin.runtime.engine.reference) to
 compute pass/fail — so it CANNOT run inside the agent's sandbox (the oracle is masked there). This broker
 runs OUTSIDE the sandbox (oracle available), watches a channel dir inside the agent's (bind-mounted)
 workspace, and on each request runs the real agent_selfcheck.py against the agent's submission, writing the
@@ -37,22 +37,16 @@ import tempfile
 import time
 from pathlib import Path
 
+from merlin.development.backend.authoring.library.compiler_library import selected_child
 from merlin.development.backend.brokers import selfcheck_sources as sources
 from merlin.development.backend.brokers import selfcheck_tuning as tuning
-from merlin.development.backend.brokers.selfcheck_deadlines import (
-    COMMON_ACTIONS as COMMON_ACTIONS,
-)
-from merlin.development.backend.brokers.selfcheck_deadlines import (
-    _child_deadline_monotonic as _child_deadline_monotonic,
-)
-from merlin.development.backend.brokers.selfcheck_deadlines import (
-    _request_deadline as _request_deadline,
-)
-
-# Lane sizing and worker reaping live in their own module; every name stays importable from here.
-from merlin.development.backend.brokers.selfcheck_lanes import (  # noqa: F401 -- re-exported for callers and tests
+from merlin.development.backend.brokers.selfcheck_dispatch import (
     CAPSULES_PER_COMPUTE_CPU,
+    COMMON_ACTIONS,
+    _abort_reason,
     _author_cpu_backlog,
+    _child_deadline_monotonic,
+    _detached,
     _diagnostic_request,
     _dispatch_capacity,
     _feedback_scope_error,
@@ -60,595 +54,33 @@ from merlin.development.backend.brokers.selfcheck_lanes import (  # noqa: F401 -
     _ordinary_capacity,
     _ordinary_capsule_limit,
     _overflow_admits,
-    _process_record,
-    _public_corpus_size,
-    _stop_owned_worker,
-)
-
-# Request leases are shared by dispatch and in-flight worker supervision.
-from merlin.development.backend.brokers.selfcheck_requests import (  # noqa: F401 -- retain existing broker import spellings
-    _abort_reason,
-    _detached,
     _pending_requests,
     _pid_namespace,
+    _process_record,
+    _public_corpus_size,
+    _request_deadline,
     _requester_alive,
     _should_stop,
+    _stop_owned_worker,
 )
-from merlin.development.backend.compiler_library import selected_child
 from merlin.development.backend.context import add_context_arguments, context_argv, resolve_context
-from merlin.development.backend.feedback.dispatch import REQUIRED_SIM, grade_selection_for
-from merlin.development.backend.feedback.idle_performance import OPERATOR_ORIGINS, TUNING_ORIGIN
-from merlin.development.backend.feedback.idle_performance import ORIGIN as IDLE_ORIGIN  # noqa: F401 -- stable name
-from merlin.development.backend.feedback.idle_performance import REQUEST_PREFIX as IDLE_REQUEST_PREFIX
-from merlin.development.backend.feedback.reference_analysis import broker_response as _reference_analysis_response
-from merlin.development.backend.feedback.selfcheck import _public_capsules, worker_command
-
-
-def _freeze_passed_source(ws: Path, expected_digest: str, *, source_ws: Path | None = None):
-    """Bind asynchronous promotion to the source just graded, before releasing the author."""
-    from merlin.development.backend.feedback import snapshots
-
-    token, error = snapshots.create_promotion_snapshot(
-        ws,
-        source_ws or ws,
-        expected_digest,
-        submission_digest=lambda root: _submission_digest(Path(root) / "submission"),
-    )
-    if error:
-        raise RuntimeError(error)
-    source = snapshots.promotion_snapshot_path(ws, token)
-    if source is None or _submission_digest(source / "submission") != expected_digest:
-        raise RuntimeError("passed selfcheck source snapshot differs from graded identity")
-    return source
-
-
-def _working_snapshot(ws: Path, expected_digest: str, *, label: str = sources.SUBMISSION) -> Path:
-    """Copy one request's source under the task temp root before launching the grader.
-
-    The selected tree (``submission/`` or ``variants/<name>/``) is read through a directory opened
-    without following symlinks and always lands at ``<snapshot>/submission``, so the grader sees the
-    same package layout whichever tree was asked for.
-    """
-    tmpdir = os.environ.get("TMPDIR")
-    with sources.pinned_source(ws, label) as source:
-        if any(path.is_symlink() for path in source.rglob("*")):
-            raise ValueError("self-check source contains a symlink")
-        if not tmpdir or not Path(tmpdir).is_absolute():
-            raise ValueError("self-check requires a task-owned TMPDIR")
-        root = Path(tempfile.mkdtemp(prefix="merlin_selfcheck_", dir=tmpdir))
-        try:
-            shutil.copytree(source, root / "submission", ignore=shutil.ignore_patterns(*_DIGEST_IGNORES))
-            if _submission_digest(root / "submission") != expected_digest:
-                raise ValueError(f"{label} changed while taking self-check snapshot")
-            return root
-        except Exception:
-            shutil.rmtree(root)
-            raise
-
-
-#: request key -> the real self-check's flag, for every probe that replaces the capsule suite. The
-#: shim writes the keys, this broker turns them back into flags; a probe missing here is one a
-#: sandboxed agent cannot reach, however well it works outside the box.
-FORWARDED_PROBES = {
-    "shape_coverage": "--shape-coverage",
-    "offload_census": "--offload-census",
-    "model_layers": "--model-layers",
-    "candidate_diagnostics": "--candidate-diagnostics",
-    "compile_only": "--compile-only",
-    "scale_probe": "--scale-probe",
-    "dynamic_census": "--dynamic-census",
-}
-PROTOCOL_VERSION = 3
-_DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
-
-
-def _submission_digest(root: Path) -> str:
-    """Stable digest of authored submission bytes, excluding disposable build state."""
-    from merlin.common.cpu_pool import shared_compute_pool
-
-    with shared_compute_pool():
-        root = Path(root)
-        digest = hashlib.sha256()
-        if not root.is_dir():
-            return digest.hexdigest()
-        for path in sorted(root.rglob("*")):
-            rel = path.relative_to(root)
-            if any(part in _DIGEST_IGNORES for part in rel.parts):
-                continue
-            if path.is_symlink():
-                digest.update(rel.as_posix().encode() + b"\0SYMLINK\0" + os.readlink(path).encode())
-            elif path.is_file():
-                digest.update(rel.as_posix().encode() + b"\0")
-                with path.open("rb") as f:
-                    while chunk := f.read(1024 * 1024):
-                        digest.update(chunk)
-        return digest.hexdigest()
-
-
-#: The agent's own work tree; paths under it stay readable in agent-visible error text.
-_AGENT_ROOTS: tuple[str, ...] = ()
-
-
-def agent_visible_text(text: str) -> str:
-    """``text`` with host paths outside the agent's work tree replaced; full detail stays in the logs."""
-    from merlin.common.path_scrub import scrub_host_paths
-
-    return scrub_host_paths(text, keep=_AGENT_ROOTS)
-
-
-def _log_tail(path: Path, limit: int) -> str:
-    """The last ``limit`` characters of a log, scrubbed whole lines first so no path is cut mid-way."""
-    if not path.exists():
-        return ""
-    text = path.read_text(errors="replace")
-    window = text[-max(limit * 8, 4000) :]
-    if len(window) < len(text):
-        window = window.partition("\n")[2]  # never start inside a path or other token
-    return agent_visible_text(window)[-limit:]
-
-
-def _advisory_request(request: dict) -> bool:
-    """Background timings and sweep baselines are observations, never promotion inputs."""
-    experiment = request.get("tuning_experiment")
-    return request.get("origin") in (IDLE_ORIGIN, TUNING_ORIGIN) or (
-        isinstance(experiment, dict) and experiment.get("schema") == "merlin.idle_tuning_experiment.v1"
-    )
-
-
-def _decorate_response(
-    raw: str, request: dict, rid: str, submission_sha256: str, *, started_ns: int, completed_ns: int
-) -> dict:
-    """Return a JSON verdict explicitly bound to the request and graded submission bytes."""
-    try:
-        body = json.loads(raw)
-        if not isinstance(body, dict):
-            raise TypeError("self-check response is not an object")
-    except Exception as exc:  # noqa: BLE001 -- malformed grader output becomes an explicit failure
-        body = {
-            "error": f"broker: unreadable self-check response ({type(exc).__name__})",
-            "all_pass": False,
-            "raw_tail": raw[-1000:],
-        }
-    for key in ("error", "raw_tail"):
-        if isinstance(body.get(key), str):
-            body[key] = agent_visible_text(body[key])
-    requested = request.get("submission_sha256")
-    requested_sim = request.get("sim")
-    if isinstance(requested_sim, str) and requested_sim and requested_sim != body.get("sim", requested_sim):
-        # Said, not hidden: the pinned engine's name is served by the grade's own selection.
-        body["requested_sim"] = requested_sim
-    body.update(
-        {
-            "selfcheck_protocol": PROTOCOL_VERSION,
-            "selfcheck_request_id": rid,
-            "submission_sha256": submission_sha256,
-            "requested_submission_sha256": requested,
-            "requested_at_unix_ns": request.get("requested_at_unix_ns"),
-            "grade_started_at_unix_ns": started_ns,
-            "graded_at_unix_ns": completed_ns,
-        }
-    )
-    if requested and submission_sha256 and requested != submission_sha256:
-        # SAID, NOT HIDDEN. The verdict describes bytes NEWER than the ones asked about, which is more
-        # useful than the ones asked about -- but only while it is stated, or the agent would read a
-        # verdict as being about code it has since replaced.
-        body["graded_newer_bytes"] = True
-        body["graded_newer_note"] = sources.newer_bytes_note(
-            request.get("submission", sources.SUBMISSION) if isinstance(request, dict) else sources.SUBMISSION
-        )
-    # Which tree this verdict is about, on every response; a variant's also says it is not official.
-    body.update(sources.response_fields(request, submission_sha256))
-    body.update(tuning.response_fields(request))  # knob overrides grade a private copy, never submission/
-    if _advisory_request(request):
-        body.update(official=False, advisory_only=True)
-    from merlin.development.backend.feedback import reference_experiments
-
-    body.pop("reference_experiment_result", None)  # only the owned request/result join can issue this observation
-    reference_experiments.attach(body, current_compiler_sha256=submission_sha256)
-    reference_experiments.observe_result(request, body, base_compiler_sha256=submission_sha256)
-    return body
-
-
-def _rtl_engines() -> tuple[str, ...]:
-    try:
-        from merlin.development.targetgen.rtl_engine_policy import ENGINE_PRIORITY
-
-        return tuple(ENGINE_PRIORITY)
-    except Exception:  # noqa: BLE001 -- closed historical set, never widen on import failure
-        return ("vcs", "gsim", "verilator")
-
-
-def _required_rtl_engine() -> str | None:
-    return os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
-
-
-def _allowed_sims() -> tuple[str, ...]:
-    """Spike plus either the one pinned RTL engine or the closed registered RTL set, and the grade's
-    own selection (``REQUIRED_SIM``), which honours the pin itself."""
-    required = _required_rtl_engine()
-    if required is not None:
-        return ("spike", required, REQUIRED_SIM) if required in _rtl_engines() else ("spike", REQUIRED_SIM)
-    return ("spike",) + _rtl_engines() + (REQUIRED_SIM,)
-
-
-def _default_sim() -> str:
-    """An unnamed engine means every tier the official grade selects, never one engine.
-
-    This returned the pinned RTL engine, so an unflagged request ran ``--sim gsim``: Spike plus a gSIM
-    adapter built WITHOUT the grade's selection record. Its verdict could differ from the grade's and
-    its exact-byte simulator certificates were keyed to a different instrument, so neither side could
-    carry the other's gSIM result. The grade's own selection honours the pin, so nothing is lost.
-    """
-    return REQUIRED_SIM
-
-
-def _sim_policy_error(sim: str) -> str | None:
-    allowed = _allowed_sims()
-    if sim in allowed:
-        return None
-    required = _required_rtl_engine()
-    if required is not None:
-        return f"--sim {sim!r} conflicts with MERLIN_REQUIRED_RTL_ENGINE={required!r}; allowed: {list(allowed)!r}"
-    return f"--sim {sim!r} is not accepted; allowed: {list(allowed)!r}"
-
-
-def _atomic_write(path: Path, text: str) -> None:
-    """Publish a response/marker with no observable partial-file state."""
-    if path.name.startswith(("resp_", "progress_")) and path.suffix == ".json":
-        from merlin.development.backend.feedback.author_disclosure import json_text
-
-        text = json_text(text, workspace=path.parent.parent)
-    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
-    try:
-        with tmp.open("x", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
-
-
-#: Pause after a loop pass fails outside any request's own handling (e.g. a full disk), so the
-#: broker keeps serving once the condition clears instead of exiting with its queue unanswered.
-LOOP_ERROR_BACKOFF_S = 15
-
-
-def _report_loop_error(where: str, error: BaseException) -> None:
-    try:
-        print(
-            f"[broker] {where} pass failed, continuing: {type(error).__name__}: {str(error)[:200]}",
-            file=sys.stderr,
-            flush=True,
-        )
-    except Exception:  # noqa: BLE001 -- the log may be on the same full disk
-        pass
-
-
-def _settle_failed_request(ch: Path, request: Path | None, seen: set[str], error: BaseException) -> None:
-    """Answer the request a failed pass was serving, or leave it queued when no answer can be written.
-
-    A claimed request whose response never lands would otherwise wait for its deadline. If even the
-    error response cannot be written -- the usual case on a full disk -- the request goes back to the
-    queue, and the next pass after the backoff serves it again.
-    """
-    if request is None:
-        return
-    rid = request.stem[len("req_") :]
-    if (ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists():
-        return
-    try:
-        _atomic_write(
-            ch / f"resp_{rid}.json",
-            json.dumps(
-                {
-                    "error": f"broker: {type(error).__name__}: {str(error)[:200]}",
-                    "all_pass": False,
-                    "selfcheck_protocol": PROTOCOL_VERSION,
-                    "selfcheck_request_id": rid,
-                }
-            ),
-        )
-        _atomic_write(ch / f"done_{rid}", "err")
-    except OSError:
-        seen.discard(request.name)
-
-
-def _handler_command(a, context, capsules_root, contract, promotion_root, request, stop, *, request_bytes=None):
-    """Original command and input paths; request data cannot choose a handler."""
-    command = [sys.executable, "-m", "merlin.development.backend.brokers.selfcheck"]
-    command += context_argv(context) + [
-        "--ws",
-        str(Path(a.ws).resolve()),
-        "--poll",
-        str(a.poll),
-        "--capsules-root",
-        str(capsules_root),
-        "--one-request",
-        request.name,
-        "--request-stop",
-        str(stop),
-        "--request-sha256",
-        hashlib.sha256(request.read_bytes() if request_bytes is None else request_bytes).hexdigest(),
-    ]
-    for flag, value in (
-        ("--contract", contract),
-        ("--policy-capsules-root", promotion_root),
-        ("--rtl-facts", a.rtl_facts),
-        ("--compiler-bundle-manifest", a.compiler_bundle_manifest),
-    ):
-        if value is not None:
-            command += [flag, str(value)]
-    from merlin.development.backend.compiler_library import child_arguments
-
-    return [*command, *child_arguments()]
-
-
-def _dispatch_requests(a, context, capsules_root, contract, promotion_root):
-    """Two independent processes: one numerical lane and one diagnostic lane.
-
-    Each handler reconstructs its own original service and retains the existing
-    source, deadline, cancellation and publication checks. The parent never holds
-    a compute lease across a handler wait or shares execution scopes with it.
-    """
-    from merlin.common.cpu_pool import worker_pool_command
-    from merlin.development.backend.joint_gsim_measurement import long_request
-    from merlin.experiments.frozen_python import inherited_python_command
-
-    ws = Path(a.ws).resolve()
-    ch, orig_ppid = ws / ".qa_channel", os.getppid()
-    seen, active = set(), {}
-    health_path = ch / "broker_health.json"
-    try:
-        health = json.loads(health_path.read_bytes())
-    except (OSError, ValueError):
-        health = {}
-    from merlin.common.cpu_pool import compute_capacity
-
-    ordinary_capacity = _ordinary_capacity()
-    # Variants share the ordinary lane; their own bound keeps the rest of it for submission/ checks.
-    variant_capacity = sources.variant_capacity(ordinary_capacity)
-    overflow_capacity = compute_capacity()
-    health.update(
-        protocol=PROTOCOL_VERSION,
-        dispatch_capacity=ordinary_capacity + 1,
-        ordinary_capacity=ordinary_capacity,
-        overflow_capacity=overflow_capacity,
-        overflow_admitted=int(health.get("overflow_admitted", 0)),
-        variant_capacity=variant_capacity,
-        broker_starts=int(health.get("broker_starts", 0)) + 1,
-        processed=int(health.get("processed", 0)),
-        max_queue_depth=int(health.get("max_queue_depth", 0)),
-        last_started_at_unix_ns=time.time_ns(),
-    )
-    try:
-        while not _should_stop(ch, orig_ppid):
-            try:
-                for name, job in tuple(active.items()):
-                    reason = None
-                    if job["process"].poll() is None:
-                        reason = _abort_reason(
-                            ch,
-                            orig_ppid,
-                            job["request"],
-                            job["deadline"],
-                            request_stop=job["stop"],
-                            survive_stop=job["long"],
-                        )
-                        if reason is None:
-                            continue
-                        # The handler may still be reconstructing the selected
-                        # library/source, before it reaches its own child poll loop.
-                        # Reap the original tree before publishing/refilling its lane.
-                        _stop_owned_worker(job["process"])
-                    request, rid = job["request"], name[len("req_") : -len(".json")]
-                    if not ((ch / f"done_{rid}").exists() and (ch / f"resp_{rid}.json").exists()):
-                        _atomic_write(
-                            ch / f"resp_{rid}.json",
-                            json.dumps(
-                                {
-                                    "all_pass": False,
-                                    "error": (
-                                        f"broker: self-check aborted ({reason}) during handler preparation/evaluation"
-                                        if reason
-                                        else "broker: request handler ended without durable completion"
-                                    ),
-                                    "request_lifecycle": {
-                                        "status": "aborted" if reason else "worker_exited",
-                                        "scope": "handler preparation and evaluation; no numerical verdict",
-                                        "started_at_unix_ns": job["started_ns"],
-                                        "completed_at_unix_ns": time.time_ns(),
-                                        "deadline_monotonic": job["deadline"],
-                                    },
-                                    "selfcheck_protocol": PROTOCOL_VERSION,
-                                    "selfcheck_request_id": rid,
-                                    "submission_sha256": None,
-                                    **job["source_fields"],
-                                }
-                            ),
-                        )
-                        _atomic_write(ch / f"done_{rid}", "err")
-                    job["stop"].unlink(missing_ok=True)
-                    del active[name]
-                    health["processed"] += 1
-                pending = _pending_requests(ch, seen)
-                # Stable FIFO within each lane; operator background requests after every author request.
-                pending.sort(
-                    key=lambda request: (
-                        _diagnostic_request(request),
-                        request.name.startswith("req_" + IDLE_REQUEST_PREFIX),
-                    )
-                )
-                health["max_queue_depth"] = max(health["max_queue_depth"], len(pending))
-                # Read the pool's author backlog at most once per pass, and admit at most one request
-                # past the ordinary lanes per pass: a new handler takes seconds to reach its first lease.
-                backlog = unread = object()
-                for request in pending:
-                    try:
-                        request_bytes = request.read_bytes()
-                    except FileNotFoundError:
-                        continue
-                    diagnostic = _diagnostic_request(request, request_bytes=request_bytes)
-                    variant = sources.is_variant_request(request_bytes)
-                    holders = _lane_holders(ch, active)
-                    lanes = dict(
-                        diagnostic=diagnostic,
-                        variant=variant,
-                        ordinary_capacity=ordinary_capacity,
-                        variant_capacity=variant_capacity,
-                    )
-                    overflow = False
-                    if not _lane_admits(holders, **lanes):
-                        if diagnostic or request.name.startswith("req_" + IDLE_REQUEST_PREFIX):
-                            continue  # operator background work never starts past the lanes
-                        if backlog is unread:
-                            backlog = _author_cpu_backlog()
-                        overflow = _overflow_admits(
-                            holders, ordinary_capacity=ordinary_capacity, author_backlog=backlog, pool=overflow_capacity
-                        )
-                        if not _lane_admits(holders, **lanes, overflow=overflow):
-                            continue
-                    stop = ch / f".handler-stop_{secrets.token_hex(12)}"
-                    try:
-                        command = _handler_command(
-                            a,
-                            context,
-                            capsules_root,
-                            contract,
-                            promotion_root,
-                            request,
-                            stop,
-                            request_bytes=request_bytes,
-                        )
-                        from merlin.development.backend.joint_model_activation import request_environment
-
-                        handler_env = request_environment(
-                            os.environ,
-                            channel="selfcheck",
-                            request_id=request.stem.removeprefix("req_"),
-                            request_bytes=request_bytes,
-                        )
-                    except FileNotFoundError:
-                        continue  # Ordinary cancellation must not stop another lane.
-                    except (ValueError, KeyError, TypeError) as error:
-                        rid = request.stem.removeprefix("req_")
-                        _atomic_write(
-                            ch / f"resp_{rid}.json",
-                            json.dumps(
-                                {
-                                    "error": "request model admission refused: " + type(error).__name__,
-                                    "all_pass": False,
-                                    "numeric_assessment": "not_run",
-                                }
-                            ),
-                        )
-                        _atomic_write(ch / f"done_{rid}", "err")
-                        seen.add(request.name)
-                        continue
-                    process = subprocess.Popen(
-                        worker_pool_command(inherited_python_command(command), handler_env), cwd=ws, env=handler_env
-                    )
-                    stat = _process_record(process.pid)
-                    seen.add(request.name)
-                    if overflow:
-                        backlog = None  # one request past the lanes per pass
-                        health["overflow_admitted"] += 1
-                    try:
-                        body = json.loads(request_bytes)
-                    except ValueError:
-                        body = {}
-                    # Include queue time even for historical requests without an
-                    # explicit deadline; never renew their budget on admission.
-                    deadline_body = dict(body) if isinstance(body, dict) else {}
-                    deadline_body.setdefault("deadline_unix_ns", int(_request_deadline(request) * 1e9))
-                    active[request.name] = {
-                        "deadline": _child_deadline_monotonic(deadline_body),
-                        "started_ns": time.time_ns(),
-                        "process": process,
-                        "request": request,
-                        "stop": stop,
-                        "diagnostic": diagnostic,
-                        "variant": variant,
-                        "source_fields": sources.response_fields(body if isinstance(body, dict) else {}, None),
-                        "start_ticks": stat[1] if stat else None,
-                        # Only an authorized long gSIM measurement outlives the broker's stop.
-                        "long": long_request(request.name[len("req_") : -len(".json")]),
-                    }
-                health["active_handlers"] = len(active)
-                health["handlers"] = [
-                    {
-                        "request_id": name[len("req_") : -len(".json")],
-                        "pid": job["process"].pid,
-                        "start_ticks": job["start_ticks"],
-                        "diagnostic": job["diagnostic"],
-                        "elapsed_s": max(0, (time.time_ns() - job["started_ns"]) / 1e9),
-                        "deadline_remaining_s": max(0, job["deadline"] - time.monotonic()),
-                        "submission": job["source_fields"]["selfcheck_submission"],
-                    }
-                    for name, job in active.items()
-                ]
-                health["active_variants"] = sum(job["variant"] for job in active.values())
-                health["queued_requests"] = len(_pending_requests(ch, seen))
-                _atomic_write(health_path, json.dumps(health, sort_keys=True))
-                time.sleep(a.poll)
-            except OSError as error:  # A full disk must not end the dispatcher; other errors still do.
-                _report_loop_error("dispatcher", error)
-                time.sleep(LOOP_ERROR_BACKOFF_S)
-    finally:
-        _drain_handlers(active)
-    return 0
-
-
-def _lane_holders(ch: Path, active: dict) -> list[dict]:
-    """Handlers occupying a lane: a child waiting for a gSIM correctness slot runs nothing yet.
-
-    Counting it would let a queue of waiting gSIM requests hold every lane a Spike check could use.
-    """
-    from merlin.development.backend import joint_gsim_queue as gsim_queue
-
-    return [
-        job
-        for name, job in active.items()
-        if gsim_queue.waiting(ch / f"progress_{name[len('req_') : -len('.json')]}.json") is None
-    ]
-
-
-def _drain_handlers(active: dict) -> list[str]:
-    """Stop every handler at the dispatcher's exit, except a running long gSIM measurement.
-
-    Each handler is asked to drain its existing cancellation path before it is reaped (STOP and
-    parent loss are independently checked by handlers). A long measurement the lane authorized is
-    left running: its handler ignores the stop, ends at its own deadline (bounded by the campaign's
-    end) and yields if final grading waits for a shared slot (:func:`_abort_reason`). Returns the
-    request names left running.
-    """
-    left = [name for name, job in active.items() if job.get("long") and job["process"].poll() is None]
-    stopping = {name: job for name, job in active.items() if name not in left}
-    for name in left:
-        print(f"[broker] long gSIM measurement {name} continues past the broker stop", file=sys.stderr, flush=True)
-    for job in stopping.values():
-        try:
-            _atomic_write(job["stop"], "stop")
-        except OSError:
-            _stop_owned_worker(job["process"])  # No stop file: reap the original tree directly.
-    for job in stopping.values():
-        try:
-            job["process"].wait(timeout=35)
-        except subprocess.TimeoutExpired:
-            _stop_owned_worker(job["process"])
-        job["stop"].unlink(missing_ok=True)
-    return left
-
-
-def _legacy_common_service(workspace, manifest, repo):
-    """External evaluation has no authority to issue legacy common-pass proofs."""
-    from merlin.development.backend.feedback.snapshot_execution import selected
-
-    if manifest is None or selected():
-        return None
-    from merlin.development.backend.brokers.common_transforms import CommonTransformService
-
-    return CommonTransformService(workspace=workspace, bundle_manifest=manifest, repo=repo)
+from merlin.development.backend.feedback.certification.promotion_admission import (
+    REQUIRED_SIM,
+    grade_selection_for,
+)
+from merlin.development.backend.feedback.performance.idle_measurement import OPERATOR_ORIGINS, TUNING_ORIGIN
+from merlin.development.backend.feedback.performance.idle_measurement import (
+    ORIGIN as IDLE_ORIGIN,  # noqa: F401 -- stable name
+)
+from merlin.development.backend.feedback.performance.idle_measurement import (
+    REQUEST_PREFIX as IDLE_REQUEST_PREFIX,
+)
+from merlin.development.backend.feedback.references.analysis import (
+    broker_response as _reference_analysis_response,
+)
+from merlin.development.backend.feedback.selfcheck.diagnostic_adapters import _public_capsules, worker_command
+
+# ---- selfcheck ---------------------------------------------------------------------------------
 
 
 @selected_child
@@ -660,6 +92,26 @@ def main(
     contract: Path | None = None,
     policy_capsules_root: Path | None = None,
 ):
+    from merlin.development.backend.brokers.selfcheck_dispatch import (
+        FORWARDED_PROBES,
+        LOOP_ERROR_BACKOFF_S,
+        PROTOCOL_VERSION,
+        _advisory_request,
+        _atomic_write,
+        _decorate_response,
+        _default_sim,
+        _dispatch_requests,
+        _freeze_passed_source,
+        _legacy_common_service,
+        _log_tail,
+        _report_loop_error,
+        _required_rtl_engine,
+        _settle_failed_request,
+        _sim_policy_error,
+        _submission_digest,
+        _working_snapshot,
+    )
+
     ap = argparse.ArgumentParser()
     add_context_arguments(ap)
     ap.add_argument("--capsules-root", type=Path)
@@ -675,7 +127,7 @@ def main(
     ap.add_argument("--request-stop", type=Path, help=argparse.SUPPRESS)
     ap.add_argument("--request-sha256", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
-    from merlin.development.backend.frozen_facts import select
+    from merlin.development.backend.session.inputs.run_record import select
 
     select(Path(a.ws), a.rtl_facts)
     context = resolve_context(a, ap, context)
@@ -805,7 +257,7 @@ def main(
                 label = sources.request_label(r)
                 graded_digest = sources.source_digest(ws, label, _submission_digest)
             except (OSError, ValueError) as error:
-                from merlin.common.path_scrub import scrub_host_paths
+                from merlin.common.access import scrub_host_paths
 
                 doc = _decorate_response(
                     json.dumps({"error": f"broker: {scrub_host_paths(str(error))}", "all_pass": False}),
@@ -845,7 +297,7 @@ def main(
                     _atomic_write(resp, json.dumps(doc))
                     _atomic_write(ch / f"done_{rid}", "err")
                     continue
-            from merlin.development.backend.author_profiles import check_broker_action
+            from merlin.development.backend.authoring.profiles import check_broker_action
 
             try:
                 check_broker_action("candidate-diagnostics" if r.get("candidate_diagnostics") else r.get("action"))
@@ -859,7 +311,9 @@ def main(
                 continue
             if r.get("action") == "mechanism-question":
                 try:
-                    from merlin.development.backend.joint_mechanism_questions import submit
+                    from merlin.development.backend.campaign.calibration.joint_mechanism_questions import (
+                        submit,
+                    )
 
                     body = submit(r.get("mechanism_question"), request_id=rid)
                 except (OSError, ValueError, RuntimeError, KeyError, TypeError) as error:
@@ -907,7 +361,7 @@ def main(
                     method = common_service.check if r["action"] == "common-check" else common_service.apply
                     body = method(r.get("transform"), work_root=proof_root, timeout_s=remaining)
                 except Exception as error:
-                    from merlin.common.path_scrub import scrub_host_paths
+                    from merlin.common.access import scrub_host_paths
 
                     body = {
                         "status": "unavailable" if isinstance(error, FileNotFoundError) else "unknown",
@@ -943,10 +397,16 @@ def main(
             measurement = None  # an operator-authorized idle gSIM measurement (joint_gsim_measurement)
             if suite in {"scalability", "programs"}:
                 if suite == "programs":
-                    from merlin.development.backend.feedback.public_programs import request_policy, selected
+                    from merlin.development.backend.feedback.certification.model_checks import (
+                        request_policy,
+                        selected,
+                    )
                 else:
-                    from merlin.development.backend.feedback.public_scalability import request_policy, selected
-                from merlin.development.backend.joint_gsim_measurement import broker_admission
+                    from merlin.development.backend.feedback.scalability.public_scalability import (
+                        request_policy,
+                        selected,
+                    )
+                from merlin.development.backend.campaign.joint_gsim_measurement import broker_admission
 
                 probing = bool(inspection or any(r.get(k) for k in FORWARDED_PROBES))
                 # Only the scalability suite has an idle gSIM measurement lane.
@@ -956,7 +416,9 @@ def main(
                     if measurement is None:
                         source_inspection = None
                         if suite == "scalability":
-                            from merlin.development.backend.feedback.public_scalability_inspection import requested
+                            from merlin.development.backend.feedback.scalability.public_scalability_inspection import (
+                                requested,
+                            )
 
                             source_inspection = requested(r)
                         request_policy(r.get("sim"), r.get("tiers"), inspection=probing and source_inspection is None)
@@ -993,7 +455,7 @@ def main(
                 continue
             sim = grade_selection_for(sim) if suite == "core" else ("gsim" if measurement is not None else "spike")
             to = int(r.get("timeout", 1800))
-            from merlin.development.backend import joint_control
+            from merlin.development.backend.campaign import control as joint_control
 
             if joint_control.selected() is not None and sim == "gsim":
                 to = min(
@@ -1060,12 +522,12 @@ def main(
                     deadline = min(deadline, time.monotonic() + max(0.0, joint_control.remaining() or 0.0))
                 # Spool the child's streams to FILES, not pipes: a poll loop that never drains a PIPE
                 # deadlocks as soon as the child fills the buffer, and a full-corpus self-check is chatty.
-                from merlin.development.backend.feedback.raw_selfcheck_evidence import operator_log_dir
+                from merlin.development.backend.feedback.selfcheck.results import operator_log_dir
 
                 # Raw child streams can name host paths: keep them operator-side when an evidence
                 # root is selected; the agent receives only the scrubbed response.
                 log_dir = operator_log_dir()
-                from merlin.development.backend.feedback.author_disclosure import restricted
+                from merlin.development.backend.feedback.disclosure import restricted
 
                 if restricted() and log_dir is None:
                     raise ValueError("restricted feedback requires operator-private evidence staging")
@@ -1078,7 +540,9 @@ def main(
                 # editing, and the response stays bound to the selected digest.
                 snapshot_root = _working_snapshot(ws, graded_digest, label=label)
                 r = tuning.apply_request(snapshot_root / "submission", r, digest=_submission_digest)
-                from merlin.development.backend.feedback.construction_plan import admit as admit_construction_plan
+                from merlin.development.backend.feedback.guidance.construction_plan import (
+                    admit as admit_construction_plan,
+                )
 
                 construction_admission = admit_construction_plan(
                     snapshot_root / "submission",
@@ -1100,24 +564,24 @@ def main(
                 if construction_admission is not None:
                     _atomic_write(ch / f"construction_plan_{rid}.json", json.dumps(construction_admission))
                 argv2[argv2.index("--submission") + 1] = str(snapshot_root / "submission")
-                from merlin.development.backend.joint_model_activation import request_environment
+                from merlin.development.backend.campaign.calibration.activation import request_environment
 
                 worker_env = request_environment(
                     os.environ, channel="selfcheck", request_id=rid, request_bytes=request_bytes
                 )
                 worker_env[sources.LABEL_ENV] = label
-                from merlin.development.backend import joint_gsim_queue as gsim_queue
+                from merlin.development.backend.campaign import gsim_budget as gsim_queue
 
                 # An author request waits for a busy gSIM correctness slot; operator work does not.
                 worker_env[gsim_queue.CLASS_ENV] = gsim_queue.AUTHOR
                 gsim_queue.name_requester(worker_env, r)  # waiting is interleaved per caller thread
                 if r.get("origin") in OPERATOR_ORIGINS:
                     # Operator background measurement: every author request and grade leases CPUs first.
-                    from merlin.common.cpu_pool import AUXILIARY, PRIORITY_ENV
+                    from merlin.common.process.cpu_pool import AUXILIARY, PRIORITY_ENV
 
                     worker_env[PRIORITY_ENV] = str(AUXILIARY)
                     worker_env[gsim_queue.CLASS_ENV] = gsim_queue.BACKGROUND
-                from merlin.development.backend.joint_gsim_measurement import ENV as MEASUREMENT_ENV
+                from merlin.development.backend.campaign.joint_gsim_measurement import ENV as MEASUREMENT_ENV
 
                 worker_env.pop(MEASUREMENT_ENV, None)
                 if measurement is not None:
@@ -1136,7 +600,7 @@ def main(
                         MERLIN_SELFCHECK_PROMOTION_SHA256=graded_digest,
                     )
                 with log_out.open("w") as fo, log_err.open("w") as fe, contextlib.ExitStack() as priority:
-                    from merlin.common.cpu_pool import worker_pool_command
+                    from merlin.common.process.cpu_pool import worker_pool_command
                     from merlin.experiments.frozen_python import inherited_python_command
 
                     proc = subprocess.Popen(
@@ -1147,7 +611,9 @@ def main(
                         text=True,
                         env=worker_env,
                     )
-                    from merlin.development.backend.feedback.background_admission import active_full_selfcheck
+                    from merlin.development.backend.feedback.grading.background_admission import (
+                        active_full_selfcheck,
+                    )
 
                     # The foreground marker describes submission/ work; a variant publishes none.
                     foreground = contextlib.nullcontext()
@@ -1189,9 +655,7 @@ def main(
                                     proc.kill()  # a wedged RTL sim does not get to outlive us
                                     proc.wait(timeout=30)
                             staged_resp.unlink(missing_ok=True)
-                            from merlin.development.backend.feedback.selfcheck_progress import (
-                                partial_results,  # decided cases survive
-                            )
+                            from merlin.development.backend.feedback.selfcheck.results import partial_results
 
                             doc = _decorate_response(
                                 json.dumps(
@@ -1220,18 +684,22 @@ def main(
                         doc = _decorate_response(
                             raw, r, rid, graded_digest, started_ns=started_ns, completed_ns=completed_ns
                         )
-                        from merlin.development.backend.feedback.idle_tuning import attach as attach_tuning
-                        from merlin.development.backend.feedback.knob_lint import attach as attach_knob_candidates
+                        from merlin.development.backend.feedback.performance.idle_tuning import (
+                            attach as attach_tuning,
+                        )
+                        from merlin.development.backend.feedback.performance.knob_lint import (
+                            attach as attach_knob_candidates,
+                        )
 
                         doc = attach_knob_candidates(attach_tuning(doc, ws), ws, submission=sources.SUBMISSION)
-                        from merlin.development.backend.feedback.result_details import compact_document
+                        from merlin.development.backend.feedback.selfcheck.results import compact_document
 
                         doc = compact_document(doc, workspace=ws, namespace="selfcheck")
                         _atomic_write(resp, json.dumps(doc))
                     else:
                         out = log_out.read_text()[-20000:] if log_out.exists() else ""
                         err = _log_tail(log_err, 300)
-                        from merlin.development.backend.feedback.selfcheck_progress import partial_results
+                        from merlin.development.backend.feedback.selfcheck.results import partial_results
 
                         doc = _decorate_response(
                             out
@@ -1260,7 +728,7 @@ def main(
             promotion_source = None
             try:
                 if resp.exists() and not variant and not advisory and suite == "core":
-                    from merlin.development.backend.feedback.result_details import hydrate
+                    from merlin.development.backend.feedback.selfcheck.results import hydrate
 
                     passed = hydrate(json.loads(resp.read_text()), workspace=ws)
                     if not passed.get("error") and any(
@@ -1297,9 +765,11 @@ def main(
             try:
                 import json as _j
 
-                from merlin.development.backend.feedback.promotion import cert_already_executed
-                from merlin.development.backend.feedback.promotion import promote as _promote
-                from merlin.development.backend.feedback.promotion import resolve_tiers as _resolve
+                from merlin.development.backend.feedback.certification.promotion import cert_already_executed
+                from merlin.development.backend.feedback.certification.promotion import promote as _promote
+                from merlin.development.backend.feedback.certification.promotion import (
+                    resolve_tiers as _resolve,
+                )
 
                 _loop, _cert, _cover = _resolve(ws, context=context, capsules_root=promotion_capsules_root)
                 if _loop and _cert and resp.exists():
@@ -1311,7 +781,7 @@ def main(
                             flush=True,
                         )
                         if isinstance(_v, dict) and not _v.get("error") and promotion_source is not None:
-                            from merlin.development.backend.feedback.selfcheck_certificates import import_executed
+                            from merlin.development.backend.feedback.selfcheck.results import import_executed
 
                             import_executed(
                                 ws,
@@ -1344,10 +814,10 @@ def main(
 
 
 if __name__ == "__main__":
-    from merlin.development.backend.telemetry.resilient_output import install
+    from merlin.development.backend.telemetry.evidence import install
 
     install()  # A full log volume drops log lines, never the broker.
-    from merlin.common.cpu_pool import AUTHOR, cpu_priority
+    from merlin.common.process.cpu_pool import AUTHOR, cpu_priority
 
     with cpu_priority(AUTHOR, export=True):  # Author-requested self-checks lease first.
         raise SystemExit(main())

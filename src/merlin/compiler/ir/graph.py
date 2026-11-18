@@ -23,7 +23,7 @@ def type_layout(value_type) -> str | None:
 
 
 def _program_graph(module, digest: str) -> dict:
-    from merlin.common import mlir_query as mq
+    from merlin.compiler.ir import mlir_query as mq
 
     operations = list(mq.walk(module))
     operation_ids = {id(op): f"mlir:{digest}:{ordinal}" for ordinal, op in enumerate(operations)}

@@ -7,9 +7,14 @@ from pathlib import Path
 
 from merlin.development.backend.options import RunOptions, build_parser
 
+# ---- __main__ ----------------------------------------------------------------------------------
+
 
 def main(argv: list[str] | None = None) -> int:
-    from merlin.development.backend.optimization.compiler_library_state import add_selection_arguments, load_selection
+    from merlin.development.backend.optimization.campaign.compiler_library_state import (
+        add_selection_arguments,
+        load_selection,
+    )
 
     parser = build_parser()
     add_selection_arguments(parser)
@@ -40,7 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         help="original required interface, repeatable; missing/unknown support refuses",
     )
     parser.add_argument("--treatment", choices=("baseline", "rtlchecks"), default="baseline")
-    from merlin.development.backend.levels import LEVELS, materialize_level
+    from merlin.development.backend.session.treatments import LEVELS, materialize_level
 
     parser.add_argument(
         "--level",
@@ -139,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    from merlin.development.backend.telemetry.resilient_output import install
+    from merlin.development.backend.telemetry.evidence import install
 
     install()  # A full log volume drops log lines, never the runner's graders.
     raise SystemExit(main())

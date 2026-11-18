@@ -23,13 +23,13 @@ def geometry(*, unit, config):
 
 
 def selector(tile_edge):
-    from merlin.compiler.lower.model import int8_contractions
+    from merlin.compiler.lower.device import outline as int8_contractions
 
     return int8_contractions.tile_filling_selector(tile_edge)
 
 
 def rewrite_prepared_file(prepared, work, *, select, tile_edge):
-    from merlin.compiler.lower.model import int8_contractions
+    from merlin.compiler.lower.device import outline as int8_contractions
 
     return int8_contractions.rewrite_prepared_file(
         prepared,
@@ -42,7 +42,7 @@ def rewrite_prepared_file(prepared, work, *, select, tile_edge):
 
 
 def load_signatures(work):
-    from merlin.compiler.lower.model import int8_contractions
+    from merlin.compiler.lower.device import outline as int8_contractions
 
     return int8_contractions.load_sidecar(work, opu_shim.SIDECAR_NAME)
 

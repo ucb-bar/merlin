@@ -10,17 +10,29 @@ separately reviewed policy before Phase 0 may admit a capture.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import secrets
 import shutil
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from merlin.common import strict_json
+from merlin.common import record_formats as strict_json
+from merlin.experiments.capture_execution.sealed_static import (
+    SealedCaptureError,
+    _bwrap_binary,
+    _canonical_path,
+    _digest,
+    _file_digest,
+    _json,
+    _tree,
+)
 
-from .sealed_static import _bwrap_binary, _canonical_path, _digest, _file_digest, _json, _tree
+# ---- sealed_python -----------------------------------------------------------------------------
 
 SCHEMA = "merlin.sealed_python_diagnostic.v1"
 ISSUER = "merlin.sealed-python-diagnostic.v1"
@@ -277,3 +289,193 @@ def replay_verify(run_dir: Path, *, bwrap_binary: Path | None = None) -> dict[st
         "phase0_admissible": False,
         "receipt_sha256": _file_digest(receipt),
     }
+
+
+# ---- sealed_failure ----------------------------------------------------------------------------
+# Unverified execution diagnostics, deliberately separate from capture admission.
+
+# Replay-only predecessor: successful guest policy and byte comparisons are unchanged.
+PRE_RETENTION_ISSUER_SHA256 = "1c0b4e2bf38893f63c08f7a39e308037e7e80f01615b89d19a4e504a75dc5a20"
+
+
+def _write(path: Path, raw: bytes) -> None:
+    with os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as stream:
+        stream.write(raw)
+
+
+def process(failure_dir: Path, returncode: int, stdout: bytes, stderr: bytes) -> None:
+    """Retain actual streams before any materialization or publication checks."""
+    if returncode:
+        directory = failure_dir
+        directory.mkdir(mode=0o700, parents=True, exist_ok=False)
+    else:
+        directory = failure_dir.with_name(failure_dir.name.removesuffix("-failure") + "-execution")
+        directory = Path(tempfile.mkdtemp(prefix=directory.name + "-", dir=directory.parent))
+    _write(directory / "stdout.bin", stdout)
+    _write(directory / "stderr.bin", stderr)
+    record = {
+        "schema": "merlin.sealed_capture_process_diagnostic.v1",
+        "status": "unverified",
+        "phase0_admission": "not_granted",
+        "returncode": returncode,
+        "stdout_bytes": len(stdout),
+        "stderr_bytes": len(stderr),
+        "stdout_sha256": hashlib.sha256(stdout).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr).hexdigest(),
+    }
+    _write(directory / "process.json", (json.dumps(record, sort_keys=True) + "\n").encode())
+
+
+@contextmanager
+def publication(run: Path, *, replay: Path | None, plan: dict, selection_sha256: str | None):
+    """Delete successful replay scratch; keep failed output without minting a pending receipt.
+
+    This record is not consumable by attest/replay_verify and supplies no recovery API.
+    It only preserves observations that would otherwise disappear on a publication error.
+    """
+    try:
+        yield
+    except BaseException as exc:
+        record = {
+            "schema": "merlin.sealed_capture_failure_diagnostic.v1",
+            "status": "unverified",
+            "phase0_admission": "not_granted",
+            "source_closure_verified": False,
+            "recovery_supported": False,
+            "selection_sha256": selection_sha256,
+            "plan_sha256": hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest(),
+            "capture": "capture",
+            "replay": None if replay is None else replay.relative_to(run).as_posix(),
+            "error": {"type": type(exc).__name__, "detail": str(exc)[:4096]},
+        }
+        try:
+            _write(run / "sealed_capture_unverified_failure.json", (json.dumps(record, sort_keys=True) + "\n").encode())
+        except OSError as diagnostic_error:
+            exc.add_note(f"unverified failure record could not be retained: {type(diagnostic_error).__name__}")
+        raise
+    else:
+        if replay is not None:
+            shutil.rmtree(replay, ignore_errors=True)
+
+
+# ---- sealed_inventory --------------------------------------------------------------------------
+# Exact identities from one fresh inventory; independent boundaries rescan.
+
+
+def _snapshot_rows(rows: dict[str, dict[str, Any]], relative: str = ".") -> dict[str, Any]:
+    """Digest an exact subtree without reading its bytes again at this checkpoint."""
+    member = PurePosixPath(relative)
+    if member.is_absolute() or ".." in member.parts or member.as_posix() != relative:
+        raise SealedCaptureError("inventory subtree path is not canonical")
+    if rows.get(relative, {}).get("kind") != "directory":
+        raise SealedCaptureError("inventory subtree is absent or not a directory")
+    if relative != ".":
+        prefix = relative + "/"
+        rows = {
+            ".": rows[relative],
+            **{name[len(prefix) :]: info for name, info in rows.items() if name.startswith(prefix)},
+        }
+    compact = [(name, *sorted(info.items())) for name, info in sorted(rows.items())]
+    return {
+        "members": len(rows),
+        "bytes": sum(row.get("bytes", 0) for row in rows.values()),
+        "sha256": _digest(_json(compact)),
+    }
+
+
+def _verify_staged_selection(
+    plan: dict[str, Any],
+    source: Path,
+    runtime: Path,
+    *,
+    source_rows: dict[str, dict[str, Any]] | None = None,
+    runtime_rows: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Reject changed selected bytes before executing any guest code."""
+    from merlin.experiments.capture_execution import m2m_plan as _merlin_m2m_plan_1
+    from merlin.experiments.capture_execution import m2m_sandbox as M
+
+    def identity(path: Path) -> dict[str, Any]:
+        root, rows = (runtime, runtime_rows) if path.is_relative_to(runtime) else (source, source_rows)
+        return (
+            _merlin_m2m_plan_1._snapshot_tree(path)
+            if rows is None
+            else _snapshot_rows(rows, path.relative_to(root).as_posix())
+        )
+
+    roots = {
+        "venv": runtime / "opt/capture-venv",
+        "base": runtime / Path(plan["base"]).relative_to("/"),
+        "m2m": source / "m2m-src/m2m",
+        "workload": source / "workload",
+        "schemas": source / "merlin-src/merlin/_data/schemas",
+    }
+    selected_trees = plan["selected_trees"]
+    if plan.get("frozen_origin") is not None:
+        try:
+            origin_commit = M.verify_frozen_receipt(
+                plan["frozen_origin"],
+                (source / "m2m-origin.json").read_bytes(),
+                Path(plan["m2m_root"]),
+                selected_trees["m2m"],
+            )
+        except (M.M2MOriginError, OSError) as exc:
+            raise M.SealedM2MError("staged frozen M2M origin differs from selection") from exc
+        if origin_commit != plan["m2m_commit"]:
+            raise M.SealedM2MError("staged frozen M2M origin revision differs from selected plan")
+    for name, path in roots.items():
+        if identity(path) != selected_trees[name]:
+            raise M.SealedM2MError(f"staged {name} bytes differ from the pre-execution selection")
+    if plan.get("schema") == M.SCHEMA_V3:
+        for row in plan["selected_inputs"]:
+            _merlin_m2m_plan_1._verify_selected_input(row, source / "inputs" / row["guest_member"])
+    if plan["schemas_root"] == str(Path(plan["merlin_root"]) / "_data/schemas"):
+        if identity(source / "merlin-src/merlin") != selected_trees["merlin"]:
+            raise M.SealedM2MError("staged Merlin bytes differ from the pre-execution selection")
+    return selected_trees["schemas"]
+
+
+def _replay_output_difference(original: Path, replay: Path) -> str:
+    """Failure-only detail; never relax exact byte, membership or mode equality."""
+    from merlin.experiments.capture_execution.sealed_static import _tree
+
+    expected, actual = _tree(original), _tree(replay)
+    for name in sorted(set(expected) | set(actual)):
+        if name not in actual:
+            return f"missing member {name!r}"
+        if name not in expected:
+            return f"unexpected member {name!r}"
+    modes = []
+    for name, row in sorted(expected.items()):
+        other = actual[name]
+        if row.get("kind") != other.get("kind"):
+            return f"member kind differs at {name!r}"
+        if row.get("sha256") != other.get("sha256") or row.get("bytes") != other.get("bytes"):
+            return f"content hash or size differs at {name!r}"
+        if {k: v for k, v in row.items() if k != "mode"} != {k: v for k, v in other.items() if k != "mode"}:
+            return f"inventory fields differ at {name!r}"
+        if row.get("mode") != other.get("mode"):
+            modes.append((name, row["mode"], other["mode"]))
+    if modes:
+        name, old, new = modes[0]
+        return f"mode-only difference at {name!r} (expected {old:#o}, actual {new:#o}); check caller umask"
+    return "materialized receipt differs although file inventory matches"
+
+
+def _verify_replayed_output(replay, source, output, doc, schema, plan) -> None:
+    """The original complete materialization and inventory checks, with failure detail."""
+    from merlin.experiments.capture_execution import m2m_plan as _merlin_m2m_plan_2
+    from merlin.experiments.capture_execution import m2m_sandbox as M
+
+    materialized = (
+        _merlin_m2m_plan_2._materialized(replay, source, output)
+        if schema == M.SCHEMA_V1
+        else (
+            _merlin_m2m_plan_2._materialized_v3(replay, source, output, plan)
+            if schema == M.SCHEMA_V3
+            else _merlin_m2m_plan_2._materialized_v2(replay, source, output, plan)
+        )
+    )
+    if materialized != doc.get("materialized") or _merlin_m2m_plan_2._snapshot_tree(replay) != doc["output"]:
+        detail = _replay_output_difference(output, replay)
+        raise M.SealedM2MError("fresh M2M replay differs: " + detail)

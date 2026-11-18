@@ -29,7 +29,10 @@ import os
 import time
 from pathlib import Path
 
+# ---- simjob ------------------------------------------------------------------------------------
+
 WS = Path(__file__).resolve().parent
+
 CH = WS / ".qa_channel"
 
 

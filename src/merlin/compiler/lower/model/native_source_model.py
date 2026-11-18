@@ -4,23 +4,27 @@ This route executes explicitly host-domain implementations. Imported witness
 identities and artifact custody do not qualify a device, timer or provider body.
 """
 
+from __future__ import annotations
+
 import shutil
 from pathlib import Path
 
 from merlin.common.digest import sha256_file
 from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
-from merlin.compiler.lower.model.source_model import (
+from merlin.compiler.lower.source.model import (
     bind_source_lowerings,
     source_borrowed_calls,
     source_provider_builder,
 )
-from merlin.runtime import host_provider
-from merlin.runtime.host_provider import (
+from merlin.runtime.backends.baremetal import host_provider
+from merlin.runtime.backends.baremetal.host_provider import (
     HostProviderContext,
     close_host_provider,
     prepare_host_provider,
     revalidate_host_provider,
 )
+
+# ---- native_source_model -----------------------------------------------------------------------
 
 
 class NativeSourceModel:
@@ -104,7 +108,7 @@ class NativeSourceModel:
 
     def objects(self, llvm, model_object, runtime_object, *, runtime_source, compiler, flags, runner):
         from merlin.compiler.lower.model.toolchain import llvm_nm
-        from merlin.runtime.host_provider import _symbols
+        from merlin.runtime.backends.baremetal.host_provider import _symbols
 
         self.inspector = llvm_nm().resolve(strict=True)
         self.link_inputs = tuple(

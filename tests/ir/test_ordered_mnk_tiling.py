@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
-from merlin.compiler.transforms.contraction_mnk import (
+from merlin.compiler.transforms.tiling import (
     assemble_row_major_mnk_outputs,
     materialize_row_major_mnk_inputs,
     partition_ordered_matmul_mnk,

@@ -58,7 +58,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from merlin.compiler.dialects._common import HAS_XDSL
+from merlin.compiler.dialects.xdsl_context import HAS_XDSL
+
+# ---- passes ------------------------------------------------------------------------------------
 
 # --- the obligation vocabulary ---------------------------------------------------------------------
 # A pass may exist ONLY to discharge one of these four. They are deliberately few: the point is that
@@ -120,7 +122,7 @@ NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
         "merlin-column-reduction-layout",
         "normalize",
         "preserve trailing-channel storage through exact single-column integer contractions",
-        "merlin.compiler.transforms.dense_reduction_layout.rewrite_module",
+        "merlin.compiler.transforms.dense.row_batching.rewrite_module",
         input_dialect="linalg",
         output_dialect="linalg",
         obligation=UNKNOWN,
@@ -138,7 +140,7 @@ NORMALIZATION_CATALOG: tuple[PassInfo, ...] = (
         "merlin-bf16-matmul-f32acc",
         "normalize",
         "bf16 linalg.matmul -> f32-accumulating generic + truncf (matches torch)",
-        "merlin.compiler.transforms.matmul.lower_bf16_matmul_f32acc",
+        "merlin.compiler.transforms.canonicalization.lower_bf16_matmul_f32acc",
         input_dialect="linalg",
         output_dialect="linalg",
         obligation=UNKNOWN,
@@ -202,7 +204,7 @@ CATALOG: tuple[PassInfo, ...] = (
         "merlin-outline-dispatches",
         "outline",
         "split func @forward into per-dispatch kernel funcs + a driver",
-        "merlin.compiler.dialects.lowering.outline.outline_dispatches",
+        "merlin.compiler.partition.outline.outline_dispatches",
         input_dialect="linalg",
         output_dialect="linalg",
         obligation="partition/eligibility",
@@ -214,7 +216,7 @@ CATALOG: tuple[PassInfo, ...] = (
         "merlin-emit-dispatch-program",
         "runtime",
         "flatten the driver into a serializable dispatch DAG for the runtime",
-        "merlin.compiler.dialects.lowering.dispatch_program.build_dispatch_program",
+        "merlin.compiler.partition.dispatch_program.build_dispatch_program",
         input_dialect="func",
         output_dialect=DISPATCH_PROGRAM,
         obligation="boundary materialization",
@@ -224,7 +226,7 @@ CATALOG: tuple[PassInfo, ...] = (
         "merlin-partition-dispatches",
         "runtime",
         "level-synchronous multicore schedule of the dispatch DAG across harts",
-        "merlin.compiler.dialects.lowering.schedule_dispatch.partition_dispatches",
+        "merlin.compiler.partition.dispatch_program.partition_dispatches",
         input_dialect=DISPATCH_PROGRAM,
         output_dialect=DISPATCH_PROGRAM,
         obligation="partition/eligibility",
@@ -265,7 +267,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
         "merlin-infer-contract-facts",
         "contract",
         "annotate linalg with reuse/immutability/quant/capacity facts",
-        "merlin.compiler.dialects.lowering.contract_facts.lower_to_contract",
+        "merlin.compiler.dialects.lowering.analyses.lower_to_contract",
         input_dialect="linalg",
         output_dialect="contract",
         obligation="partition/eligibility",
@@ -274,7 +276,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
         "merlin-apply-schedule",
         "schedule",
         "residency/tiling/vector-strategy decisions over contract facts",
-        "merlin.compiler.dialects.lowering.schedule_decisions.lower_to_schedule",
+        "merlin.compiler.dialects.lowering.interface_stage.lower_to_schedule",
         input_dialect="contract",
         output_dialect="schedule",
         obligation="target transformation",
@@ -286,7 +288,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
         "merlin-materialize-interface",
         "interface",
         "schedule decisions -> interface ops (resident_pack/matmul/commit)",
-        "merlin.compiler.dialects.lowering.interface_lowering.lower_to_interface",
+        "merlin.compiler.dialects.lowering.interface_stage.lower_to_interface",
         input_dialect="schedule",
         output_dialect="interface",
         obligation="boundary materialization",
@@ -295,7 +297,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
         "merlin-lower-to-target",
         "target",
         "interface ops -> the selected target's dialect",
-        "merlin.compiler.dialects.lowering.target_lowering.lower_to_target",
+        "merlin.compiler.dialects.lowering.target_stage.lower_to_target",
         input_dialect="interface",
         output_dialect=TARGET_DIALECT,
         obligation="target lowering",
@@ -304,7 +306,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
         "merlin-lower-to-runtime",
         "runtime",
         "target ops -> runtime command-buffer IR",
-        "merlin.compiler.dialects.lowering.runtime_lowering.lower_to_runtime",
+        "merlin.compiler.dialects.lowering.runtime_stage.lower_to_runtime",
         input_dialect=TARGET_DIALECT,
         output_dialect="runtime",
         obligation="target lowering",
@@ -1012,7 +1014,7 @@ def verification_report(cat: Iterable[PassInfo] | None = None, logs: Iterable[Pa
 
 
 # Auto-install when the operator asked for a log. Importing this module is on the staged compile path
-# (`compile_core` -> `xdsl_dialects.lowering`). Installation order does not matter: `_rebind_aliases`
+# (`compiler.dialects.lowering`). Installation order does not matter: `_rebind_aliases`
 # repoints callers that already did `from X import fn`.
 if os.environ.get(PASS_LOG_ENV):
     install_pass_recorder()
@@ -1077,14 +1079,14 @@ def run_dialect_plane(
     """
     if not HAS_XDSL:
         raise RuntimeError("xDSL is required for the dialect plane")
-    from merlin.compiler.dialects.lowering.dispatch_program import (
+    from merlin.compiler.frontend.preprocess import add_c_interface
+    from merlin.compiler.partition.dispatch_program import (
         build_dispatch_program,
+        partition_dispatches,
         prune_dead_nodes,
         verify_program,
     )
-    from merlin.compiler.dialects.lowering.outline import outline_dispatches
-    from merlin.compiler.dialects.lowering.schedule_dispatch import partition_dispatches
-    from merlin.compiler.frontend.preprocess import add_c_interface
+    from merlin.compiler.partition.outline import outline_dispatches
 
     # Phase 1-2 abstraction analysis on the REAL model (contract facts -> schedule
     # decisions). Value-preserving: run on a clone, report what the compiler recognizes
@@ -1093,12 +1095,12 @@ def run_dialect_plane(
     analysis: dict = {}
     recorded: tuple = ()
     try:
-        from merlin.compiler.dialects.lowering.contract_facts import lower_to_contract
-        from merlin.compiler.dialects.lowering.pipeline import load_curated_contract
-        from merlin.compiler.dialects.lowering.schedule_decisions import (
+        from merlin.compiler.dialects.lowering.analyses import lower_to_contract
+        from merlin.compiler.dialects.lowering.interface_stage import (
             lower_to_schedule,
             recorded_group_dispatch,
         )
+        from merlin.compiler.dialects.lowering.pipeline import load_curated_contract
 
         contract = analysis_contract or (load_curated_contract(target) if target else None)
         if contract is None:
@@ -1115,9 +1117,12 @@ def run_dialect_plane(
 
     groups = None
     if target is not None:
-        from merlin.compiler.dialects.lowering import compute_groups as _compute_groups
+        from merlin.compiler.partition.groups import compute_groups as _compute_groups
+        from merlin.compiler.partition.groups import (
+            formation_compute_groups as _merlin_formation_compute_groups_1,
+        )
 
-        groups = _compute_groups.form_groups(module, target, function=forward)
+        groups = _merlin_formation_compute_groups_1.form_groups(module, target, function=forward)
     outlined = outline_dispatches(module, forward=forward, groups=groups)
     analysis["dispatch_grouping"] = _grouping_honoured(recorded, outlined.dispatches)
     program = build_dispatch_program(outlined, entry=forward or "forward")

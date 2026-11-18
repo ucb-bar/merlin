@@ -8,6 +8,18 @@ Merlin is a compiler-generation framework. It provides shared transformations,
 explicit out-of-tree backend interfaces, and independent evaluation for developing
 target compilers. APIs are under active development.
 
+The current integration branches are
+[Merlin `refactor/repository-layout`](https://github.com/ucb-bar/merlin/tree/refactor/repository-layout)
+and [Gemmini `refactor/architecture`](https://github.com/ucb-bar/gemmini-mlir/tree/refactor/architecture).
+Use them together when adapting another backend. Shared compiler descriptions live
+in [`compiler/backend/interface.py`](src/merlin/compiler/backend/interface.py),
+with proposal records in [`compiler/backend/protocol.py`](src/merlin/compiler/backend/protocol.py).
+These branches contain source reorganization and interface changes; compilation,
+runtime and hardware qualification remain separate from that source review.
+The experimental raw-interface author source roster and timing-study policy
+dependencies still need migration; those workflows are not qualified by this
+publication. Historical results retain their original source revisions.
+
 ## First compile
 
 Use Python **3.12 or newer**. A plain clone is enough; the first example needs no

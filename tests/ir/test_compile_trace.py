@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from merlin.common import compile_trace as T
+from merlin.compiler.ir import compile_trace as T
 from merlin.compiler.lower.model import toolchain
 
 native = pytest.mark.skipif(

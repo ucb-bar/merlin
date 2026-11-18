@@ -65,6 +65,8 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     "build_tools/checks/wiring_sources.py",
     # Which hardware a result is about, and where a product was written.
     "src/merlin/common/provenance.py",
+    # The registry's byte claims (built artifacts, lost bytes) split out of provenance.py.
+    "src/merlin/common/provenance_claims.py",
     "src/merlin/common/artifacts.py",
     # Verification: the implementations the retired ``merlin.verify`` aliases resolved to
     # (recorded in ``source_moves.json``). Unrelated new owners are not added implicitly.
@@ -73,15 +75,15 @@ EVIDENCE_ROOTS: tuple[str, ...] = (
     # freeze, the audit and the conformance check -- not the providers, brokers or task staging that
     # merely carry one.
     "src/merlin/development/backend/feedback",
-    "src/merlin/development/backend/audit.py",
-    "src/merlin/development/backend/conformance.py",
+    "src/merlin/development/backend/authoring/answer_access_audit.py",
+    "src/merlin/development/backend/authoring/conformance.py",
     "src/merlin/development/backend/tools/await_verdict.py",
     # Former conformance/freeze/grading/QA wrappers delegate to the owners above.
     # Standalone historical study commands are no longer part of the active source.
     # Phase 2: what chains a candidate to a certified whole-model number -- the measured mode's gates
     # and the champion export that records it.
-    "src/merlin/development/backend/optimization/whole_model_measured/gates.py",
-    "src/merlin/development/targetgen/champions.py",
+    "src/merlin/development/backend/optimization/whole_model_measured/scoring/gates.py",
+    "src/merlin/development/targetgen/packaging/champions.py",
 )
 
 #: Not scanned even under an evidence root: the test suite (a test's job is to construct the awkward
@@ -393,10 +395,15 @@ def _ledger() -> list[str]:
 
 def verdict(found: list[Finding], known: set[str]) -> tuple[list[Finding], list[str]]:
     """(new findings, stale ledger entries). Pure, so a test can drive both directions."""
-    keys = {_debt_key(finding.key) for finding in found}
-    known_keys = {_debt_key(key) for key in known}
-    new = [finding for finding in found if _debt_key(finding.key) not in known_keys]
-    stale = sorted(key for key in known if _debt_key(key) not in keys)
+
+    def aliases(key: str) -> set[str]:
+        path, separator, finding = key.partition("::")
+        return {old + separator + finding for old in _source_layout.policy_paths(path)}
+
+    keys = {key for finding in found for key in aliases(finding.key)}
+    known_keys = {key for original in known for key in aliases(original)}
+    new = [finding for finding in found if not (aliases(finding.key) & known_keys)]
+    stale = sorted(key for key in known if not (aliases(key) & keys))
     return new, stale
 
 

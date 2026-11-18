@@ -11,8 +11,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from merlin.api import Compilation, Deployment, run
-from merlin.compiler.backend.cabi import CRegionABI, TensorPort
-from merlin.runtime.service import RunOptions
+from merlin.compiler.backend.c_abi import CRegionABI, TensorPort
+from merlin.runtime.execution.service import RunOptions
 
 
 def main() -> None:

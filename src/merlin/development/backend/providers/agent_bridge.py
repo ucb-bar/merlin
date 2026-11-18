@@ -46,35 +46,29 @@ from pathlib import Path
 
 from merlin.development.backend.providers import model_tiers as _MT
 
-# ---------------------------------------------------------------------------------------------------
-# Proxy endpoint. Host/port/key are overridable so a second campaign can run its own instance.
+# ---- agent_bridge ------------------------------------------------------------------------------
+
 PROXY_HOST = os.environ.get("MERLIN_PROXY_HOST", "127.0.0.1")
+
 PROXY_PORT = int(os.environ.get("MERLIN_PROXY_PORT", "4141"))
+
 PROXY_KEY_ENV = "MERLIN_PROXY_KEY"
+
 PROXY_BASE = f"http://{PROXY_HOST}:{PROXY_PORT}"
 
-#: Context windows MEASURED from the provider's own 400 ("This model's maximum context length is N
-#: tokens"), never from a vendor page. A model absent here is left on its harness's registry default --
-#: we do not invent a window. Single source of truth; opencode_agent imports from here.
 CONTEXT_WINDOWS: dict[str, int] = {
     "nvidia.nemotron-super-3-120b": 131072,
     "zai.glm-5": 202752,
 }
 
-#: The completion budget to ask for. MEASURED output is 200-400 tokens/step; the registry default of
-#: 32_000 removed 24% of nemotron's window for a completion that never arrives.
-# Transport-resilience knobs for the bridged codex provider (codex-cli 0.147.0 fields).
-# Defaults are 5 retries / 300000 ms idle; a bridged round wants more headroom, see
-# codex_config_fragment for why.
 REQUEST_MAX_RETRIES = 8
+
 STREAM_MAX_RETRIES = 12
+
 STREAM_IDLE_TIMEOUT_MS = 900_000
 
 DEFAULT_MAX_OUTPUT = int(os.environ.get("MERLIN_MAX_OUTPUT_TOKENS", "8000"))
 
-#: Models the proxy serves. These are the ``model_name`` entries in proxy/litellm_config.yaml -- keep the
-#: two in sync. Being listed here makes a model REACHABLE through the bridge; it does not by itself route
-#: anything (see :func:`bridged_name`).
 SERVED = ("nemotron", "glm5", "opus")
 
 
@@ -153,9 +147,6 @@ def _vendor(model: str) -> str:
     return head if head in _known_vendors() else "native"
 
 
-#: The harness identifier travels under two spellings: ``_driver_for`` in the QA loop returns
-#: ``"claudecode"`` while the runtime wiring here uses ``"claude"``. They must resolve to one routing
-#: decision, so normalise rather than branch on the raw string.
 _HARNESS_ALIASES = {
     "claudecode": "claude",
     "claude_code": "claude",
@@ -163,6 +154,7 @@ _HARNESS_ALIASES = {
     "codex_cli": "codex",
     "codex-cli": "codex",
 }
+
 _KNOWN_HARNESSES = {"claude", "codex", "opencode", "converse"}
 
 
@@ -218,10 +210,6 @@ def proxy_key() -> str:
     if not key:
         raise RuntimeError(f"{PROXY_KEY_ENV} is unset; the bridge cannot authenticate to the proxy")
     return key
-
-
-# ---------------------------------------------------------------------------------------------------
-# Lifecycle
 
 
 def is_up(timeout: float = 2.0) -> bool:
@@ -335,9 +323,6 @@ def start_proxy(log_path: Path, *, wait_s: int = 90) -> dict:
         time.sleep(2)
     raise RuntimeError(f"litellm proxy did not come up within {wait_s}s; see {log_path}")
 
-
-# ---------------------------------------------------------------------------------------------------
-# Per-harness wiring
 
 CODEX_PROVIDER_ID = "merlinproxy"
 

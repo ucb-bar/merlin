@@ -15,9 +15,9 @@ _COMMANDS = {
     "run": ("merlin.cli.service", None, "run an existing artifact or prepare external execution"),
     "inspect": ("merlin.cli.service", None, "inspect products, software specifications or installed backends"),
     "collect": ("merlin.cli.service", None, "collect existing external observations"),
-    "lower": ("merlin.compiler.lower.model.cli", None, "lower supplied MLIR and inspect intermediate stages"),
+    "lower": ("merlin.compiler.lower.model.oracle", None, "lower supplied MLIR and inspect intermediate stages"),
     "target": ("merlin.development.targetgen.cli", None, "inspect and derive target support"),
-    "storage": ("merlin.common.storage_cli", None, "inspect and manage generated output"),
+    "storage": ("merlin.common.storage.cli", None, "inspect and manage generated output"),
     "verify": ("merlin.verification.cli", None, "verify compiler passes"),
 }
 

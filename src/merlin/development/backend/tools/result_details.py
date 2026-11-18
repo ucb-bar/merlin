@@ -16,9 +16,14 @@ import tempfile
 import threading
 from pathlib import Path
 
+# ---- result_details ----------------------------------------------------------------------------
+
 SCHEMA = "merlin.phase1.result_index.v1"
+
 MAX_DETAIL_BYTES = 64 << 20
+
 _CACHE = {}
+
 _LOCK = threading.RLock()
 
 

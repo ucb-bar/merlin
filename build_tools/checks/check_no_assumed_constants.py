@@ -209,7 +209,7 @@ def main(argv: list[str] | None = None) -> int:
         return _unexaminable(stop_hook, exc)
     for rel in targets:
         relstr = rel.as_posix()
-        if relstr in allow or _source_layout.policy_path(relstr) in allow:
+        if _source_layout.policy_covered(relstr, allow):
             continue
         for lineno, label, value in _scan_file(ROOT / rel):
             violations.append(f"{relstr}:{lineno}: assumed ISA constant {label!r} = {value} "

@@ -16,7 +16,13 @@ Nothing here writes into a run, a workspace or a measurement store, launches a j
 
 from __future__ import annotations
 
+# ---- console -----------------------------------------------------------------------------------
+
 SNAPSHOT_SCHEMA = "merlin.console.snapshot.v1"
 EXPERIMENTS_SCHEMA = "merlin.console.experiments.v1"
 
-__all__ = ["EXPERIMENTS_SCHEMA", "SNAPSHOT_SCHEMA"]
+
+__all__ = [
+    "EXPERIMENTS_SCHEMA",
+    "SNAPSHOT_SCHEMA",
+]

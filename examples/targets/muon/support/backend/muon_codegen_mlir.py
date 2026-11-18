@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from merlin.runtime.commandbuffer import materialize_inputs
+from merlin.runtime.engine.command_buffer import materialize_inputs
 
 from .muon_codegen import _plan
 

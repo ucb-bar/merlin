@@ -10,8 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from merlin import api
-from merlin.compiler.artifact import Artifact, Compilation, Deployment
-from merlin.runtime.service import RunOptions
+from merlin.compiler.compilation import Artifact, Compilation, Deployment
+from merlin.runtime.execution.service import RunOptions
 
 
 class BinaryBackend:
@@ -57,8 +57,8 @@ def test_native_linux_arguments_affinity_streams_and_cli_status(linux_image, mon
     import base64
 
     from merlin.cli.service import run_main
-    from merlin.compiler.backend import service
-    from merlin.runtime import linux
+    from merlin.compiler.backend import providers as service
+    from merlin.runtime.execution import linux_runner as linux
 
     before = os.sched_getaffinity(0)
     harts = min(2, len(before))
@@ -98,7 +98,7 @@ def test_native_linux_arguments_affinity_streams_and_cli_status(linux_image, mon
 def test_native_linux_timeout_terminates_its_spawned_process_group(linux_image, tmp_path):
     import time
 
-    from merlin.runtime import linux
+    from merlin.runtime.execution import linux_runner as linux
 
     marker = tmp_path / "child-survived"
     result = api.run(
@@ -116,7 +116,7 @@ def test_native_linux_timeout_terminates_its_spawned_process_group(linux_image, 
 
 def test_multi_product_compilation_and_cli_share_request_and_refuse_bad_options(tmp_path, monkeypatch, capsys):
     from merlin.cli.main import main
-    from merlin.compiler.backend import service
+    from merlin.compiler.backend import providers as service
 
     backend = BinaryBackend()
     monkeypatch.setattr(service, "entry_points", lambda **kwargs: [SimpleNamespace(load=lambda: backend)])
@@ -142,7 +142,7 @@ def test_multi_product_compilation_and_cli_share_request_and_refuse_bad_options(
 
 
 def test_external_runtime_contract_harts_and_no_compile(tmp_path, monkeypatch):
-    from merlin.runtime.backends import spike
+    from merlin_rvv.src.rvv.runtime import spike
 
     elf = tmp_path / "image.unclassified"
     header = bytearray(64)
@@ -192,8 +192,8 @@ def _process_package(tmp_path, mode="valid"):
 
     import yaml
 
-    from merlin.development.targetgen.contract import schemas
-    from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
+    from merlin.target.contract.interfaces import abi as schemas
+    from merlin.target.contract.interfaces.grammar import parse_interface_mlir
 
     root, contract = (tmp_path / "package", tmp_path / "contract")
     root.mkdir()

@@ -18,6 +18,13 @@ from math import prod
 from typing import Any
 
 
+# Shared command/Interface epilogue vocabulary, without numerical execution.
+EPILOGUE_STAGES: tuple[str, ...] = ("bias_add", "bias", "requant", "acc_scale", "relu", "maxpool")
+
+#: Set form, for membership tests.
+EPILOGUE_STAGE_SET = frozenset(EPILOGUE_STAGES)
+
+
 class HarnessRenderError(RuntimeError):
     """The buffer cannot be called through the logical ABI, or the declared contract data is incomplete."""
 

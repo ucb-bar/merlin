@@ -23,8 +23,8 @@ from merlin.compiler.transforms.resource_allocation import (
     allocate_instruction_resources,
     emit_resource_allocation,
 )
-from merlin.verification.lean_contract import LeanToolchain, file_digest, imported_product
-from merlin.verification.lean_resource_geometry import (
+from merlin.verification.lean.contract import LeanToolchain, file_digest, imported_product
+from merlin.verification.lean.resource_geometry import (
     GeometryObligation,
     lean_resource_query,
     project_resource_geometry,

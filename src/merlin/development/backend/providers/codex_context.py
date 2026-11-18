@@ -42,18 +42,24 @@ import hashlib
 from collections.abc import Mapping
 from pathlib import Path
 
+# ---- codex_context -----------------------------------------------------------------------------
+
 SCHEMA = "merlin.phase1_author_context.v1"
+
 KEY = "author_context"
+
 LIMIT_KEY = "model_auto_compact_token_limit"
+
 PROMPT_KEY = "compact_prompt"
-#: The measured default ceiling (module docstring): below the 175-200k latency step.
+
 DEFAULT_COMPACT_LIMIT = 175_000
-#: Smallest accepted ceiling: a compacted lead restarted at 36k and re-oriented to 58-78k in the measured
-#: run; a ceiling near that would compact again almost at once.
+
 MIN_COMPACT_LIMIT = 100_000
+
 SKILLS_ROOT = Path(".agents") / "skills"
+
 _OFF = "off"
-#: One cheap, optional first step when the author skills are staged (the scheduling-api skill's script).
+
 LIBRARY_INVENTORY_NOTE = (
     "Early on, and whenever you want a fresh view, `python3 .agents/skills/scheduling-api/scripts/"
     "library_inventory.py` (seconds) writes submission/docs/library_inventory.md: what the compiler library "
@@ -67,6 +73,7 @@ LIBRARY_INVENTORY_NOTE = (
     "model and program cases also name `source_composition.json` options in "
     "`optimization_next.source_composition_request`. All of these are aids, not gates."
 )
+
 _SWITCH = {"on": True, "off": False, "true": True, "false": False}
 
 
@@ -93,7 +100,9 @@ def parse_switch(value) -> bool:
 
 def compact_prompt() -> str:
     """The handoff prompt for this workspace: the CLI's default items plus where state lives."""
-    from merlin.development.backend.feedback import completed_grade, failure_clusters, grade_summary, idle_tuning
+    from merlin.development.backend.feedback.grading import completed_grade, failure_clusters, grade_summary
+    from merlin.development.backend.feedback.performance import idle_tuner as idle_tuning
+    from merlin.development.backend.feedback.performance import idle_tuning as _merlin_idle_tuning_1
 
     return (
         "You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM "
@@ -106,7 +115,7 @@ def compact_prompt() -> str:
         "skills named task-* in the instructions. Name the rules and sections the current work depends on.\n"
         f"- Feedback: qa/verdict.json, qa/{grade_summary.FILENAME} (one line per test case and the failure "
         f"clusters), qa/{completed_grade.FILENAME} (full rows; query keys, never print it whole), its "
-        f"{failure_clusters.KEY}, feedback_brief and performance_brief, and {idle_tuning.LEDGER} when present. "
+        f"{failure_clusters.KEY}, feedback_brief and performance_brief, and {_merlin_idle_tuning_1.LEDGER} when present. "
         "Keep the newest pass counts with the grade and source digest they describe.\n"
         "- Own state: exact paths of the plan, notes and evidence files being maintained; the current "
         "hypothesis; what was tried and rejected and why; outstanding self-check request ids; every active "
@@ -146,7 +155,7 @@ def selection(options) -> dict | None:
 
 
 def _feedback_guide(options) -> str | None:
-    from merlin.development.backend import skill_staging
+    from merlin.development.backend.authoring import skill_staging
 
     return skill_staging.FEEDBACK_SKILL if skill_staging.enabled(options) else None
 
@@ -216,8 +225,8 @@ def round_note(record: Mapping | None, capacity: int | None) -> str:
     """Factual sentences for the lead about the Codex-native deliveries this selection made."""
     if record is None:
         return ""
-    from merlin.development.backend.feedback import completed_grade, failure_clusters, grade_summary
-    from merlin.development.backend.task_disclosure import FEEDBACK_SKILL
+    from merlin.development.backend.authoring.task_disclosure import FEEDBACK_SKILL
+    from merlin.development.backend.feedback.grading import completed_grade, failure_clusters, grade_summary
 
     parts = []
     if record.get("task_skills"):
@@ -253,7 +262,7 @@ def continuation_note(record: Mapping | None) -> str:
     """One reminder for continuation turns when task sections are staged."""
     if record is None or not record.get("task_skills"):
         return ""
-    from merlin.development.backend.feedback import grade_summary
+    from merlin.development.backend.feedback.grading import grade_summary
 
     return (
         f" Reopen a single task-* section or qa/{grade_summary.FILENAME} rather than whole files "

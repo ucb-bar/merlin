@@ -12,8 +12,10 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from merlin.development.targetgen import tool_registry as _TR
-from merlin.development.targetgen.contract.readback_policy import READBACK_TRANSPORTS
+from merlin.development.targetgen.authoring import tool_registry as _TR
+from merlin.target.contract.harness.readback_policy import READBACK_TRANSPORTS
+
+# ---- options -----------------------------------------------------------------------------------
 
 MAX_SIM_PER_CAPSULE_TIMEOUT_S = 86400
 
@@ -101,7 +103,6 @@ class RunOptions:
     author_token_admission: bool = False
     author_token_turn_allowance: int | None = None
     author_token_unbounded: bool = False
-    offline_actions: str = ""
     compiler_execution: str = "profile_strict_v1"
     sandbox_reuse: str = "persistent"
     compiler_access: str = "selected_library"
@@ -126,7 +127,7 @@ def _public_object_build_budget(value: str) -> int:
 
 def author_profile_names():
     """Every selectable versioned author profile."""
-    from merlin.development.backend.author_profiles import NAMES
+    from merlin.development.backend.authoring.profiles import NAMES
 
     return NAMES
 
@@ -136,13 +137,6 @@ def build_parser(
 ) -> argparse.ArgumentParser:
     environment = os.environ if environ is None else environ
     ap = argparse.ArgumentParser()
-    ap.add_argument(
-        "--offline-actions",
-        default="",
-        metavar="PUBLIC_JSON",
-        help="run an explicit public construction action study through ordinary admission, "
-        "sandbox and brokers; no provider",
-    )
     ap.add_argument(
         "--author-token-target",
         type=int,
@@ -262,7 +256,7 @@ def build_parser(
         "--author-skills",
         default=None,
         choices=("on", "off"),
-        help="stage the harness's procedural author skills (development/backend/author_skills) byte-identically into "
+        help="stage the procedural author skills (resources/skills) byte-identically into "
         ".agents/skills and .claude/skills for native Codex and Claude Code discovery; recorded with their "
         "digest; default on for those drivers",
     )
@@ -645,8 +639,8 @@ def parse_options(
 ) -> RunOptions:
     parser = build_parser(default_arm=default_arm, environ=environ)
     options = RunOptions(**vars(parser.parse_args(argv)))
+    from merlin.development.backend.authoring.skill_staging import selection as skill_selection
     from merlin.development.backend.providers.codex_context import selection as context_selection
-    from merlin.development.backend.skill_staging import selection as skill_selection
     from merlin.development.backend.telemetry.token_budget import selection
 
     try:

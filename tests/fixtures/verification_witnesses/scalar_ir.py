@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from merlin.analysis.perf.whole_model_chunks import chunk_forward
-from merlin.common import mlir_query as mq
+from merlin.analysis.whole_model.build.builder import chunk_forward
+from merlin.compiler.ir import mlir_query as mq
 from merlin.verification import HAS_Z3
-from merlin.verification.scalar_ir import ScalarTransformReceipt, qualify_scalar_receipt, verify_scalar_transform
+from merlin.verification.translation.pass_validation import (
+    ScalarTransformReceipt,
+    qualify_scalar_receipt,
+    verify_scalar_transform,
+)
 
 SOURCE = "module {\n  func.func @forward(%x: i32) -> i32 {\n    %a = arith.addi %x, %x : i32\n    %b = arith.muli %a, %x : i32\n    %c = arith.subi %b, %a : i32\n    %d = arith.addi %c, %x : i32\n    func.return %d : i32\n  }\n}\n"
 

@@ -24,6 +24,8 @@ from merlin.compiler.semantic.instruction import (
 from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType
 from merlin.compiler.semantic.view_descriptors import ConcatViewDescriptor, ViewDescriptor
 
+# ---- rules -------------------------------------------------------------------------------------
+
 
 def _digest(value: object) -> str:
     return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()[:24]

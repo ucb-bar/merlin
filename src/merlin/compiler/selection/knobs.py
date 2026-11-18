@@ -1,15 +1,16 @@
-# Preserve the documented JSON literal when Python docstring examples are formatted.
-# fmt: off
 """Compiler choices read from a source tree's declared tuning settings, and their declaration.
 
 A compiler can expose a choice it would otherwise hard-code -- whether to apply a library pass, an
 order, a blocking option -- as one entry of a JSON settings object inside its own source tree, and
 declare the entry and its allowed values in ``TUNING_KNOBS.json`` at the tree root::
 
-    {"schema": "merlin.tuning_knobs.v1",
-     "settings_file": "tuning_settings.json",
-     "knobs": {"readout_overlap": {"values": ["off", "on"], "mechanism": "catalogue id (optional)",
-                                   "note": "optional"}}}
+    {
+        "schema": "merlin.tuning_knobs.v1",
+        "settings_file": "tuning_settings.json",
+        "knobs": {
+            "readout_overlap": {"values": ["off", "on"], "mechanism": "catalogue id (optional)", "note": "optional"}
+        },
+    }
 
 The compiler reads the current value where it makes the choice::
 
@@ -34,7 +35,6 @@ else the nearest directory holding ``TUNING_KNOBS.json`` at or above the running
 single-knob change; ``set TREE name=value`` writes declared values (for example into a copied tree).
 """
 
-# fmt: on
 from __future__ import annotations
 
 import argparse
@@ -44,6 +44,15 @@ import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+# ---- knobs -------------------------------------------------------------------------------------
+
+# Preserve the documented JSON literal when Python docstring examples are formatted.
+# fmt: off
+
+
+# fmt: on
+
 
 SCHEMA = "merlin.tuning_knobs.v1"
 DECLARATION = "TUNING_KNOBS.json"

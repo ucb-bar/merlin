@@ -5,6 +5,8 @@ It does not assert bitwise equivalence to an unqualified framework intrinsic.
 Ordinary exact constant folding remains a separate transformation.
 """
 
+from __future__ import annotations
+
 import json
 from collections import Counter
 from dataclasses import replace
@@ -13,6 +15,8 @@ from math import prod
 
 from merlin.compiler.semantic.constant_math_backend import MathHelper, validate_policy
 from merlin.compiler.semantic.model import ConstantBinding, SemanticNode, TensorType, pointwise_identity_maps
+
+# ---- constant_math_precision -------------------------------------------------------------------
 
 
 def _signature(node, operands):

@@ -18,7 +18,9 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_file
-from merlin.common.text_tokens import source_tokens
+from merlin.common.record_formats import source_tokens
+
+# ---- target_data_layout ------------------------------------------------------------------------
 
 _PREFIX = 'target datalayout = "'
 _KNOWN: dict[tuple[str, ...], str] = {}

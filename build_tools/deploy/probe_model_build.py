@@ -18,13 +18,14 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.common import owned_process
-from merlin.common.invocation_record import Invocation
+from merlin.common.process import ownership as owned_process
+from merlin.common.process.invocation_records import Invocation
 from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
-from merlin.evaluation.model import full_build as FB
-from merlin.evaluation.model import replay as RP
-from merlin.evaluation.model.full_build_identity import verified_recipe
-from merlin.runtime.modelinputs import strict_tree_sha256
+from merlin.evaluation.model.kernels import replay as RP
+from merlin.evaluation.model.whole_model import build as FB
+from merlin.evaluation.model.whole_model import relink as _merlin_relink_1
+from merlin.evaluation.model.whole_model.relink import verified_recipe
+from merlin.runtime.execution.model_inputs import strict_tree_sha256
 
 
 def pin(path):
@@ -189,7 +190,7 @@ def main():
             indent=2,
         )
     )
-    from merlin.runtime.boards import load_boards
+    from merlin.runtime.boards.catalog import load_boards
 
     board = load_boards(a.board_catalog)[a.board]
     settings = FB.BuildSettings(
@@ -212,7 +213,7 @@ def main():
         (arrays, {"in0": np.array([-8.0, 0.25, 4.5, -13.0], np.float32), "in1": np.array([-19, 4, 77, 0], np.int32)})
     ):
         work = a.out / f"step{index}"
-        elf = FB.relink(record, stage, values, work)
+        elf = _merlin_relink_1.relink(record, stage, values, work)
         inputs = work / "capture/inputs.npz"
         expected = work / "expected.npz"
         np.savez(expected, out0=values["in0"] * np.float32(2), out1=values["in1"] * np.int32(2))
@@ -229,7 +230,7 @@ def main():
             dependencies=[Path(__file__)],
         )
         try:
-            from merlin.evaluation.model.compute_execution import compute_step
+            from merlin.evaluation.model.kernels.replay import compute_step
 
             with compute_step(30) as remaining:
                 done = owned_process.run(

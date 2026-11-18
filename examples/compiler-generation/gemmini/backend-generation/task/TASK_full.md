@@ -75,8 +75,8 @@ each `capsule.interface.mlir`, and confirm the command_buffer validates against
 
 ## Hard rules (integrity — your submission must satisfy these)
 
-- `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.reference` /
-  `merlin.runtime.simulator` / `reference_outputs` in your sources.
+- `integrity_exempt: false`; no `import merlin` / `from merlin` / `merlin.runtime.engine.reference` /
+  `merlin.runtime.engine.simulator` / `reference_outputs` in your sources.
 - The device implementation must be **MLIR-lowered RoCC** — **no C compute kernels**, **no copying or
   calling bareMetalC**, **no high-level vendor C library kernels** as the
   answer. Integer math is **exact**.

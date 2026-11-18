@@ -1,21 +1,11 @@
-"""RVV target-package machinery: fork an iteration of the RVV codegen (a transform-dialect
-SCHEDULE + cflags, captured as data), build it in isolation, measure it on coupled targets
-(spike correctness + K1 cycles, FireSim later), and compare to a frozen baseline package —
-WITHOUT perturbing the global compiler flow.
+"""Schedule-package preparation, fork lineage and reference observations.
 
-This mirrors the ``targetgen`` isolation/certification PATTERN (per-run package dirs
-under ``artifacts/targets/<target>/<run_id>/``, a provenance manifest, a K-ladder runner that
-never raises and records ``not_run`` rather than a false pass) but treats RVV as a
-schedule-package, not a resident-accelerator dialect — so there is no ``dialect.py`` /
-``SPEC_OPS`` / command-buffer here. The plug-back-in seam is the existing
-``lower_to_llvm_ir(transform_schedule=...)`` parameter, threaded through ``build_app``.
+Host package loading is shared compiler infrastructure. The historical RVV
+names below retain that class and loader identity; target implementation comes
+from an explicitly selected OOT provider.
 """
 
 from __future__ import annotations
-
-from pkgutil import extend_path
-
-__path__ = extend_path(__path__, __name__)
 
 from merlin.compiler.backend.host import (
     HostPackage as RvvPackage,
@@ -27,4 +17,10 @@ from merlin.compiler.backend.host import (
     load_host_package as load_rvv_package,
 )
 
-__all__ = ["RvvPackage", "load_rvv_package", "default_run"]
+# ---- mining ------------------------------------------------------------------------------------
+
+__all__ = [
+    "RvvPackage",
+    "default_run",
+    "load_rvv_package",
+]

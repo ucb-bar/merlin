@@ -35,6 +35,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+# ---- codegen_census ----------------------------------------------------------------------------
+
 
 class CodegenCensusError(RuntimeError):
     """The emitted code is not commensurate with the model that was compiled."""

@@ -1,58 +1,31 @@
-# src/merlin/experiments/tracking
+﻿# Experiment tracking
 
-## Purpose
+`__init__.py` exposes dashboard generation, local serving and the plain run
+watcher. `readers/` reads stored records; `pages/` renders self-contained HTML;
+`terminal/` owns terminal rendering and read-only host sampling. `console/`
+serves the separate interactive console. Its panel sources are loaded by name;
+do not remove them based on static imports alone.
 
-Experiment tracking views: a static HTML dashboard and a live terminal view, from records only.
-
-## Modules
-
-- `activity.py` — What the authoring agent did, from its own event stream: a feed, tool-call spans and token use.
-- `activity_html.py` — The agent-activity section of a run page: what it is doing now, a feed, and per-round tokens/time.
-- `charts.py` — Inline-SVG chart primitives the richer views share: a Gantt, a treemap, a scatter, a time series.
-- `console/` — The experiment command console: discovery, per-experiment snapshots, diagnostics and the Bubble Tea frontend's data process.
-- `compiler.py` — What compiler the agent has built, checkpoint by checkpoint: passes, dialects, ops, entry points, LOC.
-- `explorer.py` — Explore a target's runs: an index of every phase's runs, the lineage between them, and comparisons.
-- `html.py` — Render a tracking summary as ONE self-contained HTML page: inline CSS, inline SVG, a few lines of JS.
-- `live.py` — ``dashboard --live``: regenerate the page every N seconds and serve it on 127.0.0.1, stdlib only.
-- `phase0.py` — Read a test generation derivation or generation run into the corpus-and-coverage view's summary.
-- `phase0_html.py` — Render the test generation corpus-and-coverage summary (:mod:`.phase0`) as one self-contained page.
-- `phase1_detail.py` — backend generation jobs, self-checks and grades on one timeline, with family pass rates and recorded cost and time.
-- `phase1_views.py` — The richer backend generation sections of a run page: timeline, compiler evolution, family pass rates, cost/time.
-- `phase2_paired.py` — Read a checkpointed paired backend optimization experiment: trials x members x {tuning, held_out, held_out_form}.
-- `phase2_views.py` — Render a checkpointed paired backend optimization experiment (:mod:`.phase2_paired`) as page sections.
-- `records.py` — Read an experiment's own records into one summary: what the dashboard and ``watch`` show.
-- `resources.py` — Host load samples and a monitor's notes: two operator-side records a run view can sit beside.
-- `tail.py` — Read growing records cheaply and without touching them: offset tailing and stat signatures.
-- `progress_health.py` — Bounded numerical-progress, snapshot freshness and structured failure diagnostics.
-- `terminal_health.py` — Scope-labelled compact progress alerts in the unified terminal view.
-- `terminal.py` — Animated unified read-only terminal console and independent sampling loop.
-- `terminal_views.py` — One-screen core timelines, lineage, jobs, optimization and performance panels.
-- `terminal_probe.py` — Bounded host resource telemetry with exact live process/thread bindings.
-- `terminal_metadata.py` — Bounded campaign metadata and strictly bound performance record reader.
-- `text.py` — The terminal view of a tracking summary: plain text, ANSI colour optional, no curses.
-- `views.py` — Assemble the dashboard pages from the readers, with per-section reuse for ``--live``.
-
-<!-- Purpose/Modules derived from docstrings via build_tools/docs/gen_package_docs.py.
-     Add hand-written notes (invariants, gotchas) below. -->
+Page composition and local serving share `pages/views.py`. Plain summary
+formatting lives in `terminal/watch.py` alongside the animated terminal command.
+Entry functions must import the actual owners, not retired `live`, `text`,
+`phase0` or other former module names. Historical record identifiers are data
+contracts and remain readable.
 
 ## Invariants
 
-- Read records, never produce target evidence: no module here measures target performance, grades, builds, or writes into a run
-  directory or a measurement store. The only write is the dashboard page itself.
-- A missing, unreadable or foreign-schema record is `None` plus an inventory row, rendered "not
-  recorded" -- never a crash, a zero or a guessed default.
-- Classify phase-2 outcomes from the fields their owners write (`isa_prohibited`, `coverage_regression`,
-  `screen_failed`, `infra_*`, `timing_status`) using the owners' constants and `gates.is_infra_refusal`;
-  never by matching text patterns of your own.
-- The page stays self-contained: inline CSS/SVG/JS only, no network, no external file.
-- Private material (hidden capsules, held-out members and digests, operator-only reference ratios,
-  review notes) is a count or "present" unless the caller passes `operator_private`; every page that
-  can show it names its mode.
-- A live view adds nothing to a run: it opens run files read-only (never locks, renames, truncates or
-  writes them), tails JSONL from the last byte offset up to the last newline, re-renders a section only
-  when its inputs' stat signature changes, and refuses an output path inside any directory it reads.
-- Times that are file modification times (sealed backend optimization records, job marker files) are labelled as such;
-  a reconstructed chart (measurement slots) says it is a reconstruction.
-
-- The animated console also samples host CPU counters and thread positions read-only. These are
-  resource observations, never simulation evidence; sampled placement is not exact residency.
+- Read records; never measure targets, grade, build, launch agents or write into
+  run directories or measurement stores. Dashboard pages are the output.
+- Missing, unreadable and foreign-schema records remain unavailable, never zero
+  or a guessed success. Distinguish process liveness from scientific evidence.
+- Use recorded outcome fields and their owners' constants to classify results.
+  Do not reconstruct qualification from diagnostic text.
+- Keep pages self-contained: inline CSS, SVG and JavaScript, without network
+  dependencies. Private evaluation material is a count or "present" unless the
+  caller explicitly selects operator-private mode; every such page names its mode.
+- Live views open inputs read-only and refuse output paths inside any input
+  directory. Tail JSONL through the last complete line; reuse sections only when
+  their input signatures and relevant clock buckets permit it.
+- Label file modification times and reconstructed timelines as such. Host CPU
+  and thread samples are resource observations, not simulation evidence or proof
+  of exact residency.

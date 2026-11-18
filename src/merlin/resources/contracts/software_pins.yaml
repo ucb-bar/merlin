@@ -6,7 +6,7 @@
 # reads as off-pin rather than as the pinned revision. Kept in its own file because a toolchain is not
 # a hardware revision: nothing here carries `targets`, and no hardware tier is claimed from it.
 #
-# Consumed by merlin.integrations.model2mlir (capture_pin / verify_capture_checkout).
+# Consumed by merlin.common.external_tools (capture_pin / verify_capture_checkout).
 version: 1
 
 pins:

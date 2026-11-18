@@ -11,8 +11,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from merlin.common.digest import sha256_file
-from merlin.common.jsonio import write_pretty_json
+from merlin.common.digest import sha256_file, write_pretty_json
+
+# ---- prepared_model_transform ------------------------------------------------------------------
 
 if TYPE_CHECKING:
     from xdsl.dialects.builtin import FunctionType

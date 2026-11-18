@@ -38,7 +38,7 @@ void merlin_prof_dump(void);
 #endif
 
 #ifdef MERLIN_FULL_READBACK
-/* Every forward result, complete, as OUT_BIN v1 frames (merlin.runtime.whole_model_readback); the
+/* Every forward result, complete, as OUT_BIN v1 frames (merlin.runtime.harness.output_observation); the
  * prefix protocol below is not emitted, so the two transports never mix on one console. */
 #include "model_outputs.h"
 void htif_line_flush(int);
@@ -80,7 +80,7 @@ static void merlin_emit_full_outputs(void) {
 #endif
 #endif
 #ifdef MERLIN_GROUP_PROFILE
-/* Cycle brackets around every device group call (merlin.runtime.whole_model_readback). */
+/* Cycle brackets around every device group call (merlin.runtime.harness.output_observation). */
 uint64_t merlin_group_profile_now(void);
 void merlin_group_profile_dump(uint64_t forward_start, uint64_t forward_end);
 #endif

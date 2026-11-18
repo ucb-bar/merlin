@@ -201,8 +201,7 @@ def _iter_targets(staged: bool) -> list[Path]:
 
 
 def _allowed(relstr: str, exact: set[str], prefixes: list[str]) -> bool:
-    aliases = (relstr, _source_layout.policy_path(relstr))
-    return any(path in exact or any(path.startswith(p) for p in prefixes) for path in aliases)
+    return _source_layout.policy_covered(relstr, exact, prefixes)
 
 
 def _path_tokens(relstr: str) -> set[str]:
@@ -243,7 +242,7 @@ def substrate_report(targets: list[Path]) -> tuple[list[str], list[str], int]:
     for rel in targets:
         relstr = rel.as_posix()
         hits = substrate_hits(relstr)
-        if relstr in ratchet or _source_layout.policy_path(relstr) in ratchet:
+        if _source_layout.policy_covered(relstr, ratchet):
             if hits:
                 carried += 1
             else:
@@ -417,7 +416,7 @@ def token_report(targets: list[Path], exact: set[str], prefixes: list[str]) -> t
         if _allowed(relstr, exact, prefixes):
             continue
         hits = token_hits(relstr)
-        if relstr in ratchet or _source_layout.policy_path(relstr) in ratchet:
+        if _source_layout.policy_covered(relstr, ratchet):
             if hits:
                 carried += 1
             else:

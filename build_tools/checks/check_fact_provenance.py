@@ -491,10 +491,11 @@ def findings(staged: bool = False, ratchet_path: Path | None = None) -> list[dic
     out: list[dict] = []
     for rel in _iter_targets(staged):
         for rec in scan_file(ROOT / rel, rel):
-            key = (_source_layout.policy_path(rec["path"]), rec["source"])
-            if rec["kind"] == "violation" and key in ratchet:
+            keys = [(old, rec["source"]) for old in _source_layout.policy_paths(rec["path"])]
+            matched = next((key for key in keys if key in ratchet), None)
+            if rec["kind"] == "violation" and matched is not None:
                 rec["kind"] = "ratcheted"
-                rec["ratchet_reason"] = ratchet[key]
+                rec["ratchet_reason"] = ratchet[matched]
             out.append(rec)
     return out
 

@@ -2,10 +2,10 @@ from copy import deepcopy
 
 import pytest
 
-from merlin.development.targetgen import capsule_golden as CG
-from merlin.development.targetgen import corpus_spec as CS
-from merlin.development.targetgen.contract.interface_emit import parse_interface_mlir
-from merlin.development.targetgen.contract.schemas import validate_capsule
+from merlin.development.targetgen.corpus import binding as CS
+from merlin.development.targetgen.grading import golden as CG
+from merlin.target.contract.interfaces.abi import validate_capsule
+from merlin.target.contract.interfaces.grammar import parse_interface_mlir
 
 
 def source(bias=3, skip=1, side=0):

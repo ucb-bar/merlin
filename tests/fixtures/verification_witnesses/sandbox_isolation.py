@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import sim_toolchain
 
-from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import grants as BW
 from merlin.development.targetgen.sandbox.answer_surfaces import (
     AnswerSurface,
     answer_surfaces,

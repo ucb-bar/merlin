@@ -80,7 +80,7 @@ list. Record the same selected input and quantized-reference manifest identities
 for every compared implementation.
 
 ```sh
-python -m merlin.evaluation.model.baseline_numerics \
+python -m merlin.evaluation.model.whole_model.baseline_numerics \
   --manifest "$RUN/baseline-outputs.yaml" \
   --out "$RUN/numerics.json"
 ```

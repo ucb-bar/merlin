@@ -2,7 +2,7 @@
 
 Reuses the spike toolchain + bare-metal HTIF harness; swaps in the RVV vector codegen and a
 VOUT parser (flat 1-D outputs, matching the reference's 1-D ``to_list``). Gates on equality
-with :func:`merlin.runtime.reference.reference_outputs`. This is the NON-matmul family's
+with :func:`merlin.runtime.engine.reference.reference_outputs`. This is the NON-matmul family's
 execution path — same oracle plumbing, different semantics.
 """
 
@@ -13,8 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from merlin.runtime.backends import spike
-from merlin.runtime.reference import outputs_match, reference_outputs
+from merlin_rvv.src.rvv.runtime import spike
+
+from merlin.runtime.backends.baremetal import spike_launcher as _merlin_spike_launcher_1
+from merlin.runtime.engine.reference import outputs_match, reference_outputs
 
 from .saturn_vec_codegen import generate_driver
 
@@ -28,7 +30,11 @@ class SaturnVecError(RuntimeError):
 
 def available() -> bool:
     h = spike.harness_dir()
-    return spike.gcc_path().is_file() and spike.spike_path().is_file() and all((h / f).is_file() for f in HARNESS_FILES)
+    return (
+        _merlin_spike_launcher_1.gcc_path().is_file()
+        and _merlin_spike_launcher_1.spike_path().is_file()
+        and all((h / f).is_file() for f in HARNESS_FILES)
+    )
 
 
 def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, driver_src: str | None = None) -> Path:
@@ -38,7 +44,7 @@ def compile_command_buffer(cb: dict[str, Any], workdir: str | Path, driver_src: 
     elf = work / "merlin_vec.elf"
     h = spike.harness_dir()
     cmd = [
-        str(spike.gcc_path()),
+        str(_merlin_spike_launcher_1.gcc_path()),
         "-march=rv64gcv",
         "-mabi=lp64d",
         "-mcmodel=medany",

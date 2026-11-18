@@ -12,6 +12,8 @@ import hashlib
 import json
 from pathlib import Path
 
+# ---- projection_shapes -------------------------------------------------------------------------
+
 
 def contractions(record: dict) -> list[dict]:
     """Group exact prepared int8 matrix products by their observed M/K/N shape."""
@@ -78,7 +80,7 @@ def write_sources(
     """Render only requested, actually observed shapes through the native IR API."""
     import yaml
 
-    from merlin.development.targetgen.contract.interface_emit import emit_interface_mlir, parse_interface_mlir
+    from merlin.target.contract.interfaces.grammar import emit_interface_mlir, parse_interface_mlir
 
     raw = projection.read_bytes()
     if hashlib.sha256(raw).hexdigest() != sha256 or projection.is_symlink():

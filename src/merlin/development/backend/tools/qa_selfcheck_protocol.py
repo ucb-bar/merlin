@@ -8,50 +8,37 @@ import math
 import os
 import secrets
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import sys
+
+# ---- qa_selfcheck_protocol ---------------------------------------------------------------------
 
 _SIMS = ("spike", "verilator", "gsim", "vcs")
 
-
 PROTOCOL_VERSION = 3
-
 
 _DIGEST_IGNORES = frozenset({"build", "__pycache__", ".git", "selfcheck_out"})
 
-
 _SUITE_SIZE_FALLBACK = 64
-
 
 _CALIBRATION_CAP = 3
 
-
 _SUBMISSION = "submission"
-
 
 _VARIANTS = "variants"
 
-
 _VARIANT_NAME_MAX = 64
-
 
 _NAME_FIRST = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
-
 _NAME_CHARS = _NAME_FIRST | frozenset("._-")
 
-
-#: Completed requests listed beside in-flight ones.
 _LIST_COMPLETED = 5
 
-
-#: A panel selects one public case per declared shape class.
 _PANEL = "panel:"
-
 
 _PANEL_CASES = 6
 
-
-#: Mirrors the broker status without importing host-side Merlin.
 _GSIM_QUEUE_STATUS = "queued_for_gsim_slot"
 
 
@@ -372,3 +359,211 @@ def _verdict(txt: str):
             pass
         i = txt.find("{", i + 1)
     return None
+
+
+def _case_rows(progress) -> list:
+    rows = progress.get("per_capsule") if isinstance(progress, dict) else None
+    return [row for row in rows or () if isinstance(row, dict) and isinstance(row.get("capsule"), str)]
+
+
+def _case_line(row: dict) -> str:
+    """One case's correctness as the grader has decided it so far."""
+    name, status = row["capsule"], str(row.get("status"))
+    if status == "running":
+        return (
+            f"[self-check] {name}: numerics {row.get('numerics')} (provisional: later checks still "
+            "running and can still fail it)"
+        )
+    why = "/".join(str(row[key]) for key in ("failure_plane", "failure_category") if row.get(key))
+    numerics = f"; numerics {row['numerics']}" if row.get("numerics") else ""
+    return f"[self-check] {name}: {status}" + (f" ({why})" if why else "") + numerics
+
+
+def _new_case_lines(seen: dict, progress) -> list:
+    """Lines for cases whose row is new or changed since ``seen`` (updated in place).
+
+    Each case is reported as soon as its numerics are decided and again when it finishes, so a large
+    suite never hides its decided cases behind its slowest one."""
+    lines = []
+    for row in _case_rows(progress):
+        state = tuple(row.get(key) for key in ("status", "numerics", "failure_plane", "failure_category"))
+        if seen.get(row["capsule"]) != state:
+            seen[row["capsule"]] = state
+            lines.append(_case_line(row))
+    return lines
+
+
+_WORKFLOW = """\
+keep working while checks run:
+  python agent_selfcheck.py --capsules A,B,C --wait-budget 5   # returns a request id (exit 3: running)
+  ...keep editing; each check grades a snapshot taken when it starts...
+  python agent_selfcheck.py --attach ID                         # collect the verdict
+  python agent_selfcheck.py --list                              # requests in flight
+
+Operator-selected connected model sources use `--suite programs --sim spike --tiers L0,L1,L2`.
+The original model owner checks all outputs; programs never acquire core or RTL credit.
+
+Several requests may run at once. Put every capsule an edit affects in ONE request: its capsules run
+in parallel across the CPU pool, and per-request setup dominates small checks. `--capsules failing`
+re-checks what did not pass in your most recent completed check.
+
+Before changing a default that governs many shapes: `python agent_selfcheck.py --panel dense
+--wait-budget 5` checks one case per shape class (square, tall, wide, thin M=1, ragged, a model
+layer) on the Spike cycle model and compares each with its own best earlier cycles of the same
+evidence kind. Performance is measured on the Spike cycle model by default; add --sim gsim for RTL cycles.
+
+variants: copy submission/ to variants/NAME/, change it, and check it with --submission variants/NAME.
+A variant result is labelled with its name and digest and is a self-check only: only submission/ is
+graded officially or counts toward convergence, so copy the winner into submission/.
+
+Time alternatives together: --sweep variants/a,variants/b --capsules A,B [--knob NAME=false,true].
+This submits parallel scalability requests, including submission/ as the baseline, and returns ranked
+model estimates. --bundle REPRESENTATIVE selects a bundle in qa/idle_tuning.json. --attach SWEEP_ID
+collects the same sweep later; full results and immutable source identities are retained.
+
+When reference guidance is selected, pin completed source/command/emission views without a broker call:
+  python agent_selfcheck.py --write-reference-views artifacts/views.json artifacts/source.mlir \\
+    artifacts/commands.json artifacts/emitted.mlir
+  python agent_selfcheck.py --reference-analysis candidate --reference-path artifacts/views.json
+The source is the original interface contract; emitted LLVM is not schedule.plan. Inspect an actual
+schedule separately with --reference-format schedule_mlir. Compare owned before/after disassemblies:
+  python agent_selfcheck.py --reference-analysis compare --reference-path artifacts/before.dis \\
+    --reference-symbol kernel_entry --candidate-path artifacts/after.dis --candidate-symbol kernel_entry
+Verify your own change from ordinary selfcheck outputs (CCA bank arm): traffic, storage, path, sweep:
+  python agent_selfcheck.py --reference-analysis verify --before selfcheck_out/requests/OLD \\
+    --after selfcheck_out/requests/NEW [--mechanism issue_overlap] [--sweep selfcheck_out/requests/NEW2] \\
+    [--candidate-symbol kernel_entry]
+Stream facts come from each build's package_kernel.elf, else one *.o you put in the case directory (for
+example a -mno-relax rebuild), else its lowered.llvm.mlir compiled host-side with -mno-relax.
+Recovered ISA operands appear under observation_comparison with explicit missingness. To inspect
+one field, repeat --reference-observation-field Instruction.field (at most eight); use field names
+from the selected ISA/decoded observation roster. Full evidence remains in the immutable detail.
+Pins and static comparisons do not qualify source equivalence, scheduling realization or performance.
+"""
+
+
+_DEFAULT_WAIT_BUDGET_S = 540
+
+
+_NEXT_STEPS_KEY = "next_steps"
+
+
+_NEXT_STEPS_LINES = 8
+
+
+_NEXT_STEPS_BYTES = 6000
+
+
+def _next_steps_text(verdict) -> str:
+    """The reply's ``next_steps`` lines as one bounded block, or '' when it carries none."""
+    block = verdict.get(_NEXT_STEPS_KEY) if isinstance(verdict, dict) else None
+    lines = block.get("lines") if isinstance(block, dict) else None
+    if not isinstance(lines, list):
+        return ""
+    kept, size = [], 0
+    for line in lines[:_NEXT_STEPS_LINES]:
+        if not isinstance(line, str) or not line.strip():
+            continue
+        text = " ".join(line.split())
+        if size + len(text.encode()) + 1 > _NEXT_STEPS_BYTES:
+            break
+        kept.append(text)
+        size += len(text.encode()) + 1
+    return "\n".join(kept) if len(kept) > 1 else ""
+
+
+def _print_next_steps(verdict) -> None:
+    """Print the next steps on stderr: shown in a terminal even when stdout is piped to a JSON reader,
+    and never appended to the JSON a script parses from stdout."""
+    text = _next_steps_text(verdict)
+    if text:
+        print("\n[self-check] " + text, file=sys.stderr, flush=True)
+
+
+def _write_reference_views(workspace, arguments, *, entry_symbol="kernel_entry", client_name="agent_selfcheck.py"):
+    """Pin existing author-owned artifacts; never execute or qualify their code."""
+    workspace = Path(workspace).resolve()
+
+    def owned(value):
+        relative = PurePosixPath(value)
+        if (
+            relative.is_absolute()
+            or str(relative) != value
+            or "\\" in value
+            or any(part in (".", "..") for part in relative.parts)
+            or not relative.parts
+            or relative.parts[0] not in ("submission", "variants", "selfcheck_out", "artifacts")
+        ):
+            raise ValueError("use workspace-relative submission/, variants/, selfcheck_out/ or artifacts/ paths")
+        path = workspace / relative
+        if any(p.is_symlink() for p in (path, *path.parents)) or not path.resolve().is_relative_to(workspace):
+            raise ValueError("artifact views require ordinary author-owned paths")
+        return path, relative.as_posix()
+
+    if not entry_symbol or len(entry_symbol) > 512:
+        raise ValueError("entry symbol must be nonempty and bounded")
+    destination, label = owned(arguments[0])
+    bundle = dict(schema="merlin.reference_artifact_views.v1", entry_symbol=entry_symbol)
+    for role, value in zip(("source", "command_buffer", "emitted"), arguments[1:], strict=True):
+        path, relative = owned(value)
+        before = path.stat()
+        if not path.is_file() or not 0 < before.st_size <= 8 << 20 or path == destination:
+            raise ValueError("each completed artifact must be an ordinary nonempty file <=8MiB")
+        raw = path.read_bytes()
+        after = path.stat()
+        if (
+            any(
+                getattr(before, key) != getattr(after, key)
+                for key in ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
+            )
+            or len(raw) != before.st_size
+        ):
+            raise ValueError("artifact changed while pinning; finish compilation and retry")
+        bundle[role] = dict(path=relative, sha256=hashlib.sha256(raw).hexdigest())
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    _atomic_write(destination, json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    return dict(
+        status="artifact_views_written",
+        manifest=label,
+        sha256=hashlib.sha256(destination.read_bytes()).hexdigest(),
+        qualification_issued=False,
+        next_argv=[
+            sys.executable,
+            Path(client_name).name,
+            "--reference-analysis",
+            "candidate",
+            "--reference-path",
+            label,
+            "--reference-format",
+            "artifact_views",
+        ],
+        note="Pins identify supplied bytes only. Source binding, emitted mechanism, numerics and timing "
+        "require the selected analysis and original executable checks.",
+    )
+
+
+def _analysis_summary_line(text, rid):
+    """``status``, report kind, unit/region counts and the detail file of one reference-analysis reply."""
+    try:
+        reply = json.loads(text)
+    except ValueError:
+        return f"[reference-analysis] reply .qa_channel/resp_{rid}.json is not JSON"
+    report = reply.get("report") if isinstance(reply.get("report"), dict) else {}
+    parts = [f"status={reply.get('status')}", f"kind={report.get('kind')}"]
+    for key in ("total", "next_offset"):
+        if report.get(key) is not None:
+            parts.append(f"{key}={report[key]}")
+    units = report.get("units") if isinstance(report.get("units"), list) else []
+    for row in units[:4]:
+        mechanisms = row.get("mechanisms") or {}
+        known = sorted(
+            name
+            for name, fact in mechanisms.items()
+            if isinstance(fact, dict) and fact.get("status") not in (None, "unknown")
+        )
+        parts.append(f"{str(row.get('unit_id'))[:20]}: observed {','.join(known) or 'none'}")
+    detail = reply.get("detail")
+    if isinstance(detail, dict):
+        detail = detail.get("path")
+    parts.append(f"full reply .qa_channel/resp_{rid}.json" + (f", detail {detail}" if detail else ""))
+    return "[reference-analysis] " + "; ".join(parts)

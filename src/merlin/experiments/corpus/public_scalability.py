@@ -7,8 +7,10 @@ import json
 from pathlib import Path
 
 from merlin.common.digest import is_sha256, sha256_bytes, sha256_file
-from merlin.common.strict_json import loads
+from merlin.common.record_formats import loads
 from merlin.experiments.definition import SpecError
+
+# ---- public_scalability ------------------------------------------------------------------------
 
 SCHEMA = "merlin.corpus.public_scalability.v1"
 STAGED = "merlin.corpus.public_scalability.staged.v1"
@@ -19,7 +21,7 @@ HOST_CONTROL = "merlin_host_control"
 
 def _host_control(cap, directory):
     """A selected platform control is never evidence of candidate acceleration."""
-    from merlin.development.targetgen.owned_host_leaf_execution import selected_host_leaf
+    from merlin.development.targetgen.execution.host.leaf_execution import selected_host_leaf
 
     screen = cap.get("software_screen") or {}
     source = cap.get("linalg_mlir") or cap.get("interface_mlir")
@@ -34,8 +36,8 @@ def _host_control(cap, directory):
 
 
 def read(path: Path, *, target: str) -> dict:
-    from ..runner import fingerprint
-    from .preparation import _members, ordinary_tree
+    from merlin.experiments.corpus.source_staging import _members, ordinary_tree
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     path = path.expanduser().absolute()
     ordinary_tree(path)
@@ -139,12 +141,11 @@ def read(path: Path, *, target: str) -> dict:
 
 
 def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
-    from merlin.development.targetgen.capsule_common import load_capsule
-    from merlin.development.targetgen.sandbox.bwrap import _validate_host_sources
-
-    from ..runner import fingerprint
-    from .preparation import _members, copy_input, ordinary_tree
-    from .publication import require_accelerator_placement, require_public_capsules
+    from merlin.development.targetgen.corpus.capsule_io import load_capsule
+    from merlin.development.targetgen.sandbox.grants import _validate_host_sources
+    from merlin.experiments.corpus.publication import require_accelerator_placement, require_public_capsules
+    from merlin.experiments.corpus.source_staging import _members, copy_input, ordinary_tree
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     record = read(path, target=te.target)
     source = Path(record["selection"]["path"]).parent
@@ -194,8 +195,8 @@ def stage(path: Path, destination: Path, *, te, private_roots=()) -> dict:
 
 
 def verify(root: Path, *, target: str) -> dict:
-    from ..runner import fingerprint
-    from .preparation import ordinary_tree
+    from merlin.experiments.corpus.source_staging import ordinary_tree
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     ordinary_tree(root)
     record = loads((root / "selection.json").read_bytes(), max_bytes=2 * 1024 * 1024)
@@ -217,7 +218,7 @@ def verify(root: Path, *, target: str) -> dict:
 
 
 def selected(te) -> tuple[Path, dict] | None:
-    from ..runner import fingerprint
+    from merlin.experiments.runs.plan_sources import fingerprint
 
     binding = (getattr(te, "workload_spec", None) or {}).get(KEY)
     if binding is None:

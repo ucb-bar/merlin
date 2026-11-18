@@ -5,6 +5,8 @@ Pure discovery metadata; no admission or execution authority.
 
 from __future__ import annotations
 
+# ---- catalog_source ----------------------------------------------------------------------------
+
 
 def records(prefix):
     """Build fresh records in their original family order."""
@@ -12,7 +14,7 @@ def records(prefix):
         {
             "name": "declared_persistent_scalar_state_in_scf",
             "symbols": [
-                prefix + "scf_commands." + name
+                prefix + "loops.scf_commands." + name
                 for name in (
                     "materialize_scf_commands",
                     "verify_scf_commands",
@@ -21,7 +23,7 @@ def records(prefix):
                     "emit_scf_commands",
                 )
             ]
-            + [prefix + "llvm_program.FnBuilderIndexAdapter", "merlin.compiler.lower.model.host_builder.FnBuilder"],
+            + [prefix + "loops.counted_loops.FnBuilderIndexAdapter", "merlin.compiler.lower.host.builder.FnBuilder"],
             "usage": [
                 "Attach closed signed-i64 Const sets/assumes to actual command Calls.",
                 "Pass allow_persistent_state=True explicitly at every SCF bridge boundary.",
@@ -35,7 +37,7 @@ def records(prefix):
         },
         {
             "name": "current_source_quantized_residual_edges",
-            "symbols": ["merlin.compiler.lower.model.quantized_sum_source.discover_quantized_sum_sources"],
+            "symbols": ["merlin.compiler.lower.device.outline.discover_quantized_sum_sources"],
             "usage": [
                 "Discover current sole-use contraction-to-residual edges from actual host SSA.",
                 "Inspect each unchanged producer/readout and residual/readout program and source shape.",
@@ -51,7 +53,7 @@ def records(prefix):
         {
             "name": "parallel_emitted_variant_shape_evaluation",
             "symbols": [
-                "merlin.compiler.transforms.evaluated_exploration." + name
+                "merlin.compiler.transforms.exploration.cycle_feedback." + name
                 for name in (
                     "EvaluationRequest",
                     "EvaluationCompletion",
@@ -85,7 +87,7 @@ def records(prefix):
                     "kernel_arg_order",
                 )
             ]
-            + ["merlin.compiler.lower.model.host_builder.FnBuilder.for_logical_kernel"],
+            + ["merlin.compiler.lower.host.builder.FnBuilder.for_logical_kernel"],
             "usage": [
                 "Parse the selected public ABI declaration, then call FnBuilder.for_logical_kernel(cb, abi=abi).",
                 "Use the returned source-name to SSA-pointer map; semantic lhs/rhs order is not ABI order.",
@@ -99,7 +101,7 @@ def records(prefix):
         {
             "name": "shape_resource_schedule_selection",
             "symbols": [
-                "merlin.compiler.transforms.shape_policy." + name
+                "merlin.compiler.transforms.exploration.shape_assessment." + name
                 for name in (
                     "PerformanceDomain",
                     "ShapeScheduleClass",
@@ -111,7 +113,7 @@ def records(prefix):
                 )
             ]
             + [
-                "merlin.compiler.transforms.pipeline_policy." + name
+                "merlin.compiler.transforms.exploration.branch_policy." + name
                 for name in (
                     "DimensionRef",
                     "ResourceRef",
@@ -121,10 +123,10 @@ def records(prefix):
                 )
             ]
             + [
-                "merlin.compiler.transforms.evaluated_exploration.explore_evaluated",
-                "merlin.compiler.transforms.pass_exploration.ExplorationRefused",
-                "merlin.compiler.transforms.pass_exploration.MappingProposalKey",
-                "merlin.compiler.transforms.pass_exploration.MappingProposalCache",
+                "merlin.compiler.transforms.exploration.cycle_feedback.explore_evaluated",
+                "merlin.compiler.transforms.exploration.pass_orders.ExplorationRefused",
+                "merlin.compiler.transforms.exploration.pass_orders.MappingProposalKey",
+                "merlin.compiler.transforms.exploration.pass_orders.MappingProposalCache",
             ],
             "usage": [
                 "Register bounded real pass paths and an original fallback, with separate legality predicates.",
@@ -154,9 +156,9 @@ def records(prefix):
             "symbols": [
                 "merlin.compiler.selection.knobs.KnobSettings",
                 "merlin.compiler.selection.knobs.bounded_settings",
-                "merlin.compiler.transforms.tuning_selection.KnobTrial",
-                "merlin.compiler.transforms.tuning_selection.unique_emissions",
-                "merlin.compiler.transforms.tuning_selection.select_settings",
+                "merlin.compiler.transforms.exploration.cycle_feedback.KnobTrial",
+                "merlin.compiler.transforms.exploration.cycle_feedback.unique_emissions",
+                "merlin.compiler.transforms.exploration.cycle_feedback.select_settings",
             ],
             "usage": [
                 "Enumerate a declared knob subset: exact baseline, single changes and optional bounded pairs.",
@@ -201,14 +203,14 @@ def records(prefix):
         {
             "name": "source_checked_integer_observers",
             "symbols": [
-                "merlin.compiler.lower.model.late_quant_rne.rewrite",
-                "merlin.compiler.lower.model.source_expression_interval.close_scalar_i8_observer",
-                "merlin.compiler.lower.model.source_expression_interval.build_source_interval_table",
-                "merlin.compiler.lower.model.source_expression_interval.emit_source_interval_i8_lookup",
-                "merlin.compiler.lower.model.source_expression_interval_llvm.rewrite_source_interval_i8_lookup",
-                "merlin.compiler.lower.model.bounded_rne_word_cells.prepare_bounded_rne_word_cells",
-                "merlin.compiler.lower.model.scaled_integer_finite.prove_broadcast_scaled_integer_finite",
-                "merlin.compiler.lower.model.scaled_integer_finite_llvm.bind_finite_scale_helpers",
+                "merlin.compiler.lower.quant.late_quant_rne.rewrite",
+                "merlin.compiler.lower.source.interval.close_scalar_i8_observer",
+                "merlin.compiler.lower.source.interval.build_source_interval_table",
+                "merlin.compiler.lower.source.interval.emit_source_interval_i8_lookup",
+                "merlin.compiler.lower.source.interval_llvm.rewrite_source_interval_i8_lookup",
+                "merlin.compiler.lower.source.interval.prepare_bounded_rne_word_cells",
+                "merlin.compiler.lower.source.finite.prove_broadcast_scaled_integer_finite",
+                "merlin.compiler.lower.source.interval_llvm.bind_finite_scale_helpers",
             ],
             "usage": [
                 "Bind exact typed scalar arithmetic and complete saturated signed-byte observations.",
@@ -228,7 +230,7 @@ def records(prefix):
         {
             "name": "counted_projection_pointer_binding",
             "symbols": [
-                prefix + "projection_dense." + name
+                prefix + "shared_operands.projections." + name
                 for name in (
                     "ProjectionDenseBinding",
                     "bind_dense_projection",
@@ -250,7 +252,7 @@ def records(prefix):
         {
             "name": "completion_bound_operand_slots",
             "symbols": [
-                prefix + "operand_slots." + name
+                prefix + "storage.buffer_pipelines." + name
                 for name in (
                     "PipelineOperand",
                     "PipelineSlotResult",
@@ -274,8 +276,8 @@ def records(prefix):
         {
             "name": "sole_observer_contraction_rows",
             "symbols": [
-                "merlin.compiler.lower.model.contraction_row_slice.pushback_contraction_row_slices",
-                "merlin.compiler.lower.model.contraction_row_slice.prepare_contraction_row_slices",
+                "merlin.compiler.lower.source.row_slice.pushback_contraction_row_slices",
+                "merlin.compiler.lower.source.row_slice.prepare_contraction_row_slices",
             ],
             "usage": [
                 "Before source/device binding, push back a sole static contiguous row observer.",
@@ -291,12 +293,12 @@ def records(prefix):
         {
             "name": "source_proven_shared_rhs_row_views",
             "symbols": [
-                "merlin.compiler.lower.model.weight_prepack_runtime.fixed_arguments",
-                "merlin.compiler.lower.model.repeated_pointwise.hoist_repeated_pointwise",
-                "merlin.compiler.lower.model.repeated_pointwise.prepare_repeated_pointwise",
-                "merlin.compiler.transforms.shared_rhs_views.plan_shared_rhs_row_views",
-                "merlin.compiler.transforms.dense_row_batching.DenseRowBatchingBudgets",
-                "merlin.compiler.transforms.dense_row_batching.plan_source_dense_row_batching",
+                "merlin.compiler.lower.options.weight_prepack_runtime.fixed_arguments",
+                "merlin.compiler.lower.source.repeated_pointwise.hoist_repeated_pointwise",
+                "merlin.compiler.lower.source.repeated_pointwise.prepare_repeated_pointwise",
+                "merlin.compiler.transforms.dense.shared_rhs_views.plan_shared_rhs_row_views",
+                "merlin.compiler.transforms.dense.row_batching.DenseRowBatchingBudgets",
+                "merlin.compiler.transforms.dense.row_batching.plan_source_dense_row_batching",
             ],
             "usage": [
                 "Before device grouping, use exact broadcast/view/scalar source to prepare repeated pointwise work.",

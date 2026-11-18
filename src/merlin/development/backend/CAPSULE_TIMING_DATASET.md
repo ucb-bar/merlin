@@ -84,10 +84,10 @@ host-only audit or exports on a retained run, and `--finalize` performs the
 complete finalization for a run whose supervisor stopped before doing so:
 
 ```sh
-python -m merlin.development.backend.capsule_timing_archive RUN_DIR
-python -m merlin.development.backend.capsule_timing_archive RUN_DIR --training-out TRAINING.tar
-python -m merlin.development.backend.capsule_timing_archive RUN_DIR --out RUN_DIR/capsule_timing.tar
-python -m merlin.development.backend.capsule_timing_archive RUN_DIR --finalize
+python -m merlin.development.backend.telemetry.capsule_timing_archive RUN_DIR
+python -m merlin.development.backend.telemetry.capsule_timing_archive RUN_DIR --training-out TRAINING.tar
+python -m merlin.development.backend.telemetry.capsule_timing_archive RUN_DIR --out RUN_DIR/capsule_timing.tar
+python -m merlin.development.backend.telemetry.capsule_timing_archive RUN_DIR --finalize
 ```
 
 Ordinary capsule producers also retain the exact compiler tree under
@@ -167,8 +167,8 @@ After a run finishes (never during authoring), the operator can observe every
 training-eligible public gSIM program on the observer-enabled Spike:
 
 ```sh
-python -m merlin.development.backend.annotated_spike_evidence RUN_DIR --config CONFIG.json --jobs 4
-python -m merlin.development.backend.capsule_timing_archive RUN_DIR --finalize
+python -m merlin.development.backend.telemetry.annotated_spike_evidence RUN_DIR --config CONFIG.json --jobs 4
+python -m merlin.development.backend.telemetry.capsule_timing_archive RUN_DIR --finalize
 ```
 
 `CONFIG.json` (`merlin.annotated_spike_evidence_config.v1`) names the annotated

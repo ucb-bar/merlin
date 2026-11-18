@@ -12,7 +12,9 @@ from xdsl.context import Context
 from xdsl.dialects import arith, builtin, func, memref, scf
 from xdsl.ir import Operation
 
-from merlin.common.dense_float_ir import DenseFloatParser, DenseFloatPrinter
+from merlin.compiler.ir.xdsl_io import DenseFloatParser, DenseFloatPrinter
+
+# ---- certificates ------------------------------------------------------------------------------
 
 
 def ir_text(op: Operation) -> str:
@@ -142,8 +144,7 @@ V2_KINDS = frozenset({"scalar_redundancy_elimination", "scalar_loop_invariant_mo
 def _witness_kinds(schema: str) -> dict:
     kinds = dict(_WITNESS_KINDS)
     if schema == "merlin.shared_transform.v2":
-        from merlin.compiler.transforms.scalar_witness import ScalarRewriteWitness
-        from merlin.compiler.transforms.unrolling import UnrollWitness
+        from merlin.compiler.transforms.structural_rewrites import ScalarRewriteWitness, UnrollWitness
 
         kinds.update({ScalarRewriteWitness: "scalar_rewrite", UnrollWitness: "unroll"})
     elif schema != "merlin.shared_transform.v1":

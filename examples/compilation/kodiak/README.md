@@ -5,7 +5,7 @@ host-assisted (HTIF) console served by its own loader. That combination is what 
 building one model three different ways for one chip, and proving each of them before anyone touches the
 board.
 
-Board facts live in [`merlin/python/merlin/runtime/boards.py`](../../../src/merlin/runtime/boards.py)
+Board facts live in [`merlin/python/merlin/runtime/boards.py`](../../../src/merlin/runtime/boards/catalog.py)
 as data (`chipyard_kodiak`), not in code — see [`docs/guides/02-targets.md`](../../../docs/guides/02-targets.md).
 
 ```bash

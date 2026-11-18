@@ -92,8 +92,8 @@ def _source_pair():
 
 
 def _backend_pair():
-    from merlin.development.targetgen.families import DEFAULT_EXAMPLE_TARGET
-    from merlin.verification.evaluate import _finish_lowering, _lower_to_interface
+    from merlin.target.capabilities.families import DEFAULT_EXAMPLE_TARGET
+    from merlin.verification.translation.fault_injection import _finish_lowering, _lower_to_interface
 
     (interface, contract) = _lower_to_interface(2, 2, 2, 2, target=DEFAULT_EXAMPLE_TARGET)
     return (interface, _finish_lowering(interface, contract))

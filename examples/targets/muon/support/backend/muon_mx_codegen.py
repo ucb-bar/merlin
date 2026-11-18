@@ -28,7 +28,7 @@ _DTYPE = {"fp8": "FP8", "fp6": "FP6", "fp4": "FP4"}
 def is_mx_cb(cb: dict) -> bool:
     """True when any operand tensor is a microscaling float (fp8 E4M3/E5M2, fp6 E3M2, fp4 E2M1) — the block
     scaled MX-PE datapath, which needs the co-model kernel rather than the fp32 LLVM-dialect nest."""
-    from merlin.common import quant_formats as _qf
+    from merlin.common import target_data as _qf
 
     for t in (cb.get("tensors") or {}).values():
         dt = str(t.get("dtype", ""))

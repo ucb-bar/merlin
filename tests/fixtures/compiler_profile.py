@@ -4,14 +4,17 @@ import hashlib
 import json
 
 from merlin.common.paths import repo_root
-from merlin.development.targetgen import tool_registry as TR
-from merlin.development.targetgen.tool_profile import CURRENT_COMMON_SUBSTRATE, attach_common_substrate
-from merlin.development.targetgen.tool_profile_shared import prepare_shared_source_release
+from merlin.development.targetgen.authoring import tool_registry as TR
+from merlin.development.targetgen.authoring.shared_sources import prepare_shared_source_release
+from merlin.development.targetgen.authoring.tool_profile import (
+    CURRENT_COMMON_SUBSTRATE,
+    attach_common_substrate,
+)
 
 
 def prepare(root, *, tools=()):
     prepare_shared_source_release(
-        root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=27, tools=tools
+        root, python_source_root=repo_root() / "src", license_directory=repo_root(), version=29, tools=tools
     )
     return root
 

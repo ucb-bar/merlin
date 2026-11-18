@@ -15,7 +15,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
 
-from . import live, records, text, views
+from merlin.experiments.tracking.pages import views
+from merlin.experiments.tracking.readers import activity, records, test_generation
+from merlin.experiments.tracking.terminal import watch as terminal_text
 
 #: The storage contract's ``product_roots`` entry for these views.
 DASHBOARD_HOME = "experiment-dashboards"
@@ -26,7 +28,7 @@ TARGET_PAGE = "target.html"
 def dashboard_dir(target: str, *, artifacts_root: str | Path | None = None) -> Path:
     """``out/artifacts/experiments/<target>/dashboard/`` (the contract's declared home)."""
     from merlin.common.artifacts import declared_home
-    from merlin.development.targetgen import package_records
+    from merlin.development.targetgen.packaging import records as package_records
 
     return (
         declared_home(DASHBOARD_HOME, artifacts_root=artifacts_root) / package_records.component(target) / DASHBOARD_DIR
@@ -44,10 +46,12 @@ def default_destination(opts: views.Options, ctx: views.Context, now: float) -> 
     if opts.target is not None:
         return dashboard_dir(opts.target) / ("explorer.html" if opts.explorer or opts.compare else TARGET_PAGE)
     if opts.phase0 is not None:
-        from . import phase0
-
         target = next(
-            (d["requirements"]["target"] for d in phase0.summary(opts.phase0)["derivations"] if d.get("requirements")),
+            (
+                d["requirements"]["target"]
+                for d in test_generation.summary(opts.phase0)["derivations"]
+                if d.get("requirements")
+            ),
             None,
         )
         if not target:
@@ -102,9 +106,9 @@ def write_dashboard(
     now = _time.time() if now is None else now
     ctx = views.Context()
     destination = Path(out) if out is not None else default_destination(opts, ctx, now)
-    live.check_output(destination, opts.inputs())
+    views.check_output(destination, opts.inputs())
     for name, page in views.render_pages(opts, ctx, now).items():
-        live.write_page(destination.parent / name if name else destination, page)
+        views.write_page(destination.parent / name if name else destination, page)
     result: dict[str, Any] = {"dashboard": str(destination)}
     if opts.run_dir is not None and opts.compare is None:
         summary = ctx.tails.state.get("base_summary")
@@ -164,8 +168,8 @@ def isolate(cpus: str | None = None) -> dict[str, Any]:
 def serve_dashboard(
     *,
     out: Path,
-    interval: float = live.DEFAULT_INTERVAL,
-    port: int = live.DEFAULT_PORT,
+    interval: float = views.DEFAULT_INTERVAL,
+    port: int = views.DEFAULT_PORT,
     cpus: str | None = None,
     iterations: int | None = None,
     sleep: Callable[[float], None] = time.sleep,
@@ -182,11 +186,11 @@ def serve_dashboard(
     opts = _options(**options)
     opts.refresh = interval
     _check_subject(opts)
-    live.check_output(Path(out), opts.inputs())
+    views.check_output(Path(out), opts.inputs())
     if isolation:
         announce(f"isolation: {isolate(cpus)}")
     ctx = views.Context()
-    return live.serve(
+    return views.serve(
         lambda: views.render_pages(opts, ctx),
         Path(out),
         interval=interval,
@@ -214,18 +218,17 @@ def watch(
     stream = stream or sys.stdout
     if colour is None:
         colour = bool(getattr(stream, "isatty", lambda: False)())
-    from . import activity
-    from .tail import Tails
+    from merlin.experiments.tracking.readers.records import Tails
 
     tails = Tails()  # the agent stream is tailed from where the previous refresh stopped
     try:
         while True:
             summary = records.run_summary(Path(run_dir), now=now, stall_hours=stall_hours, store=store)
-            page = text.render(summary, colour=colour)
-            agent = text.agent(activity.read(Path(run_dir), records.Inventory(), tails), summary["generated"])
+            page = terminal_text.render(summary, colour=colour)
+            agent = terminal_text.agent(activity.read(Path(run_dir), records.Inventory(), tails), summary["generated"])
             if agent:
                 page += "\n".join(agent) + "\n"
-            stream.write(page if once else text.CLEAR + page)
+            stream.write(page if once else terminal_text.CLEAR + page)
             stream.flush()
             if once:
                 return 0

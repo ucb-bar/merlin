@@ -1,8 +1,12 @@
 """Replayable source preparation with separately selected numerical changes."""
 
+from __future__ import annotations
+
 from merlin.compiler.semantic.constant_folding import fold_source_constants, verify_constant_folding
 from merlin.compiler.semantic.constant_math_backend import MathHelper, validate_policy
 from merlin.compiler.semantic.constant_math_precision import prepare_constant_math, verify_constant_math
+
+# ---- source_preparation ------------------------------------------------------------------------
 
 _LEGACY_SCHEMA = "merlin.source_preparation.v1"
 SCHEMA = "merlin.source_preparation.v2"

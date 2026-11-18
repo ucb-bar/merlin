@@ -7,10 +7,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from merlin.compiler.dialects.lowering.dispatch_program import build_dispatch_program
-from merlin.compiler.dialects.lowering.outline import DispatchInfo, OutlineResult
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
-from merlin.runtime.dispatch_runtime import execute
+from merlin.compiler.partition.dispatch_program import build_dispatch_program
+from merlin.compiler.partition.outline import DispatchInfo, OutlineResult
+from merlin.runtime.dispatch.executor import execute
 
 
 def _outline(source):

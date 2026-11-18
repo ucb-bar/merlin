@@ -6,3 +6,5 @@ Merlin frontends: ingest external IR into the core-dialect pipeline.
 and extracts a matmul inventory; :mod:`facts` lifts the inventory into contract-level
 facts and drives the existing lowering pipeline with real model shapes.
 """
+
+from __future__ import annotations

@@ -6,7 +6,9 @@ import os
 import stat
 from pathlib import Path
 
-from .sealed_static import _canonical_path
+from merlin.experiments.capture_execution.sealed_static import _canonical_path
+
+# ---- readonly_runtime_directories --------------------------------------------------------------
 
 SCHEMA = "merlin.sealed_m2m_readonly_runtime.v3"
 
@@ -35,7 +37,7 @@ def add_parents(member, source, before, created, *, limit):
 
 def recheck(selection, before, rows):
     """Reopen the complete CAS and every selected leaf/parent before returning V3."""
-    from . import readonly_runtime as R
+    from merlin.experiments.capture_execution import readonly_runtime as R
 
     after = R._tree(Path(selection["entry"]))
     if after != before:

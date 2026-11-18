@@ -12,12 +12,22 @@ The existing preselection and independent isolated replay remain
 authoritative. Pin the selected verifier bytes; arithmetic/target correspondence,
 private exclusion, compiler correctness and complete cohort admission are separate.
 
-`sealed_m2m_validation.py` holds the source and materialization checks delegated
-by the issuer. Its exact source digest is embedded in `sealed_m2m.py` and checked
-before delegation, so the selected issuer identity also binds this helper.
-Changes require a new issuer identity; existing historical-issuer sets and
-native-integer/read-only-runtime admission rules are unchanged. The original
-issuer functions retain their callable signatures and callback patch points.
+`m2m_plan.py` prepares the selected source plan; `m2m_sandbox.py` owns command
+construction and sandbox policy. `sealed_m2m.py` issues and replays captures.
+Preselection must hash that actual issuer, rather than the policy module.
+The selected source inventory binds the complete copied Merlin package.
+
+`sealed_m2m_validation.py` holds the delegated source and materialization checks.
+Its exact source digest is embedded in `m2m_sandbox.py` and checked before loading.
+Helper changes require a new issuer identity; existing historical-issuer sets and
+native-integer/read-only-runtime admission rules remain unchanged. Preserve the
+issuer functions' callable signatures and callback patch points.
+
+Fresh captures select `capture/preparation/worker.py` from their source package.
+Recorded plans retain their exact selected worker and guest member, including
+the historical `targetgen/_m2m_capture_worker.py` layout. Accept only those closed
+layouts, verify the selected worker bytes and complete source tree, and never
+rewrite an old receipt or copy a current worker over its historical guest path.
 
 `readonly_runtime` is an explicit cache-hit-only mount route. Never open locks,
 write, copy or hardlink in the source CAS. V2 defaults to16 absent leaves/1MiB;
@@ -36,8 +46,8 @@ This package owns the independent, fresh capture execution boundary. The static
 issuer runs only static ELF programs inside a private bubblewrap namespace. The
 sealed Model2MLIR CPU runner (`sealed_m2m`, schema `merlin.sealed_m2m_cpu.v2`) is
 admitted as a test generation issuer by an operator policy decision, only for runs that
-were preselected (`phase0/capture_selection.py`) and replayed in a fresh sandbox;
-the admission gate lives in `phase0/capture_execution_attestation.py` and records
+were preselected (`development/testgen/sealed_capture/selection.py`) and replayed in a fresh sandbox;
+the admission gate lives in `development/testgen/sealed_capture/attestation.py` and records
 the accepted residuals (unsigned receipt, copied venv rather than a pinned
 dependency closure). Do not widen it to another runner or schema without a new
 reviewed decision. Replay the fixed sandbox policy and compare every input/output

@@ -5,13 +5,15 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from merlin.development.testgen.generation import generate_target
-from merlin.development.testgen.profiles import (
+from merlin.development.testgen.generation.entry_planning import generate_target
+from merlin.development.testgen.profiles.loading import (
     build_comparison_manifest,
     profile_targets,
     validate_profile_inputs,
     write_comparison_manifest,
 )
+
+# ---- __main__ ----------------------------------------------------------------------------------
 
 
 def main(argv=None) -> int:

@@ -33,10 +33,26 @@ def _components():
     """
     rows = []
     try:
-        from merlin.runtime.backends import spike
+        from merlin_rvv.src.rvv.runtime import spike
 
-        rows.append(("spike", spike.spike_path().is_file(), "MERLIN_SPIKE", spike.spike_path()))
-        rows.append(("riscv64 gcc", spike.gcc_path().is_file(), "MERLIN_RISCV_GCC", spike.gcc_path()))
+        from merlin.runtime.backends.baremetal import spike_launcher as _merlin_spike_launcher_1
+
+        rows.append(
+            (
+                "spike",
+                _merlin_spike_launcher_1.spike_path().is_file(),
+                "MERLIN_SPIKE",
+                _merlin_spike_launcher_1.spike_path(),
+            )
+        )
+        rows.append(
+            (
+                "riscv64 gcc",
+                _merlin_spike_launcher_1.gcc_path().is_file(),
+                "MERLIN_RISCV_GCC",
+                _merlin_spike_launcher_1.gcc_path(),
+            )
+        )
     except Exception as exc:  # noqa: BLE001
         rows.append((f"merlin importable ({type(exc).__name__})", False, "see README: uv sync --all-extras", Path("-")))
         return rows
@@ -63,7 +79,7 @@ def _components():
         rows.append((f"llvm toolchain ({type(exc).__name__}: {exc})", False, "-", Path("-")))
 
     try:
-        from merlin.runtime.backends import zephyr_model as zm
+        from merlin.runtime.backends.zephyr import application as zm
 
         for tool in ("cmake", "ninja"):
             found = zm.build_tool(tool)
@@ -92,7 +108,7 @@ def _rows(board: str, sdk_dir: str | None):
     out = [("grade", _importable("numpy"), "python + numpy")]
 
     try:
-        from merlin.runtime.backends import spike
+        from merlin_rvv.src.rvv.runtime import spike
 
         sim = spike.available()
     except Exception:  # noqa: BLE001
@@ -100,7 +116,7 @@ def _rows(board: str, sdk_dir: str | None):
     out.append(("probe", sim, "spike + a riscv64 toolchain + the bare-metal harness"))
 
     try:
-        from merlin.runtime.backends import zephyr_model as zm
+        from merlin.runtime.backends.zephyr import application as zm
 
         zeph = bool(zm.available())
     except Exception:  # noqa: BLE001
@@ -131,7 +147,7 @@ def _importable(name: str) -> bool:
 
 def _board_needs_sdk(board: str) -> bool:
     try:
-        from merlin.runtime import boards
+        from merlin.runtime.boards import catalog as boards
 
         return boards.board(board).console != boards.CONSOLE_HTIF
     except Exception:  # noqa: BLE001

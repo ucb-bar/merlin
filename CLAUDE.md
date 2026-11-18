@@ -263,7 +263,7 @@ Three properties are **gated, not documented-and-hoped-for**
    seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
 2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
    capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
-   `merlin.development.backend.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
+   `merlin.development.backend.feedback.certification.promotion.promote` enqueues a cert job the moment a loop verdict
    lands, so **capsule 2's L3 starts while the agent is still on capsule 1's L2**.
 3. **The certificate is kept** — the same module's `record_cert` resolves the `pending` entry against the
    digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited

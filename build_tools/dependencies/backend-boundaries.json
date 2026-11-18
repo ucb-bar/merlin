@@ -32,7 +32,7 @@
     {
       "id": "gemmini",
       "repository": "https://github.com/ucb-bar/gemmini-mlir.git",
-      "revision": "bcde3f1f585494b03631955e8758b050dbcbf330",
+      "revision": "9c6dfe8de4a046a6e0f07a7db559c47d147db5f5",
       "xdsl": "0.68.0",
       "provider_module": "gemmini",
       "tests": [

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from merlin.compiler.semantic.rules import AddressConstraint
 
+# ---- allocation_types --------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class StorageBank:

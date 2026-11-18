@@ -4,6 +4,8 @@ Only the exact primitive policies below are eligible. Runtime values, target
 arithmetic and unqualified math intrinsics are never evaluated by this pass.
 """
 
+from __future__ import annotations
+
 from dataclasses import replace
 from hashlib import sha256
 from math import prod
@@ -16,6 +18,8 @@ from merlin.compiler.semantic.predicate_values import (
 )
 from merlin.compiler.semantic.tensor_constants import OPERATIONS as TENSOR_OPERATIONS
 from merlin.compiler.semantic.tensor_constants import fold_tensor
+
+# ---- constant_folding --------------------------------------------------------------------------
 
 _FORMATS = {"bf16": (16, 7, 127), "f32": (32, 23, 127), "f64": (64, 52, 1023)}
 _CASTS = {
