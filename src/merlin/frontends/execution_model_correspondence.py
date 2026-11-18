@@ -20,6 +20,8 @@ from .execution_call_views import validate as validate_views
 from .execution_functional_state import PROFILE as FUNCTIONAL_PROFILE
 from .execution_functional_state import call as checked_mutation
 from .execution_functional_state import entry as checked_state
+from .execution_storage_views import PROFILE as STORAGE_PROFILE
+from .execution_storage_views import SOURCE_PROFILE as STORAGE_SOURCE
 from .kernel_shape_abi import validate_dimensions
 from .linalg_mlir import parse_mlir_text
 
@@ -172,12 +174,15 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
         checked_interfaces[digest] = (spec, functions[0])
     expected = parent.clone()
     calls = [op for op in expected.walk() if isinstance(op, func.CallOp)]
+    storage = any(call.attributes.get("prov.kernel_functionalization") == builtin.StringAttr(STORAGE_SOURCE)
+                  for call in calls)
     if not isinstance(records, list) or len(calls) != len(records):
         raise ValueError("executed correspondence does not cover every original call")
     declarations = {op.sym_name.data: op for op in expected.ops if isinstance(op, func.FuncOp)}
     used = set()
     for ordinal, (call, record) in enumerate(zip(calls, records, strict=True)):
-        if not isinstance(record, dict) or set(record) - VIEW_FIELDS - {"source_layout_bindings"} != _CALL_FIELDS:
+        extra_fields = VIEW_FIELDS | {"source_layout_bindings", "mutation_pointer_arguments"}
+        if not isinstance(record, dict) or set(record) - extra_fields != _CALL_FIELDS:
             raise ValueError("executed call has an unknown or incomplete correspondence record")
         symbol = call.callee.root_reference.data
         declaration = declarations.get(symbol)
@@ -238,7 +243,7 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
             or len(call.results) != len(output_buffers)
         ):
             raise ValueError("executed correspondence loses original operands or results")
-        functional = checked_mutation(call, spec, record) or functional
+        functional = checked_mutation(call, spec, record, retained) or functional
         emitted = []
         callsite = record["id"]
 
@@ -323,7 +328,8 @@ def _checked_execution_model(parent, bound, bindings, interfaces):
         for op in expected.walk()
     ):
         raise ValueError("executed expansion retains an unresolved source dependency")
-    if (bindings.get("functional_kernel_binding_profile") != FUNCTIONAL_PROFILE if functional
+    functional_profile = STORAGE_PROFILE if storage else FUNCTIONAL_PROFILE
+    if (bindings.get("functional_kernel_binding_profile") != functional_profile if functional
             else "functional_kernel_binding_profile" in bindings):
         raise ValueError("executed functional mutation requires its explicit binding profile")
     expected.verify()

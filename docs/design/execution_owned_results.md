@@ -12,6 +12,23 @@ code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_re
 
 ## Explicit functional mutation results
 
+`t2m.functional-kernel-binding.v2` additionally selects complete cloned storage
+for mutable views under `m2m.functional-kernel-storage.v1`. Several original
+mutable arguments may share one base and one updated result. Actual logical i64
+size/stride/offset operands remain executable source SSA. The original TTIR
+pointer ordinal for every mutable argument is retained explicitly; an allocation
+binding must point to the same readwrite base and its exact offset scalar.
+Independent extract/update/scatter operations would lose writes visible through
+overlapping arguments and cannot implement this contract.
+
+`execution_storage_views.py` separately checks complete base/result ties, all
+coordinate formals and original pointer offsets against retained source evidence.
+Changed pointer positions, split allocations, fresh-result substitution, missing
+fields, scalar widths or downgraded profiles refuse. Original complete SSA,
+kernel memory contracts, source guards and lifetime checks remain mandatory.
+V1 whole-base records retain their prior meaning. Public state remains explicit
+results; neither profile supplies public physical aliases or automatic copyback.
+
 Executed model binding may explicitly select `t2m.functional-kernel-binding.v1`.
 The original model2MLIR call retains `m2m.functional-kernel-bases.v1`: original
 schema text, complete mutated argument names, typed operand/base/result ties and

@@ -41,6 +41,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   user-result roles. Equal types cannot substitute a fresh output for state.
   Borrowed entry tensors remain readonly; state ports grant no physical public
   alias or automatic caller copyback. Never replace lifetime checks with tags.
+  `execution_storage_views.py` checks v2's grouped mutable views against actual
+  original TTIR pointer positions, offsets and complete cloned allocations.
+  Each geometry field must reach logical i64 source formals; multiple arguments
+  sharing one base must retain one readwrite state/result. Keep all original
+  SSA and guards. Separate view copies cannot implement overlapping writes.
   `execution_call_views.py` additionally checks the explicit execution view
   profile, reconstructs dense value adapters and reuses original static
   source-coordinate/root proofs. Account for every view operand and check

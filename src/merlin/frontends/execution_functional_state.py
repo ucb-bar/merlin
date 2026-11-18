@@ -16,6 +16,8 @@ _FIELDS = {
     "prov.kernel_mutated",
     "prov.kernel_tied",
     "prov.kernel_result_slots",
+    "prov.kernel_storage_bases",
+    "prov.kernel_storage_views",
 }
 
 
@@ -61,12 +63,25 @@ def entry(function):
     return True
 
 
-def call(operation, spec, record):
+def call(operation, spec, record, retained=None):
+    from .execution_storage_views import FIELDS as STORAGE_FIELDS
+    from .execution_storage_views import SOURCE_PROFILE as STORAGE_SOURCE
+    from .execution_storage_views import check as checked_storage
+
     attributes = operation.attributes
     present = _FIELDS.intersection(attributes)
     if not present:
+        if "mutation_pointer_arguments" in record:
+            raise ValueError("mutable pointer bindings require the original storage profile")
         return False
-    if present != _FIELDS or attributes["prov.kernel_functionalization"] != builtin.StringAttr(
+    if attributes.get("prov.kernel_functionalization") == builtin.StringAttr(STORAGE_SOURCE):
+        if (present != _FIELDS or not isinstance(attributes["prov.kernel_source_schema"], builtin.StringAttr)
+                or not attributes["prov.kernel_source_schema"].data):
+            raise ValueError("mutable storage lacks its known complete source contract")
+        return checked_storage(operation, spec, record, retained or {})
+    if "mutation_pointer_arguments" in record:
+        raise ValueError("mutable pointer bindings require the actual original storage profile")
+    if present != _FIELDS - STORAGE_FIELDS or attributes["prov.kernel_functionalization"] != builtin.StringAttr(
         "m2m.functional-kernel-bases.v1"
     ):
         raise ValueError("functional kernel lacks its known complete mutation contract")
