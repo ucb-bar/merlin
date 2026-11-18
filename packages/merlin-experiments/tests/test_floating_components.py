@@ -53,6 +53,10 @@ def binding(configuration):
         {"shape": [2, 7, 4]},
         {"operand_dtype": "fp8_e5m2"},
         {"operand_dtype": "fp16", "accumulator_dtype": "f32", "pointwise_rounding": "rne"},
+        {"operand_dtype": "fp8_e4m3", "accumulator_dtype": "f32", "pointwise_rounding": "rne"},
+        {"operand_dtype": "bf16", "accumulator_dtype": "bf16"},
+        {"operand_dtype": "fp16", "accumulator_dtype": "fp16", "pointwise_rounding": "rne"},
+        {"operand_dtype": "f32", "accumulator_dtype": "f32", "pointwise_rounding": "rne"},
     ],
 )
 def test_eight_cases_materialize_complete_goldens_for_distinct_format_contracts(tmp_path, overrides):
@@ -117,6 +121,23 @@ def test_alias_publication_and_fanout_are_observable():
             assert "immutable_reuse" in capsule["component_program"]["effects"]
         if family == "ordered_contraction":
             assert outputs["out0"][0][0] == 2.0  # one final rounding would produce 3.0
+
+
+@pytest.mark.parametrize(
+    "operand,accumulator",
+    [(operand, accumulator) for operand in ("fp8_e4m3", "fp8_e5m2") for accumulator in ("bf16", "fp16", "f32")]
+    + [("bf16", "bf16"), ("bf16", "f32"), ("fp16", "fp16"), ("fp16", "f32"), ("f32", "f32")],
+)
+def test_ordered_witness_remains_sensitive_to_reassociation(operand, accumulator):
+    selected = config(operand_dtype=operand, accumulator_dtype=accumulator, pointwise_rounding="rne")
+    entry = suite.entries(selected)[0]
+    capsule, _ = corpus_spec.build(entry, binding(selected))
+    outputs, inputs = reference.evaluate(capsule)
+    lhs, rhs = inputs["A"]["decoded"], inputs["W"]["decoded"]
+    _, k, n = selected["shape"]
+    exact = sum(Fraction(lhs[p]) * Fraction(rhs[p * n]) for p in range(k))
+    dtype = capsule["component_program"]["selected_storage"]["accumulator"]
+    assert outputs["out0"][0][0] != reference.rounded(exact, dtype)
 
 
 def test_rounding_reference_ties_subnormals_signed_zero_and_order():

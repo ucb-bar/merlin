@@ -11,6 +11,7 @@ import argparse
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import yaml
@@ -122,11 +123,21 @@ def entries(config):
             values = [1.0, -0.5, 0.25, -1.0, 0.5, 0.0, -0.25]
             axis = "linear"
             if family == "ordered_contraction":
-                from merlin.runtime.fp8_formats import float_format_params
+                from merlin.runtime.fp8_formats import float_format_params, normal_range
 
                 mantissa = float_format_params(accumulator)[1]
-                large = 2.0 ** ((mantissa + 2) // 2)
-                values = [large, 1.0, -large, 1.0, 1.0] if row["name"] == "A" else [large, 1.0, large, 1.0, 1.0]
+                # Keep both factors representable in operand storage. When its
+                # exponent range cannot hold the original large factor, scale
+                # both factors down equally, preserving the cancellation ratio.
+                separation = (mantissa + 2) // 2
+                large_exponent = min(separation, math.frexp(normal_range(operand)[1])[1] - 1)
+                large = 2.0 ** large_exponent
+                small = 2.0 ** (large_exponent - separation)
+                values = (
+                    [large, small, -large, small, small]
+                    if row["name"] == "A"
+                    else [large, small, large, small, small]
+                )
                 axis = 1 if row["name"] == "A" else 0
             if family == "rounding_movement":
                 # Derive half-ULP witnesses from the selected formats, not a target name.
@@ -134,8 +145,11 @@ def entries(config):
 
                 operand_mantissa = float_format_params(operand)[1]
                 acc_mantissa = float_format_params(accumulator)[1]
+                # A midpoint is representable only when the source has more
+                # precision. Matching formats exercise exact conversion instead.
+                increment = 2.0 ** -min(operand_mantissa + 1, acc_mantissa)
                 values = (
-                    [1.0, -1.0, 1 + 2.0 ** (-operand_mantissa - 1), -(1 + 2.0 ** (-operand_mantissa - 1))]
+                    [1.0, -1.0, 1 + increment, -(1 + increment)]
                     if row["name"] == "A"
                     else [3 * 2.0 ** (-acc_mantissa - 2)]
                 )

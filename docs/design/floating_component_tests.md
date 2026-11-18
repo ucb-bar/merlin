@@ -3,7 +3,7 @@ title: Portable floating component tests and scheduling witnesses
 kind: design
 status: current
 owner: compiler
-last_verified: 2026-11-16
+last_verified: 2026-11-18
 related: [static_scheduling, compiler_plane]
 code_refs: [src/merlin/targetgen/component_program.py, packages/merlin-experiments/src/merlin_experiments/phase0/writer.py]
 ---
@@ -73,6 +73,13 @@ and boundary values where the family requires them. Counts describe source cases
 not pytest functions or claims of physical scheduling coverage. Private transfer
 members must be selected separately by the existing cohort owner; their contents
 are not copied into a public configuration.
+
+Cancellation witnesses derive their separation from accumulator precision and
+scale both factors to fit the operand exponent range. They must remain sensitive
+to reassociation after that scaling. Conversion midpoints are used only when the
+source format can represent them; matching source/destination precision exercises
+exact conversion instead. All palettes must be representable in their actual
+input storage before reference evaluation.
 
 ## Scheduling evidence
 
