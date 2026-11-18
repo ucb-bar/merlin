@@ -23,6 +23,8 @@ def test_the_capture_pin_is_a_full_sha_over_the_files_the_capture_reads():
     pin = P.load_pins(P.software_pins_path())[M.CAPTURE_PIN]
     assert len(pin.commit) == 40
     assert "m2m/ir/decompositions.py" in pin.requires_paths
+    # Lowered IR is insufficient if the binder omits genuine source tensor bytes.
+    assert "m2m/transforms/externalize.py" in pin.requires_paths
     # Content, not HEAD: an uncommitted edit to a decomposition file must read as off-pin.
     assert pin.checks_content
 

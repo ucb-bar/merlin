@@ -171,8 +171,29 @@ def verify_capture_receipt(path: str | Path) -> dict:
                 ):
                     raise ValueError("manifest bytes differ from receipt")
                 manifest = json.loads(manifest_bytes)
-                if not isinstance(manifest, dict) or manifest.get("schema") != "m2m.quantization_manifest.v1":
+                if not isinstance(manifest, dict) or manifest.get("schema") not in {
+                    "m2m.quantization_manifest.v1", "m2m.quantization_manifest.v2",
+                }:
                     raise ValueError("unsupported manifest schema")
+                if manifest["schema"] == "m2m.quantization_manifest.v2":
+                    # Match the generic producer's v2 site contract. Target
+                    # extensions remain owned by the selected adapter.
+                    sites = manifest.get("sites")
+                    if not isinstance(sites, list) or not sites:
+                        raise ValueError("external quantization manifest needs a nonempty site census")
+                    site_ids = []
+                    for site in sites:
+                        if not isinstance(site, dict) or not isinstance(site.get("site_id"), str):
+                            raise ValueError("external quantization site needs a stable site_id")
+                        if site.get("status") not in {"quantized", "host", "skipped", "preserved"}:
+                            raise ValueError("external quantization site needs an explicit status")
+                        if site["status"] == "preserved" and (
+                            not isinstance(site.get("execution_route"), str) or not site["execution_route"]
+                        ):
+                            raise ValueError("preserved site needs an explicit execution route")
+                        site_ids.append(site["site_id"])
+                    if len(site_ids) != len(set(site_ids)):
+                        raise ValueError("external quantization manifest has duplicate site IDs")
                 manifest_sha = hashlib.sha256(
                     json.dumps(
                         manifest,

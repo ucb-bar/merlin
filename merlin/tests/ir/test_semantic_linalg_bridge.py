@@ -1246,7 +1246,8 @@ def test_signed_i64_scalar_cast_rounds_once_before_splat() -> None:
         )
 
 
-def test_parsed_bf16_zero_splat_is_initialized_and_rejects_negative_zero() -> None:
+@pytest.mark.parametrize("literal,word", [("0.000000e+00", 0), ("-0.000000e+00", 0x8000)])
+def test_parsed_bf16_zero_splat_preserves_initialization_and_sign(literal: str, word: int) -> None:
     source = """module {
 func.func @work() -> tensor<2x3xbf16> {
   %zero = arith.constant 0.000000e+00 : bf16
@@ -1254,14 +1255,12 @@ func.func @work() -> tensor<2x3xbf16> {
   func.return %result : tensor<2x3xbf16>
 }
 }"""
-    translated = translate_linalg_text(source, entry="work", target_identity="synthetic")
+    translated = translate_linalg_text(
+        source.replace("0.000000e+00", literal), entry="work", target_identity="synthetic",
+    )
     assert translated.request.constants[0].encoding == "bf16-le-raw"
-    assert translated.request.constants[0].data_hex == "0000" * 6
-    assert evaluate_graph(translated.request, {}, constants=translated.constants)[0].elements == (0,) * 6
-    with pytest.raises(LinalgBridgeError, match="constant|admitted"):
-        translate_linalg_text(
-            source.replace("0.000000e+00", "-0.000000e+00"), entry="work", target_identity="synthetic",
-        )
+    assert translated.request.constants[0].data_hex == word.to_bytes(2, "little").hex() * 6
+    assert evaluate_graph(translated.request, {}, constants=translated.constants)[0].elements == (word,) * 6
 
 
 def test_parsed_static_reshape_preserves_bits_and_uses_generated_rules(bridge: Path) -> None:

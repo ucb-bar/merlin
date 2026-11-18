@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -16,16 +18,23 @@ from typing import Protocol
 from merlin.common.content_store import digest_file
 from merlin.runtime.program import build_program
 from merlin.semantic_compiler.model import KernelRequest
+from merlin.semantic_compiler.codegen import APPLICATION_BUDGET_OPTIONS, IO_MEMORY_OPTIONS, current_codegen_options
+from merlin.semantic_compiler.materialization import (
+    MaterializationCache, canonical_request, materialization_key, materialization_region, materialization_session,
+)
 from merlin.semantic_compiler.source_preparation import preparation_filename, verify_source_preparation
 from merlin.semantic_compiler.target_binding import NativeCompilationError, verify_native_publication
 from merlin.xdsl_dialects.lowering.arena_plan import ArenaPlanError, ArenaRequirements, MemoryPlan
 from merlin.xdsl_dialects.lowering.global_plan import GlobalPlan
 from merlin.xdsl_dialects.lowering.global_plan_emission import dispatch_digest
 
+from .application_residency import residency_scope, publication as residency_publication, validate_region_bindings
 from .application_c import emit_application_c
+from .application_deployment import adapter_c, handoff_interface, place, publish
 from .application_plan import application_plan
+from .application_views import IMPLEMENTATION as VIEW_IMPLEMENTATION, checked_view_aliases, compile_view
 from .c_sources import c_source_pair
-from .dispatch_c import DispatchCall, emit_program_c
+from .dispatch_c import DispatchCall, emit_program_c, prepare_dispatch_loop_from_plan
 from .semantic_regions import outline_semantic_regions
 
 
@@ -66,9 +75,13 @@ def _sha(data):
 
 def _render(
     source, adapter, name, capacity, compiled, *, memory_plan=None, state=None, parameters=None, native_root=None,
+    emit_region_loop=False, target_source=None,
 ):
+    if type(emit_region_loop) is not bool:
+        raise TypeError("region loop emission needs an explicit Boolean")
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
+    aliases = checked_view_aliases(source, plan)
     try:
         program = build_program(
             outlined.logical,
@@ -79,6 +92,7 @@ def _render(
                 capacity,
                 tuple(2 * i for i in range(len(graph.nodes))),
                 tuple(2 * i + 1 for i in range(len(graph.nodes))),
+                aliases=aliases,
                 dispatch_digest=dispatch_digest(graph),
             ),
         )
@@ -124,7 +138,8 @@ def _render(
   return {lowered.symbol}(context,ordered_inputs,ordered_outputs);
 }}
 """)
-        calls[index] = DispatchCall(symbol, placements[key], context_index=index)
+        calls[index] = DispatchCall(symbol, placements[key], context_index=index,
+                                    alias_safe=node.kind == "view")
         summaries.append(
             {
                 "id": key,
@@ -139,9 +154,30 @@ def _render(
         )
     if parameters is not None:
         parameters.check(source)
+    loop_plan, dispatch_loop = None, None
+    if emit_region_loop:
+        from .region_loop import analyze_region_loop
+
+        loop_parameters = getattr(adapter, "region_loop_parameters", None)
+        loop = analyze_region_loop(
+            [region.record() for _, region in outlined.regions],
+            parameter_attributes=loop_parameters or (),
+        )
+        loop_plan = {
+            "schema": "merlin.application_loop_plan.v1",
+            "source_request_digest": source.digest(),
+            "region_loop": loop,
+        }
+        files["application-loop-plan.json"] = _json(loop_plan)
+    if emit_region_loop:
+        dispatch_loop = prepare_dispatch_loop_from_plan(
+            program, calls, loop_plan, requests=[region.record() for _, region in outlined.regions],
+            source_request_digest=source.digest(),
+        )
     driver, driver_files = emit_program_c(
         program, name + "_driver", calls,
         read_only_inputs=parameters.node_ids if parameters is not None else (),
+        loop=dispatch_loop,
     )
     interface, interface_files = emit_application_c(
         source, driver, driver_files, name, capacity=capacity, parameters=parameters,
@@ -178,10 +214,35 @@ def _render(
                 link_sources.append(filename)
     region_link_sources = tuple(link_sources)
     combined_name = name + "_combined"
+    deployment = place(source, adapter, summaries, interface, native_root, parameters)
+    if deployment is not None and deployment.get("paging"):
+        from .application_deployment import PagedParameters
+        paging = deployment["paging"]
+        i = paging["context_index"]
+        label = f"region_{i:03d}"
+        record, region_files = adapter.deployment_region_package(
+            outlined.regions[i][1], Path(native_root) / "segments" / label, label, target_source, paging)
+        for member, data in region_files.items():
+            files[f"c-package/regions/{label}/{member}"] = data
+        summaries[i]["description"] = record
+        interface, interface_files = emit_application_c(
+            source, driver, driver_files, name, capacity=capacity,
+            parameters=PagedParameters(parameters, deployment))
+        interface["deployment"] = deployment
+        for filename, text in interface_files.items():
+            files["c-package/" + filename] = text.encode()
+
     binding_factory = getattr(adapter, "application_binding", None)
     binding = binding_factory(name, summaries, interface) if binding_factory else None
     if binding is not None and not isinstance(binding, ApplicationCBinding):
         raise TypeError("application binding must contain C declarations, implementation and interface")
+    if deployment is not None:
+        if binding is None:
+            raise NativeCompilationError(
+                "unsupported_semantics", "deployment_provider_contract: on-chip deployment requires a C binding")
+        declarations, implementation = adapter_c(name, deployment)
+        binding = ApplicationCBinding(binding.declarations + declarations, binding.implementation + implementation,
+                                      binding.interface)
     combined = c_source_pair(
         combined_name,
         public_headers={
@@ -239,6 +300,12 @@ original-model accuracy or execution on an integrated SoC or FPGA.
             b"Bind that file once with the generated parameter binding, and keep its bytes immutable. "
             b"Parameter ports are excluded from the invocation input array.",
         )
+    if emit_region_loop:
+        files["c-package/README.md"] += (
+            b"\nThe invocation uses the authenticated counted dispatch window in application-loop-plan.json "
+            b"for every recorded trip. It regroups the original call table and does not yet share programs. "
+            b"The low-level driver _run entry remains available for flat dispatch.\n"
+        )
     if host_linkage:
         files["c-package/README.md"] += (
             b"\nSelected CPU math requires the archives in application-c.json's host_linkage list. "
@@ -249,15 +316,110 @@ original-model accuracy or execution on an integrated SoC or FPGA.
     if native_root is not None:
         from .application_handoff import application_handoff
 
-        files.update(application_handoff(source, interface, summaries, files, native_root))
+        files.update(application_handoff(source, handoff_interface(interface), summaries, files, native_root))
+    if deployment is not None:
+        publish(deployment, interface, files, native_root)
     return outlined, summaries, interface, link_sources, files
+
+
+def _region_materialization_contract(adapter, region, alternative):
+    identity_hook = getattr(adapter, "materialization_identity", None)
+    if identity_hook is None:
+        # Without a provider proof retain the complete selected
+        # alternative and source identity, sacrificing reuse.
+        contract = {
+            "target_choice": alternative.to_dict(),
+            "source_identity_policy": "preserve",
+            "compilation_identity": {
+                "adapter_module": type(adapter).__module__,
+                "adapter_type": type(adapter).__qualname__,
+            },
+        }
+    else:
+        contract = identity_hook(region, alternative)
+    if not isinstance(contract, dict) or set(contract) != {
+        "target_choice", "compilation_identity", "source_identity_policy"
+    }:
+        raise ValueError("provider materialization identity contract differs")
+    # Snapshot the JSON contract so later provider callbacks cannot change
+    # normalization policy after its identity has been checked and keyed.
+    return json.loads(json.dumps(contract, sort_keys=True, allow_nan=False))
+
+
+def _region_materialization_key(adapter, snapshot, region, alternative, target_source, limits, *, contract=None):
+    if contract is None:
+        contract = _region_materialization_contract(adapter, region, alternative)
+    return materialization_key(
+        region, target_choice=contract["target_choice"], options=current_codegen_options(),
+        source_identity_policy=contract["source_identity_policy"],
+        compilation_identity={
+            "provider": contract["compilation_identity"],
+            "snapshot_manifest_sha256": _sha((snapshot.root / "manifest.json").read_bytes()),
+            "snapshot_root": str(snapshot.root.resolve()),
+            "target_source": str(target_source.resolve()),
+            "limits": limits.record() if hasattr(limits, "record") else limits,
+        },
+    )
 
 
 def compile_semantic_application(
     source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None,
-    parameters=None,
+    parameters=None, allow_host_only=False, reuse_materializations=False, materialization_stats=None,
+    reuse_region_materializations=False, emit_region_loop=False, deterministic_receipts=False,
 ):
-    """Compile every selected region; fail without substituting a different route."""
+    """Compile and authenticate every original publication in one cache session.
+
+    Targets explicitly opt into canonical materialization. Unsupported regions
+    retain original compilation; accepted regions compile an alpha-normalized
+    source once and bind each original through target-owned publication checks.
+    """
+    arguments = locals().copy()
+    arguments.pop("materialization_stats")
+    arguments.pop("deterministic_receipts")
+    if type(deterministic_receipts) is not bool:
+        raise TypeError("deterministic receipts need an explicit Boolean")
+    publication_options = getattr(adapter, "publication_options", None)
+    if deterministic_receipts and publication_options is None:
+        raise ValueError("target does not support deterministic receipts")
+    publication_scope = (publication_options(deterministic_receipts=deterministic_receipts)
+                         if publication_options is not None else nullcontext())
+    if type(reuse_materializations) is not bool:
+        raise TypeError("materialization reuse needs an explicit Boolean")
+    if type(reuse_region_materializations) is not bool:
+        raise TypeError("region materialization reuse needs an explicit Boolean")
+    if reuse_region_materializations and current_codegen_options().application_residency:
+        raise ValueError("application residency cannot use the explicitly requested region materialization cache")
+    enabled = reuse_materializations and getattr(adapter, "supports_materialization_cache", False) is True
+    stats = {}
+    try:
+        with publication_scope, residency_scope(source, adapter, parameters, state), materialization_session(enabled=enabled) as stats:
+            return _compile_semantic_application(**arguments, _stats=stats)
+    finally:
+        if materialization_stats is not None:
+            materialization_stats.clear()
+            materialization_stats.update(stats)
+
+
+def _compile_semantic_application(
+    source, *, adapter, snapshot, target_source, destination, limits, name, capacity, state=None, source_folding=None,
+    parameters=None, allow_host_only=False, reuse_materializations=False, _stats=None,
+    reuse_region_materializations=False, emit_region_loop=False,
+):
+    """Compile selected regions and replay every original publication.
+
+    Explicitly opted-in adapters may memoize deterministic internal tool calls.
+    An optional ``materialization_identity(region, alternative)`` provider hook
+    supplies JSON target choices and provider compilation identity plus an
+    explicit source identity policy. Canonical region identity then partitions
+    exact tool reuse. Optional target materialize/bind hooks may additionally
+    reuse checked canonical compilation, preserving every original publication.
+    Both reuse options default off. ``reuse_materializations`` enables exact
+    tool reuse and ``reuse_region_materializations`` enables canonical bodies.
+    Verification always runs fresh tools in its own session. Optional caller
+    statistics stay outside published application bytes.
+    """
+    if type(reuse_materializations) is not bool:
+        raise TypeError("materialization reuse needs an explicit Boolean")
     if state is not None:
         state.check(source)
     if parameters is not None:
@@ -273,16 +435,64 @@ def compile_semantic_application(
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     (destination / "selected-plan.json").write_bytes(_json(plan.to_dict()))
     selected = {item.id: item for item in plan.selected}
-    lowered = [
-        adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
+    lowered = []
+    cache = MaterializationCache("merlin.application_region.v1")
+    declined = object()
+    # Canonical artifacts are invocation-local and never part of an original
+    # authenticated publication. Only the target binding hook publishes them.
+    with tempfile.TemporaryDirectory(prefix="canonical-regions-", dir=destination.parent) as temporary:
+        canonical_root = Path(temporary)
+        for i, (key, region) in enumerate(outlined.regions):
+            alternative = selected[key]
+            _stats["region_calls"] += 1
+            if alternative.implementation == VIEW_IMPLEMENTATION:
+                lowered.append(compile_view(region, f"region_{i:03d}"))
+                continue
+            contract = _region_materialization_contract(adapter, region, alternative)
+            region_key = _region_materialization_key(
+                adapter, snapshot, region, alternative, target_source, limits, contract=contract)
+            with materialization_region(region_key):
+                supports = getattr(adapter, "supports_region_materialization", None)
+                if (reuse_region_materializations
+                        and getattr(adapter, "supports_materialization_cache", False) is True and supports is not None
+                        and supports(region, alternative)):
+                    materialized = cache.get(region_key)
+                    if materialized is None:
+                        canonical = canonical_request(region, source_identity_policy=contract["source_identity_policy"])
+                        _stats["region_compiles"] += 1
+                        _stats["region_materializations"] += 1
+                        materialized = adapter.materialize_region(
+                            snapshot, canonical, alternative, f"canonical_{i:03d}",
+                            canonical_root, target_source, limits)
+                        if materialized is None:
+                            # A target may find a construction it cannot bind
+                            # after checking the canonical materialization.
+                            # Cache the refusal, then compile original requests.
+                            materialized = declined
+                        cache.put(region_key, materialized)
+                    elif materialized is not declined:
+                        _stats["region_hits"] += 1
+                    if materialized is declined:
+                        _stats["region_compiles"] += 1
+                        lowered.append(adapter.compile_region(
+                            snapshot, region, alternative, f"region_{i:03d}", segments, target_source, limits))
+                    else:
+                        lowered.append(adapter.bind_materialization(
+                            materialized, region, alternative, f"region_{i:03d}", segments, target_source))
+                else:
+                    _stats["region_compiles"] += 1
+                    lowered.append(adapter.compile_region(
+                        snapshot, region, alternative, f"region_{i:03d}", segments, target_source, limits))
+    validate_region_bindings(outlined.regions, lowered)
     _, summaries, interface, links, files = _render(
-        source, adapter, name, capacity, lowered, state=state, parameters=parameters, native_root=destination
+        source, adapter, name, capacity, lowered, state=state, parameters=parameters, native_root=destination,
+        emit_region_loop=emit_region_loop, target_source=target_source,
     )
     if parameters is not None:
         (destination / "handoff").mkdir(exist_ok=True)
         parameters.write_payload(destination / "handoff/parameters.bin")
+    if residency_publication() is not None:
+        files.update(residency_publication())
     for filename, data in files.items():
         path = destination / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -302,12 +512,13 @@ def compile_semantic_application(
                     "binary_sha256": manifest["binary_sha256"],
                 }
             )
-    if not rows:
+    if not rows and (not allow_host_only or not summaries
+            or any(row["placement"] != "host" or row["native_programs"] for row in summaries)):
         raise ValueError("native application has no accelerator program")
     manifest = {
         "schema": "merlin.semantic_application.v1",
         "engine": "merlin_native",
-        "artifact_kind": "program_set",
+        "artifact_kind": "program_set" if rows else "host_application",
         "compile_mode": source.lowering_policy,
         "qualification_scope": "diagnostic_only",
         "request_digest": source.digest(),
@@ -325,7 +536,19 @@ def compile_semantic_application(
             if path.is_file()
         },
     }
+    options = current_codegen_options()
+    manifest["codegen_options"] = options.identity_record()
+    manifest.update({
+        name: getattr(options, name) for name in IO_MEMORY_OPTIONS if getattr(options, name) is not None
+    })
+    manifest.update({name: getattr(options, name) for name in APPLICATION_BUDGET_OPTIONS})
+    if options.application_residency:
+        manifest["application_residency"] = True
+    if emit_region_loop:
+        manifest["dispatch_loop"] = True
     (destination / "manifest.json").write_bytes(_json(manifest))
+    compilation_stats = {key: value for key, value in _stats.items() if key != "elapsed_seconds"}
+    verification_stats = {}
     verify_semantic_application(
         source,
         adapter=adapter,
@@ -335,15 +558,70 @@ def compile_semantic_application(
         state=state,
         source_folding=source_folding,
         parameters=parameters,
+        allow_host_only=allow_host_only,
+        limits=limits,
+        materialization_stats=verification_stats,
     )
+    # Account for the independent fresh replay in total invocation counters.
+    for key, value in verification_stats.items():
+        if key != "elapsed_seconds":
+            _stats[key] += value
+    _stats["compilation"] = compilation_stats
+    _stats["verification"] = verification_stats
     return manifest
 
 
 def verify_semantic_application(
     source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None, parameters=None,
+    allow_host_only=False, limits=None, reuse_materializations=False, materialization_stats=None,
+):
+    """Authenticate original exports with fresh tools in an independent session.
+
+    ``reuse_materializations`` is accepted for API compatibility. Verification
+    always executes tools fresh, including when nested in an enabled compile.
+    """
+    arguments = locals().copy()
+    arguments.pop("materialization_stats")
+    if type(reuse_materializations) is not bool:
+        raise TypeError("materialization reuse needs an explicit Boolean")
+    try:
+        with residency_scope(source, adapter, parameters, state), materialization_session(enabled=False) as stats:
+            return _verify_semantic_application(**arguments, _stats=stats)
+    finally:
+        if materialization_stats is not None:
+            materialization_stats.clear()
+            materialization_stats.update(stats)
+
+
+def _verify_semantic_application(
+    source, *, adapter, snapshot, target_source, artifact, state=None, source_folding=None, parameters=None,
+    allow_host_only=False, limits=None, reuse_materializations=False, _stats=None,
 ):
     """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
+    options = current_codegen_options()
+    if "codegen_options" in manifest and _json(manifest["codegen_options"]) != _json(options.identity_record()):
+        raise ValueError("application code generation options differ from compilation")
+    if (type(manifest.get("application_residency", False)) is not bool
+            or manifest.get("application_residency", False) != options.application_residency):
+        raise ValueError("application residency differs from compilation")
+    selected_memory = {
+        name: getattr(options, name) for name in IO_MEMORY_OPTIONS if getattr(options, name) is not None
+    }
+    published_memory = {name: manifest[name] for name in IO_MEMORY_OPTIONS if name in manifest}
+    has_memory_selection = published_memory or any(name in selected_memory for name in IO_MEMORY_OPTIONS[1:])
+    if has_memory_selection and _json(published_memory) != _json(selected_memory):
+        raise ValueError("application I/O memory geometry differs from compilation")
+    published_budgets = {name: manifest[name] for name in APPLICATION_BUDGET_OPTIONS if name in manifest}
+    if published_budgets and _json(published_budgets) != _json({
+        name: getattr(options, name) for name in APPLICATION_BUDGET_OPTIONS
+    }):
+        raise ValueError("application budgets differ from compilation")
+    emit_region_loop = manifest.get("dispatch_loop", False)
+    if type(emit_region_loop) is not bool:
+        raise ValueError("application dispatch loop option must be Boolean")
+    if manifest.get("artifact_kind") == "host_application" and not allow_host_only:
+        raise ValueError("host-only application requires explicit allow_host_only selection")
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
     if source_folding is not None:
@@ -374,10 +652,19 @@ def verify_semantic_application(
     plan = application_plan(source, adapter)
     outlined = outline_semantic_regions(source, entry=manifest["application_name"], plan=plan)
     selected = {item.id: item for item in plan.selected}
-    compiled = [
-        adapter.export_region(region, selected[key], f"region_{i:03d}", artifact / "segments", target_source)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
+    compiled = []
+    for i, (key, region) in enumerate(outlined.regions):
+        alternative = selected[key]
+        if alternative.implementation == VIEW_IMPLEMENTATION:
+            compiled.append(compile_view(region, f"region_{i:03d}"))
+            continue
+        region_key = _region_materialization_key(
+            adapter, snapshot, region, alternative, target_source, limits)
+        with materialization_region(region_key):
+            _stats["region_replays"] += 1
+            compiled.append(adapter.export_region(
+                region, alternative, f"region_{i:03d}", artifact / "segments", target_source))
+    validate_region_bindings(outlined.regions, compiled)
     _, summaries, interface, links, files = _render(
         source,
         adapter,
@@ -388,6 +675,7 @@ def verify_semantic_application(
         state=state,
         parameters=parameters,
         native_root=artifact,
+        emit_region_loop=emit_region_loop, target_source=target_source,
     )
     if (
         manifest["regions"] != summaries
@@ -395,6 +683,8 @@ def verify_semantic_application(
         or manifest["link_sources"] != links
     ):
         raise ValueError("application manifest differs from replayed region compilation")
+    if residency_publication() is not None:
+        files.update(residency_publication())
     for filename, data in files.items():
         if (artifact / filename).read_bytes() != data:
             raise ValueError("application artifact differs from replayed source: " + filename)

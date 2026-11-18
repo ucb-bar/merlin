@@ -6,7 +6,7 @@ Math intrinsics retain an unresolved source numerical policy.
 """
 
 from dataclasses import dataclass
-from math import isnan, prod
+from math import isnan
 from struct import pack
 
 from merlin.frontends.linalg_patterns import InvalidLinalgPattern, _checked_static_linalg_shell
@@ -76,7 +76,7 @@ def _operation(op, types, result):
             arithmetic = name[6:-1]
             return f"{dtype}_{arithmetic}", (("numeric_semantics", f"ieee754-{dtype}-{arithmetic}-rne-v1"),)
     elif name == "arith.negf":
-        if types == (result,) and dtype in {"f32", "f64"}:
+        if types == (result,) and dtype in {"bf16", "f32", "f64"}:
             return f"{dtype}_neg", (("numeric_semantics", f"{dtype}-sign-bit-flip-v1"),)
     elif name in {"arith.addi", "arith.subi", "arith.muli"}:
         if name == "arith.muli" and len(types) == 2 and dtype == "i1" and all(t == result for t in types):
@@ -134,6 +134,8 @@ def _operation(op, types, result):
 def translate_scalar_region(op, sources, *, prefix, max_elements=1 << 20):
     """Translate one closed static pointwise region with singleton projections.
 
+    Literals bind one rank-zero element and broadcast through a checked gather;
+    the materialization budget counts stored elements, not logical uses.
     Only input block arguments may terminate the scalar DAG. An output block
     argument, an external captured scalar or an unknown effect is rejected.
     """
@@ -214,8 +216,7 @@ def translate_scalar_region(op, sources, *, prefix, max_elements=1 << 20):
         node_id = f"{prefix}_s{index}"
         if scalar.name == "arith.constant":
             literal = scalar.properties.get("value")
-            count = prod(shell.shape)
-            materialized_elements += count
+            materialized_elements += 1
             if materialized_elements > max_elements:
                 from .target_binding import NativeCompilationError
 
@@ -226,6 +227,14 @@ def translate_scalar_region(op, sources, *, prefix, max_elements=1 << 20):
                 payload = pack("<f" if result.dtype == "f32" else "<d", literal.value.data)
                 encoding = f"{result.dtype}-le-raw"
                 bits = int.from_bytes(payload, "little")
+            elif result.dtype == "bf16" and isinstance(literal, FloatAttr) and str(literal.type) == "bf16":
+                if isnan(literal.value.data):
+                    raise LinalgBridgeError("scalar literal NaN payload cannot be recovered from its parsed float")
+                word = int.from_bytes(pack("<f", literal.value.data), "little")
+                if word & 0xffff:
+                    raise LinalgBridgeError("BF16 scalar literal is not exactly represented by its parsed float")
+                bits, encoding = word >> 16, "bf16-le-raw"
+                payload = bits.to_bytes(2, "little")
             elif result.dtype == "i64" and isinstance(literal, IntegerAttr) and str(literal.type) == "i64":
                 bits, encoding = literal.value.data, "i64-le"
                 payload = bits.to_bytes(8, "little", signed=True)
@@ -236,9 +245,15 @@ def translate_scalar_region(op, sources, *, prefix, max_elements=1 << 20):
                 raise LinalgBridgeError("scalar region constant has an unsupported exact encoding")
             if scalar.operands:
                 raise LinalgBridgeError("scalar constant unexpectedly reads an operand")
-            node = SemanticNode(node_id, "constant", (), result, effect="constant")
-            bindings.append(ConstantBinding(node_id, encoding, (payload * count).hex()))
-            values[node_id] = TensorValue(result, (bits,) * count)
+            literal_id = f"{node_id}_literal"
+            literal_type = TensorType((), result.dtype, result.numerical_policy)
+            nodes.append(SemanticNode(literal_id, "constant", (), literal_type, effect="constant"))
+            bindings.append(ConstantBinding(literal_id, encoding, payload.hex()))
+            values[literal_id] = TensorValue(literal_type, (bits,))
+            node = SemanticNode(
+                node_id, "gather", (literal_id,), result,
+                index_maps=(IndexMap(len(shell.shape), (), ()), identity),
+            )
         else:
             if any(value not in env for value in scalar.operands):
                 raise LinalgBridgeError("scalar region reads a captured or uninitialized scalar")

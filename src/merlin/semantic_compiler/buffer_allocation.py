@@ -8,11 +8,33 @@ extend its lifetime; all offsets and extents use the bank's declared unit.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import dataclass, replace
 from math import lcm
 from time import monotonic
 
 from .allocate import Reservation, StorageBank
+
+
+_DEFAULT_ALLOCATION_TIMEOUT = object()
+_ALLOCATION_WALL_BUDGET_MS = ContextVar("buffer_allocation_wall_budget_ms", default=1000)
+
+
+def current_allocation_wall_budget_ms():
+    return _ALLOCATION_WALL_BUDGET_MS.get()
+
+
+@contextmanager
+def allocation_wall_budget(timeout_ms):
+    """Select an invocation-local wall budget; explicit allocator values win."""
+    if type(timeout_ms) is not int or timeout_ms <= 0:
+        raise ValueError("positive solver timeout required")
+    token = _ALLOCATION_WALL_BUDGET_MS.set(timeout_ms)
+    try:
+        yield
+    finally:
+        _ALLOCATION_WALL_BUDGET_MS.reset(token)
 
 
 @dataclass(frozen=True)
@@ -215,18 +237,28 @@ def allocate_buffers(
     banks: tuple[StorageBank, ...],
     *,
     reservations: tuple[Reservation, ...] = (),
-    timeout_ms: int = 1000,
+    timeout_ms: int | None | object = _DEFAULT_ALLOCATION_TIMEOUT,
+    rlimit: int | None = None,
 ) -> BufferAllocation:
     """Solve this finite interval-placement problem; UNKNOWN is not infeasibility.
 
     Persistent roots reserve storage for the entire invocation. The result is
     a placement component, not executable target lowering or hardware evidence.
+    Set timeout_ms=None with a positive per-query rlimit for a deterministic
+    solver-work budget independent of host scheduling. Every query remains
+    fail-closed, including the bounded lexicographic minimization queries.
     """
     import z3
 
-    if type(timeout_ms) is not int or timeout_ms <= 0:
+    if timeout_ms is _DEFAULT_ALLOCATION_TIMEOUT:
+        timeout_ms = current_allocation_wall_budget_ms()
+    if timeout_ms is not None and (type(timeout_ms) is not int or timeout_ms <= 0):
         raise ValueError("positive solver timeout required")
-    deadline = monotonic() + timeout_ms / 1000
+    if rlimit is not None and (type(rlimit) is not int or rlimit <= 0):
+        raise ValueError("positive solver resource limit required")
+    if timeout_ms is None and rlimit is None:
+        raise ValueError("a solver timeout or resource limit is required")
+    deadline = None if timeout_ms is None else monotonic() + timeout_ms / 1000
     storage, items, roots, life = _normalize(buffers, banks)
     for reservation in reservations:
         if (
@@ -234,14 +266,35 @@ def allocate_buffers(
             or reservation.start + reservation.extent > storage[reservation.storage].capacity
         ):
             raise ValueError("reservation has invalid storage bounds")
+    # Fully overlapping unpinned roots in source order admit a checked greedy
+    # proposal without changing the lexicographic optimum. Views follow their
+    # roots, so their fixed offsets cannot change the root ordering. A failed
+    # proposal remains inconclusive and keeps the original optimization path.
+    first_view = next((i for i, item in enumerate(buffers) if item.view_of is not None), len(buffers))
+    if (buffers and not reservations
+            and all(item.fixed_start is None and not item.persistent
+                    and (item.first_event, item.last_event) == (buffers[0].first_event, buffers[0].last_event)
+                    for item in buffers)
+            and all(item.view_of is not None for item in buffers[first_view:])):
+        proposed = first_fit_buffer_assignment(buffers, banks)
+        if proposed is not None:
+            check_buffer_allocation(buffers, banks, proposed, reservations=reservations)
+            remaining_ms = None if deadline is None else int((deadline - monotonic()) * 1000)
+            if remaining_ms is not None and remaining_ms <= 0:
+                return BufferAllocation("unknown", reason="buffer allocation time budget exhausted")
+            pinned = tuple(replace(item, fixed_start=proposed[item.name]) for item in buffers)
+            return allocate_buffers(pinned, banks, reservations=reservations, timeout_ms=remaining_ms, rlimit=rlimit)
     solver = z3.Solver()
     solver.set(random_seed=0)
+    if rlimit is not None:
+        solver.set(rlimit=rlimit)
 
     def query():
-        remaining_ms = int((deadline - monotonic()) * 1000)
-        if remaining_ms <= 0:
-            return z3.unknown, "buffer allocation time budget exhausted"
-        solver.set(timeout=remaining_ms)
+        if deadline is not None:
+            remaining_ms = int((deadline - monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return z3.unknown, "buffer allocation time budget exhausted"
+            solver.set(timeout=remaining_ms)
         status = solver.check()
         return status, solver.reason_unknown() if status == z3.unknown else ""
 

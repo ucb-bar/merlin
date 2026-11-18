@@ -53,3 +53,5 @@ SmolVLA and ResNet-50 are held-out validation workloads, never capsule derivatio
 or tuning inputs. Partial checkpoints, synthetic data and one denoising stage
 remain explicitly diagnostic. The evaluator uses the selected OOT compiler and
 saved facts; it does not download a model or silently select a reference backend.
+
+To package a compiled application and run it on npu_model, see [unchanged_fx](unchanged_fx/README.md).

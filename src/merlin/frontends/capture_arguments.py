@@ -1,8 +1,9 @@
 """Normalize declared capture constants and buffer initializers for compilation.
 
-The capture producer stores these leaves in extra.npz. Only receipt-declared
-constants and manifest-declared buffers are selected. Runtime inputs, outputs
-and unrelated archive members never become compiler tensor arguments.
+Complete source archive bindings retain their original tensor bytes. Legacy
+extra.npz leaves are selected only for receipt-declared constants and
+manifest-declared buffers. Runtime inputs, outputs and unrelated archive
+members never become compiler tensor arguments.
 """
 
 import hashlib
@@ -17,15 +18,45 @@ import numpy as np
 CONSTANT_FILE = "capture-constants.safetensors"
 
 
+def _archived_lifted_constants(manifest: dict, lifted: dict) -> set[str]:
+    """Recognize complete source archive bindings without reconstructing their data."""
+    names = set()
+    for row in manifest.values():
+        if not isinstance(row, dict) or row.get("kind") != "constant" or "weight" not in row:
+            continue
+        if set(row) != {"kind", "name", "weight", "dtype", "shape"}:
+            raise ValueError("archived lifted constant has unknown manifest fields")
+        name = row["name"]
+        if not isinstance(name, str) or name not in lifted or name in names:
+            raise ValueError("capture has unbound or duplicate archived lifted constants")
+        declaration = lifted[name]
+        storage_dtype = "float32" if row["dtype"] == "bfloat16" else row["dtype"]
+        if (not isinstance(declaration, dict) or set(declaration) != {"shape", "dtype", "sha256"}
+                or declaration["shape"] != row["shape"] or declaration["dtype"] != storage_dtype
+                or not isinstance(declaration["sha256"], str) or len(declaration["sha256"]) != 64
+                or any(char not in "0123456789abcdef" for char in declaration["sha256"])):
+            raise ValueError("archived lifted constant differs from its capture declaration")
+        names.add(name)
+    return names
+
+
 def needs_materialization(manifest: dict, receipt: dict) -> bool:
     lifted = receipt.get("lifted_constants", {})
     names = (receipt.get("materialized_abi") or {}).get("lifted_constants", [])
     if (not isinstance(lifted, dict) or not isinstance(names, list)
-            or any(not isinstance(name, str) or not name.startswith("c_lifted_tensor_") for name in lifted)
+            or any(not isinstance(name, str) or not name.isidentifier() for name in lifted)
             or names != sorted(lifted)):
         raise ValueError("capture has unbound lifted constants or an invalid constant declaration")
-    return bool(lifted) or any(isinstance(row, dict) and (
-        row.get("kind") == "constant" or row.get("kind") == "buffer" and set(row) == {"kind", "name"}
+    archived = _archived_lifted_constants(manifest, lifted)
+    declared = {row.get("name") for row in manifest.values() if isinstance(row, dict)
+                and isinstance(row.get("name"), str)
+                and (row.get("kind") == "constant" or row.get("kind") == "input"
+                     and row["name"].startswith("c_lifted_tensor_") and row["name"] in lifted)}
+    if set(lifted) != declared:
+        raise ValueError("capture has unbound lifted constants or undeclared constant roles")
+    return bool(set(lifted) - archived) or any(isinstance(row, dict) and (
+        row.get("kind") == "constant" and "weight" not in row
+        or row.get("kind") == "buffer" and set(row) == {"kind", "name"}
     ) for row in manifest.values())
 
 
@@ -54,7 +85,9 @@ def _array(archive: zipfile.ZipFile, key: str, shape: list[int]) -> np.ndarray:
 
 
 def _encode(array: np.ndarray, actual: dict, dtypes: dict) -> tuple[str, str, bytes, str]:
-    matches = [(name, row) for name, row in dtypes.items() if row[0] == actual["dtype"]]
+    unsigned_bytes = actual["dtype"] == "i8" and array.dtype == np.dtype("uint8")
+    matches = [(name, row) for name, row in dtypes.items()
+               if (name == "uint8" if unsigned_bytes else row[0] == actual["dtype"])]
     if len(matches) != 1:
         raise ValueError("capture tensor has an unsupported source dtype")
     name, (_, encoding, width) = matches[0]
@@ -81,14 +114,15 @@ def materialize_arguments(
 ) -> tuple[dict, bytes, dict]:
     """Produce a consumer manifest and one small safetensors archive.
 
-    Existing model weights retain their bytes. Buffers remain state arguments;
+    Existing model weights and archived constants retain their bytes. Buffers remain state arguments;
     storing their initializer does not make them immutable parameters.
     """
     if set(manifest) != {str(i) for i in range(len(argument_types))}:
         raise ValueError("capture manifest does not cover the parsed function arguments")
     lifted = receipt.get("lifted_constants", {})
     needs_materialization(manifest, receipt)
-    result, tensors, entries, used = {}, {}, [], set()
+    result, tensors, entries = {}, {}, []
+    used = _archived_lifted_constants(manifest, lifted)
     try:
         archive = zipfile.ZipFile(BytesIO(extra))
     except zipfile.BadZipFile as exc:
@@ -111,6 +145,9 @@ def materialize_arguments(
             kind, name = row.get("kind"), row.get("name")
             if not isinstance(kind, str):
                 raise ValueError("capture manifest has an invalid argument kind")
+            if kind == "constant" and "weight" in row:
+                result[str(index)] = {**row, "file": "weights.safetensors"}
+                continue
             if kind in {"input", "constant"} and isinstance(name, str) and name in lifted:
                 if set(row) != {"kind", "name"}:
                     raise ValueError("lifted constant has unknown manifest fields")

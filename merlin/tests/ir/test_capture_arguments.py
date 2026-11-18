@@ -70,6 +70,243 @@ def _replace(root, name, raw):
     path.write_text(json.dumps(receipt))
 
 
+@pytest.mark.parametrize("dtype,width", [("float32", 4), ("bfloat16", 2)])
+@pytest.mark.parametrize("depth", [0, 2])
+@pytest.mark.parametrize("negative_zero", [False, True])
+def test_real_archived_lifted_constant_preserves_source_archive(
+        tmp_path, monkeypatch, dtype, width, depth, negative_zero):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("m2m")
+    from m2m.capture.bundle import write_bundle
+
+    class Literal(torch.nn.Module):
+        def forward(self, x):
+            return x + torch.tensor(-0.0 if negative_zero else 0.0, dtype=getattr(torch, dtype))
+
+    class Wrapper(torch.nn.Module):
+        def __init__(self, model):
+            super().__init__()
+            self.model = model
+
+        def forward(self, x):
+            return self.model(x)
+
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    model = Literal()
+    for _ in range(depth):
+        model = Wrapper(model)
+    write_bundle(model, (torch.ones(2, dtype=getattr(torch, dtype)),), capture,
+                 capture_regions=False, capture_trace=True)
+    members = ("weights.safetensors", "weights.safetensors.manifest.json", "model.mlir",
+               "capture_receipt.json", "extra.npz", "inputs.npz", "golden.npy")
+    before = {name: (capture / name).read_bytes() for name in members}
+    original_read = Path.read_bytes
+    reads = []
+
+    def no_evaluator_or_extra(path):
+        assert path.name not in {"inputs.npz", "golden.npy"}
+        reads.append(path.name)
+        return original_read(path)
+
+    with monkeypatch.context() as context:
+        context.setattr(Path, "read_bytes", no_evaluator_or_extra)
+        result = stage_compile_inputs(capture, stage)
+        loaded = load_compile_inputs(stage)
+        constant, = [row for row in loaded.argument_bindings if row["kind"] == "constant"]
+        assert constant == {"kind": "constant", "weight": "model." * depth + "lifted_tensor_0",
+                            "name": "c_" + "model_" * depth + "lifted_tensor_0", "shape": [],
+                            "dtype": "f32" if dtype == "float32" else "bf16"}
+        payloads = load_lifted_argument_bytes(stage, loaded, kinds=("constant",), max_bytes=width)
+        expected = bytes(width - 1) + (b"\x80" if negative_zero else b"\0")
+        assert list(payloads.values()) == [expected]
+        if dtype == "bfloat16" and not negative_zero:
+            assert _sha(expected) == "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7"
+        assert "extra.npz" not in reads
+    assert (stage / "weights.safetensors").read_bytes() == before["weights.safetensors"]
+    assert (stage / "weights.safetensors.manifest.json").read_bytes() == before["weights.safetensors.manifest.json"]
+    assert {name: (capture / name).read_bytes() for name in members} == before
+    assert "argument_materialization" not in result["source"]
+    assert not (stage / CONSTANT_FILE).exists()
+
+
+def _archived_capture(root, *, dtype="f32", scalar=None, encoding="F32", source_dtype="float32"):
+    """Mix an archive-backed scalar with a legacy extra-only buffer initializer."""
+    scalar = np.array(-0.0, dtype="float32") if scalar is None else scalar
+    _capture(root, dtype=dtype, scalar=scalar)
+    raw = (root / "weights.safetensors").read_bytes()
+    size = int.from_bytes(raw[:8], "little")
+    header = json.loads(raw[8:8 + size])
+    header["lifted_tensor_0"] = {"dtype": encoding, "shape": [],
+                                 "data_offsets": [8, 8 + scalar.nbytes]}
+    encoded = json.dumps(header).encode()
+    _replace(root, "weights.safetensors", struct.pack("<Q", len(encoded)) + encoded
+             + raw[8 + size:] + scalar.tobytes())
+    manifest = json.loads((root / "weights.safetensors.manifest.json").read_text())
+    manifest["1"] = {"kind": "constant", "name": "c_lifted_tensor_0",
+                     "weight": "lifted_tensor_0", "dtype": source_dtype, "shape": []}
+    _replace(root, "weights.safetensors.manifest.json", json.dumps(manifest).encode())
+
+
+@pytest.mark.parametrize("legacy_prefix", [False, True])
+def test_receipt_cannot_promote_a_real_named_runtime_input(tmp_path, legacy_prefix):
+    torch = pytest.importorskip("torch")
+    pytest.importorskip("m2m")
+    from m2m.capture.bundle import write_bundle
+
+    class NestedName(torch.nn.Module):
+        def forward(self, c_model_model_lifted_tensor_input):
+            return c_model_model_lifted_tensor_input
+
+    class LegacyName(torch.nn.Module):
+        def forward(self, c_lifted_tensor_input):
+            return c_lifted_tensor_input
+
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    value = torch.tensor([-0.0, 1.25])
+    write_bundle(LegacyName() if legacy_prefix else NestedName(), (value,), capture,
+                 capture_regions=False, capture_trace=True)
+    name, = json.loads((capture / "input_order.json").read_text())
+    receipt_path = capture / "capture_receipt.json"
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["lifted_constants"] == {}
+    receipt["lifted_constants"] = {name: {
+        "shape": [2], "dtype": "float32", "sha256": _sha(value.numpy().tobytes())}}
+    receipt["materialized_abi"]["lifted_constants"] = [name]
+    receipt_path.write_text(json.dumps(receipt))
+    with pytest.raises(ValueError, match="undeclared constant roles|runtime input positions"):
+        stage_compile_inputs(capture, stage)
+    assert not stage.exists()
+
+
+def test_staged_archived_constant_rejects_invalid_placeholder_even_after_resigning(tmp_path):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _archived_capture(capture)
+    stage_compile_inputs(capture, stage)
+    path = stage / "weights.safetensors.manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["1"]["name"] = "../outside"
+    path.write_text(json.dumps(manifest))
+    record_path = stage / "compile-inputs.json"
+    record = json.loads(record_path.read_text())
+    record["members"][path.name] = _sha(path.read_bytes())
+    record_path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="shape or dtype"):
+        load_compile_inputs(stage)
+
+
+def test_archived_constant_and_legacy_buffer_share_checked_signature(tmp_path, monkeypatch):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _archived_capture(capture)
+    original = (capture / "weights.safetensors").read_bytes()
+    opened, zip_open = [], zipfile.ZipFile.open
+
+    def checked_open(archive, member, *args, **kwargs):
+        opened.append(member)
+        return zip_open(archive, member, *args, **kwargs)
+
+    monkeypatch.setattr(zipfile.ZipFile, "open", checked_open)
+    result = stage_compile_inputs(capture, stage)
+    loaded = load_compile_inputs(stage)
+    assert loaded.argument_bindings[1] == {
+        "kind": "constant", "weight": "lifted_tensor_0", "name": "c_lifted_tensor_0",
+        "shape": [], "dtype": "f32", "file": "weights.safetensors"}
+    assert loaded.argument_bindings[2]["kind"] == "buffer"
+    assert loaded.argument_bindings[2]["file"] == CONSTANT_FILE
+    assert opened == ["buf::state.value.npy"]
+    assert result["source"]["argument_materialization"]["entries"][0]["role"] == "buffer"
+    assert load_lifted_argument_bytes(stage, loaded, kinds=("constant",), max_bytes=4) == {
+        1: struct.pack("<I", 0x80000000)}
+    assert (stage / "weights.safetensors").read_bytes() == original
+
+
+@pytest.mark.parametrize("dtype,scalar,encoding,source_dtype", [
+    ("i8", np.array(255, dtype="uint8"), "U8", "uint8"),
+    ("i32", np.array(-127, dtype="int32"), "I32", "int32"),
+])
+def test_archived_integer_codes_and_exponents_keep_raw_bytes(tmp_path, dtype, scalar, encoding, source_dtype):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _archived_capture(capture, dtype=dtype, scalar=scalar, encoding=encoding, source_dtype=source_dtype)
+    original = (capture / "weights.safetensors").read_bytes()
+    stage_compile_inputs(capture, stage)
+    loaded = load_compile_inputs(stage)
+    assert loaded.argument_bindings[1]["dtype"] == dtype
+    assert loaded.argument_bindings[1]["kind"] == "constant"
+    assert load_lifted_argument_bytes(stage, loaded, kinds=("constant",), max_bytes=scalar.nbytes) == {
+        1: scalar.tobytes()}
+    assert (stage / "weights.safetensors").read_bytes() == original
+
+
+def test_archived_and_extra_only_lifted_constants_coexist(tmp_path):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _archived_capture(capture)
+    value = np.array([1, -2], dtype="float32")
+    manifest = json.loads((capture / "weights.safetensors.manifest.json").read_text())
+    manifest["2"] = {"kind": "constant", "name": "c_lifted_tensor_1"}
+    _replace(capture, "weights.safetensors.manifest.json", json.dumps(manifest).encode())
+    extra = BytesIO()
+    np.savez(extra, c_lifted_tensor_0=np.array(-0.0, dtype="float32"), c_lifted_tensor_1=value)
+    _replace(capture, "extra.npz", extra.getvalue())
+    receipt_path = capture / "capture_receipt.json"
+    receipt = json.loads(receipt_path.read_text())
+    receipt["lifted_constants"]["c_lifted_tensor_1"] = {
+        "shape": [2], "dtype": "float32", "sha256": _sha(value.tobytes())}
+    receipt["materialized_abi"]["lifted_constants"].append("c_lifted_tensor_1")
+    receipt_path.write_text(json.dumps(receipt))
+    original = (capture / "weights.safetensors").read_bytes()
+    stage_compile_inputs(capture, stage)
+    loaded = load_compile_inputs(stage)
+    assert loaded.argument_bindings[1]["file"] == "weights.safetensors"
+    assert loaded.argument_bindings[2]["file"] == CONSTANT_FILE
+    assert loaded.argument_bindings[1]["kind"] == loaded.argument_bindings[2]["kind"] == "constant"
+    assert load_lifted_argument_bytes(stage, loaded, kinds=("constant",), max_bytes=12) == {
+        1: struct.pack("<I", 0x80000000), 2: value.tobytes()}
+    assert (stage / "weights.safetensors").read_bytes() == original
+
+
+@pytest.mark.parametrize("mutation,expected", [
+    ("unknown_field", "unknown manifest fields"),
+    ("missing_tensor", "safetensors shape or dtype"),
+    ("wrong_dtype", "capture declaration"),
+    ("wrong_shape", "capture declaration"),
+    ("unknown_placeholder", "unbound or duplicate"),
+    ("duplicate_placeholder", "unbound or duplicate"),
+    ("header_dtype", "safetensors shape or dtype"),
+    ("unbound_tensor", "stored tensor unbound"),
+])
+def test_invalid_archive_backed_constants_refuse_before_publication(tmp_path, mutation, expected):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _archived_capture(capture)
+    path = capture / "weights.safetensors.manifest.json"
+    rows = json.loads(path.read_text())
+    if mutation == "unknown_field":
+        rows["1"]["unknown"] = True
+    elif mutation == "missing_tensor":
+        rows["1"]["weight"] = "missing"
+    elif mutation == "wrong_dtype":
+        rows["1"]["dtype"] = "int32"
+    elif mutation == "wrong_shape":
+        rows["1"]["shape"] = [1]
+    elif mutation == "unknown_placeholder":
+        rows["1"]["name"] = "c_lifted_tensor_missing"
+    elif mutation == "duplicate_placeholder":
+        rows["2"] = dict(rows["1"])
+    else:
+        raw = (capture / "weights.safetensors").read_bytes()
+        size = int.from_bytes(raw[:8], "little")
+        header, payload = json.loads(raw[8:8 + size]), raw[8 + size:]
+        if mutation == "header_dtype":
+            header["lifted_tensor_0"]["dtype"] = "I32"
+        else:
+            header["unbound"] = {"dtype": "U8", "shape": [1], "data_offsets": [12, 13]}
+            payload += b"\x01"
+        encoded = json.dumps(header).encode()
+        _replace(capture, "weights.safetensors", struct.pack("<Q", len(encoded)) + encoded + payload)
+    _replace(capture, path.name, json.dumps(rows).encode())
+    with pytest.raises(ValueError, match=expected):
+        stage_compile_inputs(capture, stage)
+    assert not stage.exists()
+
+
 def test_declared_leaves_only_and_buffer_remains_state(tmp_path, monkeypatch):
     from merlin.compile.application_state import StateDeclaration
     from merlin.compile.c_parameters import freeze_c_arguments
@@ -303,3 +540,36 @@ def test_duplicate_zip_members_refuse():
                               {"lifted_constants": {"c_lifted_tensor_0": {}},
                                "materialized_abi": {"lifted_constants": ["c_lifted_tensor_0"]}},
                               stream.getvalue(), _WEIGHT_DTYPES)
+
+
+def test_producer_declared_readonly_buffer_is_an_immutable_constant(tmp_path):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _capture(capture)
+    meta = json.loads((capture / "meta.json").read_text())
+    meta["read_only_buffer_arguments"] = [2]
+    _replace(capture, "meta.json", json.dumps(meta).encode())
+    stage_compile_inputs(capture, stage)
+    loaded = load_compile_inputs(stage)
+    assert loaded.argument_bindings[2]["kind"] == "constant"
+    assert load_lifted_argument_bytes(stage, loaded)[2] == struct.pack("<2f", 1, -2)
+
+
+@pytest.mark.parametrize("indices", [[3], [99], [2, 2], [True], "2"])
+def test_readonly_buffer_declaration_must_name_unique_buffer_arguments(tmp_path, indices):
+    capture, stage = tmp_path / "capture", tmp_path / "stage"
+    _capture(capture)
+    meta = json.loads((capture / "meta.json").read_text())
+    meta["read_only_buffer_arguments"] = indices
+    _replace(capture, "meta.json", json.dumps(meta).encode())
+    with pytest.raises(ValueError, match="read-only buffer declaration"):
+        stage_compile_inputs(capture, stage)
+    assert not stage.exists()
+
+
+def test_logical_uint8_source_codes_use_signless_i8_without_conversion():
+    from merlin.frontends.capture_arguments import _encode
+
+    codes = np.array([0x80, 0xfe, 0x7e, 0xb8], dtype="uint8")
+    dtype, encoding, payload, codec = _encode(codes, {"shape": [4], "dtype": "i8"}, _WEIGHT_DTYPES)
+    assert (dtype, encoding, payload) == ("uint8", "U8", codes.tobytes())
+    assert codec == "byte-preserving-little-endian-storage"

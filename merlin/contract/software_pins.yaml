@@ -17,18 +17,25 @@ pins:
       shift and floor-division decompositions, PT2E integer-contraction capture, and literal
       quantization-parameter lowering; missing any of these leaves supported operations opaque.
     repo_canonical: https://github.com/ucb-bar/model2MLIR.git
-    commit: "8893a37480b4560f701089e5bf408644573a906f"
+    commit: "ebb1c600e0d7f3205c801d8f00acb960015b32f2"
     root_env: MERLIN_M2M_DIR
     requires_paths:
+      - m2m/api.py
+      - m2m/capture/external_quantization.py
+      - m2m/capture/trace.py
+      - m2m/capture/torch_export.py
       - m2m/ir/decompositions.py
       - m2m/ir/import_fx.py
+      - m2m/transforms/externalize.py
       - m2m/capture/pt2e_integer_reference.py
       - m2m/capture/pt2e_integerize.py
       - m2m/capture/bundle.py
       - m2m/capture/provenance.py
       - m2m/capture/torchao_pipeline.py
       - tests/test_integer_shift_floordiv.py
+      - m2m/capture/torch_mlir_bridge.py
     content_check: true
     notes: >-
-      Published model2MLIR main, including signed-integer lowering, portable per-tensor
-      static quantization and preservation of registered-buffer dtypes in capture bundles.
+      Supplied by https://github.com/reed-nicolas/model2MLIR/tree/feat/tinyllama
+      (https://github.com/ucb-bar/model2MLIR/pull/7) until it merges; fetch it from
+      a named fork remote.

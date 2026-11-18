@@ -66,7 +66,8 @@ class ApplicationParameters:
                 node.op != "input" or node.effect != "input" or key not in dict(source.input_storages)
                 or type(entry.arg_index) is not int or entry.arg_index < 0
                 or tuple(entry.shape) != node.type.shape or width is None or entry.dtype not in DTYPE_BYTES
-                or not any(dtype[0] == node.type.dtype and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
+                or not any((dtype[0] == node.type.dtype or node.type.dtype == "i8" and dtype[1] == "U8")
+                           and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
                 or type(entry.offset) is not int or entry.offset < 0 or entry.offset % width
                 or type(entry.nbytes) is not int or entry.nbytes != prod(node.type.shape) * width
                 or entry.offset + entry.nbytes > self.payload_bytes
@@ -100,7 +101,7 @@ class ApplicationParameters:
         if (info["payload_sha256"], info["payload_bytes"]) != (self.payload_sha256, self.payload_bytes):
             raise ValueError("model parameter payload changed during publication")
 
-    def emit_binding(self, name):
+    def emit_binding(self, name, *, physical_address=None):
         from merlin.common.paths import runtime_dir
 
         # Reuse the installed byte SHA256 implementation. Its output-specific
@@ -109,12 +110,14 @@ class ApplicationParameters:
         tag = int(self.payload_sha256[:16], 16)
         alignment = max(DTYPE_BYTES[entry.dtype] for entry in self.entries)
         expected = ",".join(str(byte) for byte in bytes.fromhex(self.payload_sha256))
+        lifetime = ("immutable until all calls/recovery finish." if physical_address is None
+                    else "at the published addresses; refill only at generated request boundaries.")
         declarations = f"""
 typedef struct {{ const unsigned char *data; size_t bytes; uintptr_t seal; }} {name}_parameters;
 #define {name.upper()}_PARAMETER_BYTES {self.payload_bytes}u
 #define {name.upper()}_PARAMETER_ALIGNMENT {alignment}u
 /* Bind once while idle. Keep the descriptor at this address and the bytes
- * immutable until all calls/recovery finish.
+ * {lifetime}
  * Failed binding leaves the previous descriptor intact. No allocation is performed. */
 int {name}_parameters_bind({name}_parameters *,const void *,size_t);
 """
@@ -138,6 +141,17 @@ int {name}_parameters_bind({name}_parameters *p,const void *data,size_t bytes) {
   if (mismatch) return -2;
   *p=({name}_parameters){{data,bytes,(uintptr_t)p^(uintptr_t)data^(uintptr_t)bytes^(uintptr_t)UINT64_C({tag})}};
   return 0;
+}}
+"""
+        if physical_address is not None:
+            implementation = f"""
+static int {name}_parameters_ready(const {name}_parameters *p) {{
+  return {name}_valid(p,sizeof(*p)) && p->data==(const unsigned char *)(uintptr_t){physical_address}u && p->bytes=={self.payload_bytes}u && p->seal==1u;
+}}
+int {name}_parameters_bind({name}_parameters *p,const void *data,size_t bytes) {{
+  (void)merlin_output_sha256;
+  if (!{name}_valid(p,sizeof(*p)) || {name}_overlap(p,sizeof(*p),data,bytes) || data!=(const void *)(uintptr_t){physical_address}u || bytes!={self.payload_bytes}u) return -1;
+  *p=({name}_parameters){{data,bytes,1u}}; return 0;
 }}
 """
         return declarations, implementation, {"parameter_sha256.h": checksum}

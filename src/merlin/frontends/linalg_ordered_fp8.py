@@ -146,7 +146,7 @@ def is_positive_bf16_zero(op) -> bool:
     from xdsl.dialects.arith import ConstantOp
     from xdsl.dialects.builtin import BFloat16Type, FloatAttr
 
-    if type(op) is not ConstantOp or len(op.results) != 1 or op.attributes or set(op.properties) != {"value"}:
+    if type(op) is not ConstantOp or len(op.results) != 1 or any(not key.startswith("prov.") for key in op.attributes) or set(op.properties) != {"value"}:
         return False
     value = op.properties["value"]
     return (

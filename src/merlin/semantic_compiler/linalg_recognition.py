@@ -578,6 +578,26 @@ def _i64_to_f32_bits(value: int) -> int:
     return (int(value < 0) << 31) | ((exponent + 127) << 23) | (significand & ((1 << 23) - 1))
 
 
+def _scalar_bf16_bits(op) -> int:
+    """Read an already typed finite BF16 literal without changing its bits."""
+    from math import isfinite
+
+    from xdsl.dialects.builtin import BFloat16Type, FloatAttr
+
+    literal = op.properties.get("value")
+    if (
+        not isinstance(literal, FloatAttr)
+        or not isinstance(literal.type, BFloat16Type)
+        or literal.type != op.results[0].type
+        or set(op.properties) != {"value"}
+        or any(not key.startswith("prov.") for key in op.attributes)
+        or not isfinite(literal.value.data)
+    ):
+        raise LinalgBridgeError("BF16 scalar needs an exact finite typed literal")
+    op.verify()
+    return int.from_bytes(literal.type.pack((literal.value.data,)), "little")
+
+
 def _scalar_f32_bits(op) -> int:
     from math import isnan
 
@@ -608,3 +628,32 @@ def _named_matmul_maps_are_default(op) -> bool:
     return tuple(attr.data for attr in op.get_indexing_maps()) == expected and tuple(
         attr.data for attr in op.get_iterator_types()
     ) == (IteratorType.PARALLEL, IteratorType.PARALLEL, IteratorType.REDUCTION)
+
+
+def _verify_source_floating_matmul(op) -> None:
+    """Check a closed ordinary floating contraction without choosing its order."""
+    from .precision_intake import _check_matmul_body
+    if set(op.properties) != {"indexing_maps", "operandSegmentSizes"} or any(
+        not key.startswith("prov.") for key in op.attributes
+    ):
+        raise LinalgBridgeError("source f32 matmul has an unknown semantic attribute")
+    _check_matmul_body(op)
+    try:
+        op.verify()
+    except Exception as exc:  # noqa: BLE001 - xDSL owns source verification
+        raise LinalgBridgeError(f"source f32 matmul failed verification: {exc}") from exc
+
+
+def _verify_bf16_zero_fill(op) -> None:
+    """Preserve the authored scalar in a closed positive-zero fill body."""
+    if any(not key.startswith("prov.") for key in op.attributes):
+        raise LinalgBridgeError("BF16 zero fill has unknown attributes")
+    if (len(op.regions) != 1 or len(op.regions[0].blocks) != 1
+            or len(op.regions[0].block.args) != 2
+            or tuple(item.name for item in op.regions[0].block.ops) != ("linalg.yield",)
+            or tuple(op.regions[0].block.last_op.operands) != (op.regions[0].block.args[0],)):
+        raise LinalgBridgeError("BF16 zero fill scalar body differs from its source value")
+    try:
+        op.verify()
+    except Exception as exc:
+        raise LinalgBridgeError(f"BF16 zero fill failed verification: {exc}") from exc

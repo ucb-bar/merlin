@@ -10,17 +10,21 @@ from merlin.semantic_compiler.reference import TensorValue, evaluate_graph
 
 
 def program(inputs, result, body, size=8):
-    tensors = [f"tensor<{size}x{dtype}>" for dtype in inputs]
-    output = f"tensor<{size}x{result}>"
+    shape = size if isinstance(size, tuple) else (size,)
+    dimensions = "x".join(map(str, shape))
+    tensors = [f"tensor<{dimensions}x{dtype}>" for dtype in inputs]
+    output = f"tensor<{dimensions}x{result}>"
     args = ", ".join(f"%arg{i}: {t}" for i, t in enumerate(tensors))
     values = ", ".join(f"%arg{i}" for i in range(len(inputs)))
     types = ", ".join(tensors)
-    maps = ", ".join(["affine_map<(d) -> (d)>"] * (len(inputs) + 1))
+    indices = ",".join(f"d{i}" for i in range(len(shape)))
+    maps = ", ".join([f"affine_map<({indices}) -> ({indices})>"] * (len(inputs) + 1))
+    iterators = ", ".join(['"parallel"'] * len(shape))
     scalar_args = ", ".join([*(f"%x{i}: {t}" for i, t in enumerate(inputs)), f"%unused: {result}"])
     return f"""module {{
       func.func @forward({args}) -> {output} {{
         %empty = tensor.empty() : {output}
-        %result = linalg.generic {{indexing_maps = [{maps}], iterator_types = ["parallel"]}}
+        %result = linalg.generic {{indexing_maps = [{maps}], iterator_types = [{iterators}]}}
           ins({values} : {types}) outs(%empty : {output}) {{
         ^bb0({scalar_args}):
           {body}
@@ -104,12 +108,101 @@ def test_large_projected_select_stays_symbolic_and_broadcasts_a_scalar_tensor():
     assert large.request.nodes[-1].type.shape == (2, 2000000)
 
 
-def test_large_literal_expansion_retains_a_resource_limit():
+def test_large_literal_broadcast_stores_one_element_without_expanding_values():
+    from merlin.semantic_compiler.source_preparation import prepare_source, verify_source_preparation
+
+    source = program(("i1",), "i1", "%one = arith.constant true\n%value = arith.xori %x0, %one : i1", (3, 700001))
+    result = translate(source)
+    literal = result.request.nodes[1]
+    broadcast = result.request.nodes[2]
+    assert literal.type.shape == ()
+    assert result.request.constants[0].data_hex == "01"
+    assert result.constants[literal.id].elements == (1,)
+    assert broadcast.op == "gather" and broadcast.inputs == (literal.id,)
+    assert broadcast.type.shape == (3, 700001)
+    assert broadcast.index_maps[0].coefficients == broadcast.index_maps[0].offsets == ()
+    assert broadcast.index_maps[0].loop_rank == 2
+    assert type(result.request).from_record(result.request.record()).digest() == result.request.digest()
+    prepared, receipt = prepare_source(result.request)
+    assert prepared.constants == result.request.constants
+    assert prepared.node(broadcast.id).op == "gather"
+    assert receipt["deferred"] == [{"node": broadcast.id, "reason": "element_budget"}]
+    assert verify_source_preparation(prepared, receipt).digest() == result.request.digest()
+
+
+def test_exact_preparation_absorbs_scalar_f32_broadcast_without_dense_payloads():
+    from merlin.semantic_compiler.source_preparation import prepare_source, verify_source_preparation
+
+    shape = (3, 700001)
+    source = program(("f32", "f32", "f32"), "f32", """%literal = arith.constant -0.0 : f32
+      %value = arith.addf %x0, %literal : f32""", shape)
+    result = translate(source)
+    prepared, receipt = prepare_source(result.request)
+    binding, = prepared.constants
+    assert binding.data_hex == "00000080"
+    assert prepared.node(binding.node_id).type.shape == ()
+    assert not any(node.op == "gather" for node in prepared.nodes)
+    addition = prepared.nodes[-1]
+    assert addition.inputs == ("arg0", binding.node_id)
+    assert addition.index_maps[1].coefficients == addition.index_maps[1].offsets == ()
+    assert verify_source_preparation(prepared, receipt).digest() == result.request.digest()
+
+
+def test_absorbed_scalar_f32_broadcast_preserves_signed_zero_and_infinities():
+    from merlin.semantic_compiler.affine_views import fuse_affine_views, verify_affine_views
+
+    source = program(("f32", "f32", "f32"), "f32", """%literal = arith.constant -0.0 : f32
+      %value = arith.addf %x0, %literal : f32""", (3, 7))
+    result = translate(source)
+    fused, receipt = fuse_affine_views(result.request)
+    assert verify_affine_views(fused, receipt).digest() == result.request.digest()
+    bits = (0, 0x80000000, 1, 0x80000001, 0x3f800000, 0x7f800000, 0xff800000) * 3
+    inputs = {key: TensorValue(fused.node(key).type, bits) for key in ("arg0", "arg1", "arg2")}
+    assert evaluate_graph(fused, inputs, constants=result.constants) == evaluate_graph(
+        result.request, inputs, constants=result.constants,
+    )
+
+
+def test_scalar_literal_storage_retains_a_resource_limit():
+    from merlin.frontends.linalg_mlir import parse_mlir_text
+    from merlin.semantic_compiler.scalar_region import translate_scalar_region
     from merlin.semantic_compiler.target_binding import NativeCompilationError
 
-    source = program(("i1",), "i1", "%one = arith.constant true\n%value = arith.xori %x0, %one : i1", 2000000)
+    source = program(("i1",), "i1", """%one = arith.constant true
+      %zero = arith.constant false
+      %value = arith.select %x0, %one, %zero : i1""", (3, 5))
+    op = next(op for op in parse_mlir_text(source).walk() if op.name == "linalg.generic")
+    assert len(translate_scalar_region(op, ("arg0",), prefix="test", max_elements=2).constants) == 2
     with pytest.raises(NativeCompilationError, match="materialized element budget"):
-        translate(source)
+        translate_scalar_region(op, ("arg0",), prefix="test", max_elements=1)
+    with pytest.raises(NativeCompilationError, match="materialized element budget"):
+        translate_scalar_region(op, ("arg0",), prefix="test", max_elements=0)
+
+
+@pytest.mark.parametrize("shape", [(7,), (2, 3, 5), (1, 7, 3)])
+@pytest.mark.parametrize("dtype,literal,encoding,payload,bits", [
+    ("f32", "-0.0 : f32", "f32-le-raw", "00000080", 0x80000000),
+    ("f64", "-0.0 : f64", "f64-le-raw", "0000000000000080", 1 << 63),
+    ("bf16", "-0.0 : bf16", "bf16-le-raw", "0080", 0x8000),
+    ("i64", "-7 : i64", "i64-le", "f9ffffffffffffff", -7),
+    ("i1", "true", "i1-raw", "01", 1),
+])
+def test_literal_broadcast_preserves_exact_encoding_and_tail_coordinates(shape, dtype, literal, encoding, payload, bits):
+    from math import prod
+
+    result = translate(program(("i1", dtype, dtype), dtype, f"%value = arith.constant {literal}", shape))
+    binding, = result.request.constants
+    assert binding.encoding == encoding and binding.data_hex == payload
+    assert result.constants[binding.node_id].elements == (bits,)
+    assert execute(result, (1,) * prod(shape), (0,) * prod(shape), (0,) * prod(shape)) == (bits,) * prod(shape)
+
+
+@pytest.mark.parametrize("dtype,literal", [("f32", "0x7FC00001"), ("f64", "0x7FF8000000000001"), ("bf16", "0x7FC0")])
+def test_scalar_literal_nan_payload_remains_unqualified(dtype, literal):
+    with pytest.raises(ValueError, match="NaN payload"):
+        translate(program(("i1", dtype, dtype), dtype,
+                          f"%value = arith.constant {literal} : {dtype}",
+                          (3, 5)))
 
 
 def execute(translated, *arrays):
@@ -140,7 +233,7 @@ def test_ordered_clamp_preserves_nan_payloads_and_equal_signed_zero():
         0x7FC01234,
         0x80000000,
     )
-    assert [n.op for n in translated.request.nodes[1:]] == ["constant", "mask", "select"]
+    assert [n.op for n in translated.request.nodes[1:]] == ["constant", "gather", "mask", "select"]
     assert type(translated.request).from_record(translated.request.record()).digest() == translated.request.digest()
 
 

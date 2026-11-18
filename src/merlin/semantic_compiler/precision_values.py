@@ -46,6 +46,9 @@ class FloatBoundarySpec:
     pre_encode_scale_exponent: int = 0  # Multiply source by 2**e before encoding.
     canonicalize_negative_zero: bool = False  # Explicit lossy source-boundary choice.
     post_decode_scale_exponent: int = 0  # Restore logical units after a scaled contraction.
+    underflow_rounding: str = "flush-before-rounding"
+    column_scale_exponents: tuple[tuple[int, int, int], ...] = ()
+    scale_axis: int = 1
 
     def __post_init__(self) -> None:
         if not self.policy or self.direction not in {"encode", "decode"}:
@@ -80,6 +83,22 @@ class FloatBoundarySpec:
             raise ValueError("post-decode scale exponent must be an integer in [-64, 64]")
         if self.direction == "encode" and self.post_decode_scale_exponent:
             raise ValueError("encode cannot have a post-decode scale")
+        if self.underflow_rounding not in {"flush-before-rounding", "round-normal-significand-then-flush"}:
+            raise ValueError("unsupported underflow rounding policy")
+        if self.underflow_rounding != "flush-before-rounding" and (not self.flush_below_normal or self.direction != "encode"):
+            raise ValueError("normal-significand underflow rounding requires a flushing encode")
+        previous_column = 0
+        for start, stop, exponent in self.column_scale_exponents:
+            if (any(type(value) is not int for value in (start, stop, exponent))
+                    or start != previous_column or stop <= start or not -64 <= exponent <= 64):
+                raise ValueError("column scales must form a contiguous partition with bounded exponents")
+            if self.direction == "encode" and not -32 <= exponent <= 32:
+                raise ValueError("column encode scale outside [-32,32]")
+            previous_column = stop
+        if self.column_scale_exponents and (self.pre_encode_scale_exponent or self.post_decode_scale_exponent):
+            raise ValueError("choose scalar or column scale exponents")
+        if type(self.scale_axis) is not int or self.scale_axis not in (0, 1):
+            raise ValueError("scale axis must be 0 or 1")
         bit_max = (1 << storage_bits(self.format)) - 1
         previous = -1
         for low, high in self.admitted_code_ranges:
@@ -105,7 +124,26 @@ class FloatBoundarySpec:
             record["canonicalize_negative_zero"] = True
         if self.post_decode_scale_exponent:
             record["post_decode_scale_exponent"] = self.post_decode_scale_exponent
+        if self.underflow_rounding != "flush-before-rounding":
+            record["underflow_rounding"] = self.underflow_rounding
+        if self.column_scale_exponents:
+            record["column_scale_exponents"] = [list(panel) for panel in self.column_scale_exponents]
+            if self.scale_axis != 1:
+                record["scale_axis"] = self.scale_axis
         return record
+
+    def scalar_panel(self, exponent: int) -> "FloatBoundarySpec":
+        from dataclasses import replace
+        return replace(self, column_scale_exponents=(), **{
+            "pre_encode_scale_exponent" if self.direction == "encode" else "post_decode_scale_exponent": exponent})
+
+    def _column_convert(self, values: np.ndarray) -> np.ndarray:
+        if values.ndim != 2 or values.shape[self.scale_axis] != self.column_scale_exponents[-1][1]:
+            raise ValueError("column scale partition differs from complete tensor shape")
+        slices = [(slice(start, stop), slice(None)) if self.scale_axis == 0 else (slice(None), slice(start, stop))
+                  for start, stop, _exponent in self.column_scale_exponents]
+        return np.concatenate([getattr(self.scalar_panel(exponent), self.direction)(values[window])
+                               for window, (_start, _stop, exponent) in zip(slices, self.column_scale_exponents, strict=True)], axis=self.scale_axis)
 
     def encode(self, source: np.ndarray) -> np.ndarray:
         """Return logical code elements, before any target physical packing."""
@@ -113,6 +151,8 @@ class FloatBoundarySpec:
             raise ValueError("encode requires a float32 source array and an encode policy")
         if not np.isfinite(source).all():
             raise ValueError("nonfinite source is outside the selected boundary policy")
+        if self.column_scale_exponents:
+            return self._column_convert(source)
         eb, mb, bias, scheme = float_format_params(self.format)
         top = (1 << eb) - 1
         maximum = (
@@ -129,7 +169,12 @@ class FloatBoundarySpec:
         values = np.clip(scaled, -max_value, max_value).astype(np.float32)
         if self.flush_below_normal:
             min_value = 2.0 ** (self.min_normal_exponent_code - bias)
-            values = np.where(np.abs(values) < min_value, np.copysign(np.float32(0), values), values)
+            threshold = min_value
+            if self.underflow_rounding == "round-normal-significand-then-flush":
+                threshold *= 1.0 - 2.0 ** (-mb - 2)
+                values = np.where((np.abs(values) >= threshold) & (np.abs(values) < min_value),
+                                  np.copysign(np.float32(min_value), values), values)
+            values = np.where(np.abs(values) < threshold, np.copysign(np.float32(0), values), values)
         codes = float_to_codes(values, self.format).reshape(source.shape)
         if self.canonicalize_negative_zero:
             codes = np.where(codes == 1 << (storage_bits(self.format) - 1), 0, codes)
@@ -153,6 +198,8 @@ class FloatBoundarySpec:
             or (codes >= (1 << storage_bits(self.format))).any()
         ):
             raise ValueError("decode requires unsigned in-range code elements and a decode policy")
+        if self.column_scale_exponents:
+            return self._column_convert(codes)
         decoded = codes_to_f32(codes, self.format).reshape(codes.shape)
         if self.post_decode_scale_exponent:
             # Scale finite values in binary64, then round once to binary32.

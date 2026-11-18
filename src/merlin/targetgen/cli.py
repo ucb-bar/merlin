@@ -27,6 +27,7 @@ from . import pipeline
 from .dialect_source_scope import audit_dialect_source_scope
 from .isa_census import derive_source_census
 from .isa_mode_audit import audit_mode_inventory
+from .native_codegen_cli import requested_io_memory_options, require_io_memory_capabilities
 from .validate import check_generated_target
 
 
@@ -222,25 +223,19 @@ def _cmd_native_build(args: argparse.Namespace) -> int:
         build_native_snapshot,
         packaged_egg_bridge_path,
     )
-    from merlin.semantic_compiler.target_binding import NativeCompilationError, load_native_target_binding
+    from merlin.semantic_compiler.target_binding import load_native_target_binding
 
     try:
         if bool(args.profile) == bool(args.support):
             raise ValueError("select exactly one native target profile or installed support provider")
         with codegen_options(options_from_args(args)):
             if args.profile:
-                if getattr(args, "io_memory_bytes", None) is not None:
+                if requested_io_memory_options(args):
                     raise ValueError("an explicit profile already declares its I/O storage geometry")
                 profile = NativeTargetProfile.from_record(json.loads(Path(args.profile).read_text()))
             else:
                 binding = load_native_target_binding(args.support)
-                if getattr(args, "io_memory_bytes", None) is not None and "io_memory_bytes" not in getattr(
-                    binding, "codegen_capabilities", ()
-                ):
-                    raise NativeCompilationError(
-                        "unsupported_semantics",
-                        "selected support does not accept io_memory_bytes",
-                    )
+                require_io_memory_capabilities(args, binding)
                 profile = binding.profile()
         snapshot = build_native_snapshot(
             profile,
@@ -624,7 +619,7 @@ def _native_select_with_options(args: argparse.Namespace) -> int:
 
     output = Path(args.out)
     try:
-        if getattr(args, "io_memory_bytes", None) is not None and not args.support:
+        if requested_io_memory_options(args) and not args.support:
             raise ValueError("I/O memory selection requires an explicit support provider")
         snapshot = open_native_snapshot(Path(args.snapshot))
         binding = (
@@ -633,19 +628,15 @@ def _native_select_with_options(args: argparse.Namespace) -> int:
                 args.diagnostic_region
                 or args.diagnostic_graph_policy
                 or getattr(args, "row_softmax_tile_index", None) is not None
-                or getattr(args, "io_memory_bytes", None) is not None
+                or requested_io_memory_options(args)
             )
             and args.support
             else None
         )
         if binding is not None and snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
-        if (
-            binding is not None
-            and getattr(args, "io_memory_bytes", None) is not None
-            and "io_memory_bytes" not in getattr(binding, "codegen_capabilities", ())
-        ):
-            raise NativeCompilationError("unsupported_semantics", "selected support does not accept io_memory_bytes")
+        if binding is not None:
+            require_io_memory_capabilities(args, binding)
         request, source_kind, source_operations, precision_plan = _load_selected_native_request(
             args,
             target_identity=snapshot.profile.target_identity,
@@ -750,6 +741,16 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
     )
 
     try:
+        if getattr(args, "application_residency", False) and not getattr(args, "application", False):
+            raise ValueError("--application-residency requires --application")
+        if getattr(args, "already_quantized", False) and not getattr(args, "application", False):
+            raise ValueError("--already-quantized requires --application")
+        if getattr(args, "application_common_values", False) and not getattr(args, "application", False):
+            raise ValueError("--application-common-values requires --application")
+        if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
+            raise ValueError("--application-compose-reshapes requires --application")
+        if getattr(args, "application_buffer_views", False) and not getattr(args, "application", False):
+            raise ValueError("--application-buffer-views requires --application")
         if getattr(args, "application_state", None) and not getattr(args, "application", False):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded" and not args.application:
@@ -764,10 +765,12 @@ def _native_compile_report_with_options(args: argparse.Namespace) -> dict:
                 ("reduction_unroll", options.reduction_unroll != "auto"),
                 ("tuning_profile", options.tuning_profile is not None),
                 ("program_size_limit_bytes", options.program_size_limit_bytes is not None),
+                ("execution_instruction_limit", options.execution_instruction_limit is not None),
                 ("io_memory_bytes", options.io_memory_bytes is not None),
             )
             if active
         }
+        requested.update(requested_io_memory_options(options))
         unsupported = requested - set(getattr(binding, "codegen_capabilities", ()))
         if unsupported:
             raise NativeCompilationError(
@@ -1125,6 +1128,30 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
     """Reopen a native package against its source and snapshot identities."""
     from merlin.semantic_compiler.codegen import codegen_options, options_from_args
 
+    if getattr(args, "application", False) and (Path(args.artifact) / "manifest.json").is_file():
+        from copy import copy
+        from merlin.semantic_compiler.codegen import APPLICATION_BUDGET_OPTIONS, application_budget_options
+
+        try:
+            manifest = json.loads((Path(args.artifact) / "manifest.json").read_bytes())
+            requested = {name: getattr(args, name, None) for name in APPLICATION_BUDGET_OPTIONS}
+            explicit = getattr(args, "_explicit_codegen_fields", ())
+            if not requested["exact_float_unroll"] and "exact_float_unroll" not in explicit:
+                requested["exact_float_unroll"] = None
+            budgets = application_budget_options(manifest, requested)
+            args = copy(args)
+            published_residency = manifest.get("application_residency", False)
+            if "application_residency" in explicit and args.application_residency != published_residency:
+                raise ValueError("selected residency differs from compiled application")
+            args.application_residency = published_residency
+            for name, value in budgets.items():
+                setattr(args, name, value)
+        except (ValueError, OSError, TypeError, KeyError) as error:
+            output = Path(args.out)
+            if not (output.resolve().is_relative_to(Path(args.artifact).resolve())
+                    or output.resolve().is_relative_to(Path(args.snapshot).resolve())):
+                _write_status(output, {"status": "compile_error", "reason": str(error)})
+            return 2
     with codegen_options(options_from_args(args)):
         return _native_verify_with_options(args)
 
@@ -1149,6 +1176,12 @@ def _native_verify_with_options(args: argparse.Namespace) -> int:
         or status_path.resolve().is_relative_to(Path(args.snapshot).resolve())
     )
     try:
+        if getattr(args, "application_common_values", False) and not getattr(args, "application", False):
+            raise ValueError("--application-common-values requires --application")
+        if getattr(args, "application_compose_reshapes", False) and not getattr(args, "application", False):
+            raise ValueError("--application-compose-reshapes requires --application")
+        if getattr(args, "application_buffer_views", False) and not getattr(args, "application", False):
+            raise ValueError("--application-buffer-views requires --application")
         if getattr(args, "application_state", None):
             raise ValueError("--application-state requires --application")
         if getattr(args, "application_parameters", "embedded") != "embedded":
@@ -1156,15 +1189,11 @@ def _native_verify_with_options(args: argparse.Namespace) -> int:
         if not safe_status:
             raise ValueError("native verification status must be outside the artifact and snapshot directories")
         snapshot = open_native_snapshot(Path(args.snapshot))
-        if getattr(args, "io_memory_bytes", None) is not None and not args.support:
+        if requested_io_memory_options(args) and not args.support:
             raise ValueError("I/O memory selection requires an explicit support provider")
         binding = load_native_target_binding(args.support) if args.support else None
-        if (
-            binding is not None
-            and getattr(args, "io_memory_bytes", None) is not None
-            and "io_memory_bytes" not in getattr(binding, "codegen_capabilities", ())
-        ):
-            raise NativeCompilationError("unsupported_semantics", "selected support does not accept io_memory_bytes")
+        if binding is not None:
+            require_io_memory_capabilities(args, binding)
         if binding is not None and snapshot.profile.digest() != binding.profile().digest():
             raise ValueError("native snapshot differs from selected support profile")
         request, source_kind, _, precision_plan = _load_selected_native_request(
@@ -1318,7 +1347,7 @@ def _native_verify_with_options(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "verified_artifacts" else 2
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(binding=None) -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(prog="merlin-targetgen", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1417,14 +1446,25 @@ def build_parser() -> argparse.ArgumentParser:
             "native_bridge_graph": _cmd_native_bridge_graph,
             "native_verify": _cmd_native_verify,
         },
+        binding=binding,
     )
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    # Parse only the provider selector first, then let that provider register its options.
+    bootstrap = argparse.ArgumentParser(add_help=False)
+    bootstrap.add_argument("--support")
+    selected, _ = bootstrap.parse_known_args(argv)
+    binding = None
+    if selected.support:
+        from merlin.semantic_compiler.target_binding import load_native_target_binding
+        binding = load_native_target_binding(selected.support)
+    parser = build_parser(binding=binding)
     args = parser.parse_args(argv)
+    from .native_codegen_cli import prepare_native_arguments
+    prepare_native_arguments(args, binding)
     return args.func(args)
 
 
