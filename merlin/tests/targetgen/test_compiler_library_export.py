@@ -88,7 +88,23 @@ from merlin.compile.scheduling.static_schedule import schedule_fixed_block, mate
 from merlin.compile.scheduling.timed_schedule import TimedEffects
 from merlin.compile.scheduling.completion_schedule import make_completion_plan, apply_completion_plan
 from merlin.llvmlower.floating_contractions import outline_floating_matmuls, static_tensor_signature, callback_bridge
-from merlin.sched.ir import Call, Const, Kernel, Loop
+from merlin.sched.ir.kernel import Call, Kernel, Loop
+from merlin.sched.ir.expr import Const
+from merlin.compile.scheduling.compact_dense import (
+    DenseLoopAdapter, DenseLoopStorage, DenseMemoryView, schedule_compact_dense,
+)
+from merlin.compile.scheduling.dense_tile_ir import encode_dense_tile, project_dense_tile
+from merlin.transforms.dense_planning import DenseProblem, DenseResources
+problem = DenseProblem(4, 8, 4, 4, 4, 4, 1, 1, 2)
+storage = DenseLoopStorage(DenseMemoryView("lhs", "operands", 4, 0, 4),
+                           DenseMemoryView("rhs", "operands", 4, 4, 4),
+                           DenseMemoryView("acc", "sums", 8, 0, 4))
+adapter = DenseLoopAdapter(encode_dense_tile, project_dense_tile, "test-config", "test-ordered", True, True, 64)
+dense = schedule_compact_dense(problem, DenseResources(32, 32, 1, 1, 1), storage, adapter,
+                              name="dense", dtypes=("fp8_e4m3", "fp8_e4m3", "bf16"),
+                              static_budget=32, external_buffers_disjoint=True)
+assert dense is not None and dense.realization["output_tiles"] == 1
+dense.revalidate()
 kernel = Kernel("k", (), (Call("compute", ()),))
 project = lambda c: TimedEffects(c.instr, 4 if c.instr == "compute" else c.arg("cycles").value)
 gap = lambda c: 1 if c.instr == "compute" else c.arg("cycles").value
@@ -116,4 +132,9 @@ root = Path(sys.argv[1])
 assert all(Path(module.__file__).is_relative_to(root) for name, module in sys.modules.items()
            if name == "merlin" or name.startswith("merlin."))
 '''
+    # Candidate imports must satisfy the real admission policy as well as work
+    # in Python; package-level compatibility exports are not public leaf APIs.
+    from merlin.targetgen.package_runtime import _py_imports_merlin
+
+    assert _py_imports_merlin(script, compiler_library=contract) is None
     subprocess.run([sys.executable, "-I", "-c", script, str(root)], check=True, cwd=tmp_path)

@@ -50,6 +50,7 @@ Merlin namespaces keep their existing compatibility imports.
 From the Merlin worktree, with its Python environment:
 
 ```sh
+python -m pip install -e '.[semantic-search]'
 python build_tools/scripts/export_compiler_library.py \
   examples/atlas/shared-library.json \
   --destination out/build/atlas-library
@@ -60,6 +61,46 @@ standalone `merlin/` source tree. The trusted Phase 1 setup selects that contrac
 and mounts the matching tree as its `compiler` view. A candidate cannot admit
 itself by copying the JSON or adding imports to its own manifest. Run the
 existing runtime/tool/corpus admission checks when constructing that experiment.
+
+Candidate code must import the exact public leaf APIs in the selection. For
+example, import `Call`, `Kernel` and `Loop` from `merlin.sched.ir.kernel`, and
+`Const` from `merlin.sched.ir.expr`. The installed `merlin.sched.ir` compatibility
+exports are not a candidate import grant. The export regression runs checked
+FP8/BF16 dense scheduling, static timing, completion waits and host outlining in
+an isolated process and checks those imports against the candidate policy. Z3
+is required for dense schedule verification; the `semantic-search` extra supplies
+it together with xDSL and the schema validator.
+
+For a fresh component-authoring experiment, the existing integration entry is
+`merlin_experiments.phase1.component_origin.run_fresh_component_phase1`. Its
+`FreshPhase1Inputs` must select the exported `CompilerLibraryContract` and the
+matching `ComponentView`; the independently qualified grading context must
+select the same library and its `compiler/` directory. The library cannot be
+enabled by adding an allow-list path to a historical capsule-bench bundle.
+
+Check the catalog setup separately:
+
+```sh
+merlin experiment preflight atlas-functional --phase 1
+```
+
+This checks configuration, not device execution or fresh-author runtime
+qualification. The checked-in definition retains historical bundle paths and
+requires a newly reviewed corpus release, regenerated bundle, selected toolchain
+and runtime, and its operator-owned timing record. Do not launch from that
+template merely because library export or floating source generation succeeds.
+The fresh component path additionally consumes live independent hardware,
+software and runtime qualification through `FreshPhase1Inputs.verify()`.
+The handwritten Atlas backend is a private comparator, not a substitute for
+those inputs.
+
+The November 18 regression checks also reject contractions whose scalar block
+arguments disagree with their tensor operand types. Floating source generation
+now keeps cancellation witnesses representable in both selected formats,
+including E4M3 operands with f32 accumulation, and handles equal-precision
+round trips without inventing an unrepresentable midpoint. These fixes are
+covered by source-reader refusals, suite materialization and independent
+reassociation-sensitive numerical checks.
 
 ## Reproduce the execution preflight
 
