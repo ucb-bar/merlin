@@ -85,3 +85,5 @@ Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, a
   epsilon or shape belongs in the shared matcher.
 
 - Input widening proofs establish source ownership, dense indexing and exact BF16 conversion only. Providers must separately prove direct-code consumption preserves their selected arithmetic and rejection behavior.
+- Pointwise tile assembly may use a result element width independent of its inputs. Keep this byte-only: the provider owns result encoding and arithmetic, while operand maps, padding and input widths remain unchanged.
+- Folding a private read into a consumer must preserve its validation domain. Full-source affine composition admits complete-axis permutations, reversals and broadcasts; bounded slices alone do not justify validating the entire backing source. The provider must recheck its consumer's numerical policy and resource admission after composition.

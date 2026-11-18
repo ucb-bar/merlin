@@ -74,6 +74,9 @@ def _validate_act_frame(plan, base, memory_bytes):
                 or len(addresses) > (2 if operation in {"bf16_add", "bf16_sub"} else 1)):
             raise AssertionError("exact float needs its complete source operands")
         sizes = [padded * width] * len(addresses)
+        if 'input_cache' in plan:
+            from atlas_mlir_native.float_operand_cache import published_input_sizes
+            sizes = published_input_sizes(plan, sizes)
         output = base + sum(sizes)
         result = padded * output_width
         if (integer("result_buffer_bytes") != result

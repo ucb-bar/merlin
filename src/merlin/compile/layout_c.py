@@ -95,6 +95,34 @@ def bounded_dense_read_map(source, view):
     return read
 
 
+def repeated_dense_read_period(source, view):
+    """Prove that a dense affine read repeats the complete physical sequence.
+
+    Return its period in elements, or None. Unit-extent axes do not affect the
+    flattened address. Ownership, transport and whether caching is worthwhile
+    remain separate caller obligations.
+    """
+    mapping = bounded_dense_read_map(source, view)
+    period = prod(source.type.shape)
+    if mapping is None or prod(view.type.shape) <= period:
+        return None
+    strides = tuple(prod(source.type.shape[i + 1:]) for i in range(len(source.type.shape)))
+    if sum(offset * stride for offset, stride in zip(mapping.offsets, strides, strict=True)):
+        return None
+    rank = len(view.type.shape)
+    flat = tuple(sum(row[axis] * stride for row, stride in
+                     zip(mapping.coefficients, strides, strict=True)) for axis in range(rank))
+    for first in range(rank + 1):
+        if prod(view.type.shape[first:]) != period:
+            continue
+        expected = tuple(0 if axis < first else prod(view.type.shape[axis + 1:])
+                         for axis in range(rank))
+        if all(extent == 1 or actual == wanted for extent, actual, wanted in
+               zip(view.type.shape, flat, expected, strict=True)):
+            return period
+    return None
+
+
 def render_indexed_slice_copy(source, view, name):
     """Pack a logical consumer slice through a checked dense affine read map."""
     mapping = bounded_dense_read_map(source, view)

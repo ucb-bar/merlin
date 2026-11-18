@@ -122,6 +122,39 @@ void scatter(uint8_t *out, const uint8_t *in, size_t row, size_t col) {
         ctypes.c_size_t,
         ctypes.c_size_t,
     ]
+    # A different output encoding must preserve dense order and valid tails,
+    # without changing the input packer or reading/writing outside the result.
+    for width in (1, 3, 8):
+        text = render_row_softmax_c(plan, "rows", output_element_bytes=width)
+        text += """
+void scatter(void *out, const void *in, size_t row, size_t col) {
+  rows_scatter_row_tile(out,in,row,col);
+}
+void pack(void *out, const void *in, size_t row, size_t col) {
+  rows_pack_row_tile(out,in,row,col);
+}
+"""
+        (tmp_path / "encoding.c").write_text(text)
+        binary = tmp_path / f"encoding-{width}.so"
+        subprocess.run([compiler, "-std=c11", "-Wall", "-Wextra", "-Werror", "-shared", "-fPIC",
+                        str(tmp_path / "encoding.c"), "-o", str(binary)], check=True, capture_output=True)
+        encoded = ctypes.CDLL(str(binary))
+        encoded.scatter.argtypes = library.scatter.argtypes
+        expected = bytes(i % 251 for i in range(int(np.prod(shape))*width))
+        output = ctypes.create_string_buffer(bytes([0xa5])*(len(expected)+16))
+        for row in range(0, shape[0], 2):
+            for col in range(plan.column_tiles):
+                tile = bytearray(2*3*width)
+                for r in range(2):
+                    for c in range(3):
+                        if row+r < shape[0] and col*3+c < shape[1]:
+                            at = ((row+r)*shape[1]+col*3+c)*width
+                            tile[(r*3+c)*width:(r*3+c+1)*width] = expected[at:at+width]
+                encoded.scatter(ctypes.addressof(output)+8, ctypes.create_string_buffer(bytes(tile)), row, col)
+        assert output.raw[:-1] == bytes([0xa5])*8+expected+bytes([0xa5])*8
+    for width in (0, -1, True, 1.5, 1 << 64):
+        with pytest.raises(ValueError):
+            render_row_softmax_c(plan, "rows", output_element_bytes=width)
     source_bytes = ctypes.create_string_buffer(values.tobytes())
     assembled_c = ctypes.create_string_buffer(values.nbytes)
 
