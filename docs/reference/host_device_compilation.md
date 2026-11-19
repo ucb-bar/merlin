@@ -3,7 +3,7 @@ title: Host and device compilation
 kind: reference
 status: current
 owner: runtime
-last_verified: 2026-10-20
+last_verified: 2026-11-10
 related: [runtime, zephyr, adding_a_target, experiment_abi]
 code_refs: [src/merlin/targetgen/contract/build_recipe.py, src/merlin/targetgen/contract/build_service.py, src/merlin/targetgen/contract/compile.py, src/merlin/runtime/backends/base.py, merlin/runtime/c]
 ---
@@ -107,6 +107,59 @@ register files, on-chip scratchpad or instruction memory. Providers check their
 alignment and address ABI, retain the selected size in program manifests, and
 reject export under a different configuration. The platform must map the
 selected device-visible range and supply the required memory synchronization.
+
+## Optional application value sharing
+
+`native-compile --application --application-common-values` shares identical pure
+values after ordinary source preparation and before final region partitioning.
+Use the same option with `native-verify --application`. It is off by default.
+The Python transform is `merlin.semantic_compiler.common_values.common_pure_values`;
+`source_preparation.append_common_preparation(source, prepared, groups=groups)`
+appends its receipt with checked atomic groups; use `groups=()` for unbundled graphs.
+
+Equality includes ordered operands, result types and numerical policies, index
+maps and every attribute except `prov.*` provenance. Different scales, rounding
+rules, layouts or numerical contracts remain different values. Inputs, constants
+and ordered public outputs keep their identities. The application path obtains
+atomic groups from the provider's checked region plan, so sibling results are
+shared together. A group with a public result, internal dependencies or an
+unavailable earlier producer remains intact. This avoids splitting multi-result
+provider operations or introducing forward references.
+
+The transformation retains removed and rewired source nodes, including provenance,
+in a `merlin.common_pure_values.v1` replay receipt. Source-preparation v4 wraps the
+earlier preparation receipt followed by this exact pass. Publication and verification
+reconstruct the original graph and replay the transformation. Historical receipt
+versions and default preparation keep their previous behavior.
+
+Value sharing does not authorize physical buffer aliasing, change arithmetic,
+or make synchronous device calls overlap. The normal ownership, lifetime,
+target admission and emitted-program checks still apply. Providers must describe
+deterministic effect-free semantics accurately; declaring an operation pure is
+not a proof of its target arithmetic.
+
+## Optional dense reshape composition
+
+`native-compile --application --application-compose-reshapes` composes adjacent
+dense logical reshapes. Use the same option with `native-verify --application`.
+It is off by default and can follow `--application-common-values`. The Python
+entry points are `reshape_chains.compose_reshape_chains` and
+`source_preparation.append_reshape_preparation(source, prepared)` in `merlin.semantic_compiler`.
+
+For example, `[B,T,H] -> [B*T*H] -> [B,T,heads,head_dim]` becomes a single reshape
+when both original operations preserve element count, dtype, numerical policy
+and dense element order. The intermediate remains if another operation uses it
+or it is a public output. All input ports, constants and ordered public outputs
+keep their identities. Non-provenance attributes and index maps prevent composition; gathers,
+transposes, casts and already allocated views remain outside the pass.
+
+This removes redundant logical copies without introducing physical aliases.
+The final reshape retains its original output identity and type. Its ordinary
+target lowering still owns storage, transfers, completion and validation.
+Source-preparation v5 records the previous preparation receipt and a
+`merlin.reshape_chains.v1` receipt; verification reconstructs the original graph
+and replays the exact shape and liveness checks. Existing receipt versions and
+default compilation remain unchanged.
 
 ## Pointwise broadcast storage
 

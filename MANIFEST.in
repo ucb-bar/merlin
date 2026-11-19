@@ -76,6 +76,7 @@ include merlin/runtime/c/merlin_model.h
 include merlin/runtime/c/merlin_op_prof.c
 include merlin/runtime/c/merlin_socinit_zephyr.c
 include merlin/runtime/c/omp_static_schedule.h
+include merlin/runtime/c/program_residency.h
 include merlin/schemas/abstraction_candidate.schema.yaml
 include merlin/schemas/baseline_cost.schema.yaml
 include merlin/schemas/command_buffer.schema.yaml

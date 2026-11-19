@@ -187,3 +187,39 @@ def test_shared_operand_keeps_one_input_and_rejects_distinct_views():
     with pytest.raises(ValueError, match="identical physical view"):
         replace(shared, source=replace(source, nodes=(a, replace(output, index_maps=(
             output.index_maps[0], IndexMap(2, ((1, 0), (0, -1)), (0, 4)), output.index_maps[-1])))))
+
+
+@pytest.mark.parametrize('width', [1, 3, 4])
+def test_independent_result_width_preserves_input_packing_and_trims_tile_tails(tmp_path, width):
+    plan = plan_for('broadcast')
+    ordinary = render_pointwise_c(plan, 'tile')
+    changed = render_pointwise_c(plan, 'tile', output_element_bytes=width)
+    # Every operand's affine mapping and pad code must remain unchanged.
+    assert ordinary[ordinary.index('static void'):ordinary.index('static void tile_assemble')] == changed[
+        changed.index('static void'):changed.index('static void tile_assemble')]
+    path = tmp_path / 'packing.c'
+    path.write_text(changed + '\nvoid run(uint8_t *o,const uint8_t *i) { tile_assemble(o,i); }\n'
+                    'void keep(uint8_t *o,const uint8_t *i) { tile_pack_0(o,i); tile_pack_1(o,i); }\n')
+    library_path = tmp_path / 'packing.so'
+    subprocess.run([shutil.which('cc'), '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+                    '-shared', '-fPIC', str(path), '-o', str(library_path)], check=True, capture_output=True)
+    library = ctypes.CDLL(str(library_path))
+    library.run.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    logical = np.arange(3 * 5 * width, dtype='u1').reshape(3, 5, width)
+    tiles = []
+    for row in (0, 2):
+        for col in (0, 3):
+            tile = np.full((2, 3, width), 0xe7, dtype='u1')
+            part = logical[row:row+2, col:col+3]
+            tile[:part.shape[0], :part.shape[1]] = part
+            tiles.append(tile.tobytes())
+    source = ctypes.create_string_buffer(b''.join(tiles))
+    output = ctypes.create_string_buffer(b'\xa5' * (logical.size + 32))
+    library.run(ctypes.addressof(output) + 16, source)
+    assert output.raw[:-1] == b'\xa5' * 16 + logical.tobytes() + b'\xa5' * 16
+
+
+@pytest.mark.parametrize('width', [True, 0, -1, 1.5, '1', 2**63])
+def test_invalid_result_width_refuses(width):
+    with pytest.raises(ValueError):
+        render_pointwise_c(plan_for('dense'), 'tile', output_element_bytes=width)

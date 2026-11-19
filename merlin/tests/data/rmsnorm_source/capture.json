@@ -1,0 +1,12 @@
+{
+  "model2mlir_revision": "ebb1c600e0d7f3205c801d8f00acb960015b32f2",
+  "torch_version": "2.11.0+cpu",
+  "xdsl_version": "0.68.0",
+  "generator_sha256": "5633df49674c397fbc20ff91e2744ff280a240da3c0608e1a33cbe61029e41e0",
+  "members": {
+    "decode1-input": "9a9c6b4f549cf1cc9df4aada86b428a4605b99ccb229f99a159f2ab5a92abad3",
+    "decode1-post": "b1815d830bfc4b6f44659a99f075933296de5f827b1f6e6d16335c11c3b54a4a",
+    "prefill0-input": "f91bc548be1821271bd72fe3d857cd8c07a1b64a406a035ee7a95c0fdc24b1af",
+    "prefill0-post": "abe5be91fc1050d43e6398eadcaf9b432818adfcef8d25c5254406c0644fff9a"
+  }
+}

@@ -87,6 +87,20 @@ class MaterializationDecision:
 
 
 @dataclass(frozen=True)
+class AllocationAttempt:
+    """Replayable selection diagnostics, without scheduling-dependent timings."""
+
+    candidate_digest: str
+    order: tuple[int, ...]
+    status: str
+    reason: str = ""
+    reason_unknown: str = ""
+
+    def record(self) -> dict[str, Any]:
+        return {**vars(self), "order": list(self.order)}
+
+
+@dataclass(frozen=True)
 class SearchResult:
     status: str
     request_digest: str
@@ -104,6 +118,7 @@ class SearchResult:
     diagnostic_ablations: tuple[str, ...] = ()
     exploration_attempts: int = 0
     rejected_materialization: int = 0
+    allocation_attempts: tuple[AllocationAttempt, ...] = ()
 
     @property
     def engine(self) -> str:
@@ -114,11 +129,23 @@ class SearchResult:
         return bool(self.diagnostic_ablations)
 
 
-def _work_stages(source_nodes: int, limits: SearchLimits) -> Iterator[tuple[int, int, int]]:
-    """Grow exploration and extraction budgets together, ending at the declared limits."""
+def _work_stages(
+    source_nodes: int, limits: SearchLimits, *, output_count: int = 1,
+) -> Iterator[tuple[int, int, int]]:
+    """Grow inclusive work budgets, ending at the declared limits.
+
+    Large DAGs can cross a geometric stage because of boundary loads/stores
+    omitted by the storage-independent extraction lower bound. Starting near
+    their source size avoids exhausting that inadequate intermediate stage.
+    This is an upper-budget heuristic, not a lower bound: every smaller
+    realization remains eligible, including shared, viewed, or fused graphs.
+    """
     iterations = 1
     egraph_nodes = min(limits.egraph_nodes, max(64, 4 * source_nodes))
     candidate_nodes = 1
+    if source_nodes >= 64:
+        estimated_work = source_nodes + output_count
+        candidate_nodes = min(limits.candidate_nodes, 1 << (estimated_work - 1).bit_length())
     while True:
         yield iterations, egraph_nodes, candidate_nodes
         if (
@@ -146,9 +173,15 @@ def select_and_allocate(
     ablations: SearchAblations = SearchAblations(),
     accept_materialization: Callable[[SearchResult], tuple[bool, str] | MaterializationDecision] | None = None,
 ) -> SearchResult:
+    """Choose the first checked realization in canonical enumeration order.
+
+    Inconclusive placement and wall limits abort the entire search. They never
+    justify selecting a later order or candidate, even if it might be feasible.
+    """
     active_ablations = ablations.active()
     exploration_attempts = 0
     rejected_materialization = 0
+    allocation_attempts: list[AllocationAttempt] = []
 
     def finish(result: SearchResult) -> SearchResult:
         return replace(
@@ -156,6 +189,7 @@ def select_and_allocate(
             diagnostic_ablations=active_ablations,
             exploration_attempts=exploration_attempts,
             rejected_materialization=rejected_materialization,
+            allocation_attempts=tuple(allocation_attempts),
         )
 
     unresolved = next((node for node in request.nodes if node.op.startswith("source_")), None)
@@ -191,7 +225,6 @@ def select_and_allocate(
     rejected_allocation = 0
     pruned_orders = 0
     seen: set[str] = set()
-    inconclusive = False
     unqualified = False
     unqualified_reason = ""
     materialization_reason = ""
@@ -215,7 +248,9 @@ def select_and_allocate(
             )
         )
 
-    for iterations, egraph_nodes, candidate_limit in _work_stages(len(request.nodes), limits):
+    for iterations, egraph_nodes, candidate_limit in _work_stages(
+        len(request.nodes), limits, output_count=len(request.outputs),
+    ):
         remaining = deadline - monotonic()
         if remaining <= 0:
             return timed_out("native search deadline expired during exploration")
@@ -248,6 +283,8 @@ def select_and_allocate(
                         pruned_orders,
                     )
                 )
+            if graph.stop_reason == "time_limit":
+                return timed_out("native exploration reached its time limit")
             explored_budget = (iterations, egraph_nodes)
             extracted_budget = 0
             try:
@@ -312,6 +349,10 @@ def select_and_allocate(
                         for prior in failed_edges
                     ):
                         pruned_orders += 1
+                        allocation_attempts.append(AllocationAttempt(
+                            digest, order, "pruned_infeasible",
+                            "interference contains a proven infeasible order's edges",
+                        ))
                         continue
                     result = allocate(
                         candidate_graph,
@@ -322,6 +363,9 @@ def select_and_allocate(
                         fixed_outputs=fixed_outputs,
                         timeout_ms=min(limits.solver_timeout_ms, max(1, int(remaining * 1000))),
                     )
+                    allocation_attempts.append(AllocationAttempt(
+                        digest, order, result.status, result.reason, result.reason_unknown,
+                    ))
                     if monotonic() >= deadline:
                         return timed_out("native search deadline expired during allocation")
                     if result.status == "feasible":
@@ -426,7 +470,9 @@ def select_and_allocate(
                     if result.status == "infeasible_candidate":
                         failed_edges.append(edges)
                     if result.status == "search_timeout":
-                        inconclusive = True
+                        # Wall time is an outer abort, never evidence that a
+                        # different order or candidate should be selected.
+                        return timed_out(result.reason or "native placement was inconclusive")
                     if result.status == "unqualified_target":
                         unqualified = True
                         unqualified_reason = unqualified_reason or result.reason
@@ -461,9 +507,7 @@ def select_and_allocate(
         ):
             break
     assert graph is not None
-    if inconclusive or graph.stop_reason == "time_limit":
-        status = "search_timeout"
-    elif candidate_attempts >= limits.candidates or graph.stop_reason != "saturated" or order_budget_exhausted:
+    if candidate_attempts >= limits.candidates or graph.stop_reason != "saturated" or order_budget_exhausted:
         status = "resource_limit"
     elif active_ablations and candidate_attempts:
         status = "resource_limit"

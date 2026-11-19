@@ -407,6 +407,7 @@ class AllocationResult:
     addresses: dict[int, int]
     reason: str = ""
     issue_times: tuple[tuple[int, int], ...] = ()
+    reason_unknown: str = ""
 
 
 def _geometry(banks: tuple[StorageBank, ...]) -> dict[str, StorageBank]:
@@ -776,15 +777,35 @@ def allocate(
                 if not preserve_input and _qualified_in_place_pair(graph, left, right):
                     alternatives.append(variables[left.id] == variables[right.id])
                 solver.add(z3.Or(*alternatives))
-    for value_id in sorted(variables):
-        solver.minimize(variables[value_id])
+    objectives = [solver.minimize(variables[value_id]) for value_id in sorted(variables)]
     status = solver.check()
     if status == z3.unsat:
         return AllocationResult("infeasible_candidate", order, {}, "bounded placement formula is UNSAT")
     if status != z3.sat:
-        return AllocationResult("search_timeout", order, {}, f"solver returned {status}: {solver.reason_unknown()}")
+        reason_unknown = solver.reason_unknown()
+        return AllocationResult(
+            "search_timeout", order, {}, f"solver returned {status}: {reason_unknown}",
+            reason_unknown=reason_unknown,
+        )
+    # Optimize may return a SAT incumbent when interrupted before proving all
+    # lexicographic objectives. Only a proven finite optimum fixes canonical
+    # addresses; accepting an incumbent would make emission depend on timing.
+    bounds = [(objective.lower(), objective.upper()) for objective in objectives]
+    if any(
+        not z3.is_int_value(lower)
+        or not z3.is_int_value(upper)
+        or lower.as_long() != upper.as_long()
+        for lower, upper in bounds
+    ):
+        reason_unknown = solver.reason_unknown()
+        return AllocationResult(
+            "search_timeout", order, {}, "solver did not prove every placement objective optimal",
+            reason_unknown=reason_unknown,
+        )
     model = solver.model()
     addresses = {value_id: model[variable].as_long() for value_id, variable in variables.items()}
+    if any(addresses[value_id] != lower.as_long() for value_id, (lower, _) in zip(sorted(variables), bounds)):
+        return AllocationResult("modeling_failure", order, addresses, "solver model differs from proven placement optimum")
     checked, reason = check_assignment(
         graph,
         order,

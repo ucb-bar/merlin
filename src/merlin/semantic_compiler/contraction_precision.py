@@ -113,9 +113,18 @@ def lower_semantic_contraction(
         )
     )
     assert profile.conversion_specs is not None
-    if profile.conversion_specs[2].post_decode_scale_exponent != contraction_restore_exponent(
-        *(spec.pre_encode_scale_exponent for spec in profile.conversion_specs[:2])
-    ):
+    lhs_spec, rhs_spec, output_spec = profile.conversion_specs
+    if lhs_spec.column_scale_exponents:
+        raise ValueError("contraction lhs scales cannot vary along reduction K")
+    if rhs_spec.column_scale_exponents:
+        if permutations[1][rhs_spec.scale_axis] != 1 or output_spec.scale_axis != 1:
+            raise ValueError("contraction panel scales must follow logical N, not reduction K")
+        expected_restore = tuple((start, stop, contraction_restore_exponent(lhs_spec.pre_encode_scale_exponent, exponent))
+                                 for start, stop, exponent in rhs_spec.column_scale_exponents)
+        if output_spec.column_scale_exponents != expected_restore or expected_restore[-1][1] != rhs.type.shape[1]:
+            raise ValueError("contraction column result conversion must restore both operand scales")
+    elif output_spec.column_scale_exponents or output_spec.post_decode_scale_exponent != contraction_restore_exponent(
+        lhs_spec.pre_encode_scale_exponent, rhs_spec.pre_encode_scale_exponent):
         raise ValueError("contraction result conversion must restore both operand scales")
     inputs = tuple(
         BoundaryConversion(

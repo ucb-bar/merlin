@@ -1,6 +1,14 @@
 """Register native compilation commands on the existing TargetGen CLI."""
 
 
+def add_native_recipe_arguments(parser):
+    """Expose the same invocation recipe for regions, applications and replay."""
+    parser.add_argument("--recipe", help="recipe name owned by the selected support provider")
+    parser.add_argument("--board", help="board name owned by the selected support provider")
+    parser.add_argument("--application-residency", action="store_true",
+                        help="allocate immutable device operands once within declared physical capacity; incompatible with region reuse")
+
+
 def add_io_memory_argument(parser):
     """Keep the provider-selected I/O geometry explicit across build and replay."""
     from argparse import ArgumentTypeError
@@ -19,9 +27,44 @@ def add_io_memory_argument(parser):
         type=positive_bytes,
         help="device-visible I/O window size; must match the selected snapshot",
     )
+    for name, help_text in (
+        ("base", "device-visible I/O window base address"),
+        ("alignment", "required alignment of the I/O window base in bytes"),
+        ("capacity-base", "base address of the containing device-visible memory capacity"),
+        ("capacity-bytes", "byte size of the containing device-visible memory capacity; the declared arena must exclude host ELF, stack, and heap memory"),
+    ):
+        def memory_integer(text, *, option=name):
+            try:
+                value = int(text, 0)
+            except ValueError as error:
+                raise ArgumentTypeError(f"I/O memory {option} must be an integer") from error
+            minimum = 0 if option in ("base", "capacity-base") else 1
+            if value < minimum:
+                kind = "nonnegative" if minimum == 0 else "positive"
+                raise ArgumentTypeError(f"I/O memory {option} must be a {kind} integer")
+            return value
+
+        parser.add_argument("--io-memory-" + name, type=memory_integer, help=help_text + "; must match the selected snapshot")
 
 
-def add_native_codegen_commands(sub, handlers):
+def requested_io_memory_options(args):
+    """Return every explicitly selected geometry field, including zero bases."""
+    from merlin.semantic_compiler.codegen import IO_MEMORY_OPTIONS
+
+    return {name for name in IO_MEMORY_OPTIONS if getattr(args, name, None) is not None}
+
+
+def require_io_memory_capabilities(args, binding):
+    from merlin.semantic_compiler.target_binding import NativeCompilationError
+
+    unsupported = requested_io_memory_options(args) - set(getattr(binding, "codegen_capabilities", ()))
+    if unsupported:
+        raise NativeCompilationError(
+            "unsupported_semantics", "selected support does not accept: " + ", ".join(sorted(unsupported))
+        )
+
+
+def add_native_codegen_commands(sub, handlers, binding=None):
     """Keep parser construction separate from lazy compiler dependencies."""
     from merlin.semantic_compiler.constant_math_backend import build_command
     from merlin.semantic_compiler.search import SearchAblations
@@ -73,14 +116,53 @@ def add_native_codegen_commands(sub, handlers):
         "native-compile",
         help="compile a native region or staged application with selected OOT support",
     )
+    add_native_recipe_arguments(native_compile)
     native_compile.add_argument("--engine", choices=("merlin_native",), required=True)
     native_compile.add_argument("--support", required=True, help="installed target support entry point")
-    native_compile.add_argument("--snapshot", required=True)
+    native_compile.add_argument("--snapshot", help="snapshot path; defaults to MERLIN_NATIVE_SNAPSHOT from the selected install")
     native_compile.add_argument(
         "--application", action="store_true", help="compile every supported region of a staged capture"
     )
     native_compile.add_argument(
+        "--materialization-cache",
+        action="store_true", default=True,
+        help="reuse invocation-local exact application tool output by default; verification stays fresh",
+    )
+    native_compile.add_argument(
+        "--region-materialization-cache",
+        action="store_true",
+        help="opt in to checked canonical application region reuse; off by default",
+    )
+    native_compile.add_argument(
+        "--no-materialization-cache",
+        action="store_true",
+        help="disable both application reuse options, including explicit opt-ins",
+    )
+    native_compile.add_argument(
+        "--deterministic-receipts",
+        action="store_true",
+        help="opt in to target deterministic application receipts; off by default",
+    )
+    native_compile.add_argument(
+        "--application-region-loop",
+        action="store_true",
+        help="opt in to a counted dispatch loop when the complete application plan proves a repeated body",
+    )
+    native_compile.add_argument(
         "--application-state", help="source-bound JSON mapping state inputs, updates and initialization"
+    )
+    native_compile.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="preserve authored codes and exponent data through the selected application provider",
+    )
+    native_compile.add_argument(
+        "--application-common-values",
+        action="store_true",
+        help="common identical pure application values before partitioning",
+    )
+    native_compile.add_argument(
+        "--application-compose-reshapes", action="store_true", help="compose exact dense application reshape chains"
     )
     native_compile.add_argument("--application-name", default="application", help="C application namespace")
     native_compile.add_argument(
@@ -122,22 +204,34 @@ def add_native_codegen_commands(sub, handlers):
         help="row-major output tile to compile; requires both M/N tile sizes",
     )
     native_compile.add_argument(
-        "--abi", required=True, help="fixed_inputs/fixed_outputs JSON, or auto for provider layout"
+        "--abi", default="auto", help="fixed_inputs/fixed_outputs JSON, or auto for provider layout (default)"
     )
     native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
+    native_compile.add_argument("--application-buffer-views", action="store_true",
+                               help="share proved internal dense reshape/copy buffers")
     native_compile.add_argument("--reduction-unroll", choices=("auto", "1", "2", "4", "8"), default="auto")
     native_compile.add_argument("--tuning-profile", help="measured profile for this exact compilation")
     native_compile.add_argument("--program-size-limit-bytes", type=int, help="optional smaller device code budget")
+    native_compile.add_argument(
+        "--execution-instruction-limit",
+        type=int,
+        help="optional per-launch executed-instruction budget, separate from stored program size",
+    )
+    native_compile.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     add_io_memory_argument(native_compile)
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
-    native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
+    native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), help="defaults to diagnostic for applications, otherwise strict-native")
     native_compile.add_argument("--out", required=True, help="fresh compilation output directory")
     native_compile.add_argument("--status-file", help="invocation-owned machine-readable status JSON")
+    configure_provider_parser(native_compile, binding)
     native_compile.set_defaults(func=handlers["native_compile"])
 
     from .native_profile import command as profile_command
 
     profile = sub.add_parser("native-profile", help="measure checked reduction-unroll variants with an explicit runner")
+    add_native_recipe_arguments(profile)
     add_io_memory_argument(profile)
     for name in ("support", "snapshot", "target-source", "runner-command", "out"):
         profile.add_argument("--" + name, required=True)
@@ -150,14 +244,22 @@ def add_native_codegen_commands(sub, handlers):
     profile.add_argument("--abi", default="auto")
     profile.add_argument("--search-limits")
     profile.add_argument("--program-size-limit-bytes", type=int)
+    profile.add_argument(
+        "--execution-instruction-limit", type=int, help="optional per-launch executed-instruction budget"
+    )
+    profile.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     profile.add_argument("--objective", choices=("device_cycles", "warm_host_ticks"), default="device_cycles")
     profile.add_argument("--runner-timeout", type=int, default=300)
+    configure_provider_parser(profile, binding)
     profile.set_defaults(func=profile_command)
 
     model_regions = sub.add_parser(
         "native-probe-model-regions",
         help="diagnose all source-bound native regions without claiming model composition",
     )
+    add_native_recipe_arguments(model_regions)
     model_regions.add_argument("--engine", choices=("merlin_native",), required=True)
     model_regions.add_argument("--support", required=True, help="installed target support entry point")
     model_regions.add_argument("--snapshot", required=True)
@@ -177,6 +279,7 @@ def add_native_codegen_commands(sub, handlers):
     )
     model_regions.add_argument("--target-source", required=True, help="selected target source checkout")
     model_regions.add_argument("--out", required=True, help="fresh diagnostic artifact directory")
+    configure_provider_parser(model_regions, binding)
     model_regions.set_defaults(func=handlers["native_probe_model_regions"])
 
     host_object = sub.add_parser(
@@ -204,8 +307,14 @@ def add_native_codegen_commands(sub, handlers):
     graph_bridge.set_defaults(func=handlers["native_bridge_graph"])
 
     native_verify = sub.add_parser("native-verify", help="recheck native source, snapshot and published artifact bytes")
+    add_native_recipe_arguments(native_verify)
     native_verify.add_argument("--engine", choices=("merlin_native",), required=True)
-    native_verify.add_argument("--snapshot", required=True)
+    native_verify.add_argument("--snapshot", help="snapshot path; defaults to MERLIN_NATIVE_SNAPSHOT from the selected install")
+    native_verify.add_argument(
+        "--no-materialization-cache",
+        action="store_true",
+        help="compatibility option; application verification always executes every tool fresh",
+    )
     native_verify.add_argument(
         "--application", action="store_true", help="replay complete staged application compilation"
     )
@@ -217,6 +326,19 @@ def add_native_codegen_commands(sub, handlers):
         choices=("embedded", "external"),
         default="embedded",
         help="same model parameter storage used during application compilation",
+    )
+    native_verify.add_argument(
+        "--already-quantized",
+        action="store_true",
+        help="replay authored code/exponent intake with no numeric conversion",
+    )
+    native_verify.add_argument(
+        "--application-common-values",
+        action="store_true",
+        help="replay pure-value commoning before application partitioning",
+    )
+    native_verify.add_argument(
+        "--application-compose-reshapes", action="store_true", help="replay dense application reshape composition"
     )
     native_verify.add_argument("--target-source", help="selected target source for application C replay")
     verify_source = native_verify.add_mutually_exclusive_group(required=True)
@@ -241,8 +363,45 @@ def add_native_codegen_commands(sub, handlers):
     native_verify.add_argument("--ordered-m-tile", type=int, help="recheck exact output-row tile size")
     native_verify.add_argument("--ordered-n-tile", type=int, help="recheck exact output-column tile size")
     native_verify.add_argument("--outer-tile-index", type=int, help="recheck selected row-major output tile")
-    native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
+    native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), help="defaults to diagnostic for applications, otherwise strict-native")
     native_verify.add_argument("--artifact", required=True, help="published native compilation directory")
+    native_verify.add_argument("--application-buffer-views", action="store_true",
+                              help="replay internal dense buffer views used for compilation")
     native_verify.add_argument("--out", required=True, help="verification status JSON outside the artifact")
+    native_verify.add_argument(
+        "--program-size-limit-bytes", type=int, help="stored program byte budget used for compilation"
+    )
+    native_verify.add_argument(
+        "--execution-instruction-limit", type=int, help="per-launch executed-instruction budget used for compilation"
+    )
+    native_verify.add_argument(
+        "--exact-float-unroll", action="store_true", help="opt into exact cast and negation tile unrolling"
+    )
     add_io_memory_argument(native_verify)
+    configure_provider_parser(native_verify, binding)
     native_verify.set_defaults(func=handlers["native_verify"])
+
+
+def configure_provider_parser(parser, binding):
+    """Let selected support own its flags, presets, and installation defaults."""
+    if binding is not None:
+        configure = getattr(binding, "configure_codegen_parser", None)
+        if configure is not None:
+            configure(parser)
+    parser.set_defaults(_native_binding=binding)
+
+
+def prepare_native_arguments(args, binding=None):
+    """Resolve invocation defaults without baking target facts into Merlin."""
+    import os
+    if hasattr(args, "snapshot") and args.snapshot is None:
+        args.snapshot = os.environ.get("MERLIN_NATIVE_SNAPSHOT")
+        if not args.snapshot:
+            raise ValueError("select --snapshot or activate an install setting MERLIN_NATIVE_SNAPSHOT")
+    if hasattr(args, "mode") and args.mode is None:
+        args.mode = "diagnostic" if getattr(args, "application", False) else "strict-native"
+    expand = getattr(binding, "expand_codegen_arguments", None)
+    if expand is not None:
+        expand(args)
+    elif getattr(args, "recipe", None) or getattr(args, "board", None):
+        raise ValueError("selected support does not define recipes or boards")

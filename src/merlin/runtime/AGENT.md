@@ -69,3 +69,5 @@ the per-backend adapters under `backends/`.
   runtime == torch golden). `dispatch_runtime` raises on any view op it cannot evaluate —
   no silent skips.
 - Every subdirectory must also contain an AGENT.md.
+- `uniform_sparse_memory.py` owns generic uniform-default byte storage. Preserve explicit zero writes, cloned read tensors, and source-bound differential receipts. Selecting it changes storage representation only.
+- Target-specific qualified dot adapters belong with their target examples, outside the shared runtime. They bind the multiplication table and original math object to an authenticated profile; other operations delegate to the original object.

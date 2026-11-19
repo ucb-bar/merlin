@@ -39,7 +39,23 @@ def application_handoff(source, interface, regions, files, native_root):
                 else None,
             }
             bindings.append(digest)
-        calls.append({"region": region["id"], "placement": region["placement"], "images": bindings})
+        call = {"region": region["id"], "placement": region["placement"], "images": bindings}
+        description = region.get("description", {})
+        if "device_launch_schedule" in description:
+            from .launch_schedule import validate_launch_schedule
+
+            if "launches_per_call" in description:
+                raise ValueError("device launch schedule cannot coexist with legacy launches_per_call")
+            call["device_launch_schedule"] = validate_launch_schedule(
+                description["device_launch_schedule"], image_sha256s=bindings, placement=region["placement"])
+        if "launches_per_call" in description:
+            count = description["launches_per_call"]
+            if type(count) is not int or count <= 0:
+                raise ValueError("explicit device launches_per_call must be a positive integer")
+            if region["placement"] not in {"accelerator", "device"} or len(bindings) != 1:
+                raise ValueError("explicit launches_per_call requires exactly one device image")
+            call["launches_per_call"] = count
+        calls.append(call)
     constants = []
     for constant in source.constants:
         payload = bytes.fromhex(constant.data_hex)
@@ -102,3 +118,19 @@ and immutable through completion/recovery. State remains caller-owned and must
 use the generated input/update indices; parameters are not state initializers.
 """
     return output
+
+
+def bind_deployment_payloads(deployment, payloads, vcs_linker_map=None):
+    """Materialize a saved deployment with caller-supplied invocation bytes.
+
+    Write returned members outside the verified application/ directory; adding
+    window.bin there invalidates its file inventory. Use a separate handoff/
+    directory beside the application/ directory for the returned members. Use
+    platform-cflags.txt for every platform translation unit, including drivers.
+    The final host build must still enforce chip.ld's aggregate section bound.
+    Supply vcs_linker_map explicitly to emit vcs.ld for a platform DRAM map;
+    its host_address and window_address are not inferred from the provider.
+    """
+    from .application_deployment import platform_files
+
+    return platform_files(deployment, payloads, vcs_linker_map=vcs_linker_map)

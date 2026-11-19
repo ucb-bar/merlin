@@ -21,6 +21,7 @@ OPERATIONS = frozenset(
         "i64_cumsum",
         "i64_min_value",
         "i64_first_min_index",
+        "bf16_neg",
         "f32_neg",
         "f64_neg",
         "f64_add",
@@ -271,15 +272,16 @@ def evaluate_scalar_region(node, operands):
         if attrs or types != (TensorType(shape, "i1", "boolean"), node.type, node.type):
             raise ValueError("select needs an exact Boolean condition and matching values")
         result = tuple(a if flag else b for flag, a, b in zip(*(v.elements for v in operands), strict=True))
-    elif operation in {"f32_neg", "f64_neg"}:
-        dtype = operation[:3]
+    elif operation in {"bf16_neg", "f32_neg", "f64_neg"}:
+        dtype = operation.split("_", 1)[0]
         if (
             types != (raw(dtype),)
             or node.type != raw(dtype)
             or attrs != {"numeric_semantics": f"{dtype}-sign-bit-flip-v1"}
         ):
             raise ValueError("floating negate has an unsupported type or policy")
-        result = tuple(bits ^ (1 << (31 if dtype == "f32" else 63)) for bits in operands[0].elements)
+        sign = {"bf16": 15, "f32": 31, "f64": 63}[dtype]
+        result = tuple(bits ^ (1 << sign) for bits in operands[0].elements)
     elif operation.startswith(("f64_", "bf16_")) and operation.split("_")[1] in {"add", "sub", "mul", "div"}:
         dtype, arithmetic = operation.split("_")
         if (
