@@ -595,7 +595,7 @@ def platform_files(deployment, payloads=None, vcs_linker_map=None):
     window = deployment["window"]["address"]
     linker = _platform_linker(base, window, usable, deployment["window"]["bytes"],
                               sizes, f"{base + usable:#010x}")
-    # Reproduce the whitespace of the historical build_kits.py regex patch.
+    # Temporary: keeps chip.ld byte-identical to the qualified silicon kits; drop at the next requalification.
     linker = linker.replace(f"LENGTH  =  {usable}\n".encode(), f"LENGTH = {usable}\n".encode())
     output = {
         "handoff/chip.ld": linker,
@@ -620,7 +620,7 @@ def platform_files(deployment, payloads=None, vcs_linker_map=None):
         "SP5_BUNDLE": {"value": None, "owner": "platform-owned",
                        "source": "platform location of the application and bound handoff"},
         "VCS_LINKER_MAP": {"value": None, "owner": "platform-owned",
-                           "source": "platform DRAM link map (Kit A used 0x80000000/0x81000000)"},
+                           "source": "platform DRAM link map"},
     }
     for name in ("CHIP", "PLATFORM", "RVV_TYPE", "PENGUIN26_EXIT_TOHOST",
                  "PENGUIN26_UART_BAUDRATE", "CMAKE_TOOLCHAIN_FILE", "CMAKE_PROJECT_INCLUDE",

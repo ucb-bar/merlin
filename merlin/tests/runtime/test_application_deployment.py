@@ -180,7 +180,7 @@ class DeploymentTest(unittest.TestCase):
         self.assertEqual(requirements["SP5_LINKER"]["value"], "handoff/chip.ld")
         self.assertEqual(requirements["VCS_LINKER_MAP"], {
             "value": None, "owner": "platform-owned",
-            "source": "platform DRAM link map (Kit A used 0x80000000/0x81000000)"})
+            "source": "platform DRAM link map"})
         for key, row in requirements.items():
             self.assertTrue(row["source"])
             self.assertIn(row["owner"], ("compiler-required", "platform-owned"))
