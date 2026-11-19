@@ -1,6 +1,8 @@
 """Private RMS intermediates are checked without absorbing residual users."""
 
 from dataclasses import replace
+from hashlib import sha256
+import json
 from math import prod
 from pathlib import Path
 import struct
@@ -121,11 +123,16 @@ def test_changed_literals_axes_and_escaping_intermediates_refuse(fault):
 
 @pytest.mark.parametrize("case", ["decode1-input","decode1-post","prefill0-input","prefill0-post"])
 def test_genuine_standalone_norm_linalg_source(case):
+    from merlin.common import provenance
     from merlin.semantic_compiler.linalg_bridge import translate_linalg_text
-    path=Path(__file__).resolve().parents[4]/"out"/"norm-arithmetic-source-v2"/case/"model.mlir"
-    if not path.is_file():
-        pytest.skip("optional genuine standalone normalization source fixture")
-    request=translate_linalg_text(path.read_text(),entry="forward",target_identity="synthetic",lowering_policy="diagnostic").request
+    root = Path(__file__).resolve().parents[1] / "data" / "rmsnorm_source"
+    receipt = json.loads((root / "capture.json").read_text())
+    assert receipt["model2mlir_revision"] == provenance.pin("model2mlir_capture", path=provenance.software_pins_path()).commit
+    generator = root.parents[1] / "fixtures" / "capture_rmsnorm_source.py"
+    assert sha256(generator.read_bytes()).hexdigest() == receipt["generator_sha256"]
+    raw = (root / (case + ".mlir")).read_bytes()
+    assert sha256(raw).hexdigest() == receipt["members"][case]
+    request=translate_linalg_text(raw.decode(),entry="forward",target_identity="synthetic",lowering_policy="diagnostic").request
     region=recognize_rmsnorm(request,request.outputs[0])
     assert region.matrix_shape==((128 if case.startswith("prefill") else 1),2048)
     assert len(region.computations)==8 and len(region.initializers)==3
