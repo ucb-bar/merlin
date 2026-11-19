@@ -1,9 +1,13 @@
 import hashlib
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 from corefixtures.compile_input_fixtures import SOURCE, _write_capture, _write_weighted_capture
 
+from merlin.common.paths import module_source_path
 from merlin.compiler.frontend.inputs import load_compile_inputs, stage_compile_inputs
 
 
@@ -53,3 +57,19 @@ def test_typed_stage_reader_preserves_identity_and_refuses_forged_abi(tmp_path):
     (staged / "compile-inputs.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="inputs differ from parsed function"):
         load_compile_inputs(staged)
+
+
+@pytest.mark.parametrize("first", ["inputs", "signature"])
+def test_input_staging_imports_in_a_fresh_process(first):
+    second = "signature" if first == "inputs" else "inputs"
+    subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import merlin.compiler.frontend.{first}; import merlin.compiler.frontend.{second}",
+        ],
+        env={**os.environ, "PYTHONPATH": str(module_source_path("merlin").parent.parent)},
+        check=True,
+        capture_output=True,
+        text=True,
+    )

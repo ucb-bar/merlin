@@ -18,7 +18,7 @@ from merlin.capture.safetensors import read_header
 from merlin.common import digest as _mdigest
 from merlin.common.digest import is_sha256
 from merlin.compiler.dialects.xdsl_context import text as module_text
-from merlin.compiler.frontend.inputs import CONSTANT_FILE, _ArchiveInfo
+from merlin.compiler.frontend.input_types import CONSTANT_FILE, _ArchiveInfo
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 # ---- signature ---------------------------------------------------------------------------------

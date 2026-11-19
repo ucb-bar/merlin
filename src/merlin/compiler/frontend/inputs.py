@@ -26,7 +26,9 @@ import numpy as np
 from xdsl.dialects.builtin import StringAttr
 
 from merlin.capture.safetensors import read_header
+from merlin.common.digest import sha256_file
 from merlin.compiler.dialects.xdsl_context import text as module_text
+from merlin.compiler.frontend.input_types import CONSTANT_FILE, _ArchiveInfo
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 from merlin.compiler.frontend.signature import (
     _WEIGHT_DTYPES,
@@ -36,18 +38,9 @@ from merlin.compiler.frontend.signature import (
     _payload_bytes,
     _tensor_abi,
 )
-from merlin.runtime.execution.model_inputs import file_sha256
 
 # ---- archives ----------------------------------------------------------------------------------
 # Checked compiler input bytes and bounded tensor-archive identities.
-
-
-@dataclass(frozen=True)
-class _ArchiveInfo:
-    header: dict
-    payload_start: int
-    file_bytes: int
-    checked_sha256: str | None
 
 
 def _archive_info(
@@ -125,8 +118,6 @@ def _checked_member(directory: Path, receipt: dict, name: str) -> bytes:
 # The capture producer stores these leaves in extra.npz. Only receipt-declared
 # constants and manifest-declared buffers are selected. Runtime inputs, outputs
 # and unrelated archive members never become compiler tensor arguments.
-
-CONSTANT_FILE = "capture-constants.safetensors"
 
 
 def needs_materialization(manifest: dict, receipt: dict) -> bool:
@@ -763,7 +754,7 @@ class MaterializedModelInputs:
             if Path(name).name != name or not isinstance(record, dict):
                 raise ValueError("invalid materialized model artifact")
             path = self.root / name
-            if path.is_symlink() or not path.is_file() or file_sha256(path) != record.get("sha256"):
+            if path.is_symlink() or not path.is_file() or sha256_file(path) != record.get("sha256"):
                 raise ValueError(f"materialized model artifact changed: {name}")
             if path.stat().st_size != record.get("size_bytes"):
                 raise ValueError(f"materialized model artifact extent changed: {name}")

@@ -1,8 +1,10 @@
 import importlib.util
 import json
+import os
 import sys
 import types
 from dataclasses import replace
+from pathlib import Path
 
 import pytest
 import yaml
@@ -21,10 +23,22 @@ from merlin.target.system import select_topology
 
 
 def _provider():
-    root = repo_root().parent / "merlin-backends/gemmini-mlir/compiler"
+    root = Path(
+        os.environ.get("MERLIN_FUSION_PROVIDER_ROOT", repo_root().parent / "merlin-backends/gemmini-mlir/compiler")
+    )
     if not (root / "provider.py").is_file():
-        pytest.skip("select the companion backend checkout for actual OOT integration")
-    pytest.importorskip("z3")
+        pytest.fail(
+            f"Fusion integration requires the historical source-proposal provider at {root / 'provider.py'}. "
+            "Set MERLIN_FUSION_PROVIDER_ROOT to the compiler directory of a compatible companion checkout. "
+            "Gemmini refactor/architecture at 9c6dfe8d instead exposes src/gemmini/backend.py and an explicit "
+            "legacy_source_backend adapter; these historical tests need migration to that API before they "
+            "can qualify that revision.",
+            pytrace=False,
+        )
+    try:
+        importlib.import_module("z3")
+    except ImportError as exc:
+        pytest.fail(f"Fusion integration requires z3-solver; install Merlin's verify extra: {exc}", pytrace=False)
     namespace = "gemmini_fusion_integration"
     package = types.ModuleType(namespace)
     package.__path__ = [str(root)]
