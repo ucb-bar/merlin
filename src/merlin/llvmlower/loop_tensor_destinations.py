@@ -121,6 +121,8 @@ def _ltd_tensor_read_root(value):
         if op.name == 'bufferization.to_tensor':
             return (len(op.operands) == 1 and 'restrict' in op.attributes
                     and _ltd_separate_read_root(op.operands[0]))
+        if op.name in ('scf.for', 'scf.while'):
+            return _ltd_completed_loop_value(value)
         return False
     return (isinstance(value, ir.BlockArgument) and value.owner.owner.operation.name == 'func.func'
             and value.owner == value.owner.owner.operation.regions[0].blocks[0])
@@ -505,6 +507,36 @@ def _ltd_copy_safe(value, incoming, inside, seen, *, complete=False):
     else:
         return False
     return all(safe(v) for v in op.operands)
+
+
+def _ltd_completed_loop_value(value):
+    # A preceding loop has finished before its value seeds another loop. Close
+    # every operation, including dead effects, against its actual fresh seed.
+    # This proves readable value data, never ownership of the returned storage.
+    loop = value.owner.operation
+    _block, edges = _ltd_carried_edges(loop)
+    index = tuple(loop.results).index(value)
+    if index >= len(edges):
+        return False
+    incoming, _previous, _yielded = edges[index]
+    if not _ltd_fresh_seed(incoming):
+        return False
+    inside, seen = {loop, *_ltd_walk(loop)}, set()
+    for child in _ltd_walk(loop):
+        if child.name in ('scf.yield', 'scf.condition', 'linalg.yield', 'tensor.yield'):
+            if child.results or child.regions:
+                return False
+            continue
+        if child.name == 'cf.assert':
+            if (len(child.operands) != 1 or str(child.operands[0].type) != 'i1' or child.results or child.regions
+                    or not _ltd_copy_safe(child.operands[0], incoming, inside, seen, complete=True)):
+                return False
+            continue
+        if child.name == 'linalg.index' and not child.operands and not child.regions:
+            continue
+        if not child.results or any(not _ltd_copy_safe(v, incoming, inside, seen, complete=True) for v in child.results):
+            return False
+    return True
 
 
 def _ltd_late_destination(ctx, previous, producer):

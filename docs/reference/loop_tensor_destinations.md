@@ -90,6 +90,12 @@ Scalar dependencies may include actual `tensor.dim` queries after closing their
 tensor and axis SSA. The query observes immutable value metadata, and its
 original evaluation remains. This supplies no mutable memref root, array-content,
 alias, ownership or shape-specialization permission.
+Completed serial loop results may supply readable values for a new independent
+seed when the actual carried interface maps that result to an existing fresh
+seed and every source operation closes under the value/effect proof. Unknown
+calls, mutable reads and writes are checked even when their results are unused.
+Original loops and guards remain. A new loop receives an actual private value
+copy; the preceding loop's returned storage gains no ownership premise.
 
 An additional dependency profile accepts an already-computed integer atomic
 snapshot. Its standard `scf.execute_region no_inline` must contain exactly one

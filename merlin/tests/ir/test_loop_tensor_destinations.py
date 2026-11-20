@@ -878,6 +878,64 @@ def test_completed_value_closes_actual_dynamic_tensor_dimension_queries(tmp_path
     assert 'prov.op = "copy-selected-state"' in output
 
 
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("control", ("for", "while"))
+@pytest.mark.parametrize("effect", ("pure", "call", "load", "store"))
+def test_preceding_completed_loop_requires_closed_values_before_private_copy(tmp_path, control, effect):
+    observed = {
+        "pure": "",
+        "call": "%dead=func.call @unknown(%one):(f32)->f32",
+        "load": "%dead=memref.load %sink[%zero]:memref<4xf32>",
+        "store": "memref.store %one,%sink[%zero]:memref<4xf32>",
+    }[effect]
+    producer = '''%next=linalg.generic {indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}
+      ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {^bb0(%a:f32,%init:f32):
+        %v=arith.addf %a,%one:f32
+        linalg.yield %v:f32
+      }->tensor<4xf32>'''
+    first = f'''%first=scf.for %i=%zero to %bound step %step iter_args(%old=%seed)->tensor<4xf32> {{
+      {observed}
+      {producer}
+      scf.yield %next:tensor<4xf32>
+    }}'''
+    if control == "while":
+        first = f'''%states:2=scf.while (%old=%seed,%i=%zero):(tensor<4xf32>,index)->(tensor<4xf32>,index) {{
+          %more=arith.cmpi slt,%i,%bound:index
+          scf.condition(%more) %old,%i:tensor<4xf32>,index
+        }} do {{^bb0(%old:tensor<4xf32>,%i:index):
+          {observed}
+          {producer}
+          %j=arith.addi %i,%step:index
+          scf.yield %next,%j:tensor<4xf32>,index
+        }}'''
+    initial = "%first" if control == "for" else "%states#0"
+    text = f'''module {{
+      func.func private @unknown(f32)->f32
+      func.func @forward(%data:tensor<4xf32>,%sink:memref<4xf32>,%bound:index)->tensor<4xf32> {{
+        %zero=arith.constant 0:index
+        %step=arith.constant 1:index
+        %one=arith.constant 1.0:f32
+        %seed=arith.constant dense<0.0>:tensor<4xf32>
+        %empty=tensor.empty():tensor<4xf32>
+        {first}
+        %result=scf.for %i=%zero to %bound step %step iter_args(%old={initial})->tensor<4xf32> {{
+          %next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+            ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
+              %captured=tensor.extract %data[%zero]:tensor<4xf32>
+              %v=arith.addf %a,%captured:f32
+              linalg.yield %v:f32
+            }}->tensor<4xf32>
+          scf.yield %next:tensor<4xf32>
+        }}
+        return %result:tensor<4xf32>
+      }}
+    }}'''
+    _stdout, output = rewrite(tmp_path, text)
+    assert ('prov.op = "seed-private-carried-value"' in output) == (effect == "pure")
+    if effect != "pure":
+        assert {"call": "call @unknown", "load": "memref.load", "store": "memref.store"}[effect] in output
+
+
 def branch_source(
     *,
     while_loop=True,

@@ -178,6 +178,11 @@ all native alias/allocation/lifetime gates.
 Actual `tensor.dim` queries may close their tensor/axis SSA dependencies as
 immutable value metadata; retain the query and grant no mutable root, array
 content, alias, ownership or shape-specialization exception.
+Completed serial loop values may seed an independent private copy only after
+matching the actual carried interface to its fresh seed and closing every
+operation, including dead effects. Keep guards, zero trips and unknown call/
+mutable-read/write refusals. This proves readability, never returned-storage
+ownership or a reason to relax native lifetime checks.
 The pinned Linalg bufferizer does not mark scalar regions repetitive. Before
 destination planning, tensor loop seeds and functional destinations captured
 from outside their nearest Linalg body receive an actual independent
