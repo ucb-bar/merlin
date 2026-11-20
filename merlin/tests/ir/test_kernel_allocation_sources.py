@@ -32,7 +32,10 @@ def fixture(*, normalized=False, descriptor=False, protected=False):
     if protected:
         files.update(
             {
-                "allocation-generic.mlir": b"complete original generic source",
+                "allocation-generic.mlir": (
+                    b'"builtin.module"() ({"tt.func"() '
+                    b'<{sym_name="kernel",function_type=()->()}> ({}) : ()->()}) : ()->()'
+                ),
                 "allocation-protected.ttir": b"executable protected source",
             }
         )

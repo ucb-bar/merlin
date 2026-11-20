@@ -148,6 +148,12 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   consume the protected source, and an unnormalized generic stage must consume
   that same protected source. Both v1 and v2 keep exact compiler rosters and
   exclude evaluator fields; v2 supplies no arithmetic or wrapper ABI permission.
+  `kernel_barrier_evidence.py` checks the explicit `barrier_conversions` extension
+  against actual typed original/protected source. Reconstruct single-program
+  participation, address-space masks, phase scope/prefix/live results and
+  original memory-event order, including order across intact phases. A retained
+  location cannot replace a deleted store. No producer/evaluator import, numeric
+  equivalence, alias, asynchronous/external effect or target permission follows.
   `kernel_cfg_evidence.py` independently validates optional original CFG custody:
   typed function input, native structured output, restored TTIR, complete original
   block/successor graph, fixed-pass stage and diagnostics. Bind all six compiler

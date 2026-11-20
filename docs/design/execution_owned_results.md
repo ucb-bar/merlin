@@ -3,12 +3,34 @@ title: "Results sized during execution"
 kind: design
 status: current
 owner: core
-last_verified: 2026-11-17
+last_verified: 2026-11-19
 related: [runtime, execution_resource_policy]
 code_refs: [src/merlin/llvmlower/owned_results.py, src/merlin/llvmlower/owned_result_lowering.py, src/merlin/llvmlower/owned_result_abi.py, src/merlin/llvmlower/owned_result_c.py, src/merlin/llvmlower/owned_result_driver.py, src/merlin/runtime/owned_result_readback.py, src/merlin/runtime/backends/owned_result_model.py, merlin/runtime/baremetal/spike/owned_result_main.c, src/merlin/llvmlower/owned_result_allocations.py, src/merlin/frontends/compile_inputs.py, src/merlin/frontends/derived_compile_inputs.py, src/merlin/frontends/execution_model_correspondence.py, src/merlin/frontends/execution_call_contracts.py, merlin/runtime/c/owned_result_driver.c, merlin/runtime/c/owned_result_readback.c, merlin/runtime/c/owned_result_host_main.c, merlin/runtime/abi/owned_results.c, merlin/runtime/abi/owned_result_views.c, merlin/runtime/abi/owned_result_views.h]
 ---
 
 # Results sized during execution
+
+## Protected source memory phases
+
+Allocation-source capsules may explicitly retain `barrier_conversions` under
+the source-protection report. The executable protected TTIR contains exactly-once
+standard SCF memory phases before source-version normalization or allocation
+wrapper inlining. The original pre-wrapper graph and its IDs remain separate
+from the bound kernel graph.
+
+`kernel_barrier_evidence.py` independently reads actual typed generic source and
+protected phase regions. It checks original participation and address-space
+masks, prefix membership, live result types, control positions and complete
+memory-event order. Checking only each phase's contents is insufficient: moving
+an intact phase changes source ordering. Likewise, retaining a deleted store's
+location on a pure operation cannot retain its effect.
+
+This extension imports no producer, reference evaluator or Triton backend.
+It grants source/phase custody; numeric semantics, ownership, aliases and target
+implementation still require their ordinary gates. Older readers reject the
+additional report field. The public tensor ABI, model receipt and signature v6
+remain unchanged, and physical caller mutation or broader asynchronous/shared
+effects do not follow from phase metadata.
 
 ## Explicit functional mutation results
 
