@@ -1,6 +1,6 @@
 {
   "schema": "merlin.compiler_library_selection.v1",
-  "review_id": "shared-floating-passes-v1",
+  "review_id": "shared-floating-passes-megaphase-v1",
   "public_modules": [
     "merlin.frontends.linalg_float_graph",
     "merlin.frontends.linalg_tensor_graph",
@@ -26,32 +26,340 @@
   ],
   "sources": [
     {
+      "module": "merlin.common.access",
+      "path": "src/merlin/common/access.py"
+    },
+    {
+      "module": "merlin.common.dense_float_ir",
+      "path": "src/merlin/common/dense_float_ir.py"
+    },
+    {
       "module": "merlin.common.ir_lock",
       "path": "src/merlin/common/ir_lock.py"
+    },
+    {
+      "module": "merlin.common.paths",
+      "path": "src/merlin/common/paths.py"
+    },
+    {
+      "module": "merlin.common.provenance",
+      "path": "src/merlin/common/provenance.py"
+    },
+    {
+      "module": "merlin.common.provenance_lost",
+      "path": "src/merlin/common/provenance_lost.py"
+    },
+    {
+      "module": "merlin.common.quant_formats",
+      "path": "src/merlin/common/quant_formats.py"
+    },
+    {
+      "module": "merlin.common.schemas",
+      "path": "src/merlin/common/schemas.py"
+    },
+    {
+      "module": "merlin.common.stat_memo",
+      "path": "src/merlin/common/stat_memo.py"
+    },
+    {
+      "module": "merlin.common.tree_hash",
+      "path": "src/merlin/common/tree_hash.py"
+    },
+    {
+      "module": "merlin.common.yaml",
+      "path": "src/merlin/common/yaml.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.affine_gather_runs",
+      "path": "src/merlin/compile/scheduling/affine_gather_runs.py"
     },
     {
       "module": "merlin.compile.scheduling.block_schedule",
       "path": "src/merlin/compile/scheduling/block_schedule.py"
     },
     {
+      "module": "merlin.compile.scheduling.command_compaction",
+      "path": "src/merlin/compile/scheduling/command_compaction.py"
+    },
+    {
       "module": "merlin.compile.scheduling.compact_dense",
       "path": "src/merlin/compile/scheduling/compact_dense.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.compact_loaded_sum",
+      "path": "src/merlin/compile/scheduling/compact_loaded_sum.py"
     },
     {
       "module": "merlin.compile.scheduling.compact_verification",
       "path": "src/merlin/compile/scheduling/compact_verification.py"
     },
     {
+      "module": "merlin.compile.scheduling.completion_schedule",
+      "path": "src/merlin/compile/scheduling/completion_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.configuration",
+      "path": "src/merlin/compile/scheduling/configuration.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.configuration_ir",
+      "path": "src/merlin/compile/scheduling/configuration_ir.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.configuration_loops",
+      "path": "src/merlin/compile/scheduling/configuration_loops.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.convolution_choices",
+      "path": "src/merlin/compile/scheduling/convolution_choices.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.convolution_exploration",
+      "path": "src/merlin/compile/scheduling/convolution_exploration.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.convolution_input_first_use",
+      "path": "src/merlin/compile/scheduling/convolution_input_first_use.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.convolution_input_reuse",
+      "path": "src/merlin/compile/scheduling/convolution_input_reuse.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.convolution_output_groups",
+      "path": "src/merlin/compile/scheduling/convolution_output_groups.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.copy_elimination",
+      "path": "src/merlin/compile/scheduling/copy_elimination.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.copy_pipeline",
+      "path": "src/merlin/compile/scheduling/copy_pipeline.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_array_retention",
+      "path": "src/merlin/compile/scheduling/dense_array_retention.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_contracts",
+      "path": "src/merlin/compile/scheduling/dense_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_panel_contracts",
+      "path": "src/merlin/compile/scheduling/dense_panel_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_panel_epochs",
+      "path": "src/merlin/compile/scheduling/dense_panel_epochs.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_panel_ir",
+      "path": "src/merlin/compile/scheduling/dense_panel_ir.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_panel_pipeline",
+      "path": "src/merlin/compile/scheduling/dense_panel_pipeline.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_panel_readout",
+      "path": "src/merlin/compile/scheduling/dense_panel_readout.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_readout_overlap",
+      "path": "src/merlin/compile/scheduling/dense_readout_overlap.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_ready_readout",
+      "path": "src/merlin/compile/scheduling/dense_ready_readout.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_retained",
+      "path": "src/merlin/compile/scheduling/dense_retained.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_rhs_residency",
+      "path": "src/merlin/compile/scheduling/dense_rhs_residency.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_segmented_pipeline",
+      "path": "src/merlin/compile/scheduling/dense_segmented_pipeline.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.dense_source",
+      "path": "src/merlin/compile/scheduling/dense_source.py"
+    },
+    {
       "module": "merlin.compile.scheduling.dense_tile_ir",
       "path": "src/merlin/compile/scheduling/dense_tile_ir.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.device_spills",
+      "path": "src/merlin/compile/scheduling/device_spills.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.fusion",
+      "path": "src/merlin/compile/scheduling/fusion.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.fusion_contracts",
+      "path": "src/merlin/compile/scheduling/fusion_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.fusion_semantics",
+      "path": "src/merlin/compile/scheduling/fusion_semantics.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.library_sources",
+      "path": "src/merlin/compile/scheduling/library_sources.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.llvm_program",
+      "path": "src/merlin/compile/scheduling/llvm_program.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.loop_schedule",
+      "path": "src/merlin/compile/scheduling/loop_schedule.py"
     },
     {
       "module": "merlin.compile.scheduling.memory_effects",
       "path": "src/merlin/compile/scheduling/memory_effects.py"
     },
     {
+      "module": "merlin.compile.scheduling.panel_tile_loads",
+      "path": "src/merlin/compile/scheduling/panel_tile_loads.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.panel_transfers",
+      "path": "src/merlin/compile/scheduling/panel_transfers.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.periodic_dense",
+      "path": "src/merlin/compile/scheduling/periodic_dense.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.periodic_effects",
+      "path": "src/merlin/compile/scheduling/periodic_effects.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.pointwise_source",
+      "path": "src/merlin/compile/scheduling/pointwise_source.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.program_contracts",
+      "path": "src/merlin/compile/scheduling/program_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.program_limits",
+      "path": "src/merlin/compile/scheduling/program_limits.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.rolling_lookahead",
+      "path": "src/merlin/compile/scheduling/rolling_lookahead.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.rolling_window",
+      "path": "src/merlin/compile/scheduling/rolling_window.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.row_contracts",
+      "path": "src/merlin/compile/scheduling/row_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.row_softmax",
+      "path": "src/merlin/compile/scheduling/row_softmax.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.row_softmax_verification",
+      "path": "src/merlin/compile/scheduling/row_softmax_verification.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.scf_carried_events",
+      "path": "src/merlin/compile/scheduling/scf_carried_events.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.scf_commands",
+      "path": "src/merlin/compile/scheduling/scf_commands.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.schedule_ir",
+      "path": "src/merlin/compile/scheduling/schedule_ir.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.schedule_pipeline",
+      "path": "src/merlin/compile/scheduling/schedule_pipeline.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.selected_contracts",
+      "path": "src/merlin/compile/scheduling/selected_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.shared_input_groups",
+      "path": "src/merlin/compile/scheduling/shared_input_groups.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.shared_input_schedule",
+      "path": "src/merlin/compile/scheduling/shared_input_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.shared_input_verification",
+      "path": "src/merlin/compile/scheduling/shared_input_verification.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.spatial_gather",
+      "path": "src/merlin/compile/scheduling/spatial_gather.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.spatial_producer",
+      "path": "src/merlin/compile/scheduling/spatial_producer.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.spatial_readout",
+      "path": "src/merlin/compile/scheduling/spatial_readout.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.spill_conformance",
+      "path": "src/merlin/compile/scheduling/spill_conformance.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.spill_contracts",
+      "path": "src/merlin/compile/scheduling/spill_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.staged_dense",
+      "path": "src/merlin/compile/scheduling/staged_dense.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.staged_dense_verification",
+      "path": "src/merlin/compile/scheduling/staged_dense_verification.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.static_schedule",
+      "path": "src/merlin/compile/scheduling/static_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.storage_contracts",
+      "path": "src/merlin/compile/scheduling/storage_contracts.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.temporary_storage",
+      "path": "src/merlin/compile/scheduling/temporary_storage.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.tile_load_coalescing",
+      "path": "src/merlin/compile/scheduling/tile_load_coalescing.py"
+    },
+    {
       "module": "merlin.compile.scheduling.timed_schedule",
       "path": "src/merlin/compile/scheduling/timed_schedule.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.window_transfer",
+      "path": "src/merlin/compile/scheduling/window_transfer.py"
+    },
+    {
+      "module": "merlin.compile.scheduling.zero_initializer_groups",
+      "path": "src/merlin/compile/scheduling/zero_initializer_groups.py"
     },
     {
       "module": "merlin.frontends.linalg_batch_matmul",
@@ -82,12 +390,72 @@
       "path": "src/merlin/frontends/linalg_fp8_cast.py"
     },
     {
+      "module": "merlin.frontends.linalg_mlir",
+      "path": "src/merlin/frontends/linalg_mlir.py"
+    },
+    {
       "module": "merlin.frontends.linalg_tensor_graph",
       "path": "src/merlin/frontends/linalg_tensor_graph.py"
     },
     {
       "module": "merlin.frontends.linalg_text",
       "path": "src/merlin/frontends/linalg_text.py"
+    },
+    {
+      "module": "merlin.integrations",
+      "path": "src/merlin/integrations/__init__.py"
+    },
+    {
+      "module": "merlin.integrations.model2mlir",
+      "path": "src/merlin/integrations/model2mlir.py"
+    },
+    {
+      "module": "merlin.llvmlower.borrowed_effects",
+      "path": "src/merlin/llvmlower/borrowed_effects.py"
+    },
+    {
+      "module": "merlin.llvmlower.cpu_softmax",
+      "path": "src/merlin/llvmlower/cpu_softmax.py"
+    },
+    {
+      "module": "merlin.llvmlower.floating_contractions",
+      "path": "src/merlin/llvmlower/floating_contractions.py"
+    },
+    {
+      "module": "merlin.llvmlower.fresh_tensor_writer",
+      "path": "src/merlin/llvmlower/fresh_tensor_writer.py"
+    },
+    {
+      "module": "merlin.llvmlower.generic_form",
+      "path": "src/merlin/llvmlower/generic_form.py"
+    },
+    {
+      "module": "merlin.llvmlower.integer_producer_range",
+      "path": "src/merlin/llvmlower/integer_producer_range.py"
+    },
+    {
+      "module": "merlin.llvmlower.integer_readout",
+      "path": "src/merlin/llvmlower/integer_readout.py"
+    },
+    {
+      "module": "merlin.llvmlower.llvm_loop_metadata",
+      "path": "src/merlin/llvmlower/llvm_loop_metadata.py"
+    },
+    {
+      "module": "merlin.llvmlower.private_workspace_pool",
+      "path": "src/merlin/llvmlower/private_workspace_pool.py"
+    },
+    {
+      "module": "merlin.llvmlower.requantization",
+      "path": "src/merlin/llvmlower/requantization.py"
+    },
+    {
+      "module": "merlin.llvmlower.spatial_scratch_abi",
+      "path": "src/merlin/llvmlower/spatial_scratch_abi.py"
+    },
+    {
+      "module": "merlin.llvmlower.toolchain",
+      "path": "src/merlin/llvmlower/toolchain.py"
     },
     {
       "module": "merlin.runtime.fp8_formats",
@@ -106,8 +474,16 @@
       "path": "src/merlin/sched/ir/__init__.py"
     },
     {
+      "module": "merlin.sched.ir.events",
+      "path": "src/merlin/sched/ir/events.py"
+    },
+    {
       "module": "merlin.sched.ir.expr",
       "path": "src/merlin/sched/ir/expr.py"
+    },
+    {
+      "module": "merlin.sched.ir.integer_domain",
+      "path": "src/merlin/sched/ir/integer_domain.py"
     },
     {
       "module": "merlin.sched.ir.kernel",
@@ -122,16 +498,104 @@
       "path": "src/merlin/sched/isa/model.py"
     },
     {
+      "module": "merlin.sched.isa.types",
+      "path": "src/merlin/sched/isa/types.py"
+    },
+    {
+      "module": "merlin.sched.primitives",
+      "path": "src/merlin/sched/primitives/__init__.py"
+    },
+    {
+      "module": "merlin.sched.primitives.event_loops",
+      "path": "src/merlin/sched/primitives/event_loops.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.allocate",
+      "path": "src/merlin/semantic_compiler/allocate.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.allocation_types",
+      "path": "src/merlin/semantic_compiler/allocation_types.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.egg_bridge",
+      "path": "src/merlin/semantic_compiler/egg_bridge.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.extract",
+      "path": "src/merlin/semantic_compiler/extract.py"
+    },
+    {
       "module": "merlin.semantic_compiler.model",
       "path": "src/merlin/semantic_compiler/model.py"
+    },
+    {
+      "module": "merlin.semantic_compiler.rules",
+      "path": "src/merlin/semantic_compiler/rules.py"
+    },
+    {
+      "module": "merlin.targetgen",
+      "path": "src/merlin/targetgen/__init__.py"
+    },
+    {
+      "module": "merlin.targetgen.isa_dialect_gen",
+      "path": "src/merlin/targetgen/isa_dialect_gen.py"
+    },
+    {
+      "module": "merlin.targetgen.isa_spec",
+      "path": "src/merlin/targetgen/isa_spec.py"
+    },
+    {
+      "module": "merlin.transforms.certificates",
+      "path": "src/merlin/transforms/certificates.py"
+    },
+    {
+      "module": "merlin.transforms.dense_ir",
+      "path": "src/merlin/transforms/dense_ir.py"
     },
     {
       "module": "merlin.transforms.dense_planning",
       "path": "src/merlin/transforms/dense_planning.py"
     },
     {
+      "module": "merlin.transforms.normalization",
+      "path": "src/merlin/transforms/normalization.py"
+    },
+    {
       "module": "merlin.transforms.ordered_float_dense",
       "path": "src/merlin/transforms/ordered_float_dense.py"
+    },
+    {
+      "module": "merlin.transforms.pass_exploration",
+      "path": "src/merlin/transforms/pass_exploration.py"
+    },
+    {
+      "module": "merlin.transforms.pipeline_policy",
+      "path": "src/merlin/transforms/pipeline_policy.py"
+    },
+    {
+      "module": "merlin.transforms.pipeline_state",
+      "path": "src/merlin/transforms/pipeline_state.py"
+    },
+    {
+      "module": "merlin.transforms.pure_scalar",
+      "path": "src/merlin/transforms/pure_scalar.py"
+    },
+    {
+      "module": "merlin.transforms.scalar_witness",
+      "path": "src/merlin/transforms/scalar_witness.py"
+    },
+    {
+      "module": "merlin.transforms.unrolling",
+      "path": "src/merlin/transforms/unrolling.py"
+    },
+    {
+      "module": "merlin.verify",
+      "path": "src/merlin/verify/__init__.py"
+    },
+    {
+      "module": "merlin.verify.epilogue_applicability",
+      "path": "src/merlin/verify/epilogue_applicability.py"
     },
     {
       "module": "merlin.xdsl_dialects._common",
@@ -146,20 +610,16 @@
       "path": "src/merlin/xdsl_dialects/fp8.py"
     },
     {
+      "module": "merlin.xdsl_dialects.rolling_window",
+      "path": "src/merlin/xdsl_dialects/rolling_window.py"
+    },
+    {
+      "module": "merlin.xdsl_dialects.runtime",
+      "path": "src/merlin/xdsl_dialects/runtime.py"
+    },
+    {
       "module": "merlin.xdsl_dialects.schedule",
       "path": "src/merlin/xdsl_dialects/schedule.py"
-    },
-    {
-      "module": "merlin.compile.scheduling.static_schedule",
-      "path": "src/merlin/compile/scheduling/static_schedule.py"
-    },
-    {
-      "module": "merlin.compile.scheduling.completion_schedule",
-      "path": "src/merlin/compile/scheduling/completion_schedule.py"
-    },
-    {
-      "module": "merlin.llvmlower.floating_contractions",
-      "path": "src/merlin/llvmlower/floating_contractions.py"
     }
   ],
   "empty_namespaces": [
@@ -168,12 +628,12 @@
     "merlin.compile",
     "merlin.compile.scheduling",
     "merlin.frontends",
+    "merlin.llvmlower",
     "merlin.runtime",
     "merlin.sched",
     "merlin.sched.isa",
     "merlin.semantic_compiler",
     "merlin.transforms",
-    "merlin.xdsl_dialects",
-    "merlin.llvmlower"
+    "merlin.xdsl_dialects"
   ]
 }

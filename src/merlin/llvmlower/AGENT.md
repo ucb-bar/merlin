@@ -1392,8 +1392,6 @@ producer symbols, observed intermediates and intervening effects stay unfused.
 Discovery supplies neither target borrowing/completion premises nor execution
 or performance evidence; unsupported adapters retain the separate source route.
 
-`floating_matmul_outline.static_tensor_signature` describes static ranked host
-
 `floating_contractions.static_tensor_signature` describes static ranked host
 arguments/results, including integer IDs, boolean masks and rank-zero buffers.
 These boundary types do not widen the f32 contraction replacement contract.

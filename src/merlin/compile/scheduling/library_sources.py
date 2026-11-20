@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import importlib
 from pathlib import Path
+from zipimport import zipimporter
 
 LIBRARY_MODULES_V6 = (
     "merlin",
@@ -390,10 +391,17 @@ def library_modules(version=6):
 
 def shared_library_sources(*, version=6):
     """Current source identities, equal for every treatment of one library."""
-    return {
-        name: hashlib.sha256(Path(importlib.import_module(name).__file__).read_bytes()).hexdigest()
-        for name in library_modules(version)
-    }
+    sources = {}
+    for name in library_modules(version):
+        module = importlib.import_module(name)
+        # An isolated authoring library may be imported directly from its ZIP.
+        # Hash the original bytes in either transport, never get_source() text
+        # (which can normalize newlines) or a cached manifest identity.
+        loader = module.__spec__.loader
+        payload = (loader.get_data(module.__file__) if isinstance(loader, zipimporter)
+                   else Path(module.__file__).read_bytes())
+        sources[name] = hashlib.sha256(payload).hexdigest()
+    return sources
 
 
 # ----------------------------------------------------------- author-visible admission records

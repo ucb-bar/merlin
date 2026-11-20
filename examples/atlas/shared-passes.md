@@ -39,13 +39,15 @@ two operations with matching shapes can be numerically fused.
 
 ## Isolated compiler library
 
-[shared-library.json](shared-library.json) explicitly selects 46 source/namespace
-members and 21 public leaf modules. Pure parsing and instruction contract types
-are separated from capture, backend discovery and reference evaluation. The
+[shared-library.json](shared-library.json) explicitly selects its source/namespace
+members and 21 public leaf modules. On the `mlsys27/megaphase` base, that selection
+includes the current scheduler's checking and source-identity dependencies.
+Parser and instruction compatibility APIs reuse the canonical shared owners. The
 export uses the existing `CompilerLibraryContract` hash, namespace and import
 closure checks. It includes no Atlas compiler, reference output, model or grader.
-Namespace-only initializers expose no parent package APIs; the normal installed
-Merlin namespaces keep their existing compatibility imports.
+Namespace-only initializers expose no parent package APIs; selected implementation
+facades retain their exact imports without becoming public package grants.
+The normal installed Merlin namespaces keep their existing compatibility imports.
 
 From the Merlin worktree, with its Python environment:
 

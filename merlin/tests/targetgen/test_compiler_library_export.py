@@ -25,12 +25,25 @@ def selection():
         schema="merlin.compiler_library_selection.v1",
         review_id="test-review",
         public_modules=["merlin.runtime.packed_float"],
-        empty_namespaces=["merlin", "merlin.runtime"],
+        empty_namespaces=["merlin", "merlin.runtime", "merlin.common"],
         sources=[
             dict(path=f"src/merlin/runtime/{name}.py", module=f"merlin.runtime.{name}")
             for name in ("fp8_formats", "packed_float")
+        ] + [
+            dict(path=f"src/merlin/common/{name}.py", module=f"merlin.common.{name}")
+            for name in ("quant_formats", "schemas", "paths", "yaml", "access")
         ],
     )
+
+
+def test_compatibility_exports_preserve_canonical_shared_types():
+    from merlin.frontends.linalg_errors import InvalidLinalgPattern
+    from merlin.transforms.dense_ir import InvalidLinalgPattern as CanonicalPatternError
+    from merlin.sched.isa.model import InstructionSet
+    from merlin.sched.isa.types import InstructionSet as CanonicalInstructionSet
+
+    assert InvalidLinalgPattern is CanonicalPatternError
+    assert InstructionSet is CanonicalInstructionSet
 
 
 def test_export_is_importable_without_original_namespace_or_reference(exporter, tmp_path):

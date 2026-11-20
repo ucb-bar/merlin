@@ -238,6 +238,18 @@ def test_incomplete_semantics_refuse(mutation):
         component_program.render(program, operand_dtype="f8E4M3FN", accumulator_dtype="bf16")
 
 
+@pytest.mark.parametrize("extension", [
+    {"schema": component_program.SCHEMA_V2},
+    {"schema": component_program.SCHEMA_V3},
+    {"logical_io": component_program.LOGICAL_IO_V1},
+])
+def test_floating_program_cannot_claim_integer_only_schema_extensions(extension):
+    program = suite.entries(config())[0]["program"]
+    program.update(extension)
+    with pytest.raises(ValueError, match="integer schema or logical IO"):
+        component_program.render(program, operand_dtype="f8E4M3FN", accumulator_dtype="bf16")
+
+
 def test_huge_source_refuses_before_tensor_materialization(tmp_path, monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("no data allocation before budget admission")

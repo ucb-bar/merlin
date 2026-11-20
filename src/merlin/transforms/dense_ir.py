@@ -325,7 +325,8 @@ def static_zero_integer_matmul_geometry(operation, dtypes=("i8", "i8", "i32"), *
     return m, k, n
 
 
-from merlin.frontends.linalg_errors import InvalidLinalgPattern as InvalidLinalgPattern
+class InvalidLinalgPattern(ValueError):
+    pass
 
 
 @dataclass(frozen=True)

@@ -5,6 +5,36 @@ Atlas work on `feat/generalized-tinyllama-layer`. Validation is scoped to these
 three models. Other model families encountered during discovery are not part of
 this validation task. No OOT compiler-generation loop is run.
 
+## Megaphase base migration — 2026-11-19
+
+`feat/atlas-target` now builds on `mlsys27/megaphase` at
+`e47c4fd16999d44371e70f931288afba26da48d6`. The original tip is retained locally
+as `backup/atlas-target-before-megaphase-20261119`. The equivalent sandbox test
+fix already present upstream was not replayed.
+
+- Retained the new base's compact scheduler, source verification, integer-domain
+  checks, and scheduling dialect operations alongside the floating and static
+  timing extensions. Existing versioned source inventories remain unchanged.
+- Reused the canonical parser, source-recognition exception, and instruction
+  classes through compatibility exports. Named batch matmul extends the shared
+  parser context; exact dense floating bits and layout checks remain upstream-owned.
+- Updated the explicit Atlas library selection for the current scheduler's
+  dependencies while keeping the same public leaf APIs. Source identities hash
+  exact bytes from either an ordinary directory or the authoring ZIP.
+- Kept the new integer component schemas and corpus admission lifecycle intact.
+  Floating components explicitly reject integer-only schema/IO extensions.
+  Shared-pass bundle creation respects the selected experiment arms and variants.
+
+The combined regression run passed 705 tests and skipped six. Eight failures in
+the older sandbox-readiness and integer graph-coverage tests reproduced on an
+untouched checkout of the selected base. Separately, 16 failures in the versioned
+scheduler-export tests also reproduced there, with the same missing dependencies
+or stale inventory assertions. These inherited failures are not an all-green
+upstream baseline. Structure checks passed; the Atlas directory/ZIP export
+regressions exercise real scheduling and outlining without the full checkout.
+No new Atlas simulator, full-model benchmark, or OOT generation run was performed
+for this migration; the model results below retain their original provenance.
+
 ## Floating component test generation
 
 The [floating test design](../../docs/design/floating_component_tests.md) extends

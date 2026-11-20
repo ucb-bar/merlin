@@ -33,7 +33,7 @@ import numpy as np
 
 from merlin.sched.ir.expr import Expr, render
 from merlin.sched.ir.kernel import NULL, Call, Kernel, Loop, Ptr
-from merlin.sched.isa.model import InstructionSet, IsaError
+from merlin.sched.isa.types import InstructionSet, IsaError
 
 #: Bumped whenever the emitted text for an unchanged kernel changes.
 EMITTER_VERSION = "mk_c_v1"

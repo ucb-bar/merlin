@@ -140,6 +140,9 @@ def test_generation_lineage_reconciles_selected_inputs_and_exact_capsules(monkey
 
 def test_selected_instruction_model_is_private_and_bound_to_release(monkeypatch, tmp_path):
     from merlin_experiments.phase0 import evidence
+    from merlin.targetgen import target_experiment
+
+    monkeypatch.setattr(target_experiment, "load_target_experiment", lambda _: SimpleNamespace(workload_spec={}))
 
     bundle = tmp_path / "selected-evidence"
     member = bundle / "software/instruction-semantics.json"
@@ -1874,11 +1877,15 @@ def test_native_harness_binds_seal_before_any_agent_launch():
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == "prepared" for t in node.targets)
     )
     assert ast.unparse(preparation.value.func) == "session.prepare"
-    execute = lifecycle.body[-1]
-    assert isinstance(execute, ast.Return)
-    assert ast.unparse(execute.value.func) == "authoring.execute"
-    assert ast.unparse(execute.value.args[0]) == "prepared"
-    assert preparation.lineno < execute.lineno
+    executions = [
+        node for node in ast.walk(lifecycle)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "_execute_prepared"
+    ]
+    assert len(executions) == 2  # Ordinary admission and explicitly selected shared passes.
+    assert all(ast.unparse(node.args[0]) == "prepared" and preparation.lineno < node.lineno for node in executions)
+    execute_entry = next(node for node in controller.body if isinstance(node, ast.FunctionDef) and node.name == "_execute_prepared")
+    assert ast.unparse(execute_entry.body[-1].value.func) == "authoring.execute"
+    assert ast.unparse(execute_entry.body[-1].value.args[0]) == "prepared"
     refusal = lifecycle.body[lifecycle.body.index(preparation) + 1]
     assert isinstance(refusal, ast.If)
     assert ast.unparse(refusal.test) == "isinstance(prepared, int)"

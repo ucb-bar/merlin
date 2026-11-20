@@ -1,5 +1,5 @@
-"""Shared source-recognition failure, without importing capture machinery."""
+"""Compatibility export for the canonical shared source-recognition failure."""
 
+from merlin.transforms.dense_ir import InvalidLinalgPattern as InvalidLinalgPattern
 
-class InvalidLinalgPattern(ValueError):
-    pass
+__all__ = ["InvalidLinalgPattern"]
