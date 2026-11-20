@@ -3,7 +3,7 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-17
+last_verified: 2026-11-19
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
@@ -21,6 +21,9 @@ code_refs:
   - src/merlin/llvmlower/c_runtime.py
   - src/merlin/frontends/derived_source_views.py
   - src/merlin/frontends/kernel_compile_inputs.py
+  - src/merlin/frontends/kernel_allocation_evidence.py
+  - src/merlin/frontends/kernel_barrier_evidence.py
+  - src/merlin/frontends/kernel_atomic_evidence.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - src/merlin/xdsl_dialects/standard_arith.py
@@ -42,6 +45,16 @@ code_refs:
 ---
 
 # Derived tensor compiler inputs
+
+Protected allocation source phases explicitly select ordinary barrier v1 or
+`t2m.synchronous-program-barrier.v2` when actual source atomics compose with
+synchronous single-CTA rendezvous. The independent reader reconstructs primitive
+atomic operation/type/order/scope and the selected private-invocation numeric
+policy from actual typed source. Protected atomics must retain those fields and
+original effect order; source selection must match bound memory evidence.
+Returned old values remain executable. No producer/evaluator import, external
+publication, cross-program synchronization or ownership permission follows.
+Existing compiled memory-conflict and native lifetime checks remain required.
 
 `stage_compile_inputs` accepts the existing `m2m.capture-receipt.v1` path and an
 explicit `t2m.bound-model-receipt.v1` derived-model path. It publishes a

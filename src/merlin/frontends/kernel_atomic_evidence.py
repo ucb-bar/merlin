@@ -11,6 +11,61 @@ _FLOAT_CONTRACTS.update({("fadd", dtype): (f"ieee-{dtype}-rne-add-quiet-nans",) 
 _FLOAT_WIDTHS = {"f16": 16, "bf16": 16, "f32": 32, "f64": 64}
 
 
+def checked_source_atomic(op, declared, selection):
+    """Reconstruct the pinned primitive before source barrier normalization."""
+    from xdsl.dialects import builtin
+
+    source_kinds = {1: "and", 2: "or", 3: "xor", 4: "add", 5: "fadd", 6: "max", 7: "min",
+                    8: "umax", 9: "umin", 10: "exch"}
+    orders = {1: "relaxed", 2: "acquire", 3: "release", 4: "acq_rel"}
+    scopes = {1: "gpu", 2: "cta", 3: "sys"}
+    if (not isinstance(selection, dict) or set(selection) != {"profile", "f32_atomic_add"}
+            or selection.get("profile") not in (EFFECT_PROFILE, TYPED_EFFECT_PROFILE)
+            or selection.get("f32_atomic_add") not in (None, "ieee", "ftz")
+            or selection.get("f32_atomic_add") is not None and selection["profile"] != TYPED_EFFECT_PROFILE):
+        raise ValueError("program barrier lacks its private atomic effect selection")
+    name = op.op_name.data if isinstance(op, builtin.UnregisteredOp) else op.name
+    cas = name == "tt.atomic_cas"
+    if name not in ("tt.atomic_rmw", "tt.atomic_cas") or len(op.results) != 1:
+        raise ValueError("program barrier atomic source has an invalid result schema")
+    type_ = op.results[0].type
+    element = type_.element_type if isinstance(type_, builtin.TensorType) else type_
+    dtype = str(element)
+    floating = dtype in _FLOAT_WIDTHS
+    bits = getattr(element, "bitwidth", None)
+    integer_types = tuple(builtin.IntegerType(n) for n in ((16, 32, 64) if cas else (32, 64)))
+    if (floating and (cas or selection["profile"] != TYPED_EFFECT_PROFILE)
+            or not floating and element not in integer_types):
+        raise ValueError("program barrier atomic source has an unqualified numeric type")
+
+    def field(key, values):
+        value = op.properties.get(key, op.attributes.get(key))
+        if not isinstance(value, builtin.IntegerAttr) or value.value.data not in values:
+            raise ValueError("program barrier atomic source has an unknown operation/order/scope")
+        return values[value.value.data]
+
+    operation = "cas" if cas else field("atomic_rmw_op", source_kinds)
+    order, scope = field("sem", orders), field("scope", scopes)
+    if (not floating and operation == "fadd"
+            or floating and (operation, dtype) not in _FLOAT_CONTRACTS):
+        raise ValueError("program barrier atomic source has an unqualified numeric operation")
+    numeric = None
+    if floating:
+        numeric = "bitwise-exchange" if operation == "exch" else f"ieee-{dtype}-rne-add-quiet-nans"
+        if operation == "fadd" and dtype == "f32":
+            policies = {"ieee": "ieee-f32-rne-add", "ftz": "f32-rne-sign-preserving-ftz-add"}
+            numeric = policies.get(selection["f32_atomic_add"])
+            if numeric is None:
+                raise ValueError("program barrier f32 atomic addition lacks its explicit numeric policy")
+    expected = {"operation": operation, "standard_kind": _KINDS[operation], "word_bits": bits,
+        **({"value_dtype": dtype, "numeric_contract": numeric} if floating else {}),
+        "source_order": order, "source_scope": scope,
+        "logical_scope": "one-logical-program" if scope == "cta" else "all-logical-programs-in-private-invocation",
+        "standard_order": "acq_rel", "external_participants": "excluded-by-private-buffer-ABI"}
+    if declared != expected:
+        raise ValueError("program barrier atomic declaration differs from actual typed source semantics")
+
+
 def _payload(info):
     if "byte_view" in info:
         return "standard-byte-backed-word-atomic-with-original-returned-old-value"

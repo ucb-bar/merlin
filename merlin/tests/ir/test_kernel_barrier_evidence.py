@@ -64,6 +64,45 @@ def test_retained_phase_has_actual_original_control_and_store():
     checked_program_barriers(*fixture())
 
 
+def atomic_fixture():
+    graph, reports, generic, protected = deepcopy(fixture())
+    original = b'"tt.store"(%p,%x):(!tt.ptr<i64>,i64)->()'
+    atomic = (b'%old="tt.atomic_rmw"(%p,%x) <{atomic_rmw_op=4:i32,sem=4:i32,scope=1:i32}>'
+              b':(!tt.ptr<i64>,i64)->i64')
+    generic, protected = generic.replace(original, atomic), protected.replace(original, atomic)
+    scope = reports[0]["contract"]
+    scope.update(schema="t2m.synchronous-program-barrier.v2", atomic_effects={
+        "profile": "private-invocation-integer-atomics-v1", "f32_atomic_add": None})
+    graph["operations"][3]["program_barrier"] = scope
+    graph["operations"][2].update(opcode="tt.atomic_rmw", atomic={
+        "operation": "add", "standard_kind": 1, "word_bits": 64,
+        "source_order": "acq_rel", "source_scope": "gpu",
+        "logical_scope": "all-logical-programs-in-private-invocation",
+        "standard_order": "acq_rel", "external_participants": "excluded-by-private-buffer-ABI"})
+    return graph, reports, generic, protected
+
+
+def test_atomic_source_phases_keep_actual_primitive_fields_and_event_order():
+    checked_program_barriers(*atomic_fixture())
+
+
+@pytest.mark.parametrize("change", ["missing-selection", "downgrade", "primitive", "protected-kind", "lost-atomic"])
+def test_atomic_phase_annotations_cannot_replace_actual_atomic_source(change):
+    graph, reports, generic, protected = atomic_fixture()
+    if change == "missing-selection":
+        reports[0]["contract"].pop("atomic_effects")
+    elif change == "downgrade":
+        reports[0]["contract"]["schema"] = "t2m.synchronous-program-barrier.v1"
+    elif change == "primitive":
+        graph["operations"][2]["atomic"]["source_order"] = "relaxed"
+    elif change == "protected-kind":
+        protected = protected.replace(b"atomic_rmw_op=4:i32", b"atomic_rmw_op=10:i32")
+    else:
+        protected = protected.replace(b'"tt.atomic_rmw"', b'"test.identity"')
+    with pytest.raises(ValueError, match="barrier"):
+        checked_program_barriers(graph, reports, generic, protected)
+
+
 def test_deleting_the_inventory_and_profile_cannot_hide_a_real_source_barrier():
     graph, _, generic, protected = deepcopy(fixture())
     graph["operations"] = [row for row in graph["operations"] if row["opcode"] != "ttg.barrier"]

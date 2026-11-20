@@ -150,6 +150,14 @@ def checked_allocation_sources(checked, provenance, bound_source):
         raise ValueError("allocation source capsule artifact differs from its byte record")
     if protected:
         _checked_protection(copied, binding["source_entry"])
+        protection = json.loads(copied["allocation-protection.json"])
+        for phase in protection.get("barrier_conversions", []):
+            selection = phase["contract"].get("atomic_effects")
+            if selection is not None and (
+                provenance.get("memory", {}).get("effect_profile") != selection["profile"]
+                or provenance.get("memory", {}).get("f32_atomic_add") != selection["f32_atomic_add"]
+            ):
+                raise ValueError("allocation barrier atomic selection differs from bound memory effects")
     if (
         binding.get("schema") != "t2m.source-allocation-bindings.v1"
         or binding.get("grants_semantics") is not False

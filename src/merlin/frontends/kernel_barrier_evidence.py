@@ -53,10 +53,18 @@ def _checked_program_barriers(graph, reports, generic, protected):
         or len({row.get("id") for row in records}) != len(records)
     ):
         raise ValueError("allocation barrier inventory differs from actual original operations")
-    identities = {op: row["id"] for op, row in zip(ops, records, strict=True)}
-    effects = {"tt.load", "tt.store", "tt.call", "tt.assert", "cf.assert", "tt.print"}
+    source_records = dict(zip(ops, records, strict=True))
+    identities = {op: row["id"] for op, row in source_records.items()}
+    effects = {"tt.load", "tt.store", "tt.call", "tt.assert", "cf.assert", "tt.print", "tt.atomic_rmw", "tt.atomic_cas"}
     effect_ids = {identities[op] for op in ops if _name(op) in effects}
     source = {identities[op]: op for op in ops if _name(op) == "ttg.barrier"}
+    atomic_source = [op for op in ops if _name(op) in ("tt.atomic_rmw", "tt.atomic_cas")]
+    atomic_declarations = {identities[op]: source_records[op].get("atomic") for op in atomic_source}
+    atomic_effects = reports[0].get("contract", {}).get("atomic_effects") if atomic_source else None
+    if atomic_source:
+        from .kernel_atomic_evidence import checked_source_atomic
+        for op in atomic_source:
+            checked_source_atomic(op, source_records[op].get("atomic"), atomic_effects)
     if len(reports) != len(source):
         raise ValueError("allocation barrier phase roster differs from its source")
     for op in original.walk():
@@ -66,7 +74,7 @@ def _checked_program_barriers(graph, reports, generic, protected):
         if (
             _name(op).startswith(("ttg.", "ttng.", "gpu.", "nvvm.", "rocdl."))
             and _name(op) != "ttg.barrier"
-            or _name(op) in {"tt.atomic_rmw", "tt.atomic_cas", "tt.elementwise_inline_asm", "tt.inline_asm"}
+            or _name(op) in {"tt.elementwise_inline_asm", "tt.inline_asm"}
         ):
             raise ValueError("allocation source barrier has an unqualified physical/effect composition")
         arguments = [arg for region in op.regions for block in region.blocks for arg in block.args]
@@ -96,6 +104,10 @@ def _checked_program_barriers(graph, reports, generic, protected):
         if not selected and _name(child) != "cf.assert" or len(selected) > 1:
             raise ValueError("allocation barrier contains an unaccounted source memory effect")
         if selected:
+            if _name(child) in ("tt.atomic_rmw", "tt.atomic_cas"):
+                if next(iter(selected)) not in atomic_declarations:
+                    raise ValueError("allocation barrier contains an unaccounted atomic effect")
+                checked_source_atomic(child, atomic_declarations[next(iter(selected))], atomic_effects)
             retained_order.append((_name(child), next(iter(selected))))
     if retained_order != original_order:
         raise ValueError("allocation barrier protection changed original source memory order")
@@ -160,7 +172,8 @@ def _checked_program_barriers(graph, reports, generic, protected):
                 raise ValueError("allocation barrier participation needs whole-program structured control")
             parent = parent.parent_op()
         expected_contract = {
-            "schema": _PROFILE,
+            "schema": "t2m.synchronous-program-barrier.v2" if atomic_source else _PROFILE,
+            **({"atomic_effects": atomic_effects} if atomic_source else {}),
             "source_id": source_id,
             "address_space_mask": space.value.data,
             "address_spaces": [name for bit, name in _SPACES if space.value.data & bit],
@@ -169,7 +182,7 @@ def _checked_program_barriers(graph, reports, generic, protected):
             "external_participants": "not-admitted",
             "physical_mapping": "undecided",
         }
-        row = records[ops.index(op)]
+        row = source_records[op]
         if (
             report["contract"] != expected_contract
             or row.get("program_barrier") != expected_contract
