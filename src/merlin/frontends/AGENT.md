@@ -238,6 +238,13 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   pre-CSE memory-effects stage. V1 evidence keeps its original scope and cost.
   The source-word buffer profile also retains exact word-stage input/output
   evidence and validates its explicit pass sequence and function access intent.
+  `kernel_word_source_effects.py` independently parses actual word-input IR
+  before legacy stage early returns. Actual atomics and volatile flags require
+  matching original primitive fields and explicit selected effect profiles;
+  volatile reads also require nondestructive v3/v4 stages. Raw physical/effect
+  operations must already have their supported standard expansion. Historical
+  f64 IEEE labels compare without mutating evidence or granting new numerics.
+  This is primitive admission, not address/dependency or source equivalence.
   Both retained legacy pipelines and the exact additional
   `math-expand-ops{ops=rsqrt}` computation pipeline are admitted; unfiltered or
   different math expansions remain refused. This grants stage custody only.

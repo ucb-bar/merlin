@@ -108,6 +108,8 @@ def _checked_memory_members(checked, provenance):
         for name in ("word-input.mlir", "word-tensor.mlir", "word-stage.json"):
             copied[name] = checked(name)
         word_stage = json.loads(copied["word-stage.json"])
+        from .kernel_word_source_effects import checked_word_source_effects
+        checked_word_source_effects(copied["word-input.mlir"], word_stage, memory, records)
         if (not version2 or admission.get("address_policy") != "source-words-offset64"
                 or memory.get("address_policy") != "source-words-offset64"
                 or memory.get("word_stage_sha256") != record("word-stage.json")["sha256"]

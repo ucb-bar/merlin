@@ -390,7 +390,13 @@ def word_fixture(root, change=None, *, isolated=False, math_expansion=None):
     receipt = json.loads((root / "capture_receipt.json").read_text())
     provenance = json.loads((root / "provenance.json").read_text())
     admission = json.loads((root / "memory-admission.json").read_text())
-    word_input, word_tensor = b"original typed integer word operations", b"signed i64 pointer offset stage"
+    word_input = b'''"builtin.module"() ({
+      "tt.func"() <{sym_name="fixture",function_type=(!tt.ptr<f32>)->()}> ({^bb0(%p:!tt.ptr<f32>):
+        %v="tt.load"(%p) <{isVolatile=false}>:(!tt.ptr<f32>)->f32
+        "tt.return"():()->()
+      }):()->()
+    }):()->()'''
+    word_tensor = b"signed i64 pointer offset stage"
     pipeline = ["--triton-to-unstructured=offset-bit-width=64",
         "--triton-arith-to-linalg=pids-to-func-args=false tt-to-func-func=false", "--remove-dead-values", "--canonicalize"]
     if math_expansion is not None:
@@ -514,6 +520,42 @@ def test_isolated_word_stages_retain_intermediates_without_evaluator_values(tmp_
     assert json.loads(raw)["schema"] == "t2m.source-word-stages.v2"
     staged = b"".join((target / name).read_bytes() for name in manifest["members"])
     assert b"EVALUATOR" not in staged
+
+
+@pytest.mark.parametrize("isolated", [False, True])
+@pytest.mark.parametrize("effect", ["volatile", "atomic", "physical"])
+def test_rehashed_word_sources_with_unselected_effects_never_publish(tmp_path, isolated, effect):
+    source, target = tmp_path / "capture", tmp_path / "compiler"
+    word_fixture(source, isolated=isolated)
+    raw = (source / "word-input.mlir").read_bytes()
+    if effect == "volatile":
+        raw = raw.replace(b"isVolatile=false", b"isVolatile=true")
+    elif effect == "atomic":
+        raw = raw.replace(b'%v="tt.load"(%p) <{isVolatile=false}>:(!tt.ptr<f32>)->f32',
+            b'%x="arith.constant"() <{value=1.0:f32}>:()->f32 '
+            b'%v="tt.atomic_rmw"(%p,%x)<{atomic_rmw_op=5:i32,sem=4:i32,scope=1:i32}>'
+            b':(!tt.ptr<f32>,f32)->f32')
+    else:
+        raw = raw.replace(b'"tt.return"()', b'"ttg.barrier"() <{addrSpace=31:i32}>:()->() "tt.return"()')
+    stage = json.loads((source / "word-stage.json").read_text())
+    if isolated:
+        stage["input"] = record(raw)
+    else:
+        stage["artifacts"]["source.ttir"] = record(raw)
+    admission = json.loads((source / "memory-admission.json").read_text())
+    admission["word_input_sha256"] = record(raw)["sha256"]
+    provenance = json.loads((source / "provenance.json").read_text())
+    provenance["memory"]["word_stage_sha256"] = record(encoded(stage))["sha256"]
+    provenance["memory"]["admission_sha256"] = record(encoded(admission))["sha256"]
+    receipt = json.loads((source / "capture_receipt.json").read_text())
+    for name, data in {"word-input.mlir": raw, "word-stage.json": encoded(stage),
+                       "memory-admission.json": encoded(admission), "provenance.json": encoded(provenance)}.items():
+        (source / name).write_bytes(data)
+        receipt["artifacts"][name] = record(data)
+    (source / "capture_receipt.json").write_bytes(encoded(receipt))
+    with pytest.raises(ValueError, match="actual volatile|actual atomic|unexpanded physical/effect"):
+        stage_compile_inputs(source, target)
+    assert not target.exists()
 
 
 @pytest.mark.parametrize("change", ["event-bytes", "compute-bytes", "pointer-pass-twice", "different-tools",

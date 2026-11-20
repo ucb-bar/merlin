@@ -26,6 +26,7 @@ code_refs:
   - src/merlin/frontends/kernel_atomic_evidence.py
   - src/merlin/frontends/kernel_volatile_evidence.py
   - src/merlin/frontends/kernel_word_evidence.py
+  - src/merlin/frontends/kernel_word_source_effects.py
   - src/merlin/xdsl_dialects/standard_llvm.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
@@ -42,12 +43,26 @@ code_refs:
   - merlin/tests/ir/test_derived_runtime_arguments.py
   - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
+  - merlin/tests/ir/test_kernel_word_source_effects.py
   - merlin/tests/ir/test_standard_bufferization.py
   - merlin/tests/ir/test_standard_memref.py
   - merlin/tests/ir/test_standard_arith.py
 ---
 
 # Derived tensor compiler inputs
+
+Every source-word profile parses actual typed word-input IR before legacy
+stage early returns. The independent `kernel_word_source_effects.py` reader
+requires actual atomics and volatile loads to match original primitive fields
+and explicitly selected effects. Volatile observations additionally need the
+nondestructive v3/v4 word stages. Deleted declarations, changed kind/order/scope
+and unexpanded physical/effect operations refuse even when artifact digests
+have been consistently recomputed. The original inventory may retain unreachable
+declarations; this does not invent computation. Legacy f64 IEEE label comparison
+preserves the original evidence and grants no new NaN or executable semantics.
+This gate imports no producer/evaluator code and grants no source equivalence,
+address, dependency, ownership, external participation or target permission.
+Public ABI, receipt schemas and required artifacts are unchanged.
 
 Composed private atomic/volatile effects select admission v6 and source-word
 stages v4. The original typed atomic `effect_profile`, numeric policy and
