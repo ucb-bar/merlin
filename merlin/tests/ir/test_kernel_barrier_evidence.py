@@ -7,6 +7,54 @@ import pytest
 from merlin.frontends.kernel_barrier_evidence import checked_program_barriers
 
 
+def cfg_function():
+    from merlin.frontends.kernel_barrier_evidence import _name
+    from merlin.frontends.linalg_mlir import make_context
+    from xdsl.parser import Parser
+
+    module = Parser(make_context(), '''"builtin.module"() ({
+      "tt.func"() <{sym_name="f",function_type=(i1,i64)->()}> ({
+      ^entry(%choose:i1,%x:i64):
+        cf.cond_br %choose, ^body(%x:i64), ^done
+      ^body(%carry:i64):
+        "ttg.barrier"() <{addrSpace=31:i32}>:()->()
+        cf.br ^done
+      ^done:
+        "tt.return"():()->()
+      }):()->()
+    }):()->()''').parse_module()
+    return next(op for op in module.walk() if _name(op) == "tt.func")
+
+
+def test_scalar_cfg_phase_participation_is_independently_reconstructed():
+    from merlin.frontends.kernel_barrier_evidence import _checked_cfg_participation
+
+    assert _checked_cfg_participation(cfg_function()) == "whole-program-scalar-cfg-v1"
+
+
+@pytest.mark.parametrize("damage", ["condition", "argument", "missing-argument", "foreign-block", "terminator"])
+def test_scalar_cfg_phase_scope_cannot_hide_invalid_control(damage):
+    from merlin.frontends.kernel_barrier_evidence import _checked_cfg_participation
+    from xdsl.dialects import builtin
+    from xdsl.ir import Block
+
+    function = cfg_function()
+    blocks = list(function.regions[0].blocks)
+    branch = blocks[0].last_op
+    if damage == "condition":
+        branch.operands[0]._type = builtin.TensorType(builtin.i1, [1])
+    elif damage == "argument":
+        blocks[1].args[0]._type = builtin.i32
+    elif damage == "missing-argument":
+        blocks[1].insert_arg(builtin.i64, 1)
+    elif damage == "foreign-block":
+        branch.successors = (Block(arg_types=[builtin.i64]), branch.successors[1])
+    else:
+        blocks[1].erase_op(blocks[1].last_op)
+    with pytest.raises(ValueError, match="CFG"):
+        _checked_cfg_participation(function)
+
+
 def fixture():
     original = """"builtin.module"() ({
       "tt.func"() <{sym_name="exchange",function_type=(!tt.ptr<i64>)->()}> ({

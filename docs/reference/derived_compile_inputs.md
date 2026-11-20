@@ -3,7 +3,7 @@ title: Derived tensor compiler inputs
 kind: reference
 status: current
 owner: compiler
-last_verified: 2026-11-19
+last_verified: 2026-11-20
 related: [architecture]
 code_refs:
   - src/merlin/frontends/compile_inputs.py
@@ -44,12 +44,23 @@ code_refs:
   - merlin/tests/ir/test_derived_source_views.py
   - merlin/tests/ir/test_kernel_compile_inputs.py
   - merlin/tests/ir/test_kernel_word_source_effects.py
+  - merlin/tests/ir/test_kernel_barrier_evidence.py
   - merlin/tests/ir/test_standard_bufferization.py
   - merlin/tests/ir/test_standard_memref.py
   - merlin/tests/ir/test_standard_arith.py
 ---
 
 # Derived tensor compiler inputs
+
+Program-phase contracts may explicitly select
+`source_control = whole-program-scalar-cfg-v1`. Independently reconstruct
+scalar integer conditions, same-function-region successors and complete typed
+block arguments from original source. Source early exits and backedges remain
+under the existing native CFG-to-SCF stage; complete phase payload and order
+checks still apply. Older phase readers reject the additional field. This
+supplies whole-program participation only, with no lane divergence, cross-program
+ordering, asynchronous progress or new arithmetic/effect permission. Public
+ABI, receipt schemas and required artifacts are unchanged.
 
 Every source-word profile parses actual typed word-input IR before legacy
 stage early returns. The independent `kernel_word_source_effects.py` reader

@@ -149,8 +149,14 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   that same protected source. Both v1 and v2 keep exact compiler rosters and
   exclude evaluator fields; v2 supplies no arithmetic or wrapper ABI permission.
   `kernel_barrier_evidence.py` checks the explicit `barrier_conversions` extension
-  against actual typed original/protected source. Reconstruct single-program
-  participation, address-space masks, phase scope/prefix/live results and
+  against actual typed original/protected source. Reconstruct
+  `whole-program-scalar-cfg-v1` participation from actual scalar branch
+  conditions, same-region successors and exact block argument types. Original
+  early exits and backedges reach the existing official CFG lifter after phase
+  expansion. Reconstruct this additional contract independently; it grants no
+  lane divergence, inter-program order, asynchronous progress or new effects.
+  Keep existing structured-only contracts unchanged. Check address-space
+  masks, phase scope/prefix/live results and
   original memory-event order, including order across intact phases. A retained
   location cannot replace a deleted store. No producer/evaluator import, numeric
   equivalence, alias, asynchronous/external effect or target permission follows.

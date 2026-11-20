@@ -26,6 +26,45 @@ def _ids(location):
     return []
 
 
+def _checked_cfg_participation(function):
+    """Reprove scalar whole-program source edges without producer imports."""
+    from xdsl.utils.exceptions import VerifyException
+
+    if len(function.regions) != 1 or not function.regions[0].blocks:
+        raise ValueError("allocation barrier CFG requires one nonempty source function region")
+    blocks = set(function.regions[0].blocks)
+    for block in blocks:
+        terminal = block.last_op
+        if terminal is None or any(op.successors for op in list(block.ops)[:-1]):
+            raise ValueError("allocation barrier CFG requires complete terminal control edges")
+        if _name(terminal) == "tt.return":
+            if terminal.successors or terminal.results or terminal.regions:
+                raise ValueError("allocation barrier CFG return has unexpected control fields")
+            continue
+        if _name(terminal) not in ("cf.br", "cf.cond_br", "cf.switch"):
+            raise ValueError("allocation barrier CFG has an unsupported terminator")
+        if not terminal.successors or any(target not in blocks for target in terminal.successors):
+            raise ValueError("allocation barrier CFG edges must stay in the original program region")
+        if _name(terminal) != "cf.br" and (not terminal.operands
+                or not isinstance(terminal.operands[0].type, (builtin.IntegerType, builtin.IndexType))
+                or _name(terminal) == "cf.cond_br" and terminal.operands[0].type != builtin.i1):
+            raise ValueError("allocation barrier CFG conditions require actual scalar integer control")
+        try:
+            terminal.verify()
+            if _name(terminal) == "cf.br":
+                edges = [(terminal.successor, terminal.arguments)]
+            elif _name(terminal) == "cf.cond_br":
+                edges = [(terminal.then_block, terminal.then_arguments), (terminal.else_block, terminal.else_arguments)]
+            else:
+                edges = [(terminal.default_block, terminal.default_operands),
+                         *zip(terminal.case_blocks, terminal.case_operand, strict=True)]
+            if any([value.type for value in values] != [arg.type for arg in target.args] for target, values in edges):
+                raise ValueError("allocation barrier CFG successor arguments differ from their original block types")
+        except VerifyException as error:
+            raise ValueError("allocation barrier CFG has invalid typed successor arguments") from error
+    return "whole-program-scalar-cfg-v1"
+
+
 def checked_program_barriers(graph, reports, generic, protected):
     """Reconstruct the explicit optional phase extension from actual source."""
     try:
@@ -186,16 +225,20 @@ def _checked_program_barriers(graph, reports, generic, protected):
         ):
             raise ValueError("allocation source barrier differs from its pinned typed fields")
         parent = op.parent_op()
+        source_control = None
         while parent is not None and parent is not original:
-            if _name(parent) not in {"tt.func", "scf.for", "scf.if", "scf.while"} or any(
-                len(region.blocks) != 1 for region in parent.regions
-            ):
+            if _name(parent) not in {"tt.func", "scf.for", "scf.if", "scf.while"}:
                 raise ValueError("allocation barrier participation needs whole-program structured control")
+            if any(len(region.blocks) != 1 for region in parent.regions):
+                if _name(parent) != "tt.func":
+                    raise ValueError("allocation barrier participation needs single-block structured regions")
+                source_control = _checked_cfg_participation(parent)
             parent = parent.parent_op()
         expected_contract = {
             "schema": ("t2m.synchronous-program-barrier.v4" if volatile_source and atomic_source else
                        "t2m.synchronous-program-barrier.v3" if volatile_source else
                        "t2m.synchronous-program-barrier.v2" if atomic_source else _PROFILE),
+            **({"source_control": source_control} if source_control is not None else {}),
             **({"atomic_effects": atomic_effects} if atomic_source else {}),
             **({"volatile_effects": volatile_effects} if volatile_source else {}),
             "source_id": source_id,
