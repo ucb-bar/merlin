@@ -67,6 +67,14 @@ Returned old values remain executable. No producer/evaluator import, external
 publication, cross-program synchronization or ownership permission follows.
 Existing compiled memory-conflict and native lifetime checks remain required.
 
+`t2m.synchronous-program-barrier.v3` additionally admits actual private volatile
+reads across synchronous phases. Reconstruct every original observation and
+require the retained source flag/type and bound volatile memory profile. Missing
+unused reads, changed phase order, downgraded profiles and substituted primitive
+claims refuse. Executable LLVM volatile leaves and ordinary memory/lifetime
+checks remain required. This grants no external/shared publication, mixed atomic
+effect profile, asynchronous progress or accelerator permission.
+
 `stage_compile_inputs` accepts the existing `m2m.capture-receipt.v1` path and an
 explicit `t2m.bound-model-receipt.v1` derived-model path. It publishes a
 `merlin.compile-inputs.v1` directory with `source_profile: derived-tensor-model`.

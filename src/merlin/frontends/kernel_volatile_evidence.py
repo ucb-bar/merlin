@@ -8,6 +8,20 @@ from xdsl.parser import Parser
 PROFILE = "private-invocation-volatile-loads-v1"
 
 
+def checked_source_volatile(op, declared, source_id):
+    """Check the actual primitive rather than an observation annotation."""
+    flag = op.properties.get("isVolatile", op.attributes.get("isVolatile"))
+    if (not isinstance(flag, builtin.IntegerAttr) or flag.type != builtin.i1
+            or flag.value.data != -1 or len(op.results) != 1):
+        raise ValueError("volatile read needs its actual pinned boolean and one typed result")
+    expected = {"schema": "t2m.volatile-read.v1", "source_id": source_id,
+        "result_type": str(op.results[0].type), "scope": PROFILE,
+        "observation": "one-actual-volatile-read-per-active-logical-lane",
+        "external_participants": "excluded-by-private-buffer-ABI", "physical_mapping": "undecided"}
+    if declared != expected:
+        raise ValueError("volatile source contract differs from its actual typed read")
+
+
 def checked_volatile_memory(admission, memory, records, source, stage):
     from .kernel_barrier_evidence import _ids, _name
     from .linalg_mlir import make_context
@@ -28,10 +42,8 @@ def checked_volatile_memory(admission, memory, records, source, stage):
         if len(ids) != 1 or flag.type != builtin.i1 or flag.value.data != -1 or len(op.results) != 1:
             raise ValueError("volatile typed source has an unaccounted observation")
         sid = next(iter(ids))
-        contract = {"schema": "t2m.volatile-read.v1", "source_id": sid, "result_type": str(op.results[0].type),
-            "scope": PROFILE, "observation": "one-actual-volatile-read-per-active-logical-lane",
-            "external_participants": "excluded-by-private-buffer-ABI", "physical_mapping": "undecided"}
-        if sid in actual or declared[sid] != contract:
+        checked_source_volatile(op, declared[sid], sid)
+        if sid in actual:
             raise ValueError("volatile source contract differs from its actual typed read")
         type_ = op.results[0].type
         actual[sid] = str(type_.element_type if isinstance(type_, builtin.TensorType) else type_)

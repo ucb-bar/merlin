@@ -86,6 +86,52 @@ def test_atomic_source_phases_keep_actual_primitive_fields_and_event_order():
     checked_program_barriers(*atomic_fixture())
 
 
+def volatile_fixture():
+    graph, reports, generic, protected = deepcopy(fixture())
+    generic = generic.replace(b'"tt.load"(%p)', b'"tt.load"(%p) <{isVolatile=true}>')
+    protected = protected.replace(b'"tt.load"(%p)', b'"tt.load"(%p) <{isVolatile=true}>')
+    scope = reports[0]["contract"]
+    scope.update(schema="t2m.synchronous-program-barrier.v3", volatile_effects={
+        "profile": "private-invocation-volatile-loads-v1"})
+    graph["operations"][3]["program_barrier"] = scope
+    graph["operations"][4]["volatile_read"] = {
+        "schema": "t2m.volatile-read.v1", "source_id": "s4", "result_type": "i64",
+        "scope": "private-invocation-volatile-loads-v1",
+        "observation": "one-actual-volatile-read-per-active-logical-lane",
+        "external_participants": "excluded-by-private-buffer-ABI", "physical_mapping": "undecided"}
+    return graph, reports, generic, protected
+
+
+def test_volatile_source_phases_retain_the_actual_unused_observation():
+    checked_program_barriers(*volatile_fixture())
+
+
+@pytest.mark.parametrize("change", ["missing-selection", "downgrade", "scope", "primitive", "flag", "read"])
+def test_volatile_phase_claims_cannot_replace_original_source_observations(change):
+    graph, reports, generic, protected = volatile_fixture()
+    if change == "missing-selection":
+        reports[0]["contract"].pop("volatile_effects")
+    elif change == "downgrade":
+        reports[0]["contract"]["schema"] = "t2m.synchronous-program-barrier.v1"
+    elif change == "scope":
+        reports[0]["contract"]["volatile_effects"]["profile"] = "external-volatile-loads"
+    elif change == "primitive":
+        graph["operations"][4]["volatile_read"]["observation"] = "stable-tensor-read"
+    elif change == "flag":
+        protected = protected.replace(b"isVolatile=true", b"isVolatile=false")
+    else:
+        protected = protected.replace(b'"tt.load"', b'"test.identity"')
+    with pytest.raises(ValueError, match="barrier|volatile"):
+        checked_program_barriers(graph, reports, generic, protected)
+
+
+def test_ordinary_program_phases_cannot_gain_an_unselected_volatile_read():
+    graph, reports, generic, protected = fixture()
+    protected = protected.replace(b'"tt.load"(%p)', b'"tt.load"(%p) <{isVolatile=true}>')
+    with pytest.raises(ValueError, match="invented a volatile"):
+        checked_program_barriers(graph, reports, generic, protected)
+
+
 @pytest.mark.parametrize("change", ["missing-selection", "downgrade", "primitive", "protected-kind", "lost-atomic"])
 def test_atomic_phase_annotations_cannot_replace_actual_atomic_source(change):
     graph, reports, generic, protected = atomic_fixture()

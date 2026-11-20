@@ -154,6 +154,10 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   original memory-event order, including order across intact phases. A retained
   location cannot replace a deleted store. No producer/evaluator import, numeric
   equivalence, alias, asynchronous/external effect or target permission follows.
+  Barrier v3 additionally binds the explicit private volatile profile. Recheck
+  every original volatile primitive and retained flag/type, including unused
+  observations, and require the same bound memory profile. Phase order cannot
+  replace a lost observation or grant cross-program publication.
   `kernel_cfg_evidence.py` independently validates optional original CFG custody:
   typed function input, native structured output, restored TTIR, complete original
   block/successor graph, fixed-pass stage and diagnostics. Bind all six compiler

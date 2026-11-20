@@ -65,6 +65,18 @@ def _checked_program_barriers(graph, reports, generic, protected):
         from .kernel_atomic_evidence import checked_source_atomic
         for op in atomic_source:
             checked_source_atomic(op, source_records[op].get("atomic"), atomic_effects)
+    from .kernel_volatile_evidence import PROFILE as volatile_profile, checked_source_volatile
+
+    volatile_source = {
+        identities[op]: op for op in ops if _name(op) == "tt.load"
+        and isinstance(op.properties.get("isVolatile"), builtin.IntegerAttr)
+        and op.properties["isVolatile"].value.data
+    }
+    volatile_effects = {"profile": volatile_profile} if volatile_source else None
+    if volatile_source and atomic_source:
+        raise ValueError("allocation barrier needs a combined volatile/atomic effect profile")
+    for sid, op in volatile_source.items():
+        checked_source_volatile(op, source_records[op].get("volatile_read"), sid)
     if len(reports) != len(source):
         raise ValueError("allocation barrier phase roster differs from its source")
     for op in original.walk():
@@ -104,11 +116,19 @@ def _checked_program_barriers(graph, reports, generic, protected):
         if not selected and _name(child) != "cf.assert" or len(selected) > 1:
             raise ValueError("allocation barrier contains an unaccounted source memory effect")
         if selected:
+            sid = next(iter(selected))
             if _name(child) in ("tt.atomic_rmw", "tt.atomic_cas"):
-                if next(iter(selected)) not in atomic_declarations:
+                if sid not in atomic_declarations:
                     raise ValueError("allocation barrier contains an unaccounted atomic effect")
-                checked_source_atomic(child, atomic_declarations[next(iter(selected))], atomic_effects)
-            retained_order.append((_name(child), next(iter(selected))))
+                checked_source_atomic(child, atomic_declarations[sid], atomic_effects)
+            if _name(child) == "tt.load":
+                if sid in volatile_source:
+                    checked_source_volatile(child, source_records[volatile_source[sid]]["volatile_read"], sid)
+                else:
+                    flag = child.properties.get("isVolatile")
+                    if isinstance(flag, builtin.IntegerAttr) and flag.value.data:
+                        raise ValueError("allocation barrier protection invented a volatile read")
+            retained_order.append((_name(child), sid))
     if retained_order != original_order:
         raise ValueError("allocation barrier protection changed original source memory order")
 
@@ -172,8 +192,10 @@ def _checked_program_barriers(graph, reports, generic, protected):
                 raise ValueError("allocation barrier participation needs whole-program structured control")
             parent = parent.parent_op()
         expected_contract = {
-            "schema": "t2m.synchronous-program-barrier.v2" if atomic_source else _PROFILE,
+            "schema": ("t2m.synchronous-program-barrier.v3" if volatile_source else
+                       "t2m.synchronous-program-barrier.v2" if atomic_source else _PROFILE),
             **({"atomic_effects": atomic_effects} if atomic_source else {}),
+            **({"volatile_effects": volatile_effects} if volatile_source else {}),
             "source_id": source_id,
             "address_space_mask": space.value.data,
             "address_spaces": [name for bit, name in _SPACES if space.value.data & bit],

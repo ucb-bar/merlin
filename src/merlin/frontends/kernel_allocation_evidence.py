@@ -158,6 +158,9 @@ def checked_allocation_sources(checked, provenance, bound_source):
                 or provenance.get("memory", {}).get("f32_atomic_add") != selection["f32_atomic_add"]
             ):
                 raise ValueError("allocation barrier atomic selection differs from bound memory effects")
+            volatile = phase["contract"].get("volatile_effects")
+            if volatile is not None and provenance.get("memory", {}).get("effect_profile") != volatile["profile"]:
+                raise ValueError("allocation barrier volatile selection differs from bound memory effects")
     if (
         binding.get("schema") != "t2m.source-allocation-bindings.v1"
         or binding.get("grants_semantics") is not False
