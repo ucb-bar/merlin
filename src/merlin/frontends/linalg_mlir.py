@@ -144,6 +144,9 @@ def make_context():
     ctx = Context(allow_unregistered=True)
     for d in (Builtin, Func, Arith, linalg_dialect(), Tensor, scf_dialect(), Math, Cf, memref_dialect(), layout_bufferization_dialect(), vector_dialect()):
         ctx.load_dialect(d)
+    from ..xdsl_dialects.standard_llvm import llvm_memory_dialect
+
+    ctx.load_dialect(llvm_memory_dialect())
     from ..xdsl_dialects.standard_tensor import register_parallel_tensor_ops
 
     register_parallel_tensor_ops(ctx)

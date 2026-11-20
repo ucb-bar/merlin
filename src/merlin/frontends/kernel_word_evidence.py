@@ -50,10 +50,13 @@ def checked_word_stages(stage, source, output, memory, inventory):
         _native(stage, "source-word-tensor", _POINTER_FLAGS + _COMPUTE_FLAGS, source, output,
                 alternative_flags=(_POINTER_FLAGS + _RSQRT_COMPUTE_FLAGS,))
         return
-    if (stage.get("schema") != "t2m.source-word-stages.v2" or stage.get("stage_completed") is not True
+    volatile = stage.get("schema") == "t2m.source-word-stages.v3"
+    if (stage.get("schema") not in ("t2m.source-word-stages.v2", "t2m.source-word-stages.v3") or stage.get("stage_completed") is not True
+            or volatile and stage.get("compute_effects") != "private-invocation-volatile-loads-v1"
+            or volatile and memory.get("effect_profile") != "private-invocation-volatile-loads-v1"
             or stage.get("input") != _record(source) or stage.get("output") != _record(output)
             or stage.get("reconstruction") != "same-region-same-event-order"
-            or memory.get("word_conversion") != "native-isolated-events-v2"
+            or memory.get("word_conversion") != ("native-isolated-volatile-events-v3" if volatile else "native-isolated-events-v2")
             or not isinstance(stage.get("events"), dict) or not isinstance(stage.get("compute"), dict)):
         raise ValueError("source-word event conversion lacks its versioned input/output chain")
     events, compute = stage["events"], stage["compute"]
@@ -62,8 +65,9 @@ def checked_word_stages(stage, source, output, memory, inventory):
             or not events["bindings"]):
         raise ValueError("source-word event conversion lacks its actual intermediate bytes")
     _native(events.get("native_stage"), "source-word-events", _POINTER_FLAGS, events["input"], events["output"])
-    _native(compute.get("native_stage"), "source-word-compute", _COMPUTE_FLAGS, compute["input"], output,
-            alternative_flags=(_RSQRT_COMPUTE_FLAGS,))
+    _native(compute.get("native_stage"), "source-word-volatile-compute" if volatile else "source-word-compute",
+            _RSQRT_COMPUTE_FLAGS[:2] if volatile else _COMPUTE_FLAGS, compute["input"], output,
+            alternative_flags=() if volatile else (_RSQRT_COMPUTE_FLAGS,))
     event_tool = events["native_stage"].get("optimizer", {}).get("sha256")
     if not isinstance(event_tool, str) or len(event_tool) != 64 or event_tool != compute["native_stage"].get("optimizer", {}).get("sha256"):
         raise ValueError("source-word event and computation stages used different optimizers")

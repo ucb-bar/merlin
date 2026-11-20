@@ -36,6 +36,11 @@ merlin's own **core dialects** in xDSL. This is the default, fast Python plane f
   punctuation fields of `vector.print`. Retain its observable stdout effect;
   this binding grants no purity, buffer aliasing, physical replication or
   native runtime implementation.
+- `standard_llvm.py` retains the standard LLVM volatile-load property absent
+  from the pinned reader. Only load and internal integer-to-pointer transport
+  are registered. Native semantics and explicit private-memory source/payload
+  checks remain required; registration grants no physical address identity,
+  arbitrary LLVM program, target intrinsic or external participation.
 - `fp8.py` binds the four TTIR builtin FP8 types and exact scalar/dense
   constants, with an optional `ml-dtypes` codec. The shared parser registry
   retains type identity with cooperating readers. Numeric operations, buffer

@@ -24,6 +24,8 @@ code_refs:
   - src/merlin/frontends/kernel_allocation_evidence.py
   - src/merlin/frontends/kernel_barrier_evidence.py
   - src/merlin/frontends/kernel_atomic_evidence.py
+  - src/merlin/frontends/kernel_volatile_evidence.py
+  - src/merlin/xdsl_dialects/standard_llvm.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
   - src/merlin/xdsl_dialects/standard_arith.py
@@ -45,6 +47,15 @@ code_refs:
 ---
 
 # Derived tensor compiler inputs
+
+Selected private volatile reads use memory admission v5 and source-word stages
+v3. The independent source reader requires actual typed volatile observations,
+complete intermediate identity bodies and exact nondestructive stage pipelines.
+The exported payload must retain real standard LLVM volatile loads inside closed
+SCF descriptor-address leaves. Check base/offset/stride SSA, storage byte scale,
+ordering and nonescaping pointers; annotations cannot replace an observation.
+Older profiles cannot admit these low-level leaves. Hardware cache policies,
+external/shared publication and broader effect compositions remain separate.
 
 Protected allocation source phases explicitly select ordinary barrier v1 or
 `t2m.synchronous-program-barrier.v2` when actual source atomics compose with

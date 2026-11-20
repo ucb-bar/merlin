@@ -48,7 +48,10 @@ def _checked_memory_members(checked, provenance):
     copied = {name: checked(name) for name in names}
     admission = json.loads(copied[names[0]]) if guarded else None
     version3 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v3", "t2m.memory-admission.v4")
-    version2 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4")
+    version2 = admission is not None and admission.get("schema") in ("t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4", "t2m.memory-admission.v5")
+    volatile = admission is not None and admission.get("schema") == "t2m.memory-admission.v5"
+    if volatile and not word:
+        raise ValueError("volatile memory requires the selected guarded source-word profile")
     memory = provenance.get("memory", {})
     for name, key in ((names[0], "admission_sha256" if guarded else "witness_sha256"), (names[1], "continuation_input_sha256"),
                       (names[2], "continuation_output_sha256")):
@@ -57,7 +60,7 @@ def _checked_memory_members(checked, provenance):
     stage = json.loads(copied[names[3]])
     def record(name):
         return {"bytes": len(copied[name]), "sha256": hashlib.sha256(copied[name]).hexdigest()}
-    if (stage.get("schema") != "t2m.triton-shared-stage.v1" or stage.get("stage") != ("memory-effects" if version2 else "memory-ir")
+    if (stage.get("schema") != "t2m.triton-shared-stage.v1" or stage.get("stage") != ("memory-volatile-effects" if volatile else "memory-effects" if version2 else "memory-ir")
             or stage.get("stage_completed") is not True
             or stage.get("artifacts", {}).get("source.ttir") != record(names[1])
             or stage.get("artifacts", {}).get("lowered.mlir") != record(names[2])):
@@ -70,7 +73,7 @@ def _checked_memory_members(checked, provenance):
             + [{"kind": kind, "buffer": b["name"]} for b in spec["buffers"] if b["effect"] != "read" for kind in ("owners", "visited")]
             + [{"kind": "program"}])
         layout = _guard_layout(spec, version2, atomics=version3)
-        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4")
+        if (admission.get("schema") not in ("t2m.memory-admission.v1", "t2m.memory-admission.v2", "t2m.memory-admission.v3", "t2m.memory-admission.v4", "t2m.memory-admission.v5")
                 or admission.get("strategy") != "runtime-guarded-private-output-state"
                 or admission.get("spec") != spec or admission.get("internal_arguments") != arguments
                 or admission.get("guarded_input_sha256") != record(names[1])["sha256"]
@@ -113,6 +116,16 @@ def _checked_memory_members(checked, provenance):
             raise ValueError("source-word address evidence does not bind its declared input/output/policy")
         from .kernel_word_evidence import checked_word_stages
         checked_word_stages(word_stage, copied["word-input.mlir"], copied["word-tensor.mlir"], memory, inventory)
+        if volatile:
+            from .kernel_volatile_evidence import checked_volatile_memory
+            from .kernel_word_evidence import _native
+            _native(stage, "memory-volatile-effects", ["--triton-arith-to-linalg", "--structured-to-memref",
+                "--unstructured-to-memref", "--triton-ptr-to-memref", "--triton-to-ptr",
+                "--reconcile-unrealized-casts", "--reconcile-ptr-casts"],
+                copied["memory-input.mlir"], copied["memory-stage.mlir"])
+            checked_volatile_memory(admission, memory, records, copied["word-input.mlir"], word_stage)
+        elif word_stage.get("schema") == "t2m.source-word-stages.v3" or memory.get("effect_profile") == "private-invocation-volatile-loads-v1":
+            raise ValueError("volatile memory requires its explicit admission v5 contract")
     return copied
 
 
@@ -123,6 +136,11 @@ def _checked_word_intent(entry, members):
     if not isinstance(access, StringAttr) or json.loads(access.data) != json.loads(members["memory-admission.json"])["accesses"]:
         raise ValueError("source-word kernel access intent differs from admission")
     admission = json.loads(members["memory-admission.json"])
+    if admission.get("schema") == "t2m.memory-admission.v5":
+        from .kernel_volatile_evidence import PROFILE, checked_volatile_payload
+        if entry.attributes.get("prov.effect_profile") != StringAttr(PROFILE):
+            raise ValueError("volatile kernel lacks its private observation profile")
+        checked_volatile_payload(entry, admission)
     if admission.get("schema") in ("t2m.memory-admission.v3", "t2m.memory-admission.v4"):
         from .kernel_atomic_evidence import EFFECT_PROFILE, TYPED_EFFECT_PROFILE
         profile = TYPED_EFFECT_PROFILE if admission["schema"] == "t2m.memory-admission.v4" else EFFECT_PROFILE
@@ -216,6 +234,9 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
     for op in module.walk():
         if op.name in ("builtin.unregistered", "func.call") or "prov.kernel" in op.attributes:
             raise ValueError("standalone kernel retains an unresolved operation or dependency")
+    if provenance.get("memory", {}).get("effect_profile") != "private-invocation-volatile-loads-v1":
+        from .kernel_volatile_evidence import checked_volatile_payload
+        checked_volatile_payload(module, {"volatile_adaptations": []})
     entry = functions[0]
 
     def abi(types, declared):
