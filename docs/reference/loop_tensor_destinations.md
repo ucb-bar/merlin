@@ -3,7 +3,7 @@ title: Loop-carried tensor destination reuse
 kind: reference
 status: current
 owner: llvmlower
-last_verified: 2026-11-11
+last_verified: 2026-11-20
 related: [architecture, lowering_pipeline]
 code_refs:
   - src/merlin/llvmlower/loop_tensor_destinations.py
@@ -49,10 +49,22 @@ scalar capture producers also close recursively, so moving a scalar load outside
 the generic cannot bypass its root/seed checks. Pure padding/conditional values
 and restricted tensor imports from the qualified roots remain in that closure.
 Serial `scf.while` after-regions also qualify when the condition forwards every
-before-argument unchanged, in the same position and type. Computed, permuted or
-heterogeneous condition state remains unchanged because it cannot inherit the
-corresponding initial seed facts. The original condition, iteration order and
-zero-trip behavior stay executable; no iteration bound is invented.
+before-argument unchanged, in the same position and type. A condition computing
+tensor state can first use typed initial-condition peeling: evaluate its entire
+before body once before the loop, then carry the actual Boolean condition and
+forwarded state. The new before region forwards that complete state unchanged;
+the new after region executes the original after body followed by the next
+original before evaluation. Original before/after numeric arities and types may
+differ. The final false condition's values and effects remain observable,
+including when the original body never executes. No trip count is invented.
+
+This normalization selects an actual tensor producer in the before block,
+not provenance or an unchanged/permuted/captured value. Only descriptive `prov.*`
+loop attributes are transported: unknown attributes may depend on the changed
+operand/result ordinals and leave the original loop unchanged. Normalization
+alone grants no destination, ownership, purity or alias fact; unknown calls and
+mutable reads retain their original dynamic evaluations but cannot authorize
+destination reuse. The following destination proof is still required.
 Dynamic/empty shapes and library calls stay unchanged. No operation is selected
 by provenance or workload identity.
 
@@ -66,6 +78,14 @@ effects/captures. The same readonly-entry/fresh-seed gate applies to scalar
 memory captures; unknown producers, writes and opaque calls do not qualify.
 Reduction bodies and live original init arguments remain intact; the separate
 copy moves their complete computed value. Library calls grant no permission.
+The complete-value copy profile also accepts `tensor.from_elements` after
+closing its scalar dependencies. Linalg/padding bodies may read recursively
+checked immutable tensor values defined inside the loop, including actual
+carried tensor arguments, and retain typed fail-stop assertions. This permission
+applies only to copying a completed value at its selected edge. It does not
+allow retargeting that producer's destination before old-state reads finish,
+admit unknown scalar calls/mutable reads/writes, or waive ordinary native alias
+and post-deallocation lifetime verification.
 
 An additional dependency profile accepts an already-computed integer atomic
 snapshot. Its standard `scf.execute_region no_inline` must contain exactly one
@@ -130,7 +150,8 @@ atomic preparation from its ownership suffix.
 Nested pointer branches, pointer-returning helper inlining, `for`/`while` state,
 and conditional row reductions now also execute through the actual Merlin
 library path over independent empty/tail domains, choices and iteration counts.
-Computed/permuted before-state and broader ownership profiles remain separate.
+Computed before-state additionally has the typed peeling profile above;
+permuted/captured state and broader ownership profiles remain separate.
 Tiled online attention additionally retains two contractions and running maximum,
 normalizer and accumulator through one native library, including empty keys,
 runtime tails and independently changing query/key dimensions. This is measured
@@ -144,6 +165,14 @@ non-equivalent conditions and mismatched state. The conditional read-only/fresh
 case also appears in `Dialect/Bufferization/Transforms/one-shot-bufferize-allow-return-allocs.mlir`.
 This feature exposes value destinations before that analysis; it does not
 replace upstream alias handling or relax post-deallocation lifetime verification.
+`mlir/lib/Dialect/SCF/Transforms/RotateWhileLoop.cpp` uses initial-condition
+peeling from `WrapInZeroTripCheck.cpp`; its
+`mlir/test/Dialect/SCF/wrap-while-loop-in-zero-trip-check.mlir` checks empty and
+different before/after interfaces. The installed bindings do not expose that
+test pass. This feature implements a typed Boolean-carrier variant at the
+existing native seam, rather than claiming to run an unavailable rotation pass.
+The variant keeps an unchanged-forwarding before region for the existing
+destination proof. Every cloned operation keeps its original source location.
 
 Complete model captures additionally exercise scalar reads of a preceding
 computed model tensor feeding coupled integer loop state. Recursively checking

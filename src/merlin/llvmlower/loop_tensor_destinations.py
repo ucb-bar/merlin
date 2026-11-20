@@ -139,7 +139,7 @@ def _ltd_scalar_control(op):
     return bool(op.verify())
 
 
-def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
+def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False, carried_tensors=()):
     # Readonly entry storage or an actual private allocation is disjoint from
     # a newly synthesized loop seed. This changes no capture or memory effect;
     # native bufferization still decides whether physical reuse is legal.
@@ -192,14 +192,15 @@ def _ltd_scalar_body(op, *, fresh_seed, private_atomics=False):
             # A fail-stop guard remains in its original producer. Only its
             # completed value is copied/reused; no guard or condition moves,
             # and failure cannot publish the private fresh destination.
-            if (not fresh_seed or len(inner.operands) != 1
+            if (not (fresh_seed or carried_tensors) or len(inner.operands) != 1
                     or str(inner.operands[0].type) != 'i1' or inner.results or inner.regions):
                 return False
             continue
         if name == 'tensor.extract':
-            if (not fresh_seed or not inner.operands
-                    or not (_ltd_tensor_read_root(inner.operands[0])
-                            or private_atomics and _ltd_snapshot_tensor_value(inner.operands[0]))
+            if (not inner.operands
+                    or not (inner.operands[0] in carried_tensors or fresh_seed
+                            and (_ltd_tensor_read_root(inner.operands[0])
+                                 or private_atomics and _ltd_snapshot_tensor_value(inner.operands[0])))
                     or inner.regions or len(inner.results) != 1 or not _ltd_numeric(inner.results[0].type)
                     or any(not isinstance(v.type, ir.IndexType) for v in tuple(inner.operands)[1:])):
                 return False
@@ -279,6 +280,74 @@ def _ltd_carried_edges(loop):
     return None, ()
 
 
+def _ltd_clone_sequence(block, mapping, destination=None):
+    copies = []
+    for item in tuple(block.operations)[:-1]:
+        original = item.operation
+        copy = original.clone(ip=False)
+        for child in (copy, *_ltd_walk(copy)):
+            for index, value in enumerate(tuple(child.operands)):
+                if value in mapping:
+                    child.operands[index] = mapping[value]
+        mapping.update(zip(original.results, copy.results))
+        if destination is not None:
+            ir.InsertionPoint(destination).insert(copy)
+        copies.append(copy)
+    return copies
+
+
+def _ltd_peel_while_condition(ctx, loop):
+    # SCF's initial-condition peeling/rotation separates the first evaluation
+    # from evaluations after each body. Keep a Boolean carrier so the remaining
+    # before region forwards its complete state unchanged. This is a control
+    # normalization, not a seed, alias, effect or termination proof.
+    if loop.name != 'scf.while' or len(loop.regions) != 2 or any(len(r.blocks) != 1 for r in loop.regions):
+        return 0
+    # Adding a state slot changes operand/result ordinals. Preserve descriptive
+    # provenance, but leave unknown scheduling/semantic attributes on their
+    # original loop until an explicit remapping contract is available.
+    if any(not name.startswith('prov.') for name in loop.attributes):
+        return 0
+    before, after = (region.blocks[0] for region in loop.regions)
+    condition, yielded = tuple(before.operations)[-1].operation, tuple(after.operations)[-1].operation
+    if (condition.name != 'scf.condition' or yielded.name != 'scf.yield'
+            or tuple(v.type for v in before.arguments) != tuple(v.type for v in loop.operands)
+            or tuple(v.type for v in yielded.operands) != tuple(v.type for v in loop.operands)
+            or tuple(v.type for v in tuple(condition.operands)[1:]) != tuple(v.type for v in loop.results)
+            or tuple(v.type for v in after.arguments) != tuple(v.type for v in loop.results)):
+        return 0
+    inside_before = {item.operation for item in before.operations}
+    if not any(isinstance(value.type, ir.RankedTensorType) and isinstance(value, ir.OpResult)
+               and value.owner.operation in inside_before for value in tuple(condition.operands)[1:]):
+        return 0
+    # Build everything detached before changing the original control flow.
+    with ctx, loop.location:
+        initial = dict(zip(before.arguments, loop.operands))
+        initial_copies = _ltd_clone_sequence(before, initial)
+        initial_state = [initial.get(value, value) for value in condition.operands]
+        types = [value.type for value in initial_state]
+        rotated = ir.Operation.create('scf.while', operands=initial_state, results=types,
+            attributes={name: loop.attributes[name] for name in loop.attributes}, regions=2, ip=False)
+        first = ir.Block.create_at_start(rotated.regions[0], types)
+        second = ir.Block.create_at_start(rotated.regions[1], types)
+        with ir.InsertionPoint(first):
+            ir.Operation.create('scf.condition', operands=[first.arguments[0], *first.arguments])
+        body = dict(zip(after.arguments, tuple(second.arguments)[1:]))
+        _ltd_clone_sequence(after, body, second)
+        backedge = dict(zip(before.arguments, (body.get(value, value) for value in yielded.operands)))
+        _ltd_clone_sequence(before, backedge, second)
+        with ir.InsertionPoint(second):
+            ir.Operation.create('scf.yield', operands=[backedge.get(value, value) for value in condition.operands])
+        point = ir.InsertionPoint(loop)
+        for copy in initial_copies:
+            point.insert(copy)
+        point.insert(rotated)
+        for old, new in zip(loop.results, tuple(rotated.results)[1:]):
+            old.replace_all_uses_with(new)
+        loop.erase()
+    return 1
+
+
 def _ltd_complete_generic(ctx, op, block, previous, incoming, inside):
     if (op.name != 'linalg.generic' or 'library_call' in op.attributes or op.block != block or len(op.results) != 1
             or not op.operands or previous.type != op.results[0].type or previous.type != op.operands[-1].type
@@ -332,10 +401,12 @@ def _ltd_atomic_snapshot(op):
             and any(inner.name in ('memref.atomic_rmw', 'memref.generic_atomic_rmw') for inner in _ltd_walk(op)))
 
 
-def _ltd_copy_safe(value, incoming, inside, seen):
+def _ltd_copy_safe(value, incoming, inside, seen, *, complete=False):
     if value in seen:
         return True
     seen.add(value)
+    def safe(argument):
+        return _ltd_copy_safe(argument, incoming, inside, seen, complete=complete)
     if isinstance(value, ir.BlockArgument):
         return True  # Explicit SSA inputs, not a physical no-alias premise.
     op = value.owner.operation
@@ -344,7 +415,7 @@ def _ltd_copy_safe(value, incoming, inside, seen):
     if op.name in ('memref.load', 'memref.dim'):
         return (len(op.results) == 1 and _ltd_numeric(value.type) and _ltd_fresh_seed(incoming)
                 and _ltd_separate_read_root(op.operands[0])
-                and all(_ltd_copy_safe(v, incoming, inside, seen) for v in tuple(op.operands)[1:]))
+                and all(safe(v) for v in tuple(op.operands)[1:]))
     if op.name == 'bufferization.to_tensor':
         return (len(op.operands) == 1 and len(op.results) == 1 and 'restrict' in op.attributes
                 and _ltd_fresh_seed(incoming) and _ltd_separate_read_root(op.operands[0]))
@@ -376,12 +447,12 @@ def _ltd_copy_safe(value, incoming, inside, seen):
                 continue
             if child.name == 'linalg.index' and not child.operands and not child.regions:
                 continue
-            if not child.results or any(not _ltd_copy_safe(v, incoming, inside, seen) for v in child.results):
+            if not child.results or any(not safe(v) for v in child.results):
                 return False
-        return all(_ltd_copy_safe(v, incoming, inside, seen) for v in (*op.operands, *_ltd_captured_values(op)))
+        return all(safe(v) for v in (*op.operands, *_ltd_captured_values(op)))
     if op.name == 'scf.if':
         if (len(op.operands) != 1 or str(op.operands[0].type) != 'i1' or len(op.regions) != 2
-                or not _ltd_copy_safe(op.operands[0], incoming, inside, seen)):
+                or not safe(op.operands[0])):
             return False
         index = tuple(op.results).index(value)
         for region in op.regions:
@@ -390,7 +461,7 @@ def _ltd_copy_safe(value, incoming, inside, seen):
             terminal = tuple(region.blocks[0].operations)[-1].operation
             if (terminal.name != 'scf.yield'
                     or tuple(v.type for v in terminal.operands) != tuple(v.type for v in op.results)
-                    or not _ltd_copy_safe(terminal.operands[index], incoming, inside, seen)):
+                    or not safe(terminal.operands[index])):
                 return False
         return True
     if op.name == 'scf.execute_region':
@@ -399,31 +470,41 @@ def _ltd_copy_safe(value, incoming, inside, seen):
             return False
         operations = tuple(op.regions[0].blocks[0].operations)
         return (len(operations) == 2 and _ltd_atomic_snapshot(operations[0].operation)
-                and _ltd_copy_safe(operations[0].results[0], incoming, inside, seen))
+                and safe(operations[0].results[0]))
     def numeric(type_):
         return _ltd_numeric(ir.RankedTensorType(type_).element_type
                             if isinstance(type_, ir.RankedTensorType) else type_)
     if any(not numeric(v.type) for v in (*op.operands, *op.results)):
         return False
-    tensor_values = ('tensor.empty', 'tensor.cast', 'tensor.extract', 'tensor.extract_slice', 'tensor.insert',
+    tensor_values = ('tensor.empty', 'tensor.from_elements', 'tensor.cast', 'tensor.extract', 'tensor.extract_slice', 'tensor.insert',
                      'tensor.insert_slice', 'tensor.collapse_shape', 'tensor.expand_shape',
                      'tensor.reshape', 'tensor.splat')
     if op.name.split('.')[0] in ('arith', 'math') or op.name in tensor_values:
         if op.regions:
             return False
     elif op.name.startswith('linalg.') or op.name == 'tensor.pad':
+        carried = set()
+        if complete:
+            for capture in _ltd_captured_values(op):
+                if not isinstance(capture.type, ir.RankedTensorType):
+                    continue
+                owner = capture.owner.operation if isinstance(capture, ir.OpResult) else capture.owner.owner.operation
+                if owner in inside and (isinstance(capture, ir.OpResult) or owner.name in ('scf.for', 'scf.while')):
+                    if not safe(capture):
+                        return False
+                    carried.add(capture)
         if 'library_call' in op.attributes or not _ltd_scalar_body(op, fresh_seed=_ltd_fresh_seed(incoming),
-                                                                 private_atomics=_ltd_atomic_snapshot(op)):
+                                                                 private_atomics=_ltd_atomic_snapshot(op), carried_tensors=carried):
             return False
         for captured in _ltd_captured_values(op):
             if str(captured.type).startswith('memref'):
                 if not _ltd_fresh_seed(incoming) or not _ltd_separate_read_root(captured):
                     return False
-            elif not _ltd_copy_safe(captured, incoming, inside, seen):
+            elif not safe(captured):
                 return False
     else:
         return False
-    return all(_ltd_copy_safe(v, incoming, inside, seen) for v in op.operands)
+    return all(safe(v) for v in op.operands)
 
 
 def _ltd_late_destination(ctx, previous, producer):
@@ -475,14 +556,14 @@ def _ltd_destination_plan(ctx, value, block, terminal, position, previous, incom
             return [] if owner.operands[-1] == previous else [('generic', owner, previous)]
     if owner.name == 'scf.if' and owner.block == block and _ltd_late_destination(ctx, previous, owner):
         return ([('copy', terminal, position, value, previous)]
-                if _ltd_copy_safe(value, incoming, inside, set()) else None)
+                if _ltd_copy_safe(value, incoming, inside, set(), complete=True) else None)
     if (owner.name != 'scf.if' or owner.block != block or len(owner.operands) != 1
             or str(owner.operands[0].type) != 'i1' or len(owner.regions) != 2):
         # Keep non-overwrite producers (including reductions/init reads)
         # intact and materialize their complete value. Close the producer DAG
         # against hidden captures/effects before using a carried destination.
         return ([('copy', terminal, position, value, previous)]
-                if _ltd_copy_safe(value, incoming, inside, set()) else None)
+                if _ltd_copy_safe(value, incoming, inside, set(), complete=True) else None)
     result_index = tuple(owner.results).index(value)
     plan = []
     for region in owner.regions:
@@ -610,6 +691,8 @@ def _ltd_protect_region_destinations(ctx, module):
 
 def _ltd_reuse(ctx, module):
     changed, claimed = _ltd_protect_region_destinations(ctx, module), set()
+    for loop in reversed(tuple(_ltd_walk(module.operation))):
+        changed += _ltd_peel_while_condition(ctx, loop)
     for loop in tuple(_ltd_walk(module.operation)):
         block, edges = _ltd_carried_edges(loop)
         if not edges:

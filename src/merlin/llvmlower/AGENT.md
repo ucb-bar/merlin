@@ -163,7 +163,18 @@ scalar transport is ready. Those markers supply no expected outcome.
 
 `reuse_loop_tensor_destinations` may expose complete after-region `scf.while`
 destinations only when `scf.condition` forwards every before-argument unchanged
-in position and type. Computed/permuted condition state grants no seed facts.
+in position and type. An actual before-block tensor producer may first use
+typed initial-condition peeling with a Boolean carrier: retain the first before
+evaluation outside, the original after followed by before inside, and every
+final false-edge value/effect. Preserve heterogeneous original numeric interfaces;
+invent no trip count. Unknown loop attributes keep the original control because
+operand/result ordinals change; descriptive `prov.*` transport grants no facts.
+Normalization alone and permuted/captured condition state grant no seed facts.
+Only late complete-value copies may additionally read recursively closed
+immutable carried tensors or construct `tensor.from_elements` from checked
+scalar dependencies. Keep old reads and guards before the copy. Do not extend
+early direct retargeting or unknown mutable read/call/write admission, and retain
+all native alias/allocation/lifetime gates.
 The pinned Linalg bufferizer does not mark scalar regions repetitive. Before
 destination planning, tensor loop seeds and functional destinations captured
 from outside their nearest Linalg body receive an actual independent

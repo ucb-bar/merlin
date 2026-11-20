@@ -782,6 +782,87 @@ def test_while_destinations_require_unmodified_condition_state(tmp_path, state, 
     assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
 
 
+def condition_value_source(*, heterogeneous=False, opaque=False, mutable_read=False, guarded=False, loop_attributes=""):
+    declaration = "func.func private @unknown(tensor<4xf32>)->tensor<4xf32>" if opaque else ""
+    scalar = "%v=arith.addf %a,%one:f32"
+    if mutable_read:
+        scalar = "%read=memref.load %sink[%zero]:memref<4xf32>\n%v=arith.addf %a,%read:f32"
+    guard = 'cf.assert %flag,"source producer guard"' if guarded else ""
+    producer = f'''%next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
+      ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
+        {guard}
+        {scalar}
+        linalg.yield %v:f32
+      }}->tensor<4xf32>'''
+    if opaque:
+        producer = "%next=func.call @unknown(%old):(tensor<4xf32>)->tensor<4xf32>"
+    extra_type = ",i64" if heterogeneous else ""
+    extra_value = ",%expanded" if heterogeneous else ""
+    extra_argument = ",%expanded:i64" if heterogeneous else ""
+    return f'''module {{ {declaration}
+      func.func @forward(%bound:index,%flag:i1,%sink:memref<4xf32>)->tensor<4xf32> {{
+        %zero=arith.constant 0:index
+        %one_index=arith.constant 1:index
+        %one=arith.constant 1.0:f32
+        %empty=tensor.empty():tensor<4xf32>
+        %seed=arith.constant dense<0.0>:tensor<4xf32>
+        %result:{3 if heterogeneous else 2}=scf.while (%old=%seed,%i=%zero)
+            :(tensor<4xf32>,index)->(tensor<4xf32>,index{extra_type}) {{
+          {producer}
+          %observed=tensor.extract %old[%zero]:tensor<4xf32>
+          memref.store %observed,%sink[%zero]:memref<4xf32>
+          %more=arith.cmpi slt,%i,%bound:index
+          {"%expanded=arith.index_cast %i:index to i64" if heterogeneous else ""}
+          scf.condition(%more) %next,%i{extra_value}:tensor<4xf32>,index{extra_type}
+        }} do {{^bb0(%current:tensor<4xf32>,%j:index{extra_argument}):
+          %step=arith.addi %j,%one_index:index
+          scf.yield %current,%step:tensor<4xf32>,index
+        }} {loop_attributes}
+        return %result#0:tensor<4xf32>
+      }}
+    }}'''
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("heterogeneous", [False, True])
+@pytest.mark.parametrize("guarded", [False, True])
+def test_condition_tensor_computation_is_peeled_without_losing_observations(tmp_path, heterogeneous, guarded):
+    stdout, output = rewrite(tmp_path, condition_value_source(heterogeneous=heterogeneous, guarded=guarded))
+    assert "OK loop_tensor_destinations" in stdout
+    assert output.count("scf.while") == 1 and output.count("memref.store") == 2
+    assert "i1, tensor<4xf32>" in output  # Actual condition state, including false-entry behavior.
+    assert 'prov.op = "copy-selected-state"' in output
+    if guarded:
+        assert output.count("source producer guard") == 2
+    again = tmp_path / "again"
+    again.mkdir()
+    stdout2, output2 = rewrite(again, output)
+    assert "OK loop_tensor_destinations 0" in stdout2
+    assert output2.count("memref.store") == 2
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("options", ({"opaque": True}, {"mutable_read": True}))
+def test_condition_normalization_grants_no_destination_for_unknown_or_mutable_values(tmp_path, options):
+    stdout, output = rewrite(tmp_path, condition_value_source(**options))
+    assert "OK loop_tensor_destinations 1" in stdout  # Normalization only; no reuse or copy permission.
+    assert 'prov.op = "copy-selected-state"' not in output
+    # Detached and attached native clones may print `call` and `func.call`.
+    assert output.count("call @unknown(" if options.get("opaque") else "memref.load") == 2
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+@pytest.mark.parametrize("attribute,normalize", (("schedule.state_index", False), ("prov.original_state_index", True)))
+def test_condition_normalization_requires_defined_attribute_transport(tmp_path, attribute, normalize):
+    text = condition_value_source(loop_attributes=f"attributes {{{attribute}=0:i64}}")
+    stdout, output = rewrite(tmp_path, text)
+    assert f"{attribute} = 0 : i64" in output
+    assert output.count("memref.store") == (2 if normalize else 1)
+    assert ('prov.op = "copy-selected-state"' in output) == normalize
+    if not normalize:
+        assert "OK loop_tensor_destinations 0" in stdout
+
+
 def branch_source(
     *,
     while_loop=True,
