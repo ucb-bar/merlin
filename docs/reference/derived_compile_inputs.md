@@ -25,6 +25,7 @@ code_refs:
   - src/merlin/frontends/kernel_barrier_evidence.py
   - src/merlin/frontends/kernel_atomic_evidence.py
   - src/merlin/frontends/kernel_volatile_evidence.py
+  - src/merlin/frontends/kernel_word_evidence.py
   - src/merlin/xdsl_dialects/standard_llvm.py
   - src/merlin/frontends/kernel_shape_abi.py
   - src/merlin/xdsl_dialects/standard_tensor.py
@@ -47,6 +48,16 @@ code_refs:
 ---
 
 # Derived tensor compiler inputs
+
+Composed private atomic/volatile effects select admission v6 and source-word
+stages v4. The original typed atomic `effect_profile`, numeric policy and
+participant ownership remain intact alongside `volatile_profile`. Check both
+entry markers, actual source primitives, complete inventories and real LLVM
+volatile leaves; one effect cannot authorize dropping the other. Actual mixed
+source phases select barrier v4 and retain both original selections, each bound
+to its executable memory component. Earlier readers refuse these versions.
+Public tensor/scalar ABI and capture receipts are unchanged; no shared/external/
+async participation, source equivalence or accelerator permission follows.
 
 Selected private volatile reads use memory admission v5 and source-word stages
 v3. The independent source reader requires actual typed volatile observations,

@@ -238,7 +238,8 @@ def _stage_bound_model_inputs(
             for name in ("model.mlir", "source.ttir", "spec.json", "provenance.json")
         }
         provenance, spec = json.loads(kernel["provenance.json"]), json.loads(kernel["spec.json"])
-        if provenance.get("memory", {}).get("effect_profile") != "private-invocation-volatile-loads-v1":
+        memory = provenance.get("memory", {})
+        if memory.get("volatile_profile", memory.get("effect_profile")) != "private-invocation-volatile-loads-v1":
             from .kernel_volatile_evidence import checked_volatile_payload
             checked_volatile_payload(parse_mlir_text(kernel["model.mlir"].decode()), {"volatile_adaptations": []})
         kernel.update(_checked_memory_members(lambda name: checked(directory + "/" + name), provenance))

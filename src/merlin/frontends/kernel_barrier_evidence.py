@@ -73,8 +73,9 @@ def _checked_program_barriers(graph, reports, generic, protected):
         and op.properties["isVolatile"].value.data
     }
     volatile_effects = {"profile": volatile_profile} if volatile_source else None
-    if volatile_source and atomic_source:
-        raise ValueError("allocation barrier needs a combined volatile/atomic effect profile")
+    if (volatile_source and atomic_source
+            and atomic_effects.get("profile") != "private-invocation-typed-atomics-v2"):
+        raise ValueError("combined program phases require the selected typed atomic component")
     for sid, op in volatile_source.items():
         checked_source_volatile(op, source_records[op].get("volatile_read"), sid)
     if len(reports) != len(source):
@@ -192,7 +193,8 @@ def _checked_program_barriers(graph, reports, generic, protected):
                 raise ValueError("allocation barrier participation needs whole-program structured control")
             parent = parent.parent_op()
         expected_contract = {
-            "schema": ("t2m.synchronous-program-barrier.v3" if volatile_source else
+            "schema": ("t2m.synchronous-program-barrier.v4" if volatile_source and atomic_source else
+                       "t2m.synchronous-program-barrier.v3" if volatile_source else
                        "t2m.synchronous-program-barrier.v2" if atomic_source else _PROFILE),
             **({"atomic_effects": atomic_effects} if atomic_source else {}),
             **({"volatile_effects": volatile_effects} if volatile_source else {}),

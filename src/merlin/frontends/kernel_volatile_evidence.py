@@ -26,10 +26,12 @@ def checked_volatile_memory(admission, memory, records, source, stage):
     from .kernel_barrier_evidence import _ids, _name
     from .linalg_mlir import make_context
 
-    if (admission.get("effect_profile") != PROFILE or memory.get("effect_profile") != PROFILE
+    combined = admission.get("schema") == "t2m.memory-admission.v6"
+    field = "volatile_profile" if combined else "effect_profile"
+    if (admission.get(field) != PROFILE or memory.get(field) != PROFILE
             or not isinstance(admission.get("volatile_adaptations"), list)
             or memory.get("volatile_adaptations") != admission["volatile_adaptations"]
-            or stage.get("schema") != "t2m.source-word-stages.v3"):
+            or stage.get("schema") != ("t2m.source-word-stages.v4" if combined else "t2m.source-word-stages.v3")):
         raise ValueError("volatile memory lacks its explicit source/effect/stage profile")
     declared = {r["id"]: r["volatile_read"] for r in records if "volatile_read" in r}
     module = Parser(make_context(), source.decode()).parse_module()

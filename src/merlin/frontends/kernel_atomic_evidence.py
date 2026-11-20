@@ -85,7 +85,8 @@ def _payload(info):
 
 
 def checked_atomic_effects(admission, memory, records, buffers):
-    profile = TYPED_EFFECT_PROFILE if admission.get("schema") == "t2m.memory-admission.v4" else EFFECT_PROFILE
+    profile = TYPED_EFFECT_PROFILE if admission.get("schema") in (
+        "t2m.memory-admission.v4", "t2m.memory-admission.v6") else EFFECT_PROFILE
     if (admission.get("effect_profile") != profile or memory.get("effect_profile") != profile
             or admission.get("f32_atomic_add") not in (None, "ieee", "ftz")
             or memory.get("f32_atomic_add") not in (None, "ieee", "ftz")

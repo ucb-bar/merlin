@@ -158,6 +158,11 @@ Frontends that ingest external IR into the Merlin pipeline. Today: linalg-on-ten
   every original volatile primitive and retained flag/type, including unused
   observations, and require the same bound memory profile. Phase order cannot
   replace a lost observation or grant cross-program publication.
+  Barrier v4 retains both actual typed atomic and volatile components. Admission
+  v6 keeps the atomic profile/ownership/numeric policy and a separate volatile
+  profile; word stages v4 require the nondestructive pipeline. Recheck both
+  entry markers and actual volatile leaves, even when the atomic marker is
+  present. Neither component can replace the other or grant external actors.
   `kernel_cfg_evidence.py` independently validates optional original CFG custody:
   typed function input, native structured output, restored TTIR, complete original
   block/successor graph, fixed-pass stage and diagnostics. Bind all six compiler

@@ -106,6 +106,42 @@ def test_volatile_source_phases_retain_the_actual_unused_observation():
     checked_program_barriers(*volatile_fixture())
 
 
+def combined_fixture():
+    graph, reports, generic, protected = atomic_fixture()
+    generic = generic.replace(b'"tt.load"(%p)', b'"tt.load"(%p) <{isVolatile=true}>')
+    protected = protected.replace(b'"tt.load"(%p)', b'"tt.load"(%p) <{isVolatile=true}>')
+    scope = reports[0]["contract"]
+    scope["schema"] = "t2m.synchronous-program-barrier.v4"
+    scope["atomic_effects"]["profile"] = "private-invocation-typed-atomics-v2"
+    scope["volatile_effects"] = {"profile": "private-invocation-volatile-loads-v1"}
+    graph["operations"][4]["volatile_read"] = volatile_fixture()[0]["operations"][4]["volatile_read"]
+    return graph, reports, generic, protected
+
+
+def test_combined_source_phases_retain_both_primitive_effect_contracts():
+    checked_program_barriers(*combined_fixture())
+
+
+@pytest.mark.parametrize("damage", ["atomic", "volatile", "downgrade", "integer-only", "kind", "flag", "primitive"])
+def test_one_effect_contract_cannot_replace_the_other_in_a_combined_phase(damage):
+    graph, reports, generic, protected = combined_fixture()
+    scope = reports[0]["contract"]
+    if damage in ("atomic", "volatile"):
+        scope.pop(damage + "_effects")
+    elif damage == "downgrade":
+        scope["schema"] = "t2m.synchronous-program-barrier.v2"
+    elif damage == "integer-only":
+        scope["atomic_effects"]["profile"] = "private-invocation-integer-atomics-v1"
+    elif damage == "kind":
+        protected = protected.replace(b"atomic_rmw_op=4:i32", b"atomic_rmw_op=10:i32")
+    elif damage == "flag":
+        protected = protected.replace(b"isVolatile=true", b"isVolatile=false")
+    else:
+        graph["operations"][4]["volatile_read"]["observation"] = "stable-tensor-read"
+    with pytest.raises(ValueError, match="barrier|volatile|atomic"):
+        checked_program_barriers(graph, reports, generic, protected)
+
+
 @pytest.mark.parametrize("change", ["missing-selection", "downgrade", "scope", "primitive", "flag", "read"])
 def test_volatile_phase_claims_cannot_replace_original_source_observations(change):
     graph, reports, generic, protected = volatile_fixture()
