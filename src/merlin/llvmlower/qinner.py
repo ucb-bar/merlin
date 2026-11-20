@@ -256,6 +256,64 @@ def resolve(extra: Any, args: Iterable[QinnerArg]) -> list["Any"]:
 # --- the gate: uninitialized data must not reach computation ------------------------------------
 
 
+def _empty_has_no_elements(op) -> bool:
+    """Prove vacuity from actual extents and enclosing Boolean branch edges."""
+    from xdsl.dialects import arith, builtin, scf, tensor
+
+    if not isinstance(op, tensor.EmptyOp):
+        return False
+    shape = op.tensor.type.get_shape()
+    if 0 in shape:
+        return True
+    sizes = frozenset(op.dynamic_sizes)
+
+    def literal(value):
+        owner = value.owner
+        if isinstance(owner, arith.ConstantOp) and isinstance(owner.value, builtin.IntegerAttr):
+            return owner.value.value.data
+        return None
+
+    if any(literal(value) == 0 for value in sizes):
+        return True
+
+    def implies_zero(condition, truth, budget):
+        if budget <= 0:
+            return False
+        constant = literal(condition)
+        if constant is not None:
+            return bool(constant) != truth  # An impossible edge has no reads.
+        owner = condition.owner
+        if isinstance(owner, arith.CmpiOp):
+            equality = owner.predicate.value.data
+            if (equality == 0 and truth) or (equality == 1 and not truth):
+                left, right = owner.operands
+                return (left in sizes and literal(right) == 0 or
+                        right in sizes and literal(left) == 0)
+        if isinstance(owner, (arith.AndIOp, arith.OrIOp)):
+            # AND true / OR false implies both operands' selected values;
+            # the opposite edges are alternatives, each of which must prove
+            # some (possibly different) actual empty dimension is zero.
+            both = isinstance(owner, arith.AndIOp) == truth
+            proofs = [implies_zero(value, truth, budget // 2) for value in owner.operands]
+            return any(proofs) if both else all(proofs)
+        if isinstance(owner, arith.XOrIOp):
+            for operand, other in (owner.operands, tuple(reversed(owner.operands))):
+                constant = literal(operand)
+                if constant is not None:
+                    return implies_zero(other, truth != bool(constant), budget - 1)
+        return False
+
+    child = op
+    while (parent := child.parent_op()) is not None:
+        if isinstance(parent, scf.IfOp):
+            region = child.parent_region()
+            truth = region is parent.true_region
+            if (truth or region is parent.false_region) and implies_zero(parent.cond, truth, 256):
+                return True
+        child = parent
+    return False
+
+
 def uninitialized_reads(module) -> list[str]:
     """Every `tensor.empty` value that is READ by a compute op, as human-readable findings.
 
@@ -296,6 +354,11 @@ def uninitialized_reads(module) -> list[str]:
     for op in module.walk():
         if op.name == "tensor.empty":
             tag = op.attributes.get("prov.quant_inner")
+            # A proved empty value has no unwritten elements. Quant-inner
+            # placeholders still require their explicit archived binding even
+            # when empty; no tag or sampled runtime size proves vacuity.
+            if tag is None and _empty_has_no_elements(op):
+                continue
             tainted[id(op.results[0])] = (str(op.results[0].type), getattr(tag, "data", None))
             continue
         reads = _reads(op)

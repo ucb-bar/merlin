@@ -103,3 +103,101 @@ def test_resolve_refuses_a_missing_or_mismatched_tensor():
         qinner.resolve(wrong, [arg])
     right = {"qinner::fc.scale": np.arange(4, dtype=np.float32)}
     assert np.array_equal(qinner.resolve(right, [arg])[0], np.arange(4, dtype=np.float32))
+
+
+@pytest.mark.parametrize("shape", ("0", "2x0x3", "?x0"))
+def test_statically_empty_values_have_no_unwritten_elements(shape):
+    dynamic = "%n" if "?" in shape else ""
+    module = parse_mlir_text(f'''module {{
+      func.func @forward(%n:index)->tensor<{shape}xf32> {{
+        %empty=tensor.empty({dynamic}):tensor<{shape}xf32>
+        return %empty:tensor<{shape}xf32>
+      }}
+    }}''')
+    assert qinner.uninitialized_reads(module) == []
+    qinner.require_initialized(module)
+
+
+@pytest.mark.parametrize("shape", ("4", "?"))
+def test_positive_or_unknown_shapes_cannot_claim_empty_storage(shape):
+    from xdsl.dialects.builtin import StringAttr
+
+    dynamic = "%n" if "?" in shape else ""
+    module = parse_mlir_text(f'''module {{
+      func.func @forward(%n:index)->tensor<{shape}xf32> {{
+        %empty=tensor.empty({dynamic}):tensor<{shape}xf32>
+        return %empty:tensor<{shape}xf32>
+      }}
+    }}''')
+    next(op for op in module.walk() if op.name == "tensor.empty").attributes["prov.assume_empty"] = StringAttr("true")
+    with pytest.raises(qinner.QinnerError, match="uninitialized"):
+        qinner.require_initialized(module)
+
+
+def test_empty_quant_inner_placeholders_still_require_the_original_binding():
+    module = parse_mlir_text(_module(tag=True).replace("tensor<4xf32>", "tensor<0xf32>"))
+    with pytest.raises(qinner.QinnerError, match="uninitialized"):
+        qinner.require_initialized(module)
+    args = qinner.plan(module)
+    assert len(args) == 1 and args[0].shape == (0,)
+    with pytest.raises(qinner.QinnerError, match="absent from extra.npz"):
+        qinner.resolve({}, args)
+
+
+def _conditional_empty(predicate, edge, *, sizes="%m, %n", tag=False):
+    empty = '%empty=tensor.empty(' + sizes + '):tensor<?x?xf32>'
+    body = empty + '\n scf.yield %empty:tensor<?x?xf32>'
+    # The other edge returns an initialized input. Only the empty's own edge
+    # may establish its actual zero-sized storage, regardless of annotations.
+    other = 'scf.yield %input:tensor<?x?xf32>'
+    module = parse_mlir_text(f'''module {{
+      func.func @forward(%input:tensor<?x?xf32>,%m:index,%n:index,%other:index,%control:i1)->tensor<?x?xf32>{{
+        %zero=arith.constant 0:index
+        %true=arith.constant true
+        %false=arith.constant false
+        %me=arith.cmpi eq,%m,%zero:index
+        %ne=arith.cmpi eq,%n,%zero:index
+        %mn=arith.cmpi ne,%m,%zero:index
+        %nn=arith.cmpi ne,%n,%zero:index
+        %mp=arith.cmpi sgt,%m,%zero:index
+        %both=arith.andi %mn,%nn:i1
+        %either=arith.ori %me,%ne:i1
+        %unknown=arith.andi %mn,%control:i1
+        %negated=arith.xori %both,%true:i1
+        %r=scf.if {predicate} -> (tensor<?x?xf32>){{
+          {body if edge else other}
+        }}else{{
+          {other if edge else body}
+        }}
+        return %r:tensor<?x?xf32>
+      }}
+    }}''')
+    if tag:
+        from xdsl.dialects.builtin import StringAttr
+
+        empty_op = next(op for op in module.walk() if op.name == "tensor.empty")
+        empty_op.attributes["prov.quant_inner"] = StringAttr("explicit.placeholder")
+    return module
+
+
+@pytest.mark.parametrize("predicate,edge", (("%me", True), ("%mn", False),
+    ("%both", False), ("%either", True), ("%negated", True), ("%false", True), ("%true", False)))
+def test_actual_branch_edges_prove_zero_elements(predicate, edge):
+    module = _conditional_empty(predicate, edge)
+    qinner.require_initialized(module)
+    qinner.require_initialized(parse_mlir_text(to_text(module)))
+
+
+@pytest.mark.parametrize("predicate,edge,sizes", (("%me", False, "%m, %n"),
+    ("%mn", True, "%m, %n"), ("%both", True, "%m, %n"), ("%either", False, "%m, %n"),
+    ("%unknown", False, "%m, %n"), ("%mp", False, "%m, %n"), ("%me", True, "%other, %n")))
+def test_other_edges_unknown_controls_and_different_extents_remain_uninitialized(predicate, edge, sizes):
+    with pytest.raises(qinner.QinnerError, match="uninitialized"):
+        qinner.require_initialized(_conditional_empty(predicate, edge, sizes=sizes))
+
+
+def test_dynamic_literal_zero_is_vacuous_but_branch_tags_still_require_binding():
+    module = _conditional_empty("%control", True, sizes="%zero, %n")
+    qinner.require_initialized(module)
+    with pytest.raises(qinner.QinnerError, match="uninitialized"):
+        qinner.require_initialized(_conditional_empty("%both", False, tag=True))

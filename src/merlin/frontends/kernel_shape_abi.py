@@ -19,8 +19,8 @@ def validate_dimensions(spec, buffers, scalars):
         for size in shape:
             if isinstance(size, str) and size.isidentifier():
                 names.add(size)
-            elif type(size) is not int or size <= 0:
-                raise ValueError("kernel dimensions require positive integers or named scalar bindings")
+            elif type(size) is not int or size < 0:
+                raise ValueError("kernel dimensions require nonnegative integers or named scalar bindings")
     bounds = {s["name"]: s.get("bounds") for s in scalars}
     grid = spec.get("grid", [1])
     if not isinstance(grid, list) or not 1 <= len(grid) <= 3:

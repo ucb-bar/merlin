@@ -1,5 +1,12 @@
 # AGENT.md — merlin/python/merlin/llvmlower
 
+`qinner` initialization checking admits untagged zero-element tensors only from
+actual static/dynamic zero extents or enclosing Boolean edges proving an actual
+extent zero (or the edge unreachable). Unknown controls, unrelated dimensions,
+signed-positive comparisons and provenance do not prove emptiness. Tagged
+quant-inner placeholders still require archived binding, including empty ones.
+Vacuity grants no active-access, ownership or effect permission.
+
 `dealloc_promotions` proves fresh returned loop generations for runtime/zero-trip
 serial bounds. Close actual previous/fresh/initial/result uses, ownership flags
 and tuple coordinates before edits. Clone spelling grants no freshness: first
