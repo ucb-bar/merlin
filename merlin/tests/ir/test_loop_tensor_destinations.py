@@ -782,11 +782,17 @@ def test_while_destinations_require_unmodified_condition_state(tmp_path, state, 
     assert "scf.while" in output and "scf.condition" in output and "memref.load" in output
 
 
-def condition_value_source(*, heterogeneous=False, opaque=False, mutable_read=False, guarded=False, loop_attributes=""):
+def condition_value_source(*, heterogeneous=False, opaque=False, mutable_read=False, guarded=False, loop_attributes="", dynamic_dimension=False):
     declaration = "func.func private @unknown(tensor<4xf32>)->tensor<4xf32>" if opaque else ""
     scalar = "%v=arith.addf %a,%one:f32"
     if mutable_read:
         scalar = "%read=memref.load %sink[%zero]:memref<4xf32>\n%v=arith.addf %a,%read:f32"
+    dimension = ""
+    if dynamic_dimension:
+        dimension = '''%extent=tensor.dim %data,%zero:tensor<?xf32>
+          %word=arith.index_cast %extent:index to i64
+          %size=arith.sitofp %word:i64 to f32'''
+        scalar = "%v=arith.addf %a,%size:f32"
     guard = 'cf.assert %flag,"source producer guard"' if guarded else ""
     producer = f'''%next=linalg.generic {{indexing_maps=[affine_map<(i)->(i)>,affine_map<(i)->(i)>],iterator_types=["parallel"]}}
       ins(%old:tensor<4xf32>) outs(%empty:tensor<4xf32>) {{^bb0(%a:f32,%init:f32):
@@ -800,7 +806,7 @@ def condition_value_source(*, heterogeneous=False, opaque=False, mutable_read=Fa
     extra_value = ",%expanded" if heterogeneous else ""
     extra_argument = ",%expanded:i64" if heterogeneous else ""
     return f'''module {{ {declaration}
-      func.func @forward(%bound:index,%flag:i1,%sink:memref<4xf32>)->tensor<4xf32> {{
+      func.func @forward(%bound:index,%flag:i1,%sink:memref<4xf32>{",%data:tensor<?xf32>" if dynamic_dimension else ""})->tensor<4xf32> {{
         %zero=arith.constant 0:index
         %one_index=arith.constant 1:index
         %one=arith.constant 1.0:f32
@@ -808,6 +814,7 @@ def condition_value_source(*, heterogeneous=False, opaque=False, mutable_read=Fa
         %seed=arith.constant dense<0.0>:tensor<4xf32>
         %result:{3 if heterogeneous else 2}=scf.while (%old=%seed,%i=%zero)
             :(tensor<4xf32>,index)->(tensor<4xf32>,index{extra_type}) {{
+          {dimension}
           {producer}
           %observed=tensor.extract %old[%zero]:tensor<4xf32>
           memref.store %observed,%sink[%zero]:memref<4xf32>
@@ -861,6 +868,14 @@ def test_condition_normalization_requires_defined_attribute_transport(tmp_path, 
     assert ('prov.op = "copy-selected-state"' in output) == normalize
     if not normalize:
         assert "OK loop_tensor_destinations 0" in stdout
+
+
+@pytest.mark.skipif(not available(), reason="existing native MLIR required")
+def test_completed_value_closes_actual_dynamic_tensor_dimension_queries(tmp_path):
+    _stdout, output = rewrite(tmp_path, condition_value_source(dynamic_dimension=True))
+    assert output.count("tensor.dim") == 2
+    assert output.count("memref.store") == 2
+    assert 'prov.op = "copy-selected-state"' in output
 
 
 def branch_source(

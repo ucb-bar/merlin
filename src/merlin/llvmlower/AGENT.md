@@ -175,6 +175,9 @@ immutable carried tensors or construct `tensor.from_elements` from checked
 scalar dependencies. Keep old reads and guards before the copy. Do not extend
 early direct retargeting or unknown mutable read/call/write admission, and retain
 all native alias/allocation/lifetime gates.
+Actual `tensor.dim` queries may close their tensor/axis SSA dependencies as
+immutable value metadata; retain the query and grant no mutable root, array
+content, alias, ownership or shape-specialization exception.
 The pinned Linalg bufferizer does not mark scalar regions repetitive. Before
 destination planning, tensor loop seeds and functional destinations captured
 from outside their nearest Linalg body receive an actual independent

@@ -476,7 +476,7 @@ def _ltd_copy_safe(value, incoming, inside, seen, *, complete=False):
                             if isinstance(type_, ir.RankedTensorType) else type_)
     if any(not numeric(v.type) for v in (*op.operands, *op.results)):
         return False
-    tensor_values = ('tensor.empty', 'tensor.from_elements', 'tensor.cast', 'tensor.extract', 'tensor.extract_slice', 'tensor.insert',
+    tensor_values = ('tensor.empty', 'tensor.from_elements', 'tensor.dim', 'tensor.cast', 'tensor.extract', 'tensor.extract_slice', 'tensor.insert',
                      'tensor.insert_slice', 'tensor.collapse_shape', 'tensor.expand_shape',
                      'tensor.reshape', 'tensor.splat')
     if op.name.split('.')[0] in ('arith', 'math') or op.name in tensor_values:
