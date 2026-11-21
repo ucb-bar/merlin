@@ -1,0 +1,405 @@
+{
+  "correspondence": "upstream-preserved-source-name-locations; missing descendants are not independent dead-code proofs",
+  "emitted_operations": [
+    {
+      "id": "mlir.op.0000",
+      "opcode": "builtin.module",
+      "source_ids": []
+    },
+    {
+      "id": "mlir.op.0001",
+      "opcode": "func.func",
+      "source_ids": []
+    },
+    {
+      "id": "mlir.op.0002",
+      "opcode": "tensor.empty",
+      "source_ids": []
+    },
+    {
+      "id": "mlir.op.0003",
+      "opcode": "arith.constant",
+      "source_ids": []
+    },
+    {
+      "id": "mlir.op.0004",
+      "opcode": "arith.constant",
+      "source_ids": [
+        "ttir.op.0003"
+      ]
+    },
+    {
+      "id": "mlir.op.0005",
+      "opcode": "tensor.from_elements",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0006",
+      "opcode": "tensor.empty",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0007",
+      "opcode": "linalg.generic",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0008",
+      "opcode": "arith.extsi",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0009",
+      "opcode": "arith.constant",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0010",
+      "opcode": "arith.constant",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0011",
+      "opcode": "arith.cmpi",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0012",
+      "opcode": "arith.cmpi",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0013",
+      "opcode": "arith.andi",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0014",
+      "opcode": "cf.assert",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0015",
+      "opcode": "arith.index_cast",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0016",
+      "opcode": "tensor.extract",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0017",
+      "opcode": "linalg.yield",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0018",
+      "opcode": "arith.constant",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0019",
+      "opcode": "tensor.extract",
+      "source_ids": [
+        "ttir.op.0001"
+      ]
+    },
+    {
+      "id": "mlir.op.0020",
+      "opcode": "arith.addf",
+      "source_ids": [
+        "ttir.op.0004"
+      ]
+    },
+    {
+      "id": "mlir.op.0021",
+      "opcode": "tensor.from_elements",
+      "source_ids": [
+        "ttir.op.0005"
+      ]
+    },
+    {
+      "id": "mlir.op.0022",
+      "opcode": "tensor.from_elements",
+      "source_ids": [
+        "ttir.op.0005"
+      ]
+    },
+    {
+      "id": "mlir.op.0023",
+      "opcode": "tensor.insert_slice",
+      "source_ids": [
+        "ttir.op.0005"
+      ]
+    },
+    {
+      "id": "mlir.op.0024",
+      "opcode": "func.return",
+      "source_ids": [
+        "ttir.op.0006"
+      ]
+    }
+  ],
+  "memory": {
+    "aliasing": "independent-storage-ABI-precondition",
+    "bounds": "checked-affine-domain-clipped-rectangular-accesses; runtime-active-gather-bounds",
+    "grid": "single-logical-program",
+    "index_overflow": "checked-source-address-widths-before-index-promotion",
+    "input_preparation": "readonly-input-value-snapshots-v1",
+    "ordering": "functional-buffer-versions",
+    "output_initialization": {
+      "out": {
+        "coverage": "serial-source-constant-interval-union",
+        "initial_value_required": false,
+        "reads": "dominated-by-covering-source-stores"
+      }
+    },
+    "source_conditionals": [],
+    "source_gathers": [
+      {
+        "bounds": "runtime-assert-before-active-extract",
+        "buffer": "x",
+        "mask": "per-lane-branch-no-inactive-extraction",
+        "repeated_indices": "immutable-reads; no-ownership-conflict",
+        "source_ids": [
+          "ttir.op.0001"
+        ]
+      }
+    ],
+    "source_loops": [],
+    "source_projected_reads": [],
+    "source_scatters": [
+      {
+        "address": "proved-affine-dense-tile",
+        "buffer": "out",
+        "inactive_values": "outside-inserted-slice",
+        "logical_write_tile": [
+          1
+        ],
+        "mask": "unmasked",
+        "proof": "projected-linalg-index-and-necessary-mask-bounds.v1",
+        "source_ids": [
+          "ttir.op.0005"
+        ],
+        "source_tile": [
+          1
+        ],
+        "write_independence": "separately-proved-owned-tile"
+      }
+    ]
+  },
+  "mlir_sha256": "51999164fc23d86af990b8c9ace5d67b1d13136ac74cdda7505dafe70de5d478",
+  "schema": "t2m.shared-tensor-provenance.v1",
+  "source_operations": [
+    {
+      "attributes": {
+        "noinline": "false",
+        "op_name__": "\"tt.func\""
+      },
+      "id": "ttir.op.0000",
+      "input_types": [],
+      "inputs": [],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":2:3)",
+      "opcode": "tt.func",
+      "output_types": [],
+      "outputs": [],
+      "properties": {
+        "function_type": "(!tt.ptr<f32>, !tt.ptr<f32>) -> ()",
+        "sym_name": "\"staged_increment\"",
+        "sym_visibility": "\"public\""
+      }
+    },
+    {
+      "attributes": {
+        "op_name__": "\"tt.load\""
+      },
+      "id": "ttir.op.0001",
+      "input_types": [
+        "!tt.ptr<f32>"
+      ],
+      "inputs": [
+        "ttir.value.0000"
+      ],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":3:10)",
+      "opcode": "tt.load",
+      "output_types": [
+        "f32"
+      ],
+      "outputs": [
+        "ttir.value.0002"
+      ],
+      "properties": {
+        "isVolatile": "false",
+        "operandSegmentSizes": "array<i32: 1, 0, 0>"
+      }
+    },
+    {
+      "attributes": {},
+      "id": "ttir.op.0002",
+      "input_types": [],
+      "inputs": [],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":4:15)",
+      "opcode": "arith.constant",
+      "output_types": [
+        "i32"
+      ],
+      "outputs": [
+        "ttir.value.0003"
+      ],
+      "properties": {
+        "value": "1 : i32"
+      }
+    },
+    {
+      "attributes": {},
+      "id": "ttir.op.0003",
+      "input_types": [],
+      "inputs": [],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":5:12)",
+      "opcode": "arith.constant",
+      "output_types": [
+        "f32"
+      ],
+      "outputs": [
+        "ttir.value.0004"
+      ],
+      "properties": {
+        "value": "1.000000e+00 : f32"
+      }
+    },
+    {
+      "attributes": {},
+      "id": "ttir.op.0004",
+      "input_types": [
+        "f32",
+        "f32"
+      ],
+      "inputs": [
+        "ttir.value.0002",
+        "ttir.value.0004"
+      ],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":6:10)",
+      "opcode": "arith.addf",
+      "output_types": [
+        "f32"
+      ],
+      "outputs": [
+        "ttir.value.0005"
+      ],
+      "properties": {
+        "fastmath": "#arith.fastmath<none>"
+      }
+    },
+    {
+      "attributes": {
+        "op_name__": "\"tt.store\""
+      },
+      "id": "ttir.op.0005",
+      "input_types": [
+        "!tt.ptr<f32>",
+        "f32"
+      ],
+      "inputs": [
+        "ttir.value.0001",
+        "ttir.value.0005"
+      ],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":7:5)",
+      "opcode": "tt.store",
+      "output_types": [],
+      "outputs": [],
+      "properties": {}
+    },
+    {
+      "attributes": {
+        "op_name__": "\"tt.return\""
+      },
+      "id": "ttir.op.0006",
+      "input_types": [],
+      "inputs": [],
+      "location": "loc(\"/scratch/grammy/blast/triton2MLIR/.scratch/core-stage-fixture/translation/source/source.ttir\":8:5)",
+      "opcode": "tt.return",
+      "output_types": [],
+      "outputs": [],
+      "properties": {}
+    }
+  ],
+  "source_sha256": "ef9ab241b557f7e9b1171dd798e05a0b96795825f975ae642bb0fbab508fca83",
+  "spec": {
+    "buffers": [
+      {
+        "dtype": "f32",
+        "effect": "read",
+        "name": "x",
+        "shape": [
+          1
+        ]
+      },
+      {
+        "dtype": "f32",
+        "effect": "write",
+        "name": "out",
+        "shape": [
+          1
+        ]
+      }
+    ],
+    "entry": "staged_increment",
+    "grid": [
+      1
+    ],
+    "intent": "",
+    "scalar_constants": [],
+    "schema": "t2m.shared-tensor-abi.v2"
+  },
+  "transformations": [
+    {
+      "events": [
+        {
+          "normalization": "scalar-event-to-unit-tensor",
+          "opcode": "tts.gather",
+          "source_ids": [
+            "ttir.op.0001"
+          ]
+        },
+        {
+          "normalization": "scalar-event-to-unit-tensor",
+          "opcode": "tts.scatter",
+          "source_ids": [
+            "ttir.op.0005"
+          ]
+        }
+      ],
+      "expansion": "one-element-tensor-with-original-predicate-and-defined-fill",
+      "kind": "scalar-memory-unit-carrier"
+    }
+  ]
+}

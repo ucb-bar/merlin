@@ -3,7 +3,7 @@ title: 3. Capture and prepare numerical semantics
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-09
+last_verified: 2026-11-21
 related: [02-targets, 04-planning]
 code_refs: [src/merlin/capture, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, src/merlin/compiler/frontend/bindings.py, src/merlin/compiler/quantization, src/merlin/compiler/lower/options/quantization_scope.py, src/merlin/compiler/ir/provenance.py, src/merlin/target/spec/quantization.py]
 ---
@@ -28,6 +28,14 @@ The public saved-export path imports and binds existing captured values; it does
 not select a new quantization recipe. `StagedProgram` selects existing
 compiler-only inputs with a source-bound precision policy and requires explicit
 provider admission. It runs no capture, calibration or quantization.
+
+Imported standalone TTIR stages retain their complete scalar/tensor interface
+and actual standard operations, including guards and observable effects.
+Their replayed compiler projection supplies a non-transforming source policy;
+that policy is separate from backend support and numerical qualification.
+Preparation neither freezes runtime state nor replaces the program with a
+static tensor subset. Its nested source evidence remains part of the published
+compiler-only artifact roster.
 
 An authored MLIR kernel can enter directly with its numerical contract. It need
 not pass through TorchAO. A Python kernel or FX graph needs a supported capture

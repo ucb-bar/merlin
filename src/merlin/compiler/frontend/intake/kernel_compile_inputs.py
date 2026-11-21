@@ -5,10 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
-import shutil
 import struct
-import tempfile
 from pathlib import Path
 
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, StringAttr, TensorType, i1
@@ -245,13 +242,17 @@ def _checked_word_intent(entry, members):
             raise ValueError("atomic kernel lacks its private-invocation effect intent")
 
 
-def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes, *, result_mode=None) -> dict:
+def prepare_kernel_inputs(checked, receipt: dict, receipt_sha256: str, *, result_mode=None,
+                         provenance_sha256=None):
+    """Derive compiler members from the same checked source for staging and replay."""
     from merlin.compiler.frontend.intake.execution_result_signature import (
         program_text,
         select_signature,
         selected_manifest,
     )
 
+    if receipt.get("schema") not in ("t2m.capture-receipt.v2", "t2m.effect-kernel-receipt.v1"):
+        raise ValueError("unsupported standalone source receipt schema")
     observable = receipt.get("schema") == "t2m.effect-kernel-receipt.v1"
 
     def digest(raw):
@@ -259,15 +260,6 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
 
     def encoded(value):
         return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
-
-    def checked(name):
-        path = source / name
-        if path.is_symlink() or not path.is_file():
-            raise ValueError("kernel compiler member absent or symlink: " + name)
-        raw = path.read_bytes()
-        if receipt.get("artifacts", {}).get(name) != {"bytes": len(raw), "sha256": digest(raw)}:
-            raise ValueError("kernel compiler member differs from receipt: " + name)
-        return raw
 
     if receipt.get("profile") not in (
         "shared-functional-tensor",
@@ -468,13 +460,14 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         "original_blocks",
         "source_argument_binding",
         "typed_storage_transport",
+        "control_flow_normalization",
     )
     correspondence = {
         "schema": "merlin.kernel-source-correspondence.v1",
         "producer": "triton2MLIR",
         "input_model_sha256": digest(raw),
         "staged_model_sha256": digest(staged),
-        "source_provenance_sha256": digest(provenance_raw),
+        "source_provenance_sha256": provenance_sha256 or digest(provenance_raw),
         "source_entry": spec["entry"],
         "staged_entry": "forward",
         "scope": "byte-bound-lineage; semantic-admission-unverified",
@@ -498,7 +491,7 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         if dynamic
         else "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
         "source": {
-            "capture_receipt_sha256": digest(receipt_raw),
+            "capture_receipt_sha256": receipt_sha256,
             "capture_schema": receipt["schema"],
             "model_mlir_sha256": digest(raw),
             "correspondence": "source-correspondence.json",
@@ -513,18 +506,28 @@ def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw:
         ],
     }
     selected_manifest(manifest, result_mode)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
-    try:
-        for name, data in members.items():
-            path = temporary / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-        (temporary / "compile-inputs.json").write_bytes(encoded(manifest))
-        if target.exists() or target.is_symlink():
-            raise ValueError("compile-input destination appeared during staging")
-        os.rename(temporary, target)
-    finally:
-        if temporary.exists():
-            shutil.rmtree(temporary)
-    return manifest
+    return manifest, members
+
+
+def _stage_kernel_inputs(source: Path, target: Path, receipt: dict, receipt_raw: bytes, *, result_mode=None) -> dict:
+    from merlin.compiler.frontend.intake.staged_projection import finish_projection, publish
+
+    selected = {}
+
+    def checked(name):
+        path = source / name
+        if path.is_symlink() or not path.is_file():
+            raise ValueError("kernel compiler member absent or symlink: " + name)
+        raw = path.read_bytes()
+        if receipt.get("artifacts", {}).get(name) != {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}:
+            raise ValueError("kernel compiler member differs from receipt: " + name)
+        selected[name] = raw
+        return raw
+
+    manifest, members = prepare_kernel_inputs(
+        checked, receipt, hashlib.sha256(receipt_raw).hexdigest(), result_mode=result_mode)
+    bindings = {name: (name if name.startswith("weights.") else "source/" + name) for name in selected}
+    bindings["provenance.json"] = "source/compiler-provenance.json"
+    finish_projection(manifest, members, bindings, receipt, result_mode=result_mode,
+                      provenance_sha256=hashlib.sha256(selected["provenance.json"]).hexdigest())
+    return publish(target, manifest, members)

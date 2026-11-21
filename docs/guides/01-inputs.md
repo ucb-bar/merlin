@@ -3,9 +3,9 @@ title: 1. Choose an input and compile a small program
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-20
+last_verified: 2026-11-21
 related: [02-targets, ../reference/repo_structure]
-code_refs: [src/merlin/api.py, src/merlin/compiler/records.py, src/merlin/compiler/compilation.py, src/merlin/compiler/frontend/program.py, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, examples/compilation/quickstart]
+code_refs: [src/merlin/api.py, src/merlin/compiler/records.py, src/merlin/compiler/compilation.py, src/merlin/compiler/frontend/program.py, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, src/merlin/compiler/frontend/intake/staged_projection.py, examples/compilation/quickstart]
 ---
 
 # 1. Choose an input and compile a small program
@@ -84,6 +84,22 @@ describes derivation; it grants no numerical or hardware implementation verdict.
 Select `result_mode="execution-owned"` explicitly for execution-produced result
 descriptors. Input constraints and finite allocation limits remain checked. A
 separate `precision_policy=` cannot override a Triton packet's source-bound policy.
+
+Fresh standalone tensor/effect stages also work with `load_compile_inputs` and
+`StagedProgram`. Their `source/intake.json` compiler projection replays the same
+typed source, memory/effect and ABI builder before accepting the complete nested
+member roster. Resealing a changed program, signature or policy does not establish
+that correspondence. No capture/evaluator directory is opened during replay.
+
+The generated `merlin.imported-source-policy.v1` records retention of imported
+operations and an empty numerical-transform selection. A backend must explicitly
+admit that policy through `validate_preparation`; the document authorizes no
+numerical rewrite or hardware verdict. Runtime scalars, dynamic shapes,
+execution-owned results and void effects keep their existing contracts. Public
+preparation retains a standalone program byte-for-byte and publishes every nested
+compiler member with its artifact identity. Restage older standalone captures to
+obtain the replay projection. Bound-model staging still uses its existing adapter;
+its generic public-stage integration remains separate work.
 
 The repository-layout merge retains receipt schemas and standard MLIR payloads,
 while changing Python owners:

@@ -1,0 +1,27 @@
+{
+  "buffers": [
+    {
+      "dtype": "f32",
+      "effect": "read",
+      "name": "x",
+      "shape": [
+        1
+      ]
+    },
+    {
+      "dtype": "f32",
+      "effect": "write",
+      "name": "out",
+      "shape": [
+        1
+      ]
+    }
+  ],
+  "entry": "staged_increment",
+  "grid": [
+    1
+  ],
+  "intent": "",
+  "scalar_constants": [],
+  "schema": "t2m.shared-tensor-abi.v2"
+}

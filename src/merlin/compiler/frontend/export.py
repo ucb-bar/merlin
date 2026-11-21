@@ -127,10 +127,13 @@ def publish(compilation, stage: Path, record: dict, bound):
     program.write_text(bound.program, encoding="utf-8")
     receipt = compilation.directory / "frontend.json"
     receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    names = {"compile-inputs.json", *json.loads((destination / "compile-inputs.json").read_bytes())["members"]}
     products = tuple(
         Artifact.from_file(path, kind="frontend-input", role="frontend")
-        for path in [*sorted(destination.iterdir()), program, receipt]
-        if path.is_file()
+        for path in [
+            *(destination / name for name in sorted(names)),
+            program, receipt,
+        ]
     )
     result = replace(
         compilation, artifacts=compilation.artifacts + products, metadata={**compilation.metadata, "frontend": record}

@@ -34,7 +34,8 @@ def _snapshot(directory):
         raise ValueError("staged program requires an explicit source-bound precision policy")
     # The loader has already checked the exact regular-file roster, every
     # signature/initializer and policy-to-captured-source correspondence.
-    members = tuple((path.name, digest(path)) for path in sorted(directory.iterdir()))
+    names = {"compile-inputs.json", *json.loads(manifest)["members"]}
+    members = tuple((name, digest(directory / name)) for name in sorted(names))
     if _read_member(directory, "compile-inputs.json") != manifest:
         raise ValueError("compiler stage changed during selection")
     return staged, manifest, members

@@ -1,0 +1,10 @@
+module {
+  tt.func public @staged_increment(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>) attributes {noinline = false} {
+    %0 = tt.load %arg0 : !tt.ptr<f32>
+    %c1_i32 = arith.constant 1 : i32
+    %cst = arith.constant 1.000000e+00 : f32
+    %1 = arith.addf %0, %cst : f32
+    tt.store %arg1, %1 : !tt.ptr<f32>
+    tt.return
+  }
+}

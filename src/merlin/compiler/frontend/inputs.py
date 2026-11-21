@@ -327,6 +327,8 @@ class StagedCompileInputs:
     argument_bindings: tuple[dict, ...] = ()
     weights_sha256: str | None = None
     constants_sha256: str | None = None
+    source_profile: str | None = None
+    signature: dict | None = None
 
 
 def _selected_precision_policy(path: Path, source: Path, source_sha256: str) -> bytes:
@@ -611,6 +613,10 @@ def load_compile_inputs(directory: str | Path) -> StagedCompileInputs:
     manifest = json.loads(manifest_raw)
     if not isinstance(manifest, dict) or manifest.get("schema") != "merlin.compile-inputs.v1":
         raise ValueError("unsupported compiler input manifest")
+    if manifest.get("source_profile") is not None:
+        from merlin.compiler.frontend.intake.staged_projection import load_projection
+
+        return load_projection(root, manifest)
     members = manifest.get("members")
     if not isinstance(members, dict) or not _STAGED_REQUIRED <= set(members) <= (_STAGED_REQUIRED | _STAGED_OPTIONAL):
         raise ValueError("compiler input manifest has missing or unknown members")

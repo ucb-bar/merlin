@@ -84,7 +84,7 @@ def _symbols(attribute):
     return False
 
 
-def _entry(module, name):
+def _entry(module, name, *, imported=False):
     functions = tuple(module.body.block.ops)
     if (
         len(functions) != 1
@@ -103,16 +103,16 @@ def _entry(module, name):
     if set(function.properties) - {"sym_name", "function_type", "sym_visibility", "arg_attrs", "res_attrs"}:
         raise ValueError("captured function has unsupported signature properties")
     for operation in function.body.walk():
-        if operation.name not in {"func.return"} and operation.name.partition(".")[0] not in {
+        if (not imported and operation.name not in {"func.return"} and operation.name.partition(".")[0] not in {
             "arith",
             "math",
             "tensor",
             "linalg",
             "scf",
             "cf",
-        }:
+        }):
             raise ValueError("captured binding requires tensor/arithmetic control without calls or state effects")
-        if isinstance(operation, builtin.UnregisteredOp) or any(
+        if operation.name == "func.call" or isinstance(operation, builtin.UnregisteredOp) or any(
             _symbols(value) for value in (*operation.attributes.values(), *operation.properties.values())
         ):
             raise ValueError("captured binding cannot retain unresolved operations, calls or symbol references")
@@ -147,13 +147,16 @@ def bind_lifted_arguments(
         raise ValueError("captured buffer binding requires an admitted immutable-state or state ABI contract")
     module = parse_mlir_text(staged.program)
     module.verify()
+    imported = staged.source_profile is not None
+    if imported and freeze_readonly_buffers:
+        raise ValueError("imported source freezing requires its own explicit state observation contract")
     legalization = None
     if freeze_readonly_buffers:
         from merlin.compiler.frontend.inputs import _read_member
         from merlin.compiler.frontend.legalize import legalize
 
         module, legalization = legalize(module, trace=json.loads(_read_member(directory, "frontend-trace.json")))
-    function = _entry(module, staged.entry)
+    function = _entry(module, staged.entry, imported=imported)
     from merlin.compiler.frontend.signature import authorize_freeze
 
     freeze = authorize_freeze(
@@ -175,6 +178,10 @@ def bind_lifted_arguments(
         raise ValueError("captured bindings do not cover the complete original entry signature")
     for argument, row in zip(function.args, rows, strict=True):
         typ = argument.type
+        if imported and row["kind"] == "input":
+            if row.get("mlir_type") != str(typ):
+                raise ValueError("imported runtime binding differs from its exact source type")
+            continue
         if (
             type(typ) is not builtin.TensorType
             or type(typ.encoding) is not builtin.NoneAttr
@@ -197,6 +204,26 @@ def bind_lifted_arguments(
     )
     if set(payloads) != {index for index, row in enumerate(rows) if row["kind"] != "input"}:
         raise ValueError("captured initializer payloads do not exactly cover lifted immutable arguments")
+    if imported and not payloads and runtime == list(range(len(rows))):
+        # The complete source interface is already runtime data. Preserve exact
+        # source bytes, including diagnostics, effects and empty results, rather
+        # than running an unrelated static tensor substitution.
+        record = {
+            "schema": "merlin.captured-bindings.v1", "entry": staged.entry,
+            "captured_source_sha256": staged.original_source_sha256,
+            "staged_program_sha256": staged.program_sha256,
+            "bound_program_sha256": staged.program_sha256,
+            "weights_sha256": staged.weights_sha256, "constants_sha256": staged.constants_sha256,
+            "initializers": [],
+            "runtime_inputs": [{"argument_index": index, "input_index": index, "name": row["name"],
+                "shape": row["shape"], "dtype": row["dtype"], "abi_kind": row["abi_kind"]}
+                for index, row in enumerate(rows)],
+            "unique_initialization_bytes": 0, "initialization_byte_budget": max_initialization_bytes,
+            "scope": "complete imported source retained byte-for-byte; backend and numerical admission required",
+        }
+        bound = BoundCapture(staged.program, record, stage_identity)
+        bound.revalidate(directory, staged)
+        return bound
     transformed = module.clone()
     target = transformed.body.block.first_op
     block = target.body.block
