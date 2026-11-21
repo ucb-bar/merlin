@@ -37,6 +37,17 @@ Preparation neither freezes runtime state nor replaces the program with a
 static tensor subset. Its nested source evidence remains part of the published
 compiler-only artifact roster.
 
+Derived TTIR models also replay their parent graph, exact kernel implementations,
+shape/effect checks and compiler constant declarations. Staging retains only the
+parent receipt fields used by those checks; original receipt hashes are observed
+identities rather than authenticated lineage. Parameter archives are hashed and
+copied in bounded chunks. Public preparation substitutes admitted immutable
+parameters/constants using exact storage and checks every original operation
+under that substitution. Captured BUFFER arguments remain explicit runtime state;
+their captured snapshots grant no freeze permission. The prepared runtime
+signature preserves outputs and allocation limits and remaps original input-axis
+and input-word coordinates after immutable argument removal.
+
 An authored MLIR kernel can enter directly with its numerical contract. It need
 not pass through TorchAO. A Python kernel or FX graph needs a supported capture
 and import route; it need not be an `nn.Linear` module.

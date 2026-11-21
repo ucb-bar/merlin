@@ -16,13 +16,24 @@ import tempfile
 from pathlib import Path
 
 from merlin.common.digest import is_sha256
-from merlin.common.digest import sha256_bytes as sha
 
 SCHEMA = "merlin.compile-intake.v1"
 MEMBER = "source/intake.json"
 POLICY = "merlin.imported-source-policy.v1"
-PROFILES = frozenset({"standalone-tensor-kernel", "standalone-effect-kernel"})
+PROFILES = frozenset({"standalone-tensor-kernel", "standalone-effect-kernel", "derived-tensor-model"})
 _RECEIPT = ("schema", "profile", "materialized_abi")
+_MODEL_RECEIPT = ("schema", "materialized_abi", "parent_receipt", "parent_artifact_bindings", "kernel_artifacts",
+                  "execution_allocation_policy", "result_profile", "qualification")
+_PARENT = ("schema", "materialized_abi", "lifted_constants", "compiler_constants", "artifacts")
+_PARENT_MEMBERS = ("model.mlir", "frontend-trace.json", "weights.safetensors", "weights.safetensors.manifest.json")
+
+
+def parent_projection(receipt):
+    if not isinstance(receipt, dict) or not isinstance(receipt.get("artifacts"), dict):
+        raise ValueError("derived compiler projection lacks the parent compiler inventory")
+    result = {key: receipt[key] for key in _PARENT if key in receipt}
+    result["artifacts"] = {name: receipt["artifacts"].get(name) for name in _PARENT_MEMBERS}
+    return result
 
 
 def encoded(value):
@@ -38,16 +49,21 @@ def relative(name):
     return path
 
 
-def finish_projection(manifest, members, bindings, receipt, *, result_mode=None, provenance_sha256=None):
+def finish_projection(manifest, members, bindings, receipt, *, result_mode=None, provenance_sha256=None, parent=None):
     """Add explicit replay inputs and a non-transforming imported-source policy."""
     record = {
         "schema": SCHEMA,
         "source_profile": manifest["source_profile"],
-        "receipt": {key: receipt[key] for key in _RECEIPT if key in receipt},
+        "receipt": {key: receipt[key] for key in (_MODEL_RECEIPT if parent is not None else _RECEIPT)
+                    if key in receipt},
         "source_members": bindings,
         "result_mode": result_mode,
         "source_provenance_sha256": provenance_sha256,
     }
+    if parent is not None:
+        record["parent_receipt"] = parent_projection(parent)
+        record["receipt"]["parent_artifact_bindings"] = {
+            name: receipt.get("parent_artifact_bindings", {}).get(name) for name in _PARENT_MEMBERS}
     members[MEMBER] = encoded(record)
     members["precision-policy.json"] = encoded({
         "schema": POLICY,
@@ -58,17 +74,26 @@ def finish_projection(manifest, members, bindings, receipt, *, result_mode=None,
         "numerical_transforms": [],
         "scope": "imported source contract only; backend admission and numerical qualification required",
     })
-    manifest["members"] = {name: sha(raw) for name, raw in members.items()}
+    from merlin.compiler.frontend.inputs import _sha
+
+    manifest["members"] = {name: _sha(raw) for name, raw in members.items()}
 
 
-def publish(target, manifest, members):
+def publish(target, manifest, members, *, source_directory=None):
+    from merlin.compiler.frontend.inputs import _ArchiveInfo, _copy_archive
+
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:
         for name, raw in members.items():
             path = temporary / relative(name)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(raw)
+            if isinstance(raw, _ArchiveInfo):
+                if source_directory is None:
+                    raise ValueError("streamed compiler member needs its source directory")
+                _copy_archive(source_directory / name, path, raw)
+            else:
+                path.write_bytes(raw)
         (temporary / "compile-inputs.json").write_bytes(encoded(manifest))
         if target.exists() or target.is_symlink():
             raise ValueError("compile-input destination appeared during staging")
@@ -80,6 +105,8 @@ def publish(target, manifest, members):
 
 
 def read_members(root, manifest):
+    from merlin.compiler.frontend.inputs import _archive_info, _sha
+
     members = manifest.get("members")
     if not isinstance(members, dict) or not {MEMBER, "program.mlir", "signature.json"} <= set(members):
         raise ValueError("imported compiler stage lacks its replay projection; restage the capture")
@@ -109,7 +136,9 @@ def read_members(root, manifest):
     raw_members = {}
     for name, expected in members.items():
         path = root / name
-        if name == "weights.safetensors":
+        if name == "weights.safetensors" and manifest.get("source_profile") == "derived-tensor-model":
+            raw = _archive_info(root, name, expected_sha256=expected)
+        elif name == "weights.safetensors":
             # The standalone schema requires this exact sixteen-byte empty
             # container; do not allocate a caller-sized archive before checking.
             with path.open("rb") as stream:
@@ -118,7 +147,7 @@ def read_members(root, manifest):
                 raise ValueError("standalone compiler projection needs its empty parameter container")
         else:
             raw = path.read_bytes()
-        if sha(raw) != expected:
+        if _sha(raw) != expected:
             raise ValueError("compiler projection member differs from manifest: " + name)
         raw_members[name] = raw
     return raw_members
@@ -132,17 +161,20 @@ def load_projection(root, manifest):
 
     raw_members = read_members(root, manifest)
     record = json.loads(raw_members[MEMBER])
-    if (not isinstance(record, dict) or set(record) != {
-            "schema", "source_profile", "receipt", "source_members", "result_mode", "source_provenance_sha256"}
+    model = manifest.get("source_profile") == "derived-tensor-model"
+    fields = {"schema", "source_profile", "receipt", "source_members", "result_mode", "source_provenance_sha256"}
+    if (not isinstance(record, dict) or set(record) != fields | ({"parent_receipt"} if model else set())
             or record.get("schema") != SCHEMA or record.get("source_profile") != manifest.get("source_profile")
             or manifest.get("source_profile") not in PROFILES):
         raise ValueError("unsupported compiler source projection")
     receipt, bindings = record["receipt"], record["source_members"]
     source = manifest.get("source")
-    if not isinstance(receipt, dict) or set(receipt) - set(_RECEIPT) or not isinstance(bindings, dict):
+    if (not isinstance(receipt, dict) or set(receipt) - set(_MODEL_RECEIPT if model else _RECEIPT)
+            or not isinstance(bindings, dict)):
         raise ValueError("compiler source projection has unknown receipt or member fields")
     if (not isinstance(source, dict) or not is_sha256(source.get("capture_receipt_sha256"))
-            or not is_sha256(record["source_provenance_sha256"])):
+            or (record["source_provenance_sha256"] is not None if model
+                else not is_sha256(record["source_provenance_sha256"]))):
         raise ValueError("compiler source projection lacks its observed source receipt identity")
     requested = set()
 
@@ -154,28 +186,51 @@ def load_projection(root, manifest):
         requested.add(name)
         return raw_members[member]
 
-    expected, values = prepare_kernel_inputs(checked, receipt, source["capture_receipt_sha256"],
-        result_mode=record["result_mode"], provenance_sha256=record["source_provenance_sha256"])
+    if model:
+        from merlin.compiler.frontend.intake.derived_compile_inputs import prepare_bound_model_inputs
+
+        parent = record["parent_receipt"]
+        if parent != parent_projection(parent):
+            raise ValueError("derived compiler parent contains unknown projection fields")
+        pin = receipt.get("parent_receipt")
+        if (not isinstance(pin, dict) or set(pin) != {"bytes", "sha256"}
+                or type(pin["bytes"]) is not int or pin["bytes"] <= 0 or not is_sha256(pin["sha256"])):
+            raise ValueError("derived compiler projection lacks its observed parent identity")
+        expected, values = prepare_bound_model_inputs(checked, receipt, source["capture_receipt_sha256"],
+            parent=parent, result_mode=record["result_mode"], source_directory=root)
+        for name in requested:
+            member = name if name.startswith("weights.") else "source/" + name
+            if bindings[name] != member or member in values and values[member] != checked(name):
+                raise ValueError("derived source projection conflicts with a compiler member")
+            values[member] = checked(name)
+    else:
+        expected, values = prepare_kernel_inputs(checked, receipt, source["capture_receipt_sha256"],
+            result_mode=record["result_mode"], provenance_sha256=record["source_provenance_sha256"])
     if set(bindings) != requested:
         raise ValueError("compiler projection contains unused source bindings")
     finish_projection(expected, values, bindings, receipt, result_mode=record["result_mode"],
-                      provenance_sha256=record["source_provenance_sha256"])
+                      provenance_sha256=record["source_provenance_sha256"], parent=record.get("parent_receipt"))
     if expected != manifest or values != raw_members:
         raise ValueError("compiler source projection differs from independently reconstructed intake")
     signature = json.loads(raw_members["signature.json"])
     policy = json.loads(raw_members["precision-policy.json"])
     module = parse_mlir_text(raw_members["program.mlir"].decode())
     function = next(iter(module.ops))
-    spec = json.loads(checked("spec.json"))
-    names = [row["name"] for row in spec["buffers"] if row["effect"] != "write"]
-    names.extend(row["name"] for row in spec.get("runtime_scalars", []))
-    argument_bindings = tuple({"kind": "input", "name": name, "input_index": index,
-        "dtype": row["dtype"], "shape": row["shape"],
-        "abi_kind": row.get("kind", "tensor"), "mlir_type": str(argument.type)}
-        for index, (name, row, argument) in enumerate(zip(names, signature["inputs"], function.args, strict=True)))
+    if model:
+        from merlin.compiler.frontend.intake.derived_argument_bindings import argument_bindings
+
+        arguments = argument_bindings(function, signature, raw_members)
+    else:
+        spec = json.loads(checked("spec.json"))
+        names = [row["name"] for row in spec["buffers"] if row["effect"] != "write"]
+        names.extend(row["name"] for row in spec.get("runtime_scalars", []))
+        arguments = tuple({"kind": "input", "name": name, "input_index": index,
+            "dtype": row["dtype"], "shape": row["shape"],
+            "abi_kind": row.get("kind", "tensor"), "mlir_type": str(argument.type)}
+            for index, (name, row, argument) in enumerate(zip(names, signature["inputs"], function.args, strict=True)))
     return StagedCompileInputs(
         raw_members["program.mlir"].decode(), signature["entry"], policy, raw_members["precision-policy.json"],
         source["model_mlir_sha256"], manifest["members"]["program.mlir"],
-        manifest["members"]["precision-policy.json"], argument_bindings,
+        manifest["members"]["precision-policy.json"], arguments,
         manifest["members"]["weights.safetensors"], source_profile=manifest["source_profile"],
         signature=signature)

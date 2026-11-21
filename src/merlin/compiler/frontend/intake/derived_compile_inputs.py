@@ -8,12 +8,8 @@ This module imports no capture frontend, evaluator or Triton implementation.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
-import os
-import shutil
-import tempfile
 from pathlib import Path
 
 from xdsl.dialects.builtin import ArrayAttr, DictionaryAttr, IntegerAttr, StringAttr, TensorType, i1
@@ -29,8 +25,16 @@ from merlin.compiler.frontend.intake.kernel_compile_inputs import _checked_memor
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 
-def _sha(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
+def _sha(raw) -> str:
+    from merlin.compiler.frontend.inputs import _sha as checked_sha
+
+    return checked_sha(raw)
+
+
+def _size(raw):
+    from merlin.compiler.frontend.inputs import _ArchiveInfo
+
+    return raw.file_bytes if isinstance(raw, _ArchiveInfo) else len(raw)
 
 
 def _json(value) -> bytes:
@@ -47,28 +51,62 @@ def _relative(name: str) -> Path:
 def _stage_bound_model_inputs(
     source: Path, target: Path, receipt: dict, receipt_raw: bytes, *, result_mode=None
 ) -> dict:
+    from merlin.compiler.frontend.inputs import _archive_info
+    from merlin.compiler.frontend.intake.staged_projection import finish_projection, parent_projection, publish
+
+    artifacts = receipt.get("artifacts")
+    if not isinstance(artifacts, dict) or receipt.get("materialized_abi") != "unchanged-from-parent":
+        raise ValueError("derived capture has an incomplete ABI/artifact inventory")
+
+    consumed = {}
+
+    def read(name):
+        relative = _relative(name)
+        path = source / relative
+        if any(source.joinpath(*relative.parts[:i]).is_symlink() for i in range(1, len(relative.parts) + 1)):
+            raise ValueError("derived capture member is a symlink: " + name)
+        if not path.is_file() or not isinstance(artifacts.get(name), dict):
+            raise ValueError("derived capture lacks compiler member: " + name)
+        raw = (_archive_info(source, name, expected_sha256=artifacts[name].get("sha256"), typed=False)
+               if name == "weights.safetensors" else path.read_bytes())
+        if artifacts[name] != {"bytes": _size(raw), "sha256": _sha(raw)}:
+            raise ValueError("derived capture member differs from receipt: " + name)
+        return raw
+
+    parent_raw = read("parent/capture_receipt.json")
+    if receipt.get("parent_receipt") != {"bytes": len(parent_raw), "sha256": _sha(parent_raw)}:
+        raise ValueError("derived capture lacks a bound complete parent ABI")
+    parent = parent_projection(json.loads(parent_raw))
+
+    def checked(name):
+        data = read(name)
+        consumed[name] = data
+        return data
+
+    manifest, members = prepare_bound_model_inputs(
+        checked, receipt, _sha(receipt_raw), parent=parent, result_mode=result_mode, source_directory=source)
+    bindings = {}
+    for name, data in consumed.items():
+        member = name if name.startswith("weights.") else "source/" + name
+        if member in members and members[member] != data:
+            raise ValueError("derived source projection conflicts with a compiler member")
+        members[member] = data
+        bindings[name] = member
+    finish_projection(manifest, members, bindings, receipt, result_mode=result_mode, parent=parent)
+    return publish(target, manifest, members, source_directory=source)
+
+
+def prepare_bound_model_inputs(checked, receipt, receipt_sha256, *, parent, result_mode=None, source_directory=None):
+    """Recheck a complete derived graph using compiler-only source observations."""
     from merlin.compiler.frontend.intake.execution_result_signature import (
         program_text,
         select_signature,
         selected_manifest,
     )
 
-    artifacts = receipt.get("artifacts")
-    if not isinstance(artifacts, dict) or receipt.get("materialized_abi") != "unchanged-from-parent":
+    if (receipt.get("schema") not in ("t2m.bound-model-receipt.v1", "t2m.bound-model-receipt.v2")
+            or receipt.get("materialized_abi") != "unchanged-from-parent"):
         raise ValueError("derived capture has an incomplete ABI/artifact inventory")
-
-    def checked(name):
-        relative = _relative(name)
-        path = source / relative
-        if any(source.joinpath(*relative.parts[:i]).is_symlink() for i in range(1, len(relative.parts) + 1)):
-            raise ValueError("derived capture member is a symlink: " + name)
-        if not path.is_file() or name not in artifacts:
-            raise ValueError("derived capture lacks compiler member: " + name)
-        raw = path.read_bytes()
-        if artifacts[name] != {"bytes": len(raw), "sha256": _sha(raw)}:
-            raise ValueError("derived capture member differs from receipt: " + name)
-        return raw
-
     raw = checked("model.mlir")
     weights = {name: checked(name) for name in ("weights.safetensors", "weights.safetensors.manifest.json")}
     bindings_raw = checked("kernel-bindings.json")
@@ -98,11 +136,8 @@ def _stage_bound_model_inputs(
         *(("t2m.model-kernel-binding.v4",) if executed_model else ()),
     ) or bindings.get("mlir_sha256") != _sha(raw):
         raise ValueError("derived source correspondence does not bind the current model")
-    parent_raw = checked("parent/capture_receipt.json")
-    parent = json.loads(parent_raw)
     if (
-        receipt.get("parent_receipt") != {"bytes": len(parent_raw), "sha256": _sha(parent_raw)}
-        or parent.get("schema") != "m2m.capture-receipt.v1"
+        parent.get("schema") != "m2m.capture-receipt.v1"
         or (parent.get("materialized_abi") or {}).get("complete") is not True
     ):
         raise ValueError("derived capture lacks a bound complete parent ABI")
@@ -117,7 +152,7 @@ def _stage_bound_model_inputs(
         if parent_members.get(name) != expected_path:
             raise ValueError("derived parent compiler-member mapping differs: " + name)
         data = weights[name] if name.startswith("weights.") else checked(expected_path)
-        if (parent.get("artifacts") or {}).get(name) != {"bytes": len(data), "sha256": _sha(data)}:
+        if (parent.get("artifacts") or {}).get(name) != {"bytes": _size(data), "sha256": _sha(data)}:
             raise ValueError("derived parent compiler artifact relation failed: " + name)
         if not name.startswith("weights."):
             copied["source/parent/" + name] = data
@@ -139,13 +174,14 @@ def _stage_bound_model_inputs(
         weights["weights.safetensors"],
         parent_module,
         parent_trace,
+        source_directory=source_directory,
     )
     if constants is not None:
         copied["compiler-constants.json"] = _json(constants)
     copied["source/parent/compiler-artifacts.json"] = _json(
         {
             "schema": "merlin.capture-compiler-projection.v1",
-            "original_receipt_sha256": _sha(parent_raw),
+            "original_receipt_sha256": receipt["parent_receipt"]["sha256"],
             "artifacts": {
                 name: parent["artifacts"][name]
                 for name in (
@@ -489,7 +525,7 @@ def _stage_bound_model_inputs(
         "source_profile": "derived-tensor-model",
         "scope": "compiler_only_static_capture; source_closure_and_numerical_admission_unverified",
         "source": {
-            "capture_receipt_sha256": _sha(receipt_raw),
+            "capture_receipt_sha256": receipt_sha256,
             "model_mlir_sha256": _sha(raw),
             "capture_schema": receipt["schema"],
             "correspondence": "source-correspondence.json",
@@ -509,18 +545,4 @@ def _stage_bound_model_inputs(
     if symbolic_model is not None:
         manifest["scope"] = "compiler_only_symbolic_capture; source_closure_and_numerical_admission_unverified"
     selected_manifest(manifest, result_mode)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
-    try:
-        for name, data in members.items():
-            path = temporary / name
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(data)
-        (temporary / "compile-inputs.json").write_bytes(_json(manifest))
-        if target.exists() or target.is_symlink():
-            raise ValueError("compile-input destination appeared during staging")
-        os.rename(temporary, target)
-    finally:
-        if temporary.exists():
-            shutil.rmtree(temporary)
-    return manifest
+    return manifest, members

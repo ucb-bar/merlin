@@ -76,6 +76,7 @@ def _argument_bindings(
     members: dict[str, bytes | _ArchiveInfo],
     *,
     materialized: bool = False,
+    imported_runtime_types: tuple | None = None,
 ) -> list[dict]:
     """Join captured argument indices to runtime inputs or exact weight tensors."""
     from merlin.compiler.frontend.inputs import CONSTANT_FILE
@@ -106,9 +107,10 @@ def _argument_bindings(
     used_weights = {name: set() for name in files}
     ranges = {name: [] for name in files}
     payload_lengths = {name: _payload_bytes(members[name]) for name in files}
+    if imported_runtime_types is not None and len(imported_runtime_types) != len(runtime_inputs):
+        raise ValueError("imported runtime types do not cover the actual runtime arguments")
     for index, type_ in enumerate(types):
         row = manifest[str(index)]
-        actual = _tensor_abi(type_)
         if not isinstance(row, dict):
             raise ValueError("weight manifest has a malformed argument row")
         kind = row.get("kind")
@@ -117,11 +119,17 @@ def _argument_bindings(
             if set(row) != {"kind", "name"} or not isinstance(name, str) or name not in order:
                 raise ValueError("weight manifest input has no declared runtime position")
             ordinal = order[name]
-            if runtime_inputs[ordinal] != actual:
+            actual = runtime_inputs[ordinal] if imported_runtime_types is not None else _tensor_abi(type_)
+            if ((imported_runtime_types is not None and imported_runtime_types[ordinal] != type_)
+                    or runtime_inputs[ordinal] != actual):
                 raise ValueError("runtime input argument differs from parsed function")
             used_inputs.add(ordinal)
-            bindings.append({"kind": "input", "name": name, "input_index": ordinal, **actual})
+            bindings.append({"kind": "input", "name": name, "input_index": ordinal,
+                **{key: value for key, value in actual.items() if key != "kind"},
+                **({"mlir_type": str(type_), "abi_kind": actual.get("kind", "tensor")}
+                   if imported_runtime_types is not None else {})})
             continue
+        actual = _tensor_abi(type_)
         name = row.get("weight")
         file = row.get("file") if materialized else "weights.safetensors"
         dtype_name = row.get("dtype")

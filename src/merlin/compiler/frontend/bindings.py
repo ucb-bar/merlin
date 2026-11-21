@@ -216,7 +216,8 @@ def bind_lifted_arguments(
             "weights_sha256": staged.weights_sha256, "constants_sha256": staged.constants_sha256,
             "initializers": [],
             "runtime_inputs": [{"argument_index": index, "input_index": index, "name": row["name"],
-                "shape": row["shape"], "dtype": row["dtype"], "abi_kind": row["abi_kind"]}
+                "shape": row["shape"], "dtype": row["dtype"], "abi_kind": row["abi_kind"],
+                **{key: row[key] for key in ("mlir_type", "source_kind", "state_binding") if key in row}}
                 for index, row in enumerate(rows)],
             "unique_initialization_bytes": 0, "initialization_byte_budget": max_initialization_bytes,
             "scope": "complete imported source retained byte-for-byte; backend and numerical admission required",
@@ -279,7 +280,7 @@ def bind_lifted_arguments(
         raise ValueError("captured argument substitution changed an original operation or dependency")
     transformed.verify()
     text = StringIO()
-    DenseFloatPrinter(stream=text, print_generic_format=True).print_op(transformed)
+    DenseFloatPrinter(stream=text, print_generic_format=True, print_debuginfo=imported).print_op(transformed)
     program = text.getvalue()
     reparsed = parse_mlir_text(program)
     reparsed.verify()
@@ -306,6 +307,8 @@ def bind_lifted_arguments(
                 "name": rows[index]["name"],
                 "shape": rows[index]["shape"],
                 "dtype": rows[index]["dtype"],
+                **({key: rows[index][key] for key in ("abi_kind", "mlir_type", "source_kind", "state_binding")
+                    if key in rows[index]} if imported else {}),
             }
             for index in runtime
         ],
@@ -320,3 +323,60 @@ def bind_lifted_arguments(
     result = BoundCapture(program, record, stage_identity)
     result.revalidate(directory, staged)
     return result
+
+
+def imported_runtime_signature(staged: StagedCompileInputs, bound: BoundCapture) -> dict:
+    """Project the admitted ABI through exact immutable argument substitution.
+
+    Keep output contracts and allocation limits unchanged. Runtime shape/word
+    coordinates follow their original argument, including explicit state ports.
+    This is a compiler execution view, never a replacement source receipt.
+    """
+    from copy import deepcopy
+
+    if staged.source_profile is None or staged.signature is None:
+        raise ValueError("imported runtime signature requires its revalidated source signature")
+    if (bound.record["staged_program_sha256"] != staged.program_sha256
+            or bound.record["bound_program_sha256"] != _sha(bound.program.encode())):
+        raise ValueError("imported runtime signature differs from its original argument binding")
+    source = parse_mlir_text(staged.program)
+    target = parse_mlir_text(bound.program)
+    original = _entry(source, staged.entry, imported=True)
+    prepared = _entry(target, staged.entry, imported=True)
+    runtime = bound.record["runtime_inputs"]
+    indices = [row["argument_index"] for row in runtime]
+    if (len(set(indices)) != len(indices) or [row["input_index"] for row in runtime] != list(range(len(runtime)))
+            or any(type(index) is not int or not 0 <= index < len(original.args) for index in indices)
+            or tuple(prepared.function_type.inputs) != tuple(original.args[index].type for index in indices)
+            or prepared.function_type.outputs != original.function_type.outputs):
+        raise ValueError("prepared runtime signature changes its original argument/result types")
+    positions = {index: position for position, index in enumerate(indices)}
+    signature = deepcopy(staged.signature)
+    original_inputs = signature["inputs"]
+    signature["inputs"] = [original_inputs[index] for index in indices]
+    if signature["schema"] in ("merlin.compile-signature.v4", "merlin.compile-signature.v5"):
+        from merlin.compiler.frontend.intake.model_shape_facts import ShapeFacts
+
+        words = signature["schema"] == "merlin.compile-signature.v5"
+        # Shape and word symbols are derived from the actual argument roster.
+        # Reconstruct from the proved substitution, including its constants;
+        # changing only coordinate indices leaves stale source symbol names.
+        facts = ShapeFacts.entry(prepared, expressions=True, data_words=words)
+        contract = facts.contract(prepared, force_expressions=True, force_words=words)
+        signature.update({key: value for key, value in contract.items() if key != "schema"})
+        return signature
+
+    def coordinates(contract):
+        for key in ("dimension_bindings", "word_bindings"):
+            for row in contract.get(key, {}).values():
+                if row["argument"] not in positions:
+                    raise ValueError("runtime shape contract observes an embedded initializer; "
+                                     "materialize that shape dependency")
+                row["argument"] = positions[row["argument"]]
+
+    coordinates(signature)
+    if "input_constraints" in signature:
+        constraints = signature["input_constraints"]
+        constraints["inputs"] = [constraints["inputs"][index] for index in indices]
+        coordinates(constraints)
+    return signature
