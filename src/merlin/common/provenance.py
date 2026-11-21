@@ -7,7 +7,7 @@ checked out in the same tree, and nothing recorded which one the numbers belonge
 
 Three operations, deliberately separate:
 
-* :func:`pin` — read the DECLARED revision from ``merlin/contract/hardware_pins.yaml``. Tracked and
+* :func:`pin` — read the DECLARED revision from ``src/merlin/resources/contracts/hardware_pins.yaml``. Tracked and
   reviewed, so changing what a result is measured against is a diff someone sees.
 * :func:`observe` — read what is ACTUALLY in a checkout: commit, branch, remote, dirtiness. No
   interpretation, no comparison; just the facts as found.
@@ -39,7 +39,7 @@ pinned simulator-compiler binary lived at a gitignored path inside a pinned chec
 ``requires_paths``. Git reports an ignored file neither modified nor untracked, so every check here asked
 only whether it EXISTS; it was rebuilt in place and ``verify()`` kept saying ok while 244 artifacts cited
 the old digest. :attr:`Pin.build_products` compares such a path's bytes on every verify. Bytes that are
-gone are recorded as gone (:mod:`merlin.common.provenance_lost`): a loss record CLAIMS its digest, so no
+gone are recorded as gone (:mod:`merlin.common.provenance_claims`): a loss record CLAIMS its digest, so no
 pin or artifact can re-declare those bytes as its own.
 
 **Nothing here mutates a checkout.** It verifies and records. On a shared host other people are working in
@@ -62,58 +62,25 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-# Re-exported so callers keep one import for "the pin registry": the loss records live in the same file,
-# under the same review, and the loaders below are cross-checked against them.
-from .provenance_lost import UNRECOVERABLE, LostArtifact, claimed_digests, load_lost, lost_for_digest
+from .provenance_claims import UNKNOWN, UNRECOVERABLE, PinsError, claimed_digests, file_digest, pins_path
 
 __all__ = [
-    "Artifact",
-    "ArtifactCheck",
-    "LostArtifact",
     "Observation",
     "Pin",
-    "PinsError",
     "SourceStatus",
-    "UNRECOVERABLE",
     "Verification",
-    "load_artifacts",
-    "load_lost",
     "load_pins",
-    "lost_for_digest",
     "observe",
     "pin",
-    "pins_path",
     "record",
     "citation",
     "citations",
     "require",
+    "repo_sha",
     "source_digest",
-    "software_pins_path",
     "source_status",
     "verify",
-    "verify_artifact",
 ]
-
-#: Recorded where a fact could not be read. Never compares equal to a real value, and callers must not
-#: treat it as "unchanged" — see :mod:`merlin.targetgen.artifact_dag` for the same convention.
-UNKNOWN = "UNKNOWN"
-
-
-class PinsError(RuntimeError):
-    """A pin is missing, malformed, or the checkout disagrees with it."""
-
-
-def pins_path() -> Path:
-    from .paths import data_path
-
-    return data_path("contract", "hardware_pins.yaml")
-
-
-def software_pins_path() -> Path:
-    """The registry of pinned toolchain/frontend revisions: same schema, same verifier, own file."""
-    from .paths import data_path
-
-    return data_path("contract", "software_pins.yaml")
 
 
 @dataclass(frozen=True)
@@ -134,7 +101,7 @@ class Pin:
     #: Targets whose results depend on this revision. MACHINE-READABLE, unlike ``used_by``, which is
     #: prose about which code paths read the checkout. A verdict claiming a hardware tier must record
     #: the revision it came from, and this is what lets a target be ASKED which revisions those are --
-    #: see :func:`merlin.targetgen.provenance.declared_pins`.
+    #: see :func:`merlin.development.targetgen.packaging.records.declared_pins`.
     targets: tuple[str, ...] = ()
     repo_observed_note: str = ""
     #: Files this checkout is KNOWN to carry uncommitted, as ``(repo-relative path, sha256)`` pairs.
@@ -354,208 +321,6 @@ class Verification:
             "sources": [s.to_dict() for s in self.sources],
             "covered": [v.to_dict() for v in self.covered],
         }
-
-
-@dataclass(frozen=True)
-class Artifact:
-    """A BUILT thing whose identity is its contents, not a revision.
-
-    A pin answers "which checkout was this read from". That question has no answer for an FPGA bitstream, a
-    compiled simulator or a packaged image: they have no commit of their own. What identifies them is the
-    bytes, plus the revisions they were ELABORATED FROM — so those are separate fields, and `built_from`
-    names other pins rather than repeating their shas.
-
-    ``digest`` may be empty while a build is still running. That is honest and it is not the same as
-    verifying: :func:`verify_artifact` reports an undeclared digest as a gap, so an artifact can be
-    registered before it exists without silently becoming self-certifying.
-    """
-
-    name: str
-    path: str  # absolute, relative to root_env, or repo-relative
-    description: str = ""
-    digest: str = ""  # sha256 of the file/tree; empty = not yet recorded
-    root_env: str = ""
-    built_from: tuple[str, ...] = ()  # pin names this was elaborated from
-    config: str = ""  # the elaborated configuration, when there is one
-    notes: str = ""
-    #: WHICH TARGET this artifact belongs to, and WHAT PART it plays for that target -- for example
-    #: ``(target="…", role="verilator_binary")``. Both are declared, never parsed out of the artifact's
-    #: NAME: a consumer that needs "this target's reference simulator" would otherwise have to encode a
-    #: naming convention, and one target's elaboration is called after its own config
-    #: (``…_gsim_model_serialclk``), which is not a convention any other target shares. Empty means the
-    #: artifact declares no role, and a role-based lookup then does not see it at all -- absent, never
-    #: guessed.
-    target: str = ""
-    role: str = ""
-    #: The SIMULATOR/QUEUE CONFIGURATION NAMES that resolve to these bytes. Declared, never parsed
-    #: out of the artifact's own name: a result records the hw-config it was submitted under, and
-    #: nothing else connects that string to a device. Measured 2026-09-19, which is why this field
-    #: exists: a whole week of whole-model cycle numbers was quoted under the hw-config
-    #: ``alveo_u250_firesim_gemmini_rocket_30mhz`` while the registry knew only a DIFFERENT bitstream
-    #: for the same ``config`` name, so a reader resolving those results by configuration name landed
-    #: on the wrong silicon. A configuration name is not a device; this is the mapping that says
-    #: which device a configuration name meant.
-    hw_configs: tuple[str, ...] = ()
-    #: sha256 of the HWDB CONFIG ENTRY that names these bytes -- the small YAML a submission points
-    #: at -- which is NOT ``digest``, the sha256 of the built image itself. Both exist because a
-    #: result records the former and the registry has always declared only the latter, so the one
-    #: check meant to catch "a different device under a reused config name" was comparing a YAML's
-    #: hash against a multi-gigabyte tarball's and could never agree. Empty means the hwdb entry's
-    #: hash was never recorded, and a record stating one is then confirmed by NAME alone -- reported
-    #: as such, never silently upgraded to a byte match and never held against the record.
-    hwdb_digest: str = ""
-    #: sha256 of the parameter header whose ABI this device ELABORATES, when it has been established.
-    #: A program compiled against a different header runs and is wrong in whichever layer the two
-    #: disagree about, which reads as a schedule regression; so a measurement compares a program's
-    #: build header against this before a run is spent. Empty means UNKNOWN -- never assumed equal.
-    abi_header_sha256: str = ""
-    #: ``file`` (one built file) or ``tree`` (a built DIRECTORY whose identity is all of its bytes).
-    #: A tree is hashed with the SAME hasher the host-lane pin uses, so a descriptor's
-    #: ``package_sha256`` and this registry's ``digest`` are literally the same number -- two hashers
-    #: for one question is the drift this registry exists to prevent.
-    kind: str = "file"
-    #: Resolve ``path`` against the repository root. Without this an artifact carrying no ``root_env``
-    #: resolves relative to the CURRENT DIRECTORY, so the same declaration verifies from the repo root
-    #: and reports "no file" from anywhere else -- a pin that passes in CI and fails on a laptop.
-    repo_relative: bool = False
-
-    KINDS = ("file", "tree")
-
-    def resolve(self) -> Path | None:
-        from .paths import env as _env
-
-        if self.root_env:
-            root = _env(self.root_env)
-            return None if not root else Path(root) / self.path
-        if self.repo_relative:
-            from .paths import repo_root
-
-            return repo_root() / self.path
-        return Path(self.path)
-
-
-@dataclass(frozen=True)
-class ArtifactCheck:
-    """Whether a built artifact is present and is the one that was declared."""
-
-    artifact: str
-    path: str
-    present: bool = False
-    digest: str = UNKNOWN
-    matches: bool | None = None  # None when nothing was declared to match against
-    gaps: tuple[str, ...] = ()
-
-    @property
-    def ok(self) -> bool:
-        return self.present and self.matches is True
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "artifact": self.artifact,
-            "path": self.path,
-            "present": self.present,
-            "digest": self.digest,
-            "matches": self.matches,
-            "ok": self.ok,
-            "gaps": list(self.gaps),
-        }
-
-
-def load_artifacts(path: str | Path | None = None) -> dict[str, Artifact]:
-    """Every declared built artifact. An empty mapping when the registry declares none."""
-    import yaml
-
-    p = Path(path) if path is not None else pins_path()
-    if not p.is_file():
-        raise PinsError(f"no pin registry at {p}")
-    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    entries = raw.get("artifacts") or {}
-    if not isinstance(entries, dict):
-        raise PinsError(f"{p}: 'artifacts' must be a mapping of name -> declaration")
-    out: dict[str, Artifact] = {}
-    for name, body in entries.items():
-        if not isinstance(body, dict) or not body.get("path"):
-            raise PinsError(f"{p}: artifact {name!r} has no path; an artifact without one identifies nothing")
-        digest = body.get("digest") or ""
-        if digest and not isinstance(digest, str):
-            raise PinsError(f"{p}: artifact {name!r} digest must be a quoted string, got {type(digest).__name__}")
-        hwdb_digest = body.get("hwdb_digest") or ""
-        if hwdb_digest and not isinstance(hwdb_digest, str):
-            raise PinsError(
-                f"{p}: artifact {name!r} hwdb_digest must be a quoted string, got {type(hwdb_digest).__name__}"
-            )
-        kind = str(body.get("kind") or "file")
-        if kind not in Artifact.KINDS:
-            raise PinsError(f"{p}: artifact {name!r} kind must be one of {list(Artifact.KINDS)}, got {kind!r}")
-        out[str(name)] = Artifact(
-            name=str(name),
-            path=str(body["path"]),
-            description=str(body.get("description") or ""),
-            digest=str(digest),
-            root_env=str(body.get("root_env") or ""),
-            kind=kind,
-            repo_relative=bool(body.get("repo_relative", False)),
-            built_from=tuple(str(b) for b in (body.get("built_from") or ())),
-            config=str(body.get("config") or ""),
-            notes=str(body.get("notes") or ""),
-            target=str(body.get("target") or ""),
-            role=str(body.get("role") or ""),
-            hw_configs=tuple(str(c) for c in (body.get("hw_configs") or ())),
-            abi_header_sha256=str(body.get("abi_header_sha256") or ""),
-            hwdb_digest=str(hwdb_digest),
-        )
-    # An artifact may not re-declare bytes the registry records as UNRECOVERABLE: repointing a live
-    # declaration at dead bytes is exactly the move a loss record forbids.
-    lost = claimed_digests(p, document=raw)
-    for name, art in out.items():
-        rec = lost.get(art.digest.lower())
-        if rec is not None:
-            raise PinsError(
-                f"{p}: artifact {name!r} declares digest {art.digest[:12]}, which lost_artifacts"
-                f"[{rec.name!r}] records as {UNRECOVERABLE}; an artifact declaration claims the bytes can "
-                "be verified, and by the registry's own record these cannot"
-            )
-    return out
-
-
-def verify_artifact(name: str, *, path: str | Path | None = None) -> ArtifactCheck:
-    """Compare a built artifact against its declaration.
-
-    Reports rather than raises, and distinguishes the three states that matter: absent, present with a
-    digest that disagrees, and present with nothing declared to compare against. The last is a GAP, not a
-    pass -- an artifact that certifies itself is the failure this registry exists to prevent.
-    """
-    arts = load_artifacts(path)
-    if name not in arts:
-        raise PinsError(f"no artifact named {name!r}; declared: {sorted(arts)}")
-    a = arts[name]
-    target = a.resolve()
-    gaps: list[str] = []
-    if target is None:
-        return ArtifactCheck(
-            artifact=name, path=UNKNOWN, gaps=(f"${a.root_env} is unset, so {name!r} cannot be located",)
-        )
-    if a.kind == "tree":
-        if not target.is_dir():
-            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"no directory at {target}",))
-        from merlin.common.tree_hash import hash_tree
-
-        hashed = hash_tree(target)
-        got = str(hashed.get("sha256") or "")
-        if not hashed.get("present") or not got:
-            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"{target} has no hashable content",))
-    else:
-        if not target.is_file():
-            return ArtifactCheck(artifact=name, path=str(target), gaps=(f"no file at {target}",))
-        got = file_digest(target)
-    if not a.digest:
-        gaps.append("no digest declared, so the file present cannot be confirmed to be the one meant")
-        return ArtifactCheck(artifact=name, path=str(target), present=True, digest=got, matches=None, gaps=tuple(gaps))
-    if got != a.digest:
-        gaps.append(f"digest is {got[:16]} but the registry declares {a.digest[:16]}")
-    return ArtifactCheck(
-        artifact=name, path=str(target), present=True, digest=got, matches=(got == a.digest), gaps=tuple(gaps)
-    )
 
 
 #: Parsed registries, keyed by (resolved path, mtime_ns, size). The stamp is part of the KEY, not a
@@ -806,7 +571,7 @@ def observation_scope():
 def scoped_observation(key: str, compute):
     """``compute()``, memoized for the open :func:`observation_scope` (or called straight through).
 
-    Shared with :mod:`merlin.targetgen.provenance`, which reads the same checkouts through its own git
+    Shared with :mod:`merlin.development.targetgen.packaging.records`, which reads the same checkouts through its own git
     helper: one scope, so the two cannot answer differently within one measurement.
     """
     scope = _OBSERVATION_SCOPE
@@ -1401,14 +1166,6 @@ def source_digest(paths: Sequence[str | Path]) -> str:
     return h.hexdigest()
 
 
-def file_digest(path: str | Path) -> str:
-    """sha256 of one file, or UNKNOWN. Used to identify a prebuilt simulator binary."""
-    try:
-        return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-    except OSError:
-        return UNKNOWN
-
-
 def record(
     *,
     pins: Mapping[str, Verification] | None = None,
@@ -1447,3 +1204,22 @@ def record(
     if extra:
         out.update(dict(extra))
     return out
+
+
+def repo_sha(*, repo: Path | None = None) -> str:
+    """Current git HEAD, or ``unknown`` when it cannot be read."""
+    from .paths import repo_root
+
+    try:
+        return (
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(repo or repo_root()),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            ).stdout.strip()
+            or "unknown"
+        )
+    except Exception:
+        return "unknown"

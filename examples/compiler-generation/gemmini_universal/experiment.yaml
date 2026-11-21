@@ -1,0 +1,29 @@
+schema_version: 2
+kind: template
+id: gemmini-universal-functional
+target: gemmini_universal
+description: Test generation and combined correctness/performance backend generation; select reviewed operator inputs before execution.
+inputs:
+  target: target/descriptor.yaml
+stages:
+  backend-generation:
+    adapter: capsule_bench
+    config:
+      # Supply --corpus-seal and --bundle-manifest from the same reviewed release.
+      require_reviewed_corpus: true
+      # Select actual reviewed files with --backend-joint-campaign / --backend-oracle-timing.
+      joint_campaign: ../../../out/operator-inputs/gemmini_universal/joint-policy.json
+      fresh_backend: true
+      schedule: continuous
+      descriptor: target/descriptor.yaml
+      level: EL4
+      bundle: OPERATOR_BUNDLE_ID
+      bundle_manifest: ../../../out/operator-inputs/gemmini_universal/input_bundle_manifest.yaml
+      oracle_timing: ../../../out/operator-inputs/gemmini_universal/oracle-timing.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900

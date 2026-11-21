@@ -1,0 +1,204 @@
+# backend optimization: performance optimization
+
+`continuing_campaign.py --campaign-root PATH --watchdog` runs the persistent diagnostic
+controller for an explicitly configured campaign. Its manifest fixes the task
+directory, compiler freeze and final deadlines, checkpoint interval, required
+roster and measured targets. The controller dispatches immutable `job-requests`
+through owned child processes with bounded timeouts, reopens candidate and
+hardware evidence, and writes durable receipts, checkpoints and the scoreboard.
+Author workers share the campaign's SQLite work queue; their selected work
+follows the lowest current conservative roofline fraction. Missing metrics take
+priority. Cycle estimates select provisional candidates; complete paired
+FireSim results supply measured speedups. Instruction counts select no winner.
+
+Each candidate request pins its ELF, complete numerical observation, annotated
+Spike report and model, and the roofline evidence, assumptions and uncertainty.
+Changed models require baseline replay. Hardware ingestion compares each arm
+with the baseline in its actual batch and retains every required capsule.
+Conditional necessary floors and independent feasible schedules remain labelled
+as bounds; they cannot satisfy a qualified attainable-roofline target. Failed
+multi-row reviews leave the previous scoreboard intact. Compiler edits stop at
+the configured freeze; hardware, validation and model replay jobs may continue
+through the final deadline. Shutdown drains owned jobs and infers no scientific
+success from process completion. The watchdog restarts a failed controller.
+An interrupted job resumes only through its explicit `resume_argv` contract;
+otherwise it records `recovery_required` and continues independent work. Remote
+experiment adapters must resume the recorded owned command rather than submit
+a second experiment. The controller verifies immutable dispatched requests.
+
+Use the [shared workload protocol](../../protocol/README.md) and archive its
+[per-run bindings](../../protocol/run-manifest.template.yaml): exact full-model
+shapes, recipes, host math, quality metrics and measured latency scope must agree
+across experiments. The offline section reader reports real continuation PPL
+separately from KL, using retained outputs. Select explicit backend optimization stop budgets; historical templates do not
+silently select the current workload or budget.
+
+Use the reviewed derivation's `phase_corpora.phase2` selection, not backend generation's
+functional or test generation-only diagnostic members. Carry the same selected SW-spec
+and hardware-evidence identities with the exact frozen functional compiler.
+Changing operation admission, formats or hardware selection requires renewed
+functional qualification; it is not merely another performance knob.
+
+Before authoring, follow the [bounded preparation procedure](preparation.md) to
+audit coverage, validate any surrogate and freeze finite measurement budgets.
+The optional [public Autocomp-shape supplement](benchmarks/README.md) stages
+ten explicitly selected shape families through the ordinary workload roster.
+Its source and scored-admission gates remain separate from the full-model objective.
+
+backend optimization consumes a frozen functional compiler; it does not tune Merlin's shared
+implementation for Gemmini. Target-specific generated compiler code stays in the
+run's candidate payload and may later be published to the target's OOT repository.
+Its workloads answer a different question from backend generation's network-compile bar:
+they measure placement, cycles and model-level cost after functional capability
+has been established. A fast backend optimization objective is not a substitute for a
+successful ResNet-50 or SmolVLA whole-model compile and correctness receipt.
+
+The intended fast timing path is the annotated Spike observer calibrated from
+backend generation capsule records for the selected FireSim-source-aligned gSIM elaboration.
+Its current profile has no cycle prices, so it cannot yet rank candidates.
+Fit on complete capsule call-cycle labels, validate on held-out gSIM capsules,
+and record the error and supported shapes before using it to screen backend optimization
+candidates. This yields a gSIM-surrogate timing model. It does not require a
+U250 runner or measurements. Board-cycle prediction is a separate claim that
+requires matched FireSim measurements and a transfer validation.
+The existing `whole-model-objective.json` still selects gSIM as its certifier
+and must be revised after calibration before a Spike-timing campaign starts;
+the functional Spike machine in `whole-model-machines.yaml` supplies
+correctness only.
+
+After the backend generation compiler is frozen, an owner-only form audit must compare a
+held-out capture with the iteration-derived form scope. It reports both the
+share in known operation-form classes and the share whose three GEMM extents
+are dominated by one actual iteration group. The latter detects a scale gap
+that a matching operation name alone conceals. Neither number proves cycles,
+correctness or placement; held-out extents never feed capsule generation.
+Before a model-scale performance claim, also compare each held-out group with
+the generated performance members on **all three** GEMM extents at once; a
+single-axis K or M/N sweep cannot witness their interaction. A zero joint-size
+share is a diagnostic failure of extrapolation, not proof that a compiler cannot
+run the model. Generate any additional stress members from hardware capacities
+and independent iteration mechanisms, never held-out dimensions. Measure
+candidate/vendor pairs on those independent members, then use occasional
+whole-model runs to test whether their bounded measurements predict real
+bottlenecks. Keep the audit and its model-specific dimensions owner-private.
+
+Start from the [backend generation workflow](../README.md). It develops
+correctness and performance together. The supported separate optimization mode
+is `whole_model_measured`; the old measured-claims and model-portfolio launchers
+have been retired. Their stored results remain available for inspection.
+
+The EL1?EL4 labels describe backend generation information treatments. Older
+optimization records use `arm4` for a compiler produced with EL4; it is a
+historical record key.
+
+Create an explicit definition with an objective config, model capsule, launch
+profile, round driver and frozen functional compiler. Paths resolve relative
+to the authored definition. Keep generated attempts, receipts and checkpoints
+under the configured output root.
+
+## Whole model, measured
+
+The `whole_model_measured` example prefers the full U250 `FireSimGemminiRocketConfig` board
+for screening each correct candidate (several per board job, the vendor reference as the in-batch control),
+the functional model grades every group locally first, and the elaborated-RTL emulator certifies each
+new best. The experiment's `prohibited_instruction_roles` is enforced over every candidate's whole
+linked ELF before any machine time. [`whole-model-machines.yaml`](whole-model-machines.yaml) says how
+each machine is run (host locations are environment references); which device each one is stays the
+pin registry's. [`whole-model-objective.json`](whole-model-objective.json) is an example objective
+config; replace each `/ABSOLUTE/...` placeholder with artifacts measured on that *same full design*.
+The Lean board remains an explicitly named historical option, not an interchangeable fallback: it
+lacks full-width accumulator readout. The stock `FireSimGemminiRocketConfig` board
+(`stock_u250_board`, batched as `stock_batched_board`) has that readout; its hw-config
+resolves to the pinned bitstream that declares its generated ABI header, and its chipyard
+is the private tree its host driver was built in (`MERLIN_CHIPYARD_GEMMINI_STOCK`). Merely selecting the full board here does not establish that
+its queue configuration is currently available, that it matches a particular test generation RTL snapshot,
+or that a new run passed qualification. Large inputs such as the model capsule are frozen by
+content into each run, never copied.
+
+The example leaves `builder` and `store` unset: run preparation selects Merlin's
+shared builder and creates a target-scoped artifact store. Its `chunk_ops: "auto"`
+build option lets an open model's host forward be cut into bounded functions
+when it is large (an unchunked SmolVLA forward compiled for over two hours,
+against about eleven minutes cut at 1,000 ops); a forward that fits in one chunk,
+and every closed model, builds exactly as without it. Its `mechanism_policy`
+derives whether verified package passes are available from the frozen model
+capsule's host/accelerator closure. Fused regions are on by default for a closed
+model, in whole-model and cell programs alike: a package that opts in may answer
+adjacent groups as one kernel, and every member still counts as package-authored
+only while that kernel is linked. Opt out with `fused_regions: false` in the
+objective config (or `--no-fused-regions` on `prepare`/`run`); open models never
+claim one. The prepared, read-only objective records each decision
+(`mechanism_derivation`, `fused_region_decision`). This enables mechanisms for the backend optimization agent, not hand-authored
+Gemmini transformations, and does not make a diagnostic or unreviewed capsule
+eligible for a verified run.
+
+Ordinary serial host lowering now selects the existing checked uniform-fill/copy
+forwarding and contiguous-copy specialization passes. The actual rewrite reports
+are retained in `automatic-host-copies.json` and lowering statistics. Use
+`MERLIN_AUTOMATIC_HOST_COPIES=0` or `-automatic-host-copies` in optional pass
+selection for an explicit control. Host implementations and allocator changes
+belong in Merlin; accelerator compiler authoring is not needed for them.
+
+`host-elementwise-fusion` is an explicit additional host pass selection. It runs
+the existing guarded elementwise fusion after named operations are generalized,
+allowing transposes and broadcasts to enter consumer loops. The saved-model API
+also accepts `host_elementwise_fusion=True` for the scalar host lane. The pass
+stays off by default: earlier vectorized-host experiments found that broad fusion
+could hurt contraction scheduling. Pair full outputs and actual host/accelerator
+cycle windows before selecting it for a workload. This changes the host lowering,
+not the numerical recipe or backend generation's accelerator corpus.
+
+
+### Exactness: which forms may differ from their reference
+
+[`exactness.yaml`](exactness.yaml) is this target's reviewed exactness contract. Every form is exact
+unless an entry there names it as `bounded`, with its bound in output LSB (optionally a fraction of the
+elements) and the reason it cannot be bit-exact. The objective config names it (`exactness`), and a
+prepared run carries it by value, so later edits never reach a running campaign. Every grader holds each
+group to exactly its form's contract and records it: the measured verdict (`verdict.exactness`), the
+cell and per-group capsule grades, the whole-model gate, and the champion export (which refuses a
+measurement that recorded none). A verdict reads `bounded(<=N LSB)`, never `exact`, for a bounded group,
+and a result graded under another contract is shown but is never the run's best.
+
+### Operating a measured run
+
+Every command below reads or writes only the run's own records; none signals a
+process or infers anything from a file's age. A run may be named by its own
+directory or by the orchestration directory that points at it.
+
+```sh
+merlin experiment measured launch RUN --profile codex-gpt-6-sol   # detached; output appends to RUN/launch.log
+merlin experiment status RUN                    # launcher, stop request, rounds, stores, holds, bar and best
+merlin experiment measured follow RUN           # one line per change until the run is over
+merlin experiment watch RUN                     # the records summary in the terminal, refreshed
+merlin experiment stop RUN --why "..."          # stops at the next session boundary
+merlin experiment measured resume RUN --why "..." --seed PACKAGE --launch --profile codex-gpt-6-sol
+merlin experiment measured audit-round RUN 3    # replay round 3's audit and compare its recorded status
+merlin experiment measured roofline --run RUN --result ours=RESULT.json --result vendor=RESULT.json
+merlin experiment measured admin STORE outage-retry-now --why "board re-enumerated"
+```
+
+The records these read, beside a run's `run.json` (every one is the run's own; the dashboard reads
+the same files):
+
+- `heartbeat.json` (`merlin.phase2.whole_model_measured.heartbeat.v1`): the launcher's `pid` and kernel
+  `start_ticks`, `last_activity` (`at`, `what`) and `last_measured` (the newest MEASURED or
+  MEASURED_INVALID candidate across the run's stores, every attempt counted). `status` reports the run
+  STALLED when the launcher is gone or nothing was measured within `--stall-hours` (default 6);
+  `measured watch` (the relauncher) records each stall once in `liveness_events.jsonl` and can run
+  `--notify-command`.
+- `machine_capabilities.json`: each section's machine report (its header's flags and values, its
+  declared limits) and what it lacks against the registry's other boards; launches print the warnings.
+- In each store, a job's earlier attempts live under `attempts/<n>/` (`attempt.json` says why) and a
+  `result.json` is written once; `control_preflight.json` says why batches are held.
+
+A cell run is the same mode pointed at one cell's own group programs.
+[`cells.yaml`](cells.yaml) names the ResNet-50 cells by group or by form; the
+seed defaults to the loop's confirmed best (or the target's exported champion):
+
+```sh
+merlin experiment cell prepare LOOP_RUN --cells examples/compiler-generation/gemmini/backend-generation/optimization/cells.yaml --cell conv3x3 --why "..."
+merlin experiment cell launch CELL_RUN --profile codex-gpt-6-sol-cell
+merlin experiment cell status CELL_RUN          # or: --target gemmini, every cell run
+merlin experiment cell board --package-job JOB.json --reference-job JOB.json --groups 1,70
+```

@@ -10,11 +10,21 @@ changes; the same gates run in pre-commit and CI.
 
 ## Source ownership
 
-`src/merlin/` owns the installed compiler core. Optional phase execution, DSE, mining workflows,
-and analysis live under `packages/*/src/`; their historical imports share the `merlin` namespace
-without duplicate implementations. `merlin/python/merlin` is only a compatibility symlink.
-Experiment definitions start at `experiments/catalog.yaml`; retained research inputs live under
-`experiments/reference-data/`, not generated `out/`. See `docs/reference/repo_structure.md`.
+`src/merlin/` owns the single installed package. Test generation lives in `merlin.development.testgen`; backend generation lives in
+`merlin.development.backend`. `merlin.experiments` selects and tracks workflows.
+The root `merlin/` tree and separate project-named source packages are gone.
+The src layout keeps imports bound to the installed distribution rather than an
+incidental checkout directory. Optional dependencies stay lazy, and wheel membership
+does not grant candidate access to graders, independent references or hidden inputs.
+
+`src/merlin/resources/` holds installed public contracts, schemas, prompts and benchmark
+definitions; `src/merlin/runtime/native/` holds reusable native runtime sources.
+`tests/` owns the compact permanent suite. `examples/` owns walkthroughs and public target
+inputs. The nine authored files under `experiments/` provide a catalog, one generic definition,
+a shared test-generation template and local instructions. Generated captures, corpora,
+input bundles and retained study payloads belong under ignored `out/`; current runs select
+their reviewed inputs explicitly. The console, independent timing observer and board measurement commands
+live under `tools/`. See `docs/reference/repo_structure.md`.
 
 ## Compiler and OOT ownership rule
 
@@ -33,7 +43,7 @@ the companion OOT repository. Trusted functional simulators, timing observers an
 correctness oracles belong in simulator repositories, independently of the
 compiler under evaluation. Their source, vendor headers and selfcheck fixtures
 are operator build inputs; candidate grants expose only the reviewed runtime
-endpoints through the broker. Phase 1 produces the OOT compiler from scratch;
+endpoints through the broker. backend generation produces the OOT compiler from scratch;
 grading or timing must not require a handwritten or candidate compiler provider.
 A historical compiler-support snapshot may be
 retained only with exact companion provenance and explicit evaluation scope;
@@ -43,7 +53,7 @@ public source intake. Protected reference backends, support adapters, schedules
 and prebuilt compiler answers remain outside its inputs and tools. Removing a
 reference provider must not leave instructions to rediscover it through a legacy
 default. Compiler candidates stay in their OOT repositories. See
-`docs/guides/target_resolution.md`.
+`docs/guides/02-targets.md`.
 
 Generic toolchain/simulator plumbing, logical tensor harnesses and fact-bound
 instruction decoding may live in Merlin. Select their target values as data;
@@ -70,18 +80,18 @@ hard prohibitions, each gate-enforced (pre-commit + CI); do not add allowlist en
 them without a written, reviewed rationale:
 
 1. **No target-name literals in library code.** No `"gemmini"` / `"atlas"` / `"radiance"` (or any
-   target string) in `src/merlin/**`, `packages/*/src/**`, or `build_tools/scripts/**`. The target is a *parameter*
+   target string) in `src/merlin/**`, `tools/*/src/**`, or `build_tools/checks/**`. The target is a *parameter*
    threaded from the descriptor/manifest; functions take `target=`, they do not assume one. A target
    name may appear only at a genuine edge where that target is legitimately the subject (a per-target
    data dir, a target-specific test, a caller that is *about* that one target) — never in a shared code
-   path. Enforced by `build_tools/scripts/check_no_target_name.py` (scan roots
-   the canonical core and extension roots + `build_tools/scripts`).
+   path. Enforced by `build_tools/checks/check_no_target_name.py` (scan roots
+   the canonical core and extension roots + `build_tools/checks`).
 2. **No regex.** Do not `import re` in core library code. Regex line-matching is brittle by
    construction — a too-narrow pattern silently drops valid-but-differently-spelled input (this has bitten
    the RoCC trace decoder repeatedly: numeric-only SSA ids, `"r,r"`-only constraints, one op spelling —
    each silently mis-measured a conformant backend). Parse **structurally** instead: real parsers,
    `str.split`/`partition`, explicit tokenizers, the xDSL/MLIR IR. Enforced by
-   `build_tools/scripts/check_no_regex.py` (ratcheted allowlist; do not grow it).
+   `build_tools/checks/check_no_regex.py` (ratcheted allowlist; do not grow it).
 3. **No assumed opcodes / encodings / ISA constants.** Never hardcode an opcode (`0x7b`), a funct/func3
    value, a mesh dimension, a memory base, an address layout, a register field, or a "the instruction
    always starts with …" assumption. Every such value is *derived* from the target's RTL facts
@@ -104,7 +114,7 @@ outer-product unit while the revision named for the tapeout does not contain tha
 in the artifact recorded which one the numbers belonged to. A result attributed to the wrong device is
 worse than no result, because it gets cited.
 
-- **One registry**: `merlin/contract/hardware_pins.yaml` — tracked and reviewed, full quoted 40-char shas.
+- **One registry**: `src/merlin/resources/contracts/hardware_pins.yaml` — tracked and reviewed, full quoted 40-char shas.
   Each pin carries `requires_paths` (what the work needs present) and may carry `forbids_paths` (whose
   *absence* is the point). Verify by CONTENT, not by branch name: branches move and forks share them.
 - **API**: `merlin.common.provenance` — `verify()` (declared vs actual), `record()` (the block to embed),
@@ -112,7 +122,7 @@ worse than no result, because it gets cited.
   while the commit still looks right). It never mutates a checkout — other sessions work in those trees.
 - **Binaries carry their own stamp** and the report compares it, so a stale ELF is detectable
   (`kernels.opu_cert.provenance_stamp`).
-- **Enforced** by `build_tools/scripts/check_provenance.py` (pre-commit `--staged`, session Stop hook
+- **Enforced** by `build_tools/checks/check_provenance.py` (pre-commit `--staged`, session Stop hook
   `--stop-hook`, `--verify-pins` for live checkouts). It scans untracked reports under `out/artifacts/`
   too, since that is where reports live. `provenance_ratchet.txt` lists pre-existing debt and MAY ONLY
   SHRINK — never add to it; regenerate the artifact with provenance instead.
@@ -136,23 +146,14 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
 - **`out/artifacts/`** — every other generated product, organized **concern-first** (each tool/concern
   owns a subtree and uses ITS OWN axis — target for compiler/mining/experiments, workload for the
   three DSE tools, model for recaptures/measurements, framework for kernel-index, cross-cutting for
-  ceiling/compare). Concerns: `dse-guidance/`, `dse/`, `design-pressure/`, `kernel-mining/<target>/`,
-  `kernel-index/<framework>/`, `optimization-surface/<target>/`, `ceiling/`, `compare/`,
-  `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` (substrate = `k1_spacemit` /
-  `firesim_<bitstream>` / `baremetal_<verilator-design>` / `zephyr_<design>` / `spike_<config>`,
-  via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,
-  `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`. Also `delivery/` (bundles shipped
-  outside the repo), `applications/<target>/`, `audits/` (readiness studies), `protocols/` (frozen
-  experiment protocols), `verification/<target>/`, `target-evolution/<target>/`, `source-data/<model>/`,
-  `rvv-development-corpus/<target>/`, `agentic-report/`, `handoff/`, `targetgen-evals/<target>/`,
-  `experiments/<target>/dashboard/` (tracking pages drawn from a run's own records), `perf-studies/` (ledgers,
-  calibration, settling, counters, ablations beside the campaign), `archive/` (still cited, no longer active), and
-  `probes/` (one-off diagnostics — a standing concern and an afternoon's debugging should not be
-  neighbours at the same level).
+  ceiling/compare). Measurements are keyed `measurements/<substrate>/<model>/...` via
+  `new_measurement(...)` (substrate = `k1_spacemit` / `firesim_<bitstream>` / `spike_<config>` / ...).
+  `archive/` holds products kept only because something cites them; `probes/` holds one-off
+  diagnostics. `out/artifacts/README.md` lists where common products live.
 
-  **The roster is data, not prose.** `merlin/contract/storage.yaml` declares the three roots, every
-  concern with what it holds, and where a directory that predates the roster belongs; this section is
-  a restatement of it and a test holds the two together. A concern list that lived in code drifted to
+  **The roster is data, not prose.** `src/merlin/resources/contracts/storage.yaml` declares the three roots, every
+  concern with what it holds, and where a directory that predates the roster belongs; it is the only
+  list (do not restate it here). A concern list that lived in code drifted to
   52 undeclared directories against 16 declared ones before anyone noticed, so adding a concern is a
   reviewed edit to that file, and `merlin-storage organize` folds a stray one into place — moving the
   directory and leaving a relative symlink, because a product's path is quoted in manifests and
@@ -161,9 +162,9 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   **`out/artifacts/targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects
   minted by `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired
   top-level `generated_targets/`** — all references point at `out/artifacts/targets/` directly (no compat
-  symlink; paths are repo-root-relative). Packages are **tool-generated**: only the hand-authored
-  reference baselines + promoted champions are tracked (`rvv/hand_v0`, `rvv/hand_v0_int8`,
-  `rvv/impr_tuned_*`, via `.gitignore` negations); forks and `mlir_oot/build/` trees stay ignored.
+  symlink; paths are repo-root-relative). Packages are **tool-generated** and stay ignored, including candidate forks,
+  compiled products and promoted copies. Active compiler implementations belong in their
+  selected OOT repositories; review a candidate's source and provenance before publication.
   Full buildable OOT repos live under `out/build/generated/`, not here.
 
   **`output/` is DEPRECATED and retired** — model recaptures now live at `out/artifacts/recaptures/`
@@ -193,49 +194,53 @@ copied bytes nobody asked for: a per-run deep copy of each run's declared input 
 235 GiB per campaign, for byte-identical inputs — now hard-linked from a content store), and unbounded
 temp retention. Never delete run output on a "modified recently" liveness proxy: a purge's own
 deletions update the mtimes of the units it touched, so the rule reports the units you just edited as
-the live ones. See `docs/guides/storage.md`.
+the live ones. See `docs/guides/12-experiments.md`.
 
 **Enforcement** (do not bypass without cause): a PreToolUse hook
 (`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the `out/` root;
-`build_tools/scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
+`build_tools/checks/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).
 Helper API and examples: `.claude/skills/artifact-layout/SKILL.md` and `src/merlin/common/artifacts.py`.
 Escape hatch for a genuine one-off: `export MERLIN_ALLOW_ARTIFACT_WRITE=1` or add a prefix to
 `.claude/hooks/artifact_allowlist.txt`.
 
 # Test layout — one suite, organized by subsystem
 
-Cross-subsystem tests live in **`merlin/tests/`** (the root project's pytest `testpaths`), organized
-into **subsystem buckets**: `kernels/ rvv/ dse/ gemmini/ targetgen/ ir/ runtime/ infra/`.
-Focused distribution/orchestration tests also live in `packages/*/tests/`, with their owning
-project's test configuration. Rules for the cross-subsystem suite (enforced by
-`build_tools/scripts/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
+Cross-subsystem tests live in **`tests/`** (the root project's pytest `testpaths`), organized
+into **subsystem buckets**: `kernels/ rvv/ gemmini/ targetgen/ ir/ runtime/ infra/`.
+The permanent suite is capped at 150 collected cases across owned project roots,
+including parameterization. Retired workflow tests remain in Git/frozen inputs;
+their implementations ship in the main Merlin distribution. The independent
+timing observer retains its own project configuration.
+Rules for the cross-subsystem suite (enforced by
+`build_tools/checks/check_structure.py` "test layout"; see `.claude/skills/test-layout`):
 
-- A test file is `merlin/tests/<bucket>/test_<area>.py` — **never at the `merlin/tests/` root**, and
-  `<bucket>` must be one of the eight above. Place a new test in the subsystem it exercises.
-- Shared inputs live in `merlin/tests/fixtures/` and `merlin/tests/data/`.
-- Resolve repo paths via `merlin.common.paths.repo_root()` / `merlin_dir()` — **never** `Path(__file__).parents[N]`
+- A test file is `tests/<bucket>/test_<area>.py` — **never at the `tests/` root**, and
+  `<bucket>` must be one of the seven above. Place a new test in the subsystem it exercises.
+- Keep only the compact suite's distinct authored or pinned regression inputs in
+  `tests/fixtures/` and `tests/data/`; generated workflow corpora belong under ignored `out/`.
+- Resolve repo paths via `merlin.common.paths.repo_root()`, `module_source_path()` or `data_path()` as appropriate — **never** `Path(__file__).parents[N]`
   (so tests are location-independent and survive moves).
-- Run the cross-subsystem suite: `.venv/bin/python -m pytest merlin/tests`; include the optional
-  distributions' test directories explicitly when validating those distributions. Installing core
-  alone is not sufficient to run optional research tests.
+- Run `build_tools/checks/check_test_budget.py --output out/build/python/ci/test-budget.json`
+  before `.venv/bin/python -m pytest tests`. Install the selected
+  optional dependency extras; a base Merlin installation need not include research engines.
+  Historical replay retains its recorded source/distribution selection and test inputs.
+- Apply the strict behavioral review bar in `tests/AGENT.md` to the
+  permanent suite. Keep distinct core and
+  acceptance obligations; consolidate redundant snapshots and implementation
+  trivia rather than requiring a test for every helper or option.
 
-# Documentation convention — durable docs vs reports
+# Documentation convention
 
-Start at the generated hub **`docs/README.md`**. Durable documentation lives in **`docs/`** under
-three kind-subdirs — **`reference/`** (code-derived facts), **`guides/`** (how-tos), **`design/`**
-(rationale) — each file carrying YAML front-matter (`title, kind, status, owner, last_verified,
-related, code_refs`). **Point-in-time reports** (results/findings/status/presentations) are NOT docs
-— they live under `artifacts/` (concern-first; see "Generated-output convention"). Rules (see
-`.claude/skills/docs-layout`; enforced by `check_structure.py` + the `check_docs.py` Stop/pre-commit/CI gates):
+`docs/README.md` is the authored reading order for twelve short chapters following
+compilation, execution and backend generation. `docs/reference/` holds the compact
+architecture and source map. Update existing chapters rather than adding another
+per-change guide. Handwritten pages carry source-backed YAML front matter.
 
-- Generated docs are regenerated, never hand-edited: `gen_cli_docs.py` (`reference/cli.md`),
-  `gen_package_docs.py` (`reference/module_index.md`), `gen_schema_docs.py` (`reference/schemas.md`),
-  `gen_docs_index.py` (`README.md` hub). Run them after touching CLIs/schemas/packages/docs.
-- Front-matter must be schema-valid; `check_doc_paths.py` blocks retired paths; the root README/AGENT.md
-  may not carry scaffold-era phrasing.
-- **Semantic drift** (a doc whose `code_refs` moved past its `last_verified`) is surfaced by
-  `check_docs_freshness.py --json` and fixed by the **`docs-doctor`** skill (reconcile, then bump the date).
-- Enable the pre-commit gate per clone: `python build_tools/scripts/install_git_hooks.py`.
+Generated CLI/module/schema tables belong under ignored `out/artifacts/documentation/`.
+Run their generators when you need those references; do not commit their output.
+Local AGENT.md files describe specific constraints, not duplicate module indexes.
+Point-in-time findings and run reports belong in `out/`; private audit notes in `tmp/`.
+Run `build_tools/checks/check_docs.py` after changing maintained documentation.
 
 # Experiment-run convention — one continuous session, per-capsule tiering
 
@@ -252,13 +257,13 @@ underneath it, but it does not run the post-freeze public+hidden grade, returns 
 formal verdict was reachable.
 
 Three properties are **gated, not documented-and-hoped-for**
-(`merlin/tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
+(`tests/infra/test_continuous_is_the_default.py`, `test_promotion_wiring.py`):
 
 1. **No round barrier** — a background grader re-grades a *snapshot copy* every `--grade-interval`
    seconds and refreshes `qa/verdict.json`, so feedback reaches the agent while it works.
 2. **Per-capsule tiering, never a batch** — `capsule_runner` walks each capsule cheapest-first, so a
    capsule clearing the loop tier (L2) continues to the cert tier (L3) *in the same grade*; and
-   `merlin_experiments.phase1.feedback.promotion.promote` enqueues a cert job the moment a loop verdict
+   `merlin.development.backend.feedback.certification.promotion.promote` enqueues a cert job the moment a loop verdict
    lands, so **capsule 2's L3 starts while the agent is still on capsule 1's L2**.
 3. **The certificate is kept** — the same module's `record_cert` resolves the `pending` entry against the
    digest of the bytes that earned it (never re-hashed, so a cert is not re-attributed to bytes edited
@@ -274,7 +279,7 @@ this path, add a test; a comment cannot detect silence. See `.claude/skills/caps
 
 Commit messages describe the **change to the code/files** and read as if a human developer wrote them.
 A reader of the history should understand *what changed and why* without any knowledge of how the work
-was produced. Enforced by the `commit-msg` hook (`build_tools/git-hooks/`, installed by
+was produced. Enforced by the `commit-msg` hook (`build_tools/hooks/`, installed by
 `install_git_hooks.py`); the same gates run in CI.
 
 - **Format:** `type(scope): summary` — `type` ∈ `feat|fix|docs|chore|refactor|test|perf|build`;

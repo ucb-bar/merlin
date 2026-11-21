@@ -15,7 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from merlin.runtime.sdk_facts import derive_uart_console
+from merlin.runtime.boards.sdk_facts import derive_uart_console
 
 
 def main(argv=None) -> int:

@@ -1,1 +1,0 @@
-../../../examples/gemmini/phase0/reference/g0_matmul.interface.mlir

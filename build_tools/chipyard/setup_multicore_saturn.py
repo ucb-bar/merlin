@@ -5,7 +5,7 @@ Merlin's multicore RVV path needs an SoC where **every** tile has a vector unit.
 chipyard config provides one: every Saturn config is single-core (`WithNShuttleCores(1)` /
 `WithNHugeCores(1)`), and the only multi-tile SoC (`GemminiAndOPUShuttleConfig`) builds its
 vector unit on tile 1 only. So the configs live here and are installed into the (out-of-repo)
-chipyard checkout, the same way `build_tools/SpacemiT/setup_toolchain.sh` handles that
+chipyard checkout, the same way `build_tools/toolchains/spacemit/setup_toolchain.sh` handles that
 toolchain.
 
 What it installs:

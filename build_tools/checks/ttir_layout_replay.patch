@@ -1,0 +1,2524 @@
+diff --git a/tests/ir/test_atomic_compare_exchange.py b/tests/ir/test_atomic_compare_exchange.py
+index d6c8aeb..f41d565 100644
+--- a/tests/ir/test_atomic_compare_exchange.py
++++ b/tests/ir/test_atomic_compare_exchange.py
+@@ -6,8 +6,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.atomic_compare_exchange import MARKER, SUPPORT, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.atomic_compare_exchange import MARKER, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ def source(width=32, mutation=None):
+diff --git a/tests/ir/test_atomic_f32_add.py b/tests/ir/test_atomic_f32_add.py
+index 52a08c1..753c19d 100644
+--- a/tests/ir/test_atomic_f32_add.py
++++ b/tests/ir/test_atomic_f32_add.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.atomic_compare_exchange import SUPPORT
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.atomic_compare_exchange import SUPPORT
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ pytestmark = pytest.mark.skipif(not available(), reason="existing native MLIR required")
+ 
+diff --git a/tests/ir/test_atomic_integer_regions.py b/tests/ir/test_atomic_integer_regions.py
+index 2f28481..9be1d41 100644
+--- a/tests/ir/test_atomic_integer_regions.py
++++ b/tests/ir/test_atomic_integer_regions.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.atomic_compare_exchange import SUPPORT
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.atomic_compare_exchange import SUPPORT
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ def source(width=32, change=None):
+@@ -135,10 +135,10 @@ def test_legacy_cas_selection_keeps_its_closed_profile(tmp_path):
+ def test_selected_atomic_features_share_one_bufferization_seam():
+     import itertools
+ 
+-    from merlin.llvmlower.atomic_compare_exchange import edit_pipeline as cas
+-    from merlin.llvmlower.atomic_integer_regions import MARKER
+-    from merlin.llvmlower.atomic_integer_regions import edit_pipeline as regions
+-    from merlin.llvmlower.atomic_word_views import edit_pipeline as words
++    from merlin.compiler.lower.options.atomic_compare_exchange import edit_pipeline as cas
++    from merlin.compiler.lower.options.atomic_integer_regions import MARKER
++    from merlin.compiler.lower.options.atomic_integer_regions import edit_pipeline as regions
++    from merlin.compiler.lower.options.atomic_word_views import edit_pipeline as words
+ 
+     for order in itertools.permutations((cas, regions, words)):
+         passes = ["canonicalize", "one-shot-bufferize{bufferize-function-boundaries}", "buffer-deallocation-pipeline"]
+@@ -153,7 +153,7 @@ def test_selected_atomic_features_share_one_bufferization_seam():
+ 
+ 
+ def test_loop_destination_seam_preserves_integer_region_lowering_and_callbacks():
+-    from merlin.llvmlower.loop_tensor_destinations import PRELUDE
++    from merlin.compiler.lower.options.loop_tensor_destinations import PRELUDE
+ 
+     calls = []
+     scope = {"_run_stages": lambda *args: calls.append(args)}
+diff --git a/tests/ir/test_atomic_loop_pipeline.py b/tests/ir/test_atomic_loop_pipeline.py
+index f5d65e5..5bb3b6c 100644
+--- a/tests/ir/test_atomic_loop_pipeline.py
++++ b/tests/ir/test_atomic_loop_pipeline.py
+@@ -4,12 +4,12 @@ from itertools import permutations
+ 
+ import pytest
+ 
+-from merlin.llvmlower import atomic_compare_exchange as CAS
+-from merlin.llvmlower import atomic_integer_regions as INTEGER
+-from merlin.llvmlower import atomic_word_views as WORD
+-from merlin.llvmlower import loop_tensor_destinations as LOOP
+-from merlin.llvmlower.pipeline import _upstream_pipeline, lower_to_llvm_ir
+-from merlin.llvmlower.toolchain import available
++from merlin.compiler.lower.options import atomic_compare_exchange as CAS
++from merlin.compiler.lower.options import atomic_integer_regions as INTEGER
++from merlin.compiler.lower.options import atomic_word_views as WORD
++from merlin.compiler.lower.options import loop_tensor_destinations as LOOP
++from merlin.compiler.lower.native.pipeline import _upstream_pipeline, lower_to_llvm_ir
++from merlin.compiler.lower.model.toolchain import available
+ 
+ 
+ @pytest.mark.parametrize("families", [(CAS,), (WORD,), (INTEGER,), (CAS, WORD, INTEGER)])
+diff --git a/tests/ir/test_atomic_word_compare_exchange.py b/tests/ir/test_atomic_word_compare_exchange.py
+index 557d813..053629d 100644
+--- a/tests/ir/test_atomic_word_compare_exchange.py
++++ b/tests/ir/test_atomic_word_compare_exchange.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.atomic_compare_exchange import SUPPORT
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.atomic_compare_exchange import SUPPORT
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ pytestmark = pytest.mark.skipif(not available(), reason="existing native MLIR required")
+ 
+diff --git a/tests/ir/test_atomic_word_views.py b/tests/ir/test_atomic_word_views.py
+index 8a1cd0b..fea3b24 100644
+--- a/tests/ir/test_atomic_word_views.py
++++ b/tests/ir/test_atomic_word_views.py
+@@ -5,9 +5,9 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.atomic_compare_exchange import SUPPORT, bind_runner
+-from merlin.llvmlower.atomic_word_views import MARKER, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.atomic_compare_exchange import SUPPORT, bind_runner
++from merlin.compiler.lower.options.atomic_word_views import MARKER, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ OPS = {"add": "addi", "and": "andi", "or": "ori", "xor": "xori", "max": "maxsi", "min": "minsi", "umax": "maxui", "umin": "minui", "xchg": None}
+ 
+@@ -140,14 +140,14 @@ def test_word_views_have_an_explicit_native_feature_and_marker():
+ 
+ 
+ def test_word_and_integer_atomic_features_compose_at_one_bufferization_seam():
+-    from merlin.llvmlower.atomic_compare_exchange import edit_pipeline as cas_pipeline
++    from merlin.compiler.lower.options.atomic_compare_exchange import edit_pipeline as cas_pipeline
+     original = ["one-shot-bufferize{bufferize-function-boundaries}", "ownership-based-buffer-deallocation"]
+     assert edit_pipeline(cas_pipeline(original)) == cas_pipeline(edit_pipeline(original))
+     assert edit_pipeline(cas_pipeline(original)).count(MARKER) == 1
+ 
+ 
+ def test_loop_destination_runner_preserves_the_word_atomic_seam():
+-    from merlin.llvmlower.loop_tensor_destinations import PRELUDE as LOOP_PRELUDE, MARKER as LOOP_MARKER
++    from merlin.compiler.lower.options.loop_tensor_destinations import PRELUDE as LOOP_PRELUDE, MARKER as LOOP_MARKER
+     observed = []
+     namespace = {"_run_stages": lambda *args: observed.append(args[2])}
+     exec(LOOP_PRELUDE, namespace)
+diff --git a/tests/ir/test_bfloat_elementwise.py b/tests/ir/test_bfloat_elementwise.py
+index b825f3f..ecdf27a 100644
+--- a/tests/ir/test_bfloat_elementwise.py
++++ b/tests/ir/test_bfloat_elementwise.py
+@@ -4,8 +4,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.bfloat_elementwise import MARKER,SUPPORT,PRELUDE,bind_runner,edit_pipeline
+-from merlin.llvmlower.toolchain import available,compiler_python
++from merlin.compiler.lower.options.bfloat_elementwise import MARKER, SUPPORT, PRELUDE, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ @pytest.mark.skipif(not available(),reason="existing native compiler environment required")
+diff --git a/tests/ir/test_bfloat_integer_casts.py b/tests/ir/test_bfloat_integer_casts.py
+index b642407..a312068 100644
+--- a/tests/ir/test_bfloat_integer_casts.py
++++ b/tests/ir/test_bfloat_integer_casts.py
+@@ -7,8 +7,8 @@ import subprocess
+ import numpy as np
+ import pytest
+ 
+-from merlin.llvmlower.bfloat_elementwise import SUPPORT
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.bfloat_elementwise import SUPPORT
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ def integer_representations():
+diff --git a/tests/ir/test_bfloat_transport.py b/tests/ir/test_bfloat_transport.py
+index 7661fe6..f130fcf 100644
+--- a/tests/ir/test_bfloat_transport.py
++++ b/tests/ir/test_bfloat_transport.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.bfloat_transport import MARKER, SUPPORT, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.bfloat_transport import MARKER, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ SOURCE = '''module {
+   func.func @transport(%storage: memref<4xbf16>, %choose: i1, %count: index) {
+@@ -126,8 +126,8 @@ def test_existing_cast_expansion_is_retained_once_and_late_expansion_refuses():
+ 
+ @pytest.mark.skipif(not available(), reason="existing native MLIR required")
+ def test_default_native_feature_expands_arithmetic_before_word_transport(tmp_path):
+-    from merlin.llvmlower.bfloat_transport import FEATURE
+-    from merlin.llvmlower.pipeline import lower_to_llvm_ir
++    from merlin.compiler.lower.options.bfloat_transport import FEATURE
++    from merlin.compiler.lower.native.pipeline import lower_to_llvm_ir
+     source = '''module {func.func @forward(%input:memref<1xbf16>,%output:memref<1xf32>,%raw:memref<1xi16>) {
+       %index=arith.constant 0:index
+       %value=memref.load %input[%index]:memref<1xbf16>
+diff --git a/tests/ir/test_bufferization_layout.py b/tests/ir/test_bufferization_layout.py
+index e5df8fe..4074f40 100644
+--- a/tests/ir/test_bufferization_layout.py
++++ b/tests/ir/test_bufferization_layout.py
+@@ -5,8 +5,8 @@ import subprocess
+ import pytest
+ from xdsl.utils.exceptions import VerifyException
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def source(tensor="tensor<2x3xi8>", buffer="memref<2x3xi8, strided<[3, 1], offset: ?>>"):
+@@ -55,7 +55,7 @@ def test_unranked_pair_and_dynamic_ranked_pair_remain_supported():
+ 
+ 
+ def test_selected_mlir_verifies_exact_readonly_layout(tmp_path):
+-    from merlin.llvmlower import toolchain
++    from merlin.compiler.lower.model import toolchain
+ 
+     module = parse_mlir_text(source())
+     path = tmp_path / "layout.mlir"
+@@ -70,7 +70,7 @@ def test_selected_mlir_verifies_exact_readonly_layout(tmp_path):
+ 
+ 
+ def test_custom_attribute_dictionary_uses_native_position(tmp_path):
+-    from merlin.llvmlower import toolchain
++    from merlin.compiler.lower.model import toolchain
+     original = source().replace("read_only :", 'read_only {prov.op = "logical-view"} :')
+     module = parse_mlir_text(original)
+     module.verify()
+diff --git a/tests/ir/test_compile_inputs.py b/tests/ir/test_compile_inputs.py
+index 73737c5..07e14a9 100644
+--- a/tests/ir/test_compile_inputs.py
++++ b/tests/ir/test_compile_inputs.py
+@@ -8,8 +8,8 @@ from pathlib import Path
+ 
+ import pytest
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ SOURCE = '''builtin.module attributes {prov.weights_file = "origin/weights.safetensors"} {
+   func.func @forward(%a: tensor<2xf32>) -> tensor<2xf32> {
+diff --git a/tests/ir/test_compiler_constants.py b/tests/ir/test_compiler_constants.py
+index 71c6280..a54c3dc 100644
+--- a/tests/ir/test_compiler_constants.py
++++ b/tests/ir/test_compiler_constants.py
+@@ -7,7 +7,7 @@ import struct
+ 
+ import pytest
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
++from merlin.compiler.frontend.inputs import stage_compile_inputs
+ 
+ 
+ def encoded(value):
+diff --git a/tests/ir/test_dealloc_sinking.py b/tests/ir/test_dealloc_sinking.py
+index 17f8d42..e12b926 100644
+--- a/tests/ir/test_dealloc_sinking.py
++++ b/tests/ir/test_dealloc_sinking.py
+@@ -22,12 +22,18 @@ result and MUST reject a free moved before a use -- including a use through an a
+ 
+ from __future__ import annotations
+ 
++from merlin.compiler.lower.native import invocation as _native_invocation
++from merlin.compiler.lower.native import passes as _native_passes
++from merlin.compiler.lower.native import policy as _native_policy
++from merlin.compiler.lower.native import runners as _native_runners
++from merlin.compiler.lower.native import vector as _native_vector
++
+ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower import pipeline as P
+-from merlin.llvmlower import toolchain
++from merlin.compiler.lower.native import pipeline as P
++from merlin.compiler.lower.model import toolchain
+ 
+ m2m = pytest.mark.skipif(
+     not toolchain.m2m_python().is_file(), reason="model2MLIR venv (torch-mlir pass registry) not present"
+@@ -72,7 +78,7 @@ _BUFFERIZE = (
+ 
+ 
+ def _bufferized_and_deallocated(extra: list[str]) -> str:
+-    return P.apply_passes(CHAIN, ",".join([_BUFFERIZE] + P._dealloc_passes(sink=False) + extra))
++    return _native_invocation.apply_passes(CHAIN, ",".join([_BUFFERIZE] + _native_policy._dealloc_passes(sink=False) + extra))
+ 
+ 
+ def _stages(text: str) -> list[str]:
+@@ -85,11 +91,11 @@ def _stages(text: str) -> list[str]:
+ def test_the_legacy_sinking_stage_can_be_disabled_for_comparison(monkeypatch):
+     """The A/B controls preserve the frozen upstream pass list."""
+     monkeypatch.delenv("MERLIN_SINK_DEALLOCS", raising=False)
+-    assert P._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", "canonicalize", LOWER]
++    assert _native_policy._dealloc_passes() == ["ownership-based-buffer-deallocation", "buffer-deallocation-simplification", "canonicalize", LOWER]
+     for text in (
+-        P._upstream_pipeline(),
+-        P._parallel_pipeline(),
+-        P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
++        _native_policy._upstream_pipeline(),
++        _native_policy._parallel_pipeline(),
++        _native_vector.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
+     ):
+         assert SINK not in text
+ 
+@@ -97,18 +103,18 @@ def test_the_legacy_sinking_stage_can_be_disabled_for_comparison(monkeypatch):
+ def test_safe_memory_passes_run_in_an_unflagged_build(monkeypatch):
+     monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+     monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
+-    stages = P._dealloc_passes()
+-    assert P.SPLIT_FRESH_DEALLOCS_MARKER in stages
+-    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
++    stages = _native_policy._dealloc_passes()
++    assert _native_policy.SPLIT_FRESH_DEALLOCS_MARKER in stages
++    assert _native_policy.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+     assert any(SINK in stage for stage in stages)
+ 
+ 
+ def test_the_env_flag_turns_the_stage_on(monkeypatch):
+     monkeypatch.setenv("MERLIN_SINK_DEALLOCS", "1")
+     for text in (
+-        P._upstream_pipeline(),
+-        P._parallel_pipeline(),
+-        P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
++        _native_policy._upstream_pipeline(),
++        _native_policy._parallel_pipeline(),
++        _native_vector.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset()),
+     ):
+         assert SINK in text
+ 
+@@ -118,9 +124,9 @@ def test_the_canonicalize_runs_between_the_lowering_and_the_sink(monkeypatch):
+     every dealloc is still inside an `scf.if`, and the sinking pass silently moves nothing."""
+     monkeypatch.setenv("MERLIN_SINK_DEALLOCS", "1")
+     for name, text in (
+-        ("upstream", P._upstream_pipeline()),
+-        ("parallel", P._parallel_pipeline()),
+-        ("rvv", P.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())),
++        ("upstream", _native_policy._upstream_pipeline()),
++        ("parallel", _native_policy._parallel_pipeline()),
++        ("rvv", _native_vector.build_rvv_pipeline("", hoist_static_allocs=True, features=frozenset())),
+     ):
+         stages = _stages(text)
+         lower = stages.index(LOWER)
+@@ -152,14 +158,14 @@ def test_false_loop_carried_ownership_is_removed_before_lowering():
+         return
+       }
+     }"""
+-    opaque = P.apply_passes(source, "buffer-deallocation-simplification," + LOWER)
++    opaque = _native_invocation.apply_passes(source, "buffer-deallocation-simplification," + LOWER)
+     assert opaque.count("memref.dealloc") == 2
+-    assert any("repeating control flow" in error for error in P.dealloc_placement_violations(opaque))
+-    stages = P._dealloc_passes(sink=False)
+-    out = P.apply_passes(source, ",".join(stages[stages.index("buffer-deallocation-simplification"):]))
++    assert any("repeating control flow" in error for error in _native_invocation.dealloc_placement_violations(opaque))
++    stages = _native_policy._dealloc_passes(sink=False)
++    out = _native_invocation.apply_passes(source, ",".join(stages[stages.index("buffer-deallocation-simplification"):]))
+     assert out.count("memref.dealloc") == 1
+     assert "memref.copy" in out and "scf.for" in out
+-    assert P.dealloc_placement_violations(out) == []
++    assert _native_invocation.dealloc_placement_violations(out) == []
+ 
+ 
+ @m2m
+@@ -187,7 +193,7 @@ def test_the_sinking_pass_alone_moves_nothing():
+ def test_the_stage_frees_a_buffer_after_its_last_use():
+     """With the stage on, the first buffer's free lands before the last matmul -- which is the
+     slack the arena binder can then reclaim."""
+-    out = P.apply_passes(CHAIN, ",".join([_BUFFERIZE] + P._dealloc_passes(sink=True)))
++    out = _native_invocation.apply_passes(CHAIN, ",".join([_BUFFERIZE] + _native_policy._dealloc_passes(sink=True)))
+     body = [ln.strip() for ln in out.splitlines()]
+     last_matmul = max(i for i, ln in enumerate(body) if ln.startswith("linalg.matmul"))
+     frees = [i for i, ln in enumerate(body) if ln.startswith("memref.dealloc")]
+@@ -199,13 +205,13 @@ def test_the_stage_frees_a_buffer_after_its_last_use():
+ def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
+     """A whole-function aggregate must not pin independent local buffers until return."""
+     monkeypatch.setenv("MERLIN_SPLIT_FRESH_DEALLOCS", "1")
+-    aggregate = P.apply_passes(CHAIN, _BUFFERIZE + ",ownership-based-buffer-deallocation")
++    aggregate = _native_invocation.apply_passes(CHAIN, _BUFFERIZE + ",ownership-based-buffer-deallocation")
+     assert aggregate.count("bufferization.dealloc") == 1
+     src, dst, script = (tmp_path / name for name in ("aggregate.mlir", "split.mlir", "split.py"))
+     src.write_text(aggregate, encoding="utf-8")
+     script.write_text(
+         "import sys\nfrom torch_mlir import ir\n"
+-        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
++        + _native_runners.SPLIT_FRESH_DEALLOCS_PRELUDE
+         + "ctx = ir.Context()\n"
+         + "with ctx:\n"
+         + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+@@ -222,12 +228,12 @@ def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
+     assert split.count("memref.dealloc") == 2
+     # The input buffers remain under upstream's aggregate ownership logic.
+     assert split.count("bufferization.dealloc") == 1
+-    sunk = P.apply_passes(
++    sunk = _native_invocation.apply_passes(
+         split,
+         "buffer-deallocation-simplification,bufferization-lower-deallocations,"
+         "canonicalize,func.func(optimize-allocation-liveness)",
+     )
+-    assert P.dealloc_placement_violations(sunk) == []
++    assert _native_invocation.dealloc_placement_violations(sunk) == []
+     body = [line.strip() for line in sunk.splitlines()]
+     assert min(i for i, line in enumerate(body) if line.startswith("memref.dealloc")) < max(
+         i for i, line in enumerate(body) if line.startswith("linalg.matmul")
+@@ -238,11 +244,11 @@ def test_aggregate_owned_allocs_are_split_and_sunk(tmp_path, monkeypatch):
+ def test_default_memory_passes_run_through_the_real_lowering_runner(tmp_path, monkeypatch):
+     monkeypatch.delenv("MERLIN_SPLIT_FRESH_DEALLOCS")
+     monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT")
+-    stages = P._dealloc_passes()
+-    assert stages[1] == P.SPLIT_FRESH_DEALLOCS_MARKER
+-    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
++    stages = _native_policy._dealloc_passes()
++    assert stages[1] == _native_policy.SPLIT_FRESH_DEALLOCS_MARKER
++    assert _native_policy.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in stages
+     assert any(SINK in stage for stage in stages)
+-    lowered = P.lower_to_llvm_ir(CHAIN, workdir=tmp_path, pipeline=P._upstream_pipeline())
++    lowered = P.lower_to_llvm_ir(CHAIN, workdir=tmp_path, pipeline=_native_policy._upstream_pipeline())
+     assert lowered.count("call void @free") == 2
+ 
+ 
+@@ -271,7 +277,7 @@ def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
+     src.write_text(source, encoding="utf-8")
+     script.write_text(
+         "import sys\nfrom torch_mlir import ir\n"
+-        + P.SPLIT_FRESH_DEALLOCS_PRELUDE
++        + _native_runners.SPLIT_FRESH_DEALLOCS_PRELUDE
+         + "ctx = ir.Context()\n"
+         + "with ctx:\n"
+         + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+@@ -367,15 +373,15 @@ def test_split_keeps_a_device_result_and_its_output_as_one_allocation(tmp_path):
+ 
+ @m2m
+ def test_the_placement_check_accepts_what_the_stage_produces():
+-    out = P.apply_passes(CHAIN, ",".join([_BUFFERIZE] + P._dealloc_passes(sink=True)))
+-    assert P.dealloc_placement_violations(out) == []
++    out = _native_invocation.apply_passes(CHAIN, ",".join([_BUFFERIZE] + _native_policy._dealloc_passes(sink=True)))
++    assert _native_invocation.dealloc_placement_violations(out) == []
+ 
+ 
+ @m2m
+ def test_the_placement_check_accepts_the_unsunk_baseline():
+     """A free left inside an `scf.if` was placed by upstream, not by the sinking stage: it is not
+     a violation, or the check would refuse every build that does not sink."""
+-    assert P.dealloc_placement_violations(_bufferized_and_deallocated([])) == []
++    assert _native_invocation.dealloc_placement_violations(_bufferized_and_deallocated([])) == []
+ 
+ 
+ @m2m
+@@ -396,7 +402,7 @@ def test_loop_free_must_match_the_allocation_lifetime(outer):
+     }'''
+     alloc='%a=memref.alloc():memref<4xf32>'
+     source=source.replace('OUTER',alloc if outer else '').replace('INNER','' if outer else alloc)
+-    violations=P.dealloc_placement_violations(source)
++    violations=_native_invocation.dealloc_placement_violations(source)
+     assert bool(violations)==outer
+     if outer: assert any('repeating control flow' in row for row in violations)
+ 
+@@ -440,14 +446,14 @@ func.func @forward(%arg0: memref<64x64xf32>, %arg1: memref<64x64xf32>, %arg2: me
+ 
+ @m2m
+ def test_a_free_moved_before_its_last_use_is_rejected():
+-    bad = P.dealloc_placement_violations(MOVED_TOO_EARLY)
++    bad = _native_invocation.dealloc_placement_violations(MOVED_TOO_EARLY)
+     assert bad, "a use-after-free passed the placement check"
+     assert any("linalg.matmul" in v for v in bad), bad
+ 
+ 
+ @m2m
+ def test_a_free_before_a_read_through_an_alias_is_rejected():
+-    bad = P.dealloc_placement_violations(FREED_BEFORE_AN_ALIAS_IS_READ)
++    bad = _native_invocation.dealloc_placement_violations(FREED_BEFORE_AN_ALIAS_IS_READ)
+     assert bad, "a use-after-free through a subview passed the placement check"
+     assert any("linalg.fill" in v for v in bad), bad
+ 
+@@ -458,8 +464,8 @@ def test_a_free_before_a_read_through_an_alias_is_rejected():
+ def test_every_runner_variant_carries_the_check():
+     """The check lives in a `_run_stages` wrapper spliced into the runner source. A variant that
+     dropped it would sink every free with nothing verifying the placement."""
+-    assert P.DEALLOC_CHECK_RUNNER in P._RUNNER_SRC
+-    assert P.DEALLOC_CHECK_RUNNER in P._activation_poly_runner()
++    assert _native_runners.DEALLOC_CHECK_RUNNER in _native_runners._RUNNER_SRC
++    assert _native_runners.DEALLOC_CHECK_RUNNER in _native_runners._activation_poly_runner()
+ 
+ 
+ def test_a_sunk_build_whose_runner_never_checked_is_refused(tmp_path, monkeypatch):
+@@ -481,12 +487,12 @@ def test_a_sunk_build_whose_runner_never_checked_is_refused(tmp_path, monkeypatc
+         _P(argv[3]).write_text("; empty\n", encoding="utf-8")
+         return _Proc(fake.stdout)
+ 
+-    monkeypatch.setattr(P.subprocess, "run", fake)
+-    sunk = ",".join(["canonicalize"] + P._dealloc_passes(sink=True))
++    monkeypatch.setattr(_native_invocation.subprocess, "run", fake)
++    sunk = ",".join(["canonicalize"] + _native_policy._dealloc_passes(sink=True))
+ 
+     fake.stdout = "OK\n"
+-    with pytest.raises(P.PipelineError, match="use-after-free check did not report"):
++    with pytest.raises(_native_vector.PipelineError, match="use-after-free check did not report"):
+         P.lower_to_llvm_ir("builtin.module {}", workdir=tmp_path / "a", pipeline=sunk)
+ 
+-    fake.stdout = f"{P.DEALLOC_CHECK_TOKEN} 3 allocations 3 sunk 0 violations\nOK\n"
++    fake.stdout = f"{_native_invocation.DEALLOC_CHECK_TOKEN} 3 allocations 3 sunk 0 violations\nOK\n"
+     P.lower_to_llvm_ir("builtin.module {}", workdir=tmp_path / "b", pipeline=sunk)  # no raise
+diff --git a/tests/ir/test_dense_constant_splats.py b/tests/ir/test_dense_constant_splats.py
+index f9fb099..24d3c1b 100644
+--- a/tests/ir/test_dense_constant_splats.py
++++ b/tests/ir/test_dense_constant_splats.py
+@@ -4,7 +4,7 @@ from io import StringIO
+ 
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ FORMATS = {"f16": 2, "bf16": 2, "f32": 4, "f64": 8, "f8E4M3FN": 1, "f8E5M2": 1, "f8E4M3FNUZ": 1, "f8E5M2FNUZ": 1}
+ 
+diff --git a/tests/ir/test_dense_float_serialization.py b/tests/ir/test_dense_float_serialization.py
+index 8f0f24b..002db59 100644
+--- a/tests/ir/test_dense_float_serialization.py
++++ b/tests/ir/test_dense_float_serialization.py
+@@ -4,8 +4,8 @@ import pytest
+ from xdsl.dialects import arith, builtin
+ from xdsl.utils.exceptions import ParseError
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.transforms.certificates import ir_text, parse_ir
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.transforms.certificates import ir_text, parse_ir
+ 
+ 
+ @pytest.mark.parametrize("reader", [parse_mlir_text, parse_ir])
+@@ -117,7 +117,7 @@ def test_out_of_range_or_signed_float_bit_patterns_refuse(reader, literal):
+ def test_literal_span_printing_is_byte_identical_to_xdsl(payload):
+     from io import StringIO
+     from xdsl.printer import Printer
+-    from merlin.common.dense_float_ir import DenseFloatPrinter
++    from merlin.compiler.ir.xdsl_io import DenseFloatPrinter
+ 
+     reference, actual = StringIO(), StringIO()
+     Printer(stream=reference).print_bytes_literal(payload)
+@@ -128,7 +128,7 @@ def test_literal_span_printing_is_byte_identical_to_xdsl(payload):
+ def test_unicode_provenance_keeps_original_utf8_byte_escaping():
+     from io import StringIO
+     from xdsl.printer import Printer
+-    from merlin.common.dense_float_ir import DenseFloatPrinter
++    from merlin.compiler.ir.xdsl_io import DenseFloatPrinter
+ 
+     reference, actual = StringIO(), StringIO()
+     label = 'source "quoted" \\ λ 雪 🧭\n'
+diff --git a/tests/ir/test_derived_compile_inputs.py b/tests/ir/test_derived_compile_inputs.py
+index a261852..6980dd3 100644
+--- a/tests/ir/test_derived_compile_inputs.py
++++ b/tests/ir/test_derived_compile_inputs.py
+@@ -6,8 +6,8 @@ from pathlib import Path
+ 
+ import pytest
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ SOURCE = b'''builtin.module attributes {prov.weights_file = "weights.safetensors"} {
+diff --git a/tests/ir/test_derived_live_arguments.py b/tests/ir/test_derived_live_arguments.py
+index 7d6062f..f4e0cb8 100644
+--- a/tests/ir/test_derived_live_arguments.py
++++ b/tests/ir/test_derived_live_arguments.py
+@@ -5,8 +5,8 @@ from copy import deepcopy
+ import pytest
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.derived_runtime_arguments import checked_runtime_call_shapes
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def example(dtype="i32", shape="", *, shape_value=False):
+diff --git a/tests/ir/test_derived_runtime_arguments.py b/tests/ir/test_derived_runtime_arguments.py
+index 3a31707..bbe4078 100644
+--- a/tests/ir/test_derived_runtime_arguments.py
++++ b/tests/ir/test_derived_runtime_arguments.py
+@@ -3,15 +3,15 @@
+ import pytest
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.derived_runtime_arguments import checked_runtime_call_shapes
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ @pytest.mark.parametrize("damage", [None, "profile", "selection", "missing", "name", "attribute", "type",
+     "identity", "ordinal", "call-attributes", "boolean", "unknown", "extra", "declaration"])
+ def test_source_grouping_selection_is_bound_to_original_typed_call(damage):
+     from xdsl.dialects.builtin import DictionaryAttr, IntegerAttr, StringAttr, i32, i64
+-    from merlin.frontends.derived_runtime_arguments import checked_source_layout_call
++    from merlin.compiler.frontend.intake.derived_runtime_arguments import checked_source_layout_call
+     module, _, record = example()
+     call = next(op for op in module.walk() if isinstance(op, CallOp))
+     selection = {"target": "source:architecture", "num_warps": 4, "threads_per_warp": 32, "num_ctas": 1}
+diff --git a/tests/ir/test_derived_size_sources.py b/tests/ir/test_derived_size_sources.py
+index 9a61785..4942ade 100644
+--- a/tests/ir/test_derived_size_sources.py
++++ b/tests/ir/test_derived_size_sources.py
+@@ -3,8 +3,8 @@
+ import pytest
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.frontends.model_shape_facts import ShapeFacts
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.model_shape_facts import ShapeFacts
+ 
+ SOURCE = """module {func.func @forward(%x:tensor<?xi32>,%y:tensor<?xi32>)->tensor<?xi32> {
+   %zero=arith.constant 0:index
+diff --git a/tests/ir/test_derived_source_views.py b/tests/ir/test_derived_source_views.py
+index e549ffd..42cea80 100644
+--- a/tests/ir/test_derived_source_views.py
++++ b/tests/ir/test_derived_source_views.py
+@@ -4,9 +4,9 @@ import pytest
+ from xdsl.dialects.builtin import IntegerAttr, i64
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.derived_runtime_arguments import checked_runtime_call_shapes
+-from merlin.frontends.derived_source_views import checked_source_views, derive
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.derived_runtime_arguments import checked_runtime_call_shapes
++from merlin.compiler.frontend.intake.derived_source_views import checked_source_views, derive
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def example():
+diff --git a/tests/ir/test_derived_symbolic_shapes.py b/tests/ir/test_derived_symbolic_shapes.py
+index 11283b8..9090e9b 100644
+--- a/tests/ir/test_derived_symbolic_shapes.py
++++ b/tests/ir/test_derived_symbolic_shapes.py
+@@ -6,10 +6,10 @@ import pytest
+ from test_derived_compile_inputs import capture_fixture, encoded, record
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.derived_symbolic_shapes import checked_model_shapes
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.frontends.model_shape_facts import PROFILE
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.intake.derived_symbolic_shapes import checked_model_shapes
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.model_shape_facts import PROFILE
+ 
+ 
+ def example():
+diff --git a/tests/ir/test_derived_tensor_views.py b/tests/ir/test_derived_tensor_views.py
+index b3b28da..abd6671 100644
+--- a/tests/ir/test_derived_tensor_views.py
++++ b/tests/ir/test_derived_tensor_views.py
+@@ -8,8 +8,8 @@ import pytest
+ from test_derived_compile_inputs import encoded, record, runtime_guarded_fixture
+ from xdsl.dialects.func import CallOp
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def fixture(root, shape=(1, 2), *, static=False, change=None):
+diff --git a/tests/ir/test_effect_compile_inputs.py b/tests/ir/test_effect_compile_inputs.py
+index 7b86a16..8e08a14 100644
+--- a/tests/ir/test_effect_compile_inputs.py
++++ b/tests/ir/test_effect_compile_inputs.py
+@@ -7,7 +7,7 @@ import struct
+ 
+ import pytest
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
++from merlin.compiler.frontend.inputs import stage_compile_inputs
+ 
+ 
+ def record(raw):
+diff --git a/tests/ir/test_execute_region_attributes.py b/tests/ir/test_execute_region_attributes.py
+index 0185ddf..7b89f37 100644
+--- a/tests/ir/test_execute_region_attributes.py
++++ b/tests/ir/test_execute_region_attributes.py
+@@ -6,9 +6,9 @@ import pytest
+ from xdsl.transforms.canonicalize import CanonicalizePass
+ from xdsl.utils.exceptions import VerifyException
+ 
+-from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
+-from merlin.llvmlower import toolchain
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import make_context, parse_mlir_text
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def source(flag="no_inline", attributes='prov.op="atomic-snapshot",prov.region_id="source/region"'):
+diff --git a/tests/ir/test_execution_call_views.py b/tests/ir/test_execution_call_views.py
+index 9cf1807..2f1de42 100644
+--- a/tests/ir/test_execution_call_views.py
++++ b/tests/ir/test_execution_call_views.py
+@@ -8,11 +8,11 @@ from test_execution_model_correspondence import selection as selection
+ from xdsl.dialects import builtin, func
+ from xdsl.ir import Block, Region
+ 
+-from merlin.frontends.execution_call_contracts import CallContracts
+-from merlin.frontends.execution_model_correspondence import checked_execution_model
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.frontend.intake.execution_call_contracts import CallContracts
++from merlin.compiler.frontend.intake.execution_model_correspondence import checked_execution_model
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ 
+ def test_declared_views_preserve_the_complete_original_expansion(selection):
+@@ -44,7 +44,7 @@ def test_view_profile_or_coordinate_declarations_cannot_replace_source_proof(sel
+ @pytest.mark.parametrize("shape,target", [((2, 3), (3, 2)), ((2, 0, 3), (0, 6)), ((), (1,))])
+ @pytest.mark.parametrize("dtype", ("i64", "f32"))
+ def test_independent_dense_adapters_keep_exact_words_and_empty_scalar_ranks(tmp_path, shape, target, dtype):
+-    from merlin.frontends.execution_call_views import reshape
++    from merlin.compiler.frontend.intake.execution_call_views import reshape
+ 
+     element = builtin.i64 if dtype == "i64" else builtin.f32
+     before, after = (builtin.TensorType(element, dimensions) for dimensions in (shape, target))
+diff --git a/tests/ir/test_execution_functional_state.py b/tests/ir/test_execution_functional_state.py
+index a87963b..b0a02f0 100644
+--- a/tests/ir/test_execution_functional_state.py
++++ b/tests/ir/test_execution_functional_state.py
+@@ -6,7 +6,7 @@ import pytest
+ from xdsl.dialects import builtin, func
+ from xdsl.ir import Block, Region
+ 
+-from merlin.frontends.execution_functional_state import call, entry
++from merlin.compiler.frontend.intake.execution_functional_state import call, entry
+ 
+ 
+ def source():
+diff --git a/tests/ir/test_execution_model_correspondence.py b/tests/ir/test_execution_model_correspondence.py
+index ad0cede..b116e91 100644
+--- a/tests/ir/test_execution_model_correspondence.py
++++ b/tests/ir/test_execution_model_correspondence.py
+@@ -8,8 +8,8 @@ import pytest
+ from xdsl.dialects import arith, builtin, func
+ from xdsl.printer import Printer
+ 
+-from merlin.frontends.execution_model_correspondence import checked_execution_model
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.execution_model_correspondence import checked_execution_model
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def printed(module, *, locations=False):
+diff --git a/tests/ir/test_execution_model_staging.py b/tests/ir/test_execution_model_staging.py
+index 6b1b67a..516b36f 100644
+--- a/tests/ir/test_execution_model_staging.py
++++ b/tests/ir/test_execution_model_staging.py
+@@ -9,8 +9,8 @@ from test_execution_model_correspondence import printed
+ from test_execution_model_correspondence import selection as selection
+ from xdsl.dialects import arith, builtin
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ @pytest.fixture
+diff --git a/tests/ir/test_execution_rank_views.py b/tests/ir/test_execution_rank_views.py
+index c2d9d2b..7f15778 100644
+--- a/tests/ir/test_execution_rank_views.py
++++ b/tests/ir/test_execution_rank_views.py
+@@ -6,10 +6,10 @@ from test_execution_model_correspondence import printed
+ from xdsl.dialects import arith, builtin, cf, func, scf, tensor
+ from xdsl.ir import Block, Region
+ 
+-from merlin.frontends.execution_source_coordinates import SourceCoordinates, _retained_axes
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.frontend.intake.execution_source_coordinates import SourceCoordinates, _retained_axes
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ DYNAMIC = builtin.DYNAMIC_INDEX
+ 
+diff --git a/tests/ir/test_execution_resource_policy.py b/tests/ir/test_execution_resource_policy.py
+index f2af5ae..a0651cb 100644
+--- a/tests/ir/test_execution_resource_policy.py
++++ b/tests/ir/test_execution_resource_policy.py
+@@ -8,9 +8,9 @@ import pytest
+ from test_execution_model_correspondence import selection as selection
+ from test_execution_model_staging import capture as capture
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.execution_result_signature import checked_allocation_policy, select_signature, validate_signature
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.intake.execution_result_signature import checked_allocation_policy, select_signature, validate_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ POLICY = {
+     "schema": "merlin.owned-result-limits.v2",
+diff --git a/tests/ir/test_execution_result_staging.py b/tests/ir/test_execution_result_staging.py
+index 1419ef6..8c56956 100644
+--- a/tests/ir/test_execution_result_staging.py
++++ b/tests/ir/test_execution_result_staging.py
+@@ -11,16 +11,10 @@ from test_compile_inputs import _write_capture
+ from test_owned_result_execution import COMPACT
+ from xdsl.dialects.builtin import StringAttr
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.execution_result_signature import (
+-    MODE,
+-    PROFILE,
+-    program_text,
+-    select_signature,
+-    validate_signature,
+-)
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower.execution_result_inputs import resolve
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.intake.execution_result_signature import MODE, PROFILE, program_text, select_signature, validate_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.options.execution_result_inputs import resolve
+ 
+ 
+ def capture(path):
+@@ -101,7 +95,7 @@ def test_default_staging_and_older_runtime_keep_their_original_contracts(tmp_pat
+     (stage / "selected.json").write_text(json.dumps(selected))
+     arguments = tmp_path / "arguments.npz"
+     np.savez(arguments, in0=np.array([1, 2], dtype=np.float32))
+-    from merlin.llvmlower.runtime_invocation import resolve as resolve_preallocated
++    from merlin.compiler.lower.options.runtime_invocation import resolve as resolve_preallocated
+ 
+     with pytest.raises(ValueError, match="explicit staged signature"):
+         resolve_preallocated(stage / "program.mlir", stage / "selected.json", arguments)
+@@ -137,9 +131,9 @@ def test_unknown_mode_refuses_before_any_capture_is_read(tmp_path):
+ 
+ 
+ def test_staged_content_derived_results_execute_without_a_shape_prediction(tmp_path):
+-    from merlin.llvmlower import toolchain
+-    from merlin.llvmlower.owned_result_program import load, save
+-    from merlin.llvmlower.owned_results import compile_owned_results
++    from merlin.compiler.lower.model import toolchain
++    from merlin.compiler.lower.options.owned_result_program import load, save
++    from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+     if not toolchain.available():
+         pytest.skip("native MLIR unavailable")
+diff --git a/tests/ir/test_execution_runtime_views.py b/tests/ir/test_execution_runtime_views.py
+index b41e519..67e77a2 100644
+--- a/tests/ir/test_execution_runtime_views.py
++++ b/tests/ir/test_execution_runtime_views.py
+@@ -12,12 +12,12 @@ from xdsl.dialects import arith, builtin, func, tensor
+ from xdsl.ir import Block, Region
+ 
+ from merlin.common.paths import repo_root
+-from merlin.frontends.execution_call_contracts import CallContracts
+-from merlin.frontends.execution_runtime_views import POLICY, RuntimeViewContracts
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.llvmlower.owned_result_program import save
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.frontend.intake.execution_call_contracts import CallContracts
++from merlin.compiler.frontend.intake.execution_runtime_views import POLICY, RuntimeViewContracts
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.compiler.lower.options.owned_result_program import save
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="existing native compiler required")
+ DYNAMIC = builtin.DYNAMIC_INDEX
+@@ -128,24 +128,7 @@ def test_bad_runtime_contracts_abort_in_actual_source_before_results(programs, t
+     )
+     np.savez(tmp_path / "inputs.npz", **{f"in{i}": value for i, value in enumerate(args)})
+     script = tmp_path / "invoke.py"
+-    script.write_text("""import sys,resource,ctypes
+-from pathlib import Path
+-import numpy as np
+-sys.path.insert(0,sys.argv[1]+'/src')
+-from merlin.llvmlower.owned_result_program import load
+-from merlin.llvmlower.abi import ScalarArg
+-resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+-libc=ctypes.CDLL(None)
+-libc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
+-libc.setbuf(ctypes.c_void_p.in_dll(libc,'stdout'),None)
+-program=load(Path(sys.argv[2])/'owned-result-program.json')
+-with np.load(sys.argv[3],allow_pickle=False) as data:
+-    values=[data[f'in{i}'].copy() for i in range(len(data.files))]
+-arguments=tuple(ScalarArg(int(value),'i64') if value.shape==() else value for value in values)
+-Path(sys.argv[4]).write_text('invoking')
+-outputs,_=program.execute(arguments)
+-np.savez(sys.argv[5],**{f'out{i}':value for i,value in enumerate(outputs)})
+-""")
++    script.write_text("import sys,resource,ctypes\nfrom pathlib import Path\nimport numpy as np\nsys.path.insert(0,sys.argv[1]+'/src')\nfrom merlin.compiler.lower.options.owned_result_program import load\nfrom merlin.compiler.lower.model.oracle import ScalarArg\nresource.setrlimit(resource.RLIMIT_CORE,(0,0))\nlibc=ctypes.CDLL(None)\nlibc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]\nlibc.setbuf(ctypes.c_void_p.in_dll(libc,'stdout'),None)\nprogram=load(Path(sys.argv[2])/'owned-result-program.json')\nwith np.load(sys.argv[3],allow_pickle=False) as data:\n    values=[data[f'in{i}'].copy() for i in range(len(data.files))]\narguments=tuple(ScalarArg(int(value),'i64') if value.shape==() else value for value in values)\nPath(sys.argv[4]).write_text('invoking')\noutputs,_=program.execute(arguments)\nnp.savez(sys.argv[5],**{f'out{i}':value for i,value in enumerate(outputs)})\n")
+     ready, output = tmp_path / "ready", tmp_path / "outputs.npz"
+     process = subprocess.run(
+         [
+diff --git a/tests/ir/test_execution_source_coordinates.py b/tests/ir/test_execution_source_coordinates.py
+index 06898d1..3c3f458 100644
+--- a/tests/ir/test_execution_source_coordinates.py
++++ b/tests/ir/test_execution_source_coordinates.py
+@@ -13,12 +13,12 @@ from xdsl.dialects import arith, builtin, func, scf, tensor
+ from xdsl.ir import Block, Region
+ 
+ from merlin.common.paths import repo_root
+-from merlin.frontends.execution_call_views import validate
+-from merlin.frontends.execution_source_coordinates import SourceCoordinates
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.llvmlower.owned_result_program import save
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.frontend.intake.execution_call_views import validate
++from merlin.compiler.frontend.intake.execution_source_coordinates import SourceCoordinates
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.compiler.lower.options.owned_result_program import save
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ DYNAMIC = builtin.DYNAMIC_INDEX
+ NAMES = ("rows", "cols", "s0", "s1", "origin")
+@@ -173,23 +173,7 @@ def test_false_runtime_coordinates_abort_before_returning_values(programs, tmp_p
+         **{f"in{i + 1}": np.asarray(n, np.int64) for i, n in enumerate(coordinates)},
+     )
+     script = tmp_path / "invoke.py"
+-    script.write_text("""import sys,ctypes,resource
+-from pathlib import Path
+-import numpy as np
+-sys.path.insert(0,sys.argv[1]+'/src')
+-from merlin.llvmlower.owned_result_program import load
+-from merlin.llvmlower.abi import ScalarArg
+-resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+-libc=ctypes.CDLL(None)
+-libc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
+-libc.setbuf(ctypes.c_void_p.in_dll(libc,'stdout'),None)
+-program=load(Path(sys.argv[2])/'owned-result-program.json')
+-with np.load(sys.argv[3],allow_pickle=False) as data:
+- values=[data[f'in{i}'].copy() for i in range(len(data.files))]
+-Path(sys.argv[4]).write_text('invoking')
+-outputs,_=program.execute((values[0],*(ScalarArg(int(v),'i64') for v in values[1:])))
+-np.savez(sys.argv[5],**{f'out{i}':v for i,v in enumerate(outputs)})
+-""")
++    script.write_text("import sys,ctypes,resource\nfrom pathlib import Path\nimport numpy as np\nsys.path.insert(0,sys.argv[1]+'/src')\nfrom merlin.compiler.lower.options.owned_result_program import load\nfrom merlin.compiler.lower.model.oracle import ScalarArg\nresource.setrlimit(resource.RLIMIT_CORE,(0,0))\nlibc=ctypes.CDLL(None)\nlibc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]\nlibc.setbuf(ctypes.c_void_p.in_dll(libc,'stdout'),None)\nprogram=load(Path(sys.argv[2])/'owned-result-program.json')\nwith np.load(sys.argv[3],allow_pickle=False) as data:\n values=[data[f'in{i}'].copy() for i in range(len(data.files))]\nPath(sys.argv[4]).write_text('invoking')\noutputs,_=program.execute((values[0],*(ScalarArg(int(v),'i64') for v in values[1:])))\nnp.savez(sys.argv[5],**{f'out{i}':v for i,v in enumerate(outputs)})\n")
+     ready, output = tmp_path / "ready", tmp_path / "outputs.npz"
+     done = subprocess.run(
+         [
+diff --git a/tests/ir/test_execution_source_layouts.py b/tests/ir/test_execution_source_layouts.py
+index d3b9f07..4423eab 100644
+--- a/tests/ir/test_execution_source_layouts.py
++++ b/tests/ir/test_execution_source_layouts.py
+@@ -11,7 +11,7 @@ import pytest
+ from test_execution_model_correspondence import selection as selection
+ from xdsl.dialects import builtin, func
+ 
+-from merlin.frontends.execution_model_correspondence import checked_execution_model
++from merlin.compiler.frontend.intake.execution_model_correspondence import checked_execution_model
+ 
+ 
+ @pytest.fixture(params=(2, 4))
+diff --git a/tests/ir/test_execution_storage_views.py b/tests/ir/test_execution_storage_views.py
+index 77d74e7..54e7283 100644
+--- a/tests/ir/test_execution_storage_views.py
++++ b/tests/ir/test_execution_storage_views.py
+@@ -4,7 +4,7 @@ import pytest
+ from xdsl.dialects import builtin, func
+ from xdsl.ir import Block
+ 
+-from merlin.frontends.execution_functional_state import call
++from merlin.compiler.frontend.intake.execution_functional_state import call
+ 
+ 
+ def source():
+diff --git a/tests/ir/test_fp8_feature_composition.py b/tests/ir/test_fp8_feature_composition.py
+index 42900f9..13a3152 100644
+--- a/tests/ir/test_fp8_feature_composition.py
++++ b/tests/ir/test_fp8_feature_composition.py
+@@ -2,8 +2,8 @@
+ 
+ import pytest
+ 
+-from merlin.llvmlower import fp8_narrowing as narrow, fp8_widening as widen
+-from merlin.llvmlower.loop_tensor_destinations import PRELUDE as LOOP_PRELUDE
++from merlin.compiler.lower.options import fp8_narrowing as narrow, fp8_widening as widen
++from merlin.compiler.lower.options.loop_tensor_destinations import PRELUDE as LOOP_PRELUDE
+ 
+ 
+ def test_fp8_source_edits_commute_and_keep_narrowing_before_widening():
+diff --git a/tests/ir/test_fp8_float_constraints.py b/tests/ir/test_fp8_float_constraints.py
+index 6cedb3a..ec7f1ff 100644
+--- a/tests/ir/test_fp8_float_constraints.py
++++ b/tests/ir/test_fp8_float_constraints.py
+@@ -27,7 +27,7 @@ def _ctx():
+     from xdsl.dialects import arith, func, linalg, math, tensor
+     from xdsl.dialects.builtin import Builtin
+ 
+-    import merlin.xdsl_dialects.fp8  # noqa: F401 - installs the hooks on import
++    import merlin.compiler.dialects.fp8  # noqa: F401 - installs the hooks on import
+ 
+     ctx = Context(allow_unregistered=True)
+     for d in (Builtin, func.Func, arith.Arith, linalg.Linalg, tensor.Tensor, math.Math):
+@@ -73,13 +73,7 @@ def test_custom_named_fill_builds_its_real_scalar_region_in_fresh_reader(dtype):
+       %filled=linalg.fill ins(%value:{dtype}) outs(%empty:tensor<4x{dtype}>)->tensor<4x{dtype}>
+       return %filled:tensor<4x{dtype}>
+     }}}}"""
+-    script = """import sys
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-module=parse_mlir_text(sys.argv[1])
+-module.verify()
+-fill=next(op for op in module.walk() if op.name=='linalg.fill')
+-assert tuple(fill.regions[0].block.last_op.operands)==(fill.regions[0].block.args[0],)
+-"""
++    script = "import sys\nfrom merlin.compiler.frontend.linalg_mlir import parse_mlir_text\nmodule=parse_mlir_text(sys.argv[1])\nmodule.verify()\nfill=next(op for op in module.walk() if op.name=='linalg.fill')\nassert tuple(fill.regions[0].block.last_op.operands)==(fill.regions[0].block.args[0],)\n"
+     result = subprocess.run([sys.executable, "-c", script, source], capture_output=True, text=True, timeout=20)
+     assert result.returncode == 0, result.stderr
+ 
+@@ -100,7 +94,7 @@ def test_the_float_constraint_still_refuses_a_non_float():
+ 
+ def test_registration_is_idempotent():
+     """It installs at import; a second call must not double-register or raise."""
+-    from merlin.xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_types
++    from merlin.compiler.dialects.fp8 import register_fp8_float_constraints, register_fp8_types
+ 
+     for _ in range(3):
+         register_fp8_types()
+@@ -121,11 +115,7 @@ def test_both_merlin_readers_register_fp8():
+     import sys
+ 
+     program = (
+-        "from merlin.frontends.linalg_mlir import parse_mlir_text\n"
+-        "src = ('builtin.module attributes {prov.level = \"linalg-on-tensors\"} {\\n'\n"
+-        "       '  func.func @f(%x: tensor<4xf8E4M3FN>) -> tensor<4xf8E4M3FN> "
+-        "{ func.return %x : tensor<4xf8E4M3FN> }\\n}\\n')\n"
+-        "parse_mlir_text(src)\n"
++        'from merlin.compiler.frontend.linalg_mlir import parse_mlir_text\nsrc = (\'builtin.module attributes {prov.level = "linalg-on-tensors"} {\\n\'\n       \'  func.func @f(%x: tensor<4xf8E4M3FN>) -> tensor<4xf8E4M3FN> { func.return %x : tensor<4xf8E4M3FN> }\\n}\\n\')\nparse_mlir_text(src)\n'
+     )
+     done = subprocess.run([sys.executable, "-c", program], capture_output=True, text=True)
+     assert done.returncode == 0, f"linalg_mlir did not register fp8 on its own:\n{done.stderr[-600:]}"
+@@ -149,7 +139,7 @@ def test_an_fp8_requantize_kernel_loads():
+   }
+ }
+ """
+-    from merlin.frontends.linalg_mlir import parse_mlir_text
++    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+     parse_mlir_text(src)
+ 
+@@ -157,9 +147,9 @@ def test_an_fp8_requantize_kernel_loads():
+ @pytest.mark.parametrize("fp8", ["f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"])
+ def test_all_fp8_words_survive_dense_and_scalar_constants(fp8):
+     pytest.importorskip("ml_dtypes")
+-    from merlin.frontends.linalg_mlir import parse_mlir_text
+-    from merlin.xdsl_dialects._common import text
+-    from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
++    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++    from merlin.compiler.dialects.xdsl_context import text
++    from merlin.compiler.dialects.fp8 import _FP8_BY_NAME
+ 
+     raw = bytes(range(256))
+     type_ = _FP8_BY_NAME[fp8]
+@@ -199,7 +189,7 @@ def test_format_interpretations_stay_distinct(fp8, max_word, max_value, nan_word
+     pytest.importorskip("ml_dtypes")
+     import math
+ 
+-    from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
++    from merlin.compiler.dialects.fp8 import _FP8_BY_NAME
+ 
+     type_ = _FP8_BY_NAME[fp8]
+     values = type_.unpack(bytes(range(256)), 256)
+diff --git a/tests/ir/test_fp8_narrowing.py b/tests/ir/test_fp8_narrowing.py
+index 32d4e73..5c4afa9 100644
+--- a/tests/ir/test_fp8_narrowing.py
++++ b/tests/ir/test_fp8_narrowing.py
+@@ -4,8 +4,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.fp8_narrowing import MARKER, PRELUDE, SUPPORT, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.fp8_narrowing import MARKER, PRELUDE, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ FORMATS = ("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")
+ 
+@@ -94,8 +94,8 @@ def test_source_seam_runs_once_and_keeps_every_callback():
+ 
+ 
+ def test_narrow_then_widen_then_bfloat_keeps_callback_order():
+-    from merlin.llvmlower.fp8_widening import MARKER as WIDE, PRELUDE as WIDE_PRELUDE
+-    from merlin.llvmlower.bfloat_elementwise import MARKER as BF, PRELUDE as BF_PRELUDE
++    from merlin.compiler.lower.options.fp8_widening import MARKER as WIDE, PRELUDE as WIDE_PRELUDE
++    from merlin.compiler.lower.options.bfloat_elementwise import MARKER as BF, PRELUDE as BF_PRELUDE
+ 
+     calls, rewrites = [], []
+     scope = {"_run_stages": lambda *args: calls.append(args)}
+diff --git a/tests/ir/test_fp8_widening.py b/tests/ir/test_fp8_widening.py
+index bd45663..73a61a7 100644
+--- a/tests/ir/test_fp8_widening.py
++++ b/tests/ir/test_fp8_widening.py
+@@ -4,8 +4,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.fp8_widening import MARKER, PRELUDE, SUPPORT, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.fp8_widening import MARKER, PRELUDE, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ FORMATS = ("f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")
+ 
+@@ -147,7 +147,7 @@ def test_source_seam_preserves_all_callbacks_and_runs_once():
+ 
+ 
+ def test_fp8_and_bfloat_source_seams_compose_without_dropping_callbacks():
+-    from merlin.llvmlower.bfloat_elementwise import MARKER as BF_MARKER, PRELUDE as BF_PRELUDE
++    from merlin.compiler.lower.options.bfloat_elementwise import MARKER as BF_MARKER, PRELUDE as BF_PRELUDE
+ 
+     calls, rewrites = [], []
+     scope = {"_run_stages": lambda *args: calls.append(args)}
+diff --git a/tests/ir/test_fusion_guard.py b/tests/ir/test_fusion_guard.py
+index cd7fd32..2158aa9 100644
+--- a/tests/ir/test_fusion_guard.py
++++ b/tests/ir/test_fusion_guard.py
+@@ -13,9 +13,9 @@ from __future__ import annotations
+ 
+ import pytest
+ 
+-from merlin.llvmlower import fusion_guard as FG
+-from merlin.llvmlower import pipeline as P
+-from merlin.llvmlower import toolchain
++from merlin.compiler.lower.options import fusion_guard as FG
++from merlin.compiler.lower.native import pipeline as P
++from merlin.compiler.lower.model import toolchain
+ 
+ m2m = pytest.mark.skipif(
+     not toolchain.m2m_python().is_file(), reason="model2MLIR venv (torch-mlir pass registry) not present"
+diff --git a/tests/ir/test_host_codegen_invocations.py b/tests/ir/test_host_codegen_invocations.py
+index a169445..4fd467c 100644
+--- a/tests/ir/test_host_codegen_invocations.py
++++ b/tests/ir/test_host_codegen_invocations.py
+@@ -7,8 +7,8 @@ from pathlib import Path
+ 
+ import pytest
+ 
+-from merlin.common import invocation_record as I
+-from merlin.llvmlower import codegen
++from merlin.common.process import invocation_records as I
++from merlin.compiler.lower.model import codegen
+ 
+ 
+ def selected(tmp_path, monkeypatch, *, llc):
+diff --git a/tests/ir/test_kernel_allocation_sources.py b/tests/ir/test_kernel_allocation_sources.py
+index 50581b1..6312390 100644
+--- a/tests/ir/test_kernel_allocation_sources.py
++++ b/tests/ir/test_kernel_allocation_sources.py
+@@ -5,7 +5,7 @@ import json
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
++from merlin.compiler.frontend.intake.kernel_allocation_evidence import checked_allocation_sources
+ 
+ 
+ def record(raw):
+diff --git a/tests/ir/test_kernel_atomic_source.py b/tests/ir/test_kernel_atomic_source.py
+index 3a001c3..c35db94 100644
+--- a/tests/ir/test_kernel_atomic_source.py
++++ b/tests/ir/test_kernel_atomic_source.py
+@@ -5,8 +5,8 @@ from copy import deepcopy
+ import pytest
+ from xdsl.parser import Parser
+ 
+-from merlin.frontends.kernel_atomic_evidence import checked_source_atomic
+-from merlin.frontends.linalg_mlir import make_context
++from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_source_atomic
++from merlin.compiler.frontend.linalg_mlir import make_context
+ 
+ KINDS = [(1, "and", 2), (2, "or", 14), (3, "xor", 15), (4, "add", 1),
+          (6, "max", 6), (7, "min", 10), (8, "umax", 7), (9, "umin", 11), (10, "exch", 3)]
+diff --git a/tests/ir/test_kernel_atomic_storage_context.py b/tests/ir/test_kernel_atomic_storage_context.py
+index 032b86d..1400b8d 100644
+--- a/tests/ir/test_kernel_atomic_storage_context.py
++++ b/tests/ir/test_kernel_atomic_storage_context.py
+@@ -5,7 +5,7 @@ import json
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_word_evidence import checked_word_stages
++from merlin.compiler.frontend.intake.kernel_word_evidence import checked_word_stages
+ from test_kernel_compile_inputs import word_fixture
+ 
+ 
+diff --git a/tests/ir/test_kernel_barrier_evidence.py b/tests/ir/test_kernel_barrier_evidence.py
+index a4ba17b..eba26fe 100644
+--- a/tests/ir/test_kernel_barrier_evidence.py
++++ b/tests/ir/test_kernel_barrier_evidence.py
+@@ -4,12 +4,12 @@ from copy import deepcopy
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_barrier_evidence import checked_program_barriers
++from merlin.compiler.frontend.intake.kernel_barrier_evidence import checked_program_barriers
+ 
+ 
+ def cfg_function():
+-    from merlin.frontends.kernel_barrier_evidence import _name
+-    from merlin.frontends.linalg_mlir import make_context
++    from merlin.compiler.frontend.intake.kernel_barrier_evidence import _name
++    from merlin.compiler.frontend.linalg_mlir import make_context
+     from xdsl.parser import Parser
+ 
+     module = Parser(make_context(), '''"builtin.module"() ({
+@@ -27,14 +27,14 @@ def cfg_function():
+ 
+ 
+ def test_scalar_cfg_phase_participation_is_independently_reconstructed():
+-    from merlin.frontends.kernel_barrier_evidence import _checked_cfg_participation
++    from merlin.compiler.frontend.intake.kernel_barrier_evidence import _checked_cfg_participation
+ 
+     assert _checked_cfg_participation(cfg_function()) == "whole-program-scalar-cfg-v1"
+ 
+ 
+ @pytest.mark.parametrize("damage", ["condition", "argument", "missing-argument", "foreign-block", "terminator"])
+ def test_scalar_cfg_phase_scope_cannot_hide_invalid_control(damage):
+-    from merlin.frontends.kernel_barrier_evidence import _checked_cfg_participation
++    from merlin.compiler.frontend.intake.kernel_barrier_evidence import _checked_cfg_participation
+     from xdsl.dialects import builtin
+     from xdsl.ir import Block
+ 
+@@ -246,7 +246,7 @@ def test_reordering_intact_phases_cannot_change_original_memory_order():
+     from xdsl.parser import Parser
+     from xdsl.printer import Printer
+ 
+-    from merlin.frontends.linalg_mlir import make_context
++    from merlin.compiler.frontend.linalg_mlir import make_context
+ 
+     graph, reports, generic, protected = deepcopy(fixture())
+     generic = generic.replace(
+diff --git a/tests/ir/test_kernel_byte_atomic_evidence.py b/tests/ir/test_kernel_byte_atomic_evidence.py
+index 501a9c3..c759c9d 100644
+--- a/tests/ir/test_kernel_byte_atomic_evidence.py
++++ b/tests/ir/test_kernel_byte_atomic_evidence.py
+@@ -6,8 +6,8 @@ from copy import deepcopy
+ import pytest
+ from test_kernel_compile_inputs import word_fixture
+ 
+-from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
+-from merlin.frontends.kernel_word_evidence import checked_word_stages
++from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_atomic_effects
++from merlin.compiler.frontend.intake.kernel_word_evidence import checked_word_stages
+ 
+ 
+ @pytest.mark.parametrize("width,cas", ((16, True), (32, True), (64, True), (32, False), (64, False)))
+diff --git a/tests/ir/test_kernel_cfg_evidence.py b/tests/ir/test_kernel_cfg_evidence.py
+index 9a7e192..3fd003e 100644
+--- a/tests/ir/test_kernel_cfg_evidence.py
++++ b/tests/ir/test_kernel_cfg_evidence.py
+@@ -5,7 +5,7 @@ import json
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_cfg_evidence import checked_control_flow_sources
++from merlin.compiler.frontend.intake.kernel_cfg_evidence import checked_control_flow_sources
+ 
+ 
+ def record(raw):
+diff --git a/tests/ir/test_kernel_compile_inputs.py b/tests/ir/test_kernel_compile_inputs.py
+index 4b35315..ee85601 100644
+--- a/tests/ir/test_kernel_compile_inputs.py
++++ b/tests/ir/test_kernel_compile_inputs.py
+@@ -7,8 +7,8 @@ import struct
+ 
+ import pytest
+ 
+-from merlin.frontends.compile_inputs import stage_compile_inputs
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.inputs import stage_compile_inputs
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def record(raw):
+@@ -385,7 +385,7 @@ def test_rehashed_invalid_mutable_contract_never_publishes(tmp_path, change):
+ def word_fixture(root, change=None, *, isolated=False, math_expansion=None):
+     """Source-policy byte custody only; this is not an execution oracle."""
+     from xdsl.dialects.builtin import StringAttr
+-    from merlin.xdsl_dialects._common import text
++    from merlin.compiler.dialects.xdsl_context import text
+     mutable_fixture(root, (1,), 1)
+     receipt = json.loads((root / "capture_receipt.json").read_text())
+     provenance = json.loads((root / "provenance.json").read_text())
+@@ -571,7 +571,7 @@ def test_rehashed_invalid_isolated_word_chain_never_publishes(tmp_path, change):
+ def atomic_fixture(root, change=None, *, cas=False, floating=False, word=False):
+     """Declaration custody only; the producer's real atomic tests own execution."""
+     from xdsl.dialects.builtin import IntegerAttr, StringAttr, i64
+-    from merlin.xdsl_dialects._common import text
++    from merlin.compiler.dialects.xdsl_context import text
+     word_fixture(root)
+     receipt = json.loads((root / "capture_receipt.json").read_text())
+     provenance = json.loads((root / "provenance.json").read_text())
+@@ -655,7 +655,7 @@ def test_atomic_staging_retains_v3_source_contract_and_thirty_bit_cost(tmp_path)
+ 
+ @pytest.mark.parametrize("source_view", ["per-event", "legacy", "wrong-view", "wrong-primitive"])
+ def test_word_storage_facts_do_not_replace_shared_source_primitive(tmp_path, source_view):
+-    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
++    from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_atomic_effects
+     source = tmp_path / "capture"
+     atomic_fixture(source, word=True)
+     admission = json.loads((source / "memory-admission.json").read_text())
+@@ -677,7 +677,7 @@ def test_word_storage_facts_do_not_replace_shared_source_primitive(tmp_path, sou
+ @pytest.mark.parametrize("dtype,policy", [("f64", None), ("f64", "quiet"), ("f32", "ieee"), ("f32", "ftz")])
+ def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp_path, change, dtype, policy):
+     from copy import deepcopy
+-    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
++    from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_atomic_effects
+     source = tmp_path / "capture"
+     atomic_fixture(source, floating=True)
+     admission = json.loads((source / "memory-admission.json").read_text())
+@@ -728,7 +728,7 @@ def test_floating_atomic_add_retains_its_operation_specific_numeric_contract(tmp
+ @pytest.mark.parametrize("opcode", ["tt.atomic_rmw", "tt.atomic_cas"])
+ @pytest.mark.parametrize("change", [None, "ordinary", "lost-old-value", "fill", "lost-value"])
+ def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_path, change, opcode):
+-    from merlin.frontends.kernel_word_evidence import checked_word_stages
++    from merlin.compiler.frontend.intake.kernel_word_evidence import checked_word_stages
+     source = tmp_path / "capture"
+     word_fixture(source, isolated=True)
+     stage = json.loads((source / "word-stage.json").read_text())
+@@ -754,7 +754,7 @@ def test_isolated_atomic_event_requires_effect_profile_value_and_old_result(tmp_
+ @pytest.mark.parametrize("change", [None, "missing-context", "wrong-view"])
+ def test_word_event_bindings_use_complete_inlined_source_context(tmp_path, change):
+     from copy import deepcopy
+-    from merlin.frontends.kernel_word_evidence import checked_word_stages
++    from merlin.compiler.frontend.intake.kernel_word_evidence import checked_word_stages
+     source = tmp_path / "capture"
+     word_fixture(source, isolated=True)
+     stage = json.loads((source / "word-stage.json").read_text())
+@@ -789,7 +789,7 @@ def test_word_event_bindings_use_complete_inlined_source_context(tmp_path, chang
+ @pytest.mark.parametrize("change", [None, "missing", "formal", "storage", "capture", "opcode"])
+ def test_word_cas_template_formals_bind_the_original_floating_storage(tmp_path, width, change):
+     from copy import deepcopy
+-    from merlin.frontends.kernel_word_evidence import checked_word_stages
++    from merlin.compiler.frontend.intake.kernel_word_evidence import checked_word_stages
+     source = tmp_path / "capture"
+     word_fixture(source, isolated=True)
+     stage = json.loads((source / "word-stage.json").read_text())
+@@ -821,7 +821,7 @@ def test_word_cas_template_formals_bind_the_original_floating_storage(tmp_path,
+ @pytest.mark.parametrize("change", [None, "legacy-source", "profile", "dtype", "source", "mask", "payload", "storage", "units", "kind", "bits"])
+ def test_word_cas_effect_custody_keeps_comparison_and_storage_contract(tmp_path, width, change):
+     from copy import deepcopy
+-    from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
++    from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_atomic_effects
+     source = tmp_path / "capture"
+     atomic_fixture(source, word=True)
+     admission = json.loads((source / "memory-admission.json").read_text())
+diff --git a/tests/ir/test_kernel_half_atomic_evidence.py b/tests/ir/test_kernel_half_atomic_evidence.py
+index eeb3ac8..63580f3 100644
+--- a/tests/ir/test_kernel_half_atomic_evidence.py
++++ b/tests/ir/test_kernel_half_atomic_evidence.py
+@@ -4,7 +4,7 @@ from copy import deepcopy
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_atomic_evidence import checked_atomic_effects
++from merlin.compiler.frontend.intake.kernel_atomic_evidence import checked_atomic_effects
+ 
+ 
+ @pytest.mark.parametrize("dtype", ["f16", "bf16"])
+diff --git a/tests/ir/test_kernel_literal_evidence.py b/tests/ir/test_kernel_literal_evidence.py
+index 4ec2f37..449625e 100644
+--- a/tests/ir/test_kernel_literal_evidence.py
++++ b/tests/ir/test_kernel_literal_evidence.py
+@@ -4,7 +4,7 @@ from copy import deepcopy
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_literal_evidence import checked_literal_words, checked_trace_literal_words
++from merlin.compiler.frontend.intake.kernel_literal_evidence import checked_literal_words, checked_trace_literal_words
+ 
+ 
+ def declaration(dtype="f32", shape=None):
+@@ -114,7 +114,7 @@ def test_changed_or_rehashed_declarations_do_not_supply_literal_semantics(change
+ 
+ 
+ def test_functional_tensor_staging_checks_literal_words_before_early_return():
+-    from merlin.frontends.kernel_compile_inputs import _checked_memory_members
++    from merlin.compiler.frontend.intake.kernel_compile_inputs import _checked_memory_members
+ 
+     records, reports = declaration()
+     provenance = {"source_operations": records, "transformations": reports}
+@@ -134,7 +134,7 @@ def test_protected_allocation_staging_reopens_rehashed_literal_declarations(chan
+ 
+     from test_kernel_allocation_sources import encoded, fixture, record
+ 
+-    from merlin.frontends.kernel_allocation_evidence import checked_allocation_sources
++    from merlin.compiler.frontend.intake.kernel_allocation_evidence import checked_allocation_sources
+ 
+     trace, files, bound = fixture(normalized=True, protected=True)
+     records, reports = declaration("bf16", [4])
+diff --git a/tests/ir/test_kernel_shape_abi.py b/tests/ir/test_kernel_shape_abi.py
+index 6656ee4..d82d7bb 100644
+--- a/tests/ir/test_kernel_shape_abi.py
++++ b/tests/ir/test_kernel_shape_abi.py
+@@ -2,7 +2,7 @@
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_shape_abi import validate_dimensions
++from merlin.compiler.frontend.intake.kernel_shape_abi import validate_dimensions
+ 
+ 
+ def test_static_empty_tensor_axes_keep_their_actual_rank_without_runtime_bindings():
+diff --git a/tests/ir/test_kernel_typed_storage.py b/tests/ir/test_kernel_typed_storage.py
+index 8f3e501..9a4354a 100644
+--- a/tests/ir/test_kernel_typed_storage.py
++++ b/tests/ir/test_kernel_typed_storage.py
+@@ -7,7 +7,7 @@ import pytest
+ from xdsl.dialects.builtin import DenseArrayBase, IntegerAttr, StringAttr, i64
+ from xdsl.dialects.func import FuncOp
+ 
+-from merlin.frontends.kernel_typed_storage import checked_guard_costs, storage_spec
++from merlin.compiler.frontend.intake.kernel_typed_storage import checked_guard_costs, storage_spec
+ 
+ 
+ def fixture():
+diff --git a/tests/ir/test_kernel_volatile_evidence.py b/tests/ir/test_kernel_volatile_evidence.py
+index fed61e4..e814b67 100644
+--- a/tests/ir/test_kernel_volatile_evidence.py
++++ b/tests/ir/test_kernel_volatile_evidence.py
+@@ -5,8 +5,8 @@ import json
+ import pytest
+ from xdsl.dialects import builtin
+ 
+-from merlin.frontends.kernel_volatile_evidence import checked_volatile_payload
+-from merlin.frontends.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.kernel_volatile_evidence import checked_volatile_payload
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+ 
+ def fixture(dtype="i64"):
+diff --git a/tests/ir/test_kernel_word_source_effects.py b/tests/ir/test_kernel_word_source_effects.py
+index e7ad8c0..6d41b17 100644
+--- a/tests/ir/test_kernel_word_source_effects.py
++++ b/tests/ir/test_kernel_word_source_effects.py
+@@ -4,7 +4,7 @@ from copy import deepcopy
+ 
+ import pytest
+ 
+-from merlin.frontends.kernel_word_source_effects import checked_word_source_effects
++from merlin.compiler.frontend.intake.kernel_word_source_effects import checked_word_source_effects
+ 
+ 
+ def fixture():
+diff --git a/tests/ir/test_length_aware_diagnostics.py b/tests/ir/test_length_aware_diagnostics.py
+index fa9931e..a7d91ef 100644
+--- a/tests/ir/test_length_aware_diagnostics.py
++++ b/tests/ir/test_length_aware_diagnostics.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.length_aware_diagnostics import MARKER, SUPPORT, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.length_aware_diagnostics import MARKER, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ @pytest.mark.skipif(not available(), reason="existing native compiler environment required")
+diff --git a/tests/ir/test_linalg_named_regions.py b/tests/ir/test_linalg_named_regions.py
+index 223fd4a..d7a43e7 100644
+--- a/tests/ir/test_linalg_named_regions.py
++++ b/tests/ir/test_linalg_named_regions.py
+@@ -2,9 +2,9 @@
+ 
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
+-from merlin.llvmlower import generic_form, toolchain
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import make_context, parse_mlir_text
++from merlin.compiler.lower.model import generic_form, toolchain
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def source(lhs="bf16", rhs="bf16", result="f32", cast=""):
+@@ -73,7 +73,7 @@ def test_extended_property_binding_keeps_type_and_unknown_property_checks():
+ 
+ 
+ def test_explicit_invalid_region_is_not_replaced_with_a_canonical_one(native):
+-    from merlin.common.dense_float_ir import DenseFloatParser
++    from merlin.compiler.ir.xdsl_io import DenseFloatParser
+ 
+     broken = DenseFloatParser(make_context(), source()).parse_module()
+     # The partial custom parser produces bf16-width math plus an f32 init.
+diff --git a/tests/ir/test_loop_byte_atomic_snapshots.py b/tests/ir/test_loop_byte_atomic_snapshots.py
+index de5f6fb..93297f6 100644
+--- a/tests/ir/test_loop_byte_atomic_snapshots.py
++++ b/tests/ir/test_loop_byte_atomic_snapshots.py
+@@ -3,7 +3,7 @@
+ import pytest
+ from test_loop_tensor_destinations import rewrite
+ 
+-from merlin.llvmlower.toolchain import available
++from merlin.compiler.lower.model.toolchain import available
+ 
+ 
+ def source(*, private=True, fresh=True, no_inline=True, extra=False, float_body=False, dead=False):
+@@ -69,7 +69,7 @@ def source(*, private=True, fresh=True, no_inline=True, extra=False, float_body=
+     (
+         ({}, 1),
+         ({"private": False}, 0),
+-        ({"fresh": False}, 0),
++        ({"fresh": False}, 2),
+         ({"no_inline": False}, 0),
+         ({"extra": True}, 0),
+         ({"float_body": True}, 0),
+@@ -80,6 +80,8 @@ def test_byte_word_snapshots_require_actual_private_root_and_qualified_body(tmp_
+     original = source(**options)
+     report, rewritten = rewrite(tmp_path, original, atomic_support=True)
+     assert f"OK loop_tensor_destinations {changed}" in report
++    if options.get("fresh") is False:
++        assert "seed-private-carried-value" in rewritten
+     assert rewritten.count("memref.generic_atomic_rmw") == 1
+     assert rewritten.count("cf.assert") == 1
+     assert rewritten.count("scf.execute_region") == 1
+@@ -174,7 +176,7 @@ def nested_source(*, private=True, fresh=True, no_inline=True, extra=False, opaq
+     (
+         ({}, 1),
+         ({"private": False}, 0),
+-        ({"fresh": False}, 0),
++        ({"fresh": False}, 2),
+         ({"no_inline": False}, 0),
+         ({"extra": True}, 0),
+         ({"opaque": True}, 0),
+@@ -184,6 +186,8 @@ def nested_source(*, private=True, fresh=True, no_inline=True, extra=False, opaq
+ def test_nested_snapshots_close_views_tensor_reads_guards_and_effects(tmp_path, options, changed):
+     report, rewritten = rewrite(tmp_path, nested_source(**options), atomic_support=True)
+     assert f"OK loop_tensor_destinations {changed}" in report
++    if options.get("fresh") is False:
++        assert "seed-private-carried-value" in rewritten
+     assert rewritten.count("memref.generic_atomic_rmw") == 1
+     assert rewritten.count("cf.assert") == 1
+     assert rewritten.count("scf.execute_region") == 2
+diff --git a/tests/ir/test_loop_tensor_destinations.py b/tests/ir/test_loop_tensor_destinations.py
+index 86f1376..66a9664 100644
+--- a/tests/ir/test_loop_tensor_destinations.py
++++ b/tests/ir/test_loop_tensor_destinations.py
+@@ -5,8 +5,8 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.loop_tensor_destinations import FEATURE, MARKER, PRELUDE, bind_runner, edit_pipeline
+-from merlin.llvmlower.toolchain import available, compiler_python
++from merlin.compiler.lower.options.loop_tensor_destinations import FEATURE, MARKER, PRELUDE, bind_runner, edit_pipeline
++from merlin.compiler.lower.model.toolchain import available, compiler_python
+ 
+ 
+ def source(*, shape="4", init_read=False, opaque=False, later_use=False, reverse=False):
+@@ -49,7 +49,7 @@ def source(*, shape="4", init_read=False, opaque=False, later_use=False, reverse
+ 
+ 
+ def rewrite(tmp_path, text, *, atomic_support=False):
+-    from merlin.llvmlower.atomic_compare_exchange import SUPPORT
++    from merlin.compiler.lower.options.atomic_compare_exchange import SUPPORT
+ 
+     original, output, script = (tmp_path / name for name in ("original.mlir", "rewritten.mlir", "rewrite.py"))
+     original.write_text(text)
+@@ -1085,10 +1085,10 @@ def test_explicit_feature_places_rewrite_after_fusion_before_bufferization():
+         bind_runner("pass\n", selected=True)
+     with pytest.raises(ValueError, match="one unmodified bufferization seam"):
+         edit_pipeline([*passes, passes[2]])
+-    from merlin.llvmlower.impr_features import known
++    from merlin.compiler.optimizations.registry import known
+ 
+     assert FEATURE in known()
+-    from merlin.llvmlower.pipeline import _upstream_pipeline
++    from merlin.compiler.lower.native.pipeline import _upstream_pipeline
+ 
+     assert MARKER in _upstream_pipeline(frozenset({FEATURE}))
+ 
+diff --git a/tests/ir/test_owned_bfloat_results.py b/tests/ir/test_owned_bfloat_results.py
+index 5e0af53..8008057 100644
+--- a/tests/ir/test_owned_bfloat_results.py
++++ b/tests/ir/test_owned_bfloat_results.py
+@@ -3,8 +3,8 @@
+ import numpy as np
+ import pytest
+ 
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ 
+ @pytest.mark.skipif(not toolchain.available(), reason="existing native compiler required")
+diff --git a/tests/ir/test_owned_buffer_loop_check.py b/tests/ir/test_owned_buffer_loop_check.py
+index abb6474..e9c448c 100644
+--- a/tests/ir/test_owned_buffer_loop_check.py
++++ b/tests/ir/test_owned_buffer_loop_check.py
+@@ -2,8 +2,8 @@
+ 
+ import pytest
+ 
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.pipeline import dealloc_placement_violations
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.native.pipeline import dealloc_placement_violations
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+diff --git a/tests/ir/test_owned_result_c.py b/tests/ir/test_owned_result_c.py
+index c7c8a05..ba4ffc2 100644
+--- a/tests/ir/test_owned_result_c.py
++++ b/tests/ir/test_owned_result_c.py
+@@ -8,10 +8,10 @@ import pytest
+ from test_owned_result_execution import COMPACT
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_abi import ScalarSlot, TensorSlot, bridge
+-from merlin.llvmlower.owned_result_program import load, save
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_abi import ScalarSlot, TensorSlot, bridge
++from merlin.compiler.lower.options.owned_result_program import load, save
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+diff --git a/tests/ir/test_owned_result_driver.py b/tests/ir/test_owned_result_driver.py
+index 7f9a0d1..a7ee710 100644
+--- a/tests/ir/test_owned_result_driver.py
++++ b/tests/ir/test_owned_result_driver.py
+@@ -9,12 +9,12 @@ import pytest
+ from owned_result_fixture import COMPACT
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.frontends.execution_result_signature import MODE, select_signature
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_driver import generate, verify
+-from merlin.llvmlower.owned_result_lowering import lower_owned_results
+-from merlin.llvmlower.target_data_layout import of
++from merlin.compiler.frontend.intake.execution_result_signature import MODE, select_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_driver import generate, verify
++from merlin.compiler.lower.options.owned_result_lowering import lower_owned_results
++from merlin.compiler.lower.model.target_data_layout import of
+ from merlin.runtime.owned_result_readback import decode
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+diff --git a/tests/ir/test_owned_result_execution.py b/tests/ir/test_owned_result_execution.py
+index 4885aa1..6c8195d 100644
+--- a/tests/ir/test_owned_result_execution.py
++++ b/tests/ir/test_owned_result_execution.py
+@@ -9,10 +9,10 @@ import numpy as np
+ import pytest
+ from owned_result_fixture import COMPACT, RESIZE
+ 
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.llvmlower.owned_result_abi import TensorSlot, pipeline, prepare
+-from merlin.llvmlower.owned_results import _view, compile_owned_results
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.compiler.lower.options.owned_result_abi import TensorSlot, pipeline, prepare
++from merlin.compiler.lower.options.owned_results import _view, compile_owned_results
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+@@ -81,7 +81,7 @@ def test_mixed_result_ranks_and_zero_argument_entry(tmp_path):
+ 
+ 
+ def test_source_location_and_provenance_survive_result_transport(tmp_path):
+-    from merlin.frontends.linalg_mlir import parse_mlir_text
++    from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+ 
+     source = COMPACT.replace(
+         "%empty=tensor.empty(%n):tensor<?xi32>",
+@@ -120,23 +120,7 @@ def allocation_program(tmp_path_factory):
+ )
+ def test_allocation_products_refuse_before_native_byte_arithmetic(allocation_program, tmp_path, size, message):
+     driver = tmp_path / "size.py"
+-    driver.write_text("""
+-import ctypes,resource,sys
+-from merlin.llvmlower.abi import make_descriptor
+-resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+-lib=ctypes.CDLL(sys.argv[1])
+-libc=ctypes.CDLL(None)
+-libc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]
+-libc.setbuf(ctypes.c_void_p.in_dll(libc,"stdout"),None)
+-lib.merlin_owned_results_begin.argtypes=[ctypes.c_size_t,ctypes.c_size_t]
+-assert lib.merlin_owned_results_begin(64<<20,4096)
+-n=ctypes.c_int64(int(sys.argv[2]))
+-result=make_descriptor(1)()
+-args=(ctypes.c_void_p*1)(ctypes.addressof(n))
+-outs=(ctypes.c_void_p*1)(ctypes.addressof(result))
+-lib.merlin_owned_result_invoke(args,outs)
+-raise AssertionError('invalid allocation product was executed')
+-""")
++    driver.write_text('\nimport ctypes,resource,sys\nfrom merlin.compiler.lower.model.oracle import make_descriptor\nresource.setrlimit(resource.RLIMIT_CORE,(0,0))\nlib=ctypes.CDLL(sys.argv[1])\nlibc=ctypes.CDLL(None)\nlibc.setbuf.argtypes=[ctypes.c_void_p,ctypes.c_void_p]\nlibc.setbuf(ctypes.c_void_p.in_dll(libc,"stdout"),None)\nlib.merlin_owned_results_begin.argtypes=[ctypes.c_size_t,ctypes.c_size_t]\nassert lib.merlin_owned_results_begin(64<<20,4096)\nn=ctypes.c_int64(int(sys.argv[2]))\nresult=make_descriptor(1)()\nargs=(ctypes.c_void_p*1)(ctypes.addressof(n))\nouts=(ctypes.c_void_p*1)(ctypes.addressof(result))\nlib.merlin_owned_result_invoke(args,outs)\nraise AssertionError(\'invalid allocation product was executed\')\n')
+     done = subprocess.run(
+         [sys.executable, str(driver), str(allocation_program.library), str(size)],
+         capture_output=True,
+@@ -208,17 +192,7 @@ lib=ctypes.CDLL(sys.argv[1])
+ lib.merlin_owned_results_begin.argtypes=[ctypes.c_size_t,ctypes.c_size_t]
+ assert lib.merlin_owned_results_begin(1,1)
+ """
+-        + """
+-from merlin.llvmlower.abi import descriptor, make_descriptor
+-import numpy as np
+-x=np.array([1],dtype=np.int32)
+-d=descriptor(x.ctypes.data,x.shape)
+-results=[make_descriptor(1)() for _ in range(3)]
+-args=(ctypes.c_void_p*1)(ctypes.addressof(d))
+-outs=(ctypes.c_void_p*3)(*(ctypes.addressof(r) for r in results))
+-lib.merlin_owned_result_invoke(args,outs)
+-raise AssertionError('allocation budget was bypassed')
+-"""
++        + "\nfrom merlin.compiler.lower.model.oracle import descriptor, make_descriptor\nimport numpy as np\nx=np.array([1],dtype=np.int32)\nd=descriptor(x.ctypes.data,x.shape)\nresults=[make_descriptor(1)() for _ in range(3)]\nargs=(ctypes.c_void_p*1)(ctypes.addressof(d))\nouts=(ctypes.c_void_p*3)(*(ctypes.addressof(r) for r in results))\nlib.merlin_owned_result_invoke(args,outs)\nraise AssertionError('allocation budget was bypassed')\n"
+     )
+     result = subprocess.run(
+         [sys.executable, str(driver), str(compact.library)],
+@@ -235,7 +209,7 @@ raise AssertionError('allocation budget was bypassed')
+ def test_invalid_executed_descriptors_refuse_before_payload_reads(mutation):
+     import ctypes
+ 
+-    from merlin.llvmlower.abi import descriptor
++    from merlin.compiler.lower.model.oracle import descriptor
+ 
+     data = (ctypes.c_int32 * 4)(1, 2, 3, 4)
+     base = ctypes.addressof(data)
+@@ -259,7 +233,7 @@ def test_invalid_executed_descriptors_refuse_before_payload_reads(mutation):
+ def test_signed_and_broadcast_strides_use_the_complete_owned_footprint():
+     import ctypes
+ 
+-    from merlin.llvmlower.abi import descriptor
++    from merlin.compiler.lower.model.oracle import descriptor
+ 
+     data = (ctypes.c_int32 * 4)(1, 2, 3, 4)
+     base = ctypes.addressof(data)
+diff --git a/tests/ir/test_owned_result_lowering.py b/tests/ir/test_owned_result_lowering.py
+index cda44e2..7075999 100644
+--- a/tests/ir/test_owned_result_lowering.py
++++ b/tests/ir/test_owned_result_lowering.py
+@@ -6,9 +6,9 @@ import pytest
+ from test_owned_result_execution import COMPACT, RESIZE
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_lowering import lower_owned_results
+-from merlin.llvmlower.target_data_layout import of
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_lowering import lower_owned_results
++from merlin.compiler.lower.model.target_data_layout import of
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+@@ -65,8 +65,8 @@ def test_separate_lowering_proves_zero_trip_returned_generations(tmp_path):
+ 
+ 
+ def test_actual_cross_compiler_consumes_observed_returned_descriptor_abi(tmp_path):
+-    from merlin.runtime.backends import spike
+-    from merlin.runtime.backends.host_compiler_policy import selected_model_compiler_plan
++    from merlin.runtime.backends.baremetal import spike_launcher as spike
++    from merlin.runtime.backends.baremetal.model_build import selected_model_compiler_plan
+ 
+     try:
+         gcc = spike.gcc_path()
+diff --git a/tests/ir/test_owned_result_program.py b/tests/ir/test_owned_result_program.py
+index ce659a6..ff19112 100644
+--- a/tests/ir/test_owned_result_program.py
++++ b/tests/ir/test_owned_result_program.py
+@@ -6,9 +6,9 @@ import numpy as np
+ import pytest
+ from test_owned_result_execution import COMPACT
+ 
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_program import load, save
+-from merlin.llvmlower.owned_results import compile_owned_results
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_program import load, save
++from merlin.compiler.lower.options.owned_results import compile_owned_results
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+@@ -24,10 +24,10 @@ def program(tmp_path):
+ 
+ def test_loaded_program_executes_changed_data_without_recompilation(program, monkeypatch):
+     original, record = program
+-    import merlin.llvmlower.pipeline
++    import merlin.compiler.lower.native.pipeline
+ 
+     monkeypatch.setattr(
+-        merlin.llvmlower.pipeline, "lower_to_llvm_ir", lambda *a, **k: pytest.fail("runtime called compiler")
++        merlin.compiler.lower.native.pipeline, "lower_to_llvm_ir", lambda *a, **k: pytest.fail("runtime called compiler")
+     )
+     restored = load(record)
+     for values in ([], [0], [-1, 7, 3, 0], [9, -2, 0, 4, 5]):
+diff --git a/tests/ir/test_promoted_loop_ownership.py b/tests/ir/test_promoted_loop_ownership.py
+index d01bebb..165af56 100644
+--- a/tests/ir/test_promoted_loop_ownership.py
++++ b/tests/ir/test_promoted_loop_ownership.py
+@@ -3,8 +3,8 @@
+ import pytest
+ from test_owned_buffer_loop_check import COPY, FINAL_COPY, FINAL_FREE, GUARD, loop_source
+ 
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.pipeline import dealloc_placement_violations
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.native.pipeline import dealloc_placement_violations
+ 
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+diff --git a/tests/ir/test_qinner_binding.py b/tests/ir/test_qinner_binding.py
+index a6c731c..fb30b44 100644
+--- a/tests/ir/test_qinner_binding.py
++++ b/tests/ir/test_qinner_binding.py
+@@ -11,9 +11,9 @@ from __future__ import annotations
+ import numpy as np
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower import qinner
+-from merlin.xdsl_dialects._common import text as to_text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.c import qinner
++from merlin.compiler.dialects.xdsl_context import text as to_text
+ 
+ 
+ def _module(*, tag: bool, shape_only: bool = False) -> str:
+diff --git a/tests/ir/test_scalar_diagnostics.py b/tests/ir/test_scalar_diagnostics.py
+index 1e149f8..3d3b76d 100644
+--- a/tests/ir/test_scalar_diagnostics.py
++++ b/tests/ir/test_scalar_diagnostics.py
+@@ -5,11 +5,11 @@ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower.scalar_diagnostics import MARKER,SUPPORT,bind_runner,edit_pipeline
+-from merlin.llvmlower.length_aware_diagnostics import MARKER as ASSERT_MARKER
+-from merlin.llvmlower.toolchain import available,compiler_python
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.lower.options.scalar_diagnostics import MARKER, SUPPORT, bind_runner, edit_pipeline
++from merlin.compiler.lower.options.length_aware_diagnostics import MARKER as ASSERT_MARKER
++from merlin.compiler.lower.model.toolchain import available, compiler_python
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ @pytest.mark.parametrize("source",[
+diff --git a/tests/ir/test_sliced_elementwise_output.py b/tests/ir/test_sliced_elementwise_output.py
+index 033e67a..0a11a13 100644
+--- a/tests/ir/test_sliced_elementwise_output.py
++++ b/tests/ir/test_sliced_elementwise_output.py
+@@ -2,12 +2,14 @@
+ 
+ from __future__ import annotations
+ 
++from merlin.compiler.lower.native import policy as _native_policy, runners as _native_runners, stages as _native_stages
++
+ import subprocess
+ 
+ import pytest
+ 
+-from merlin.llvmlower import pipeline as P
+-from merlin.llvmlower import toolchain
++from merlin.compiler.lower.native import pipeline as P
++from merlin.compiler.lower.model import toolchain
+ 
+ M2M = pytest.mark.skipif(not toolchain.m2m_python().is_file(), reason="model2MLIR venv unavailable")
+ 
+@@ -39,7 +41,7 @@ def _rewrite(tmp_path, source: str) -> str:
+     src.write_text(source, encoding="utf-8")
+     script.write_text(
+         "import sys\nfrom torch_mlir import ir\n"
+-        + P.SLICED_OUTPUT_PRELUDE
++        + _native_stages.SLICED_OUTPUT_PRELUDE
+         + "ctx = ir.Context()\n"
+         + "with ctx:\n"
+         + "  module = ir.Module.parse(open(sys.argv[1]).read(), ctx)\n"
+@@ -91,10 +93,10 @@ def test_generalized_scalar_fill_keeps_its_full_output(tmp_path):
+ 
+ def test_switch_is_explicit_and_present_in_every_runner(monkeypatch):
+     monkeypatch.delenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", raising=False)
+-    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in P._upstream_pipeline()
++    assert _native_policy.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in _native_policy._upstream_pipeline()
+     monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "0")
+-    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER not in P._upstream_pipeline()
++    assert _native_policy.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER not in _native_policy._upstream_pipeline()
+     monkeypatch.setenv("MERLIN_SLICE_UNUSED_ELEMENTWISE_OUTPUT", "1")
+-    assert P.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in P._dealloc_passes()
+-    assert P.SLICED_OUTPUT_RUNNER in P._RUNNER_SRC
+-    assert P.SLICED_OUTPUT_RUNNER in P._activation_poly_runner()
++    assert _native_policy.SLICE_UNUSED_ELEMENTWISE_OUTPUT_MARKER in _native_policy._dealloc_passes()
++    assert _native_stages.SLICED_OUTPUT_RUNNER in _native_runners._RUNNER_SRC
++    assert _native_stages.SLICED_OUTPUT_RUNNER in _native_runners._activation_poly_runner()
+diff --git a/tests/ir/test_standard_arith.py b/tests/ir/test_standard_arith.py
+index 5c740ab..78d8581 100644
+--- a/tests/ir/test_standard_arith.py
++++ b/tests/ir/test_standard_arith.py
+@@ -5,9 +5,9 @@ from xdsl.dialects import arith
+ from xdsl.parser import Parser
+ from xdsl.utils.exceptions import VerifyException
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import make_context, text
+-from merlin.xdsl_dialects.standard_arith import IndexCastUIOp
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import make_context, text
++from merlin.compiler.dialects.standard_arith import IndexCastUIOp
+ 
+ 
+ @pytest.mark.parametrize("flag", ["", "nneg"])
+diff --git a/tests/ir/test_standard_bufferization.py b/tests/ir/test_standard_bufferization.py
+index fb18d66..1684051 100644
+--- a/tests/ir/test_standard_bufferization.py
++++ b/tests/ir/test_standard_bufferization.py
+@@ -3,8 +3,8 @@
+ import pytest
+ from xdsl.utils.exceptions import VerifyException
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def program(source="tensor<4xf32>", dest="memref<4xf32, strided<[2], offset: ?>>", *, attributes="writable", result=None):
+diff --git a/tests/ir/test_standard_memref.py b/tests/ir/test_standard_memref.py
+index c62714e..aee489b 100644
+--- a/tests/ir/test_standard_memref.py
++++ b/tests/ir/test_standard_memref.py
+@@ -3,8 +3,8 @@
+ import pytest
+ from xdsl.utils.exceptions import VerifyException
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def program(source="memref<*xf32>", result="memref<4xf32, strided<[1], offset: ?>>", *, size=4, stride=1):
+diff --git a/tests/ir/test_standard_parallel_tensor.py b/tests/ir/test_standard_parallel_tensor.py
+index b9baff2..c7d4e42 100644
+--- a/tests/ir/test_standard_parallel_tensor.py
++++ b/tests/ir/test_standard_parallel_tensor.py
+@@ -1,7 +1,7 @@
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.xdsl_dialects._common import text
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.dialects.xdsl_context import text
+ 
+ 
+ def source(step=1):
+diff --git a/tests/runtime/test_c_runtime_constants.py b/tests/runtime/test_c_runtime_constants.py
+index 6dac8c8..76ab154 100644
+--- a/tests/runtime/test_c_runtime_constants.py
++++ b/tests/runtime/test_c_runtime_constants.py
+@@ -7,7 +7,7 @@ import struct
+ import numpy as np
+ import pytest
+ 
+-from merlin.llvmlower import c_runtime
++from merlin.compiler.lower.c import runtime as c_runtime
+ 
+ 
+ @pytest.mark.parametrize("storage", ["streamed", "materialized"])
+diff --git a/tests/runtime/test_c_runtime_fp8_storage.py b/tests/runtime/test_c_runtime_fp8_storage.py
+index 94fde7b..1463c7e 100644
+--- a/tests/runtime/test_c_runtime_fp8_storage.py
++++ b/tests/runtime/test_c_runtime_fp8_storage.py
+@@ -6,7 +6,7 @@ import subprocess
+ import numpy as np
+ import pytest
+ 
+-from merlin.llvmlower.c_runtime import C_OF, DT_BYTES, FP8_DTYPES, _embed_array, _storage_bytes
++from merlin.compiler.lower.c.runtime import C_OF, DT_BYTES, FP8_DTYPES, _embed_array, _storage_bytes
+ 
+ 
+ @pytest.mark.parametrize("dtype", FP8_DTYPES)
+@@ -35,6 +35,6 @@ def test_all_fp8_words_survive_generated_c_storage(tmp_path, dtype):
+ def test_fp8_value_footprints_are_one_byte_per_element(dtype):
+     pytest.importorskip("xdsl")
+     from xdsl.dialects.builtin import TensorType
+-    from merlin.common.mlir_query import value_bytes
+-    from merlin.xdsl_dialects.fp8 import _FP8_BY_NAME
++    from merlin.compiler.ir.mlir_query import value_bytes
++    from merlin.compiler.dialects.fp8 import _FP8_BY_NAME
+     assert value_bytes(TensorType(_FP8_BY_NAME[dtype], [2, 7])) == 14
+diff --git a/tests/runtime/test_capture_constant_table.py b/tests/runtime/test_capture_constant_table.py
+index f4f2a4a..314ea3d 100644
+--- a/tests/runtime/test_capture_constant_table.py
++++ b/tests/runtime/test_capture_constant_table.py
+@@ -7,7 +7,7 @@ import struct
+ 
+ import pytest
+ 
+-from merlin.runtime.captured_constants import CaptureConstantTable, verify_capture_constant
++from merlin.runtime.engine.storage_binding import CaptureConstantTable, verify_capture_constant
+ 
+ 
+ def sha(raw):
+diff --git a/tests/runtime/test_derived_size_invocation.py b/tests/runtime/test_derived_size_invocation.py
+index 79fba84..fb55672 100644
+--- a/tests/runtime/test_derived_size_invocation.py
++++ b/tests/runtime/test_derived_size_invocation.py
+@@ -5,10 +5,10 @@ import json
+ import numpy as np
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.frontends.model_shape_facts import EXPRESSION_PROFILE, ShapeFacts
+-from merlin.frontends.shape_expressions import Program
+-from merlin.llvmlower.runtime_invocation import resolve
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.model_shape_facts import EXPRESSION_PROFILE, ShapeFacts
++from merlin.compiler.frontend.intake.shape_expressions import Program
++from merlin.compiler.lower.options.runtime_invocation import resolve
+ 
+ SOURCE = """module {func.func @forward(%x:tensor<?xi32>)->tensor<?xi32> {
+   %zero=arith.constant 0:index
+diff --git a/tests/runtime/test_effect_observation.py b/tests/runtime/test_effect_observation.py
+index 566d00e..0d77f31 100644
+--- a/tests/runtime/test_effect_observation.py
++++ b/tests/runtime/test_effect_observation.py
+@@ -9,10 +9,10 @@ import numpy as np
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower.c_runtime import generate
++from merlin.compiler.lower.c.runtime import generate
+ from merlin.runtime.effect_observation import decode
+-from merlin.runtime.out_bin import parse_binary_console_details
+-from merlin.runtime.whole_model_readback import decode_outputs, render_outputs_header
++from merlin.runtime.harness.output_decoding import parse_binary_console_details
++from merlin.runtime.harness.output_observation import decode_outputs, render_outputs_header
+ from test_whole_model_readback import _frame
+ 
+ 
+diff --git a/tests/runtime/test_fp8_formats.py b/tests/runtime/test_fp8_formats.py
+index f2c85f4..b3c0ba0 100644
+--- a/tests/runtime/test_fp8_formats.py
++++ b/tests/runtime/test_fp8_formats.py
+@@ -10,18 +10,11 @@ from __future__ import annotations
+ import numpy as np
+ import pytest
+ 
+-from merlin.runtime.fp8_formats import (
+-    canonical_float,
+-    canonical_fp8,
+-    e8m0_decode,
+-    float_format_params,
+-    fp8_to_f32,
+-    representable_values,
+-)
++from merlin.common.fp8_formats import canonical_float, canonical_fp8, e8m0_decode, float_format_params, fp8_to_f32, representable_values
+ 
+ 
+ def test_e4m3_matches_the_existing_whole_model_decoder():
+-    from merlin.runtime.dispatch_runtime import f8e4m3fn_to_f32
++    from merlin.runtime.dispatch.whole_model import f8e4m3fn_to_f32
+ 
+     allb = np.arange(256, dtype=np.uint8)
+     a = np.nan_to_num(fp8_to_f32(allb, "fp8_e4m3"), nan=1e9)
+@@ -31,7 +24,7 @@ def test_e4m3_matches_the_existing_whole_model_decoder():
+ 
+ @pytest.mark.parametrize("fmt",["bf16","fp16"])
+ def test_every_sixteen_bit_code_decodes_to_its_exact_f32_value(fmt):
+-    from merlin.runtime.fp8_formats import _decode
++    from merlin.common.fp8_formats import _decode
+     codes = np.arange(65536,dtype=np.uint32)
+     if fmt == "bf16":
+         expected = (codes << 16).view(np.float32)
+@@ -123,7 +116,7 @@ def test_e8m0_block_scale_is_power_of_two_with_nan():
+ 
+ 
+ def test_encode_is_the_exact_inverse_of_decode_for_every_code():
+-    from merlin.runtime.fp8_formats import _decode, float_to_codes, storage_bits
++    from merlin.common.fp8_formats import _decode, float_to_codes, storage_bits
+ 
+     for fmt in ("bf16", "fp16", "fp8_e4m3", "fp8_e5m2", "fp6_e3m2", "fp4_e2m1"):
+         codes = np.arange(1 << storage_bits(fmt), dtype=np.uint32)
+@@ -135,7 +128,7 @@ def test_encode_is_the_exact_inverse_of_decode_for_every_code():
+ 
+ def test_out_of_range_saturates_instead_of_becoming_inf():
+     """An operand that silently turned into inf would poison every comparison it took part in."""
+-    from merlin.runtime.fp8_formats import _decode, float_to_codes, normal_range
++    from merlin.common.fp8_formats import _decode, float_to_codes, normal_range
+ 
+     for fmt in ("bf16", "fp16", "fp8_e4m3", "fp8_e5m2"):
+         _, biggest = normal_range(fmt)
+@@ -149,7 +142,7 @@ def test_out_of_range_saturates_instead_of_becoming_inf():
+ 
+ 
+ def test_nan_and_sub_byte_are_refused_not_guessed():
+-    from merlin.runtime.fp8_formats import encode_bytes, float_to_codes
++    from merlin.common.fp8_formats import encode_bytes, float_to_codes
+ 
+     with pytest.raises(ValueError):
+         float_to_codes([float("nan")], "bf16")
+@@ -158,7 +151,7 @@ def test_nan_and_sub_byte_are_refused_not_guessed():
+ 
+ 
+ def test_encoded_bytes_are_little_endian_at_the_declared_width():
+-    from merlin.runtime.fp8_formats import encode_bytes
++    from merlin.common.fp8_formats import encode_bytes
+ 
+     assert encode_bytes([1.0], "bf16") == b"\x80\x3f"  # bf16 1.0 == 0x3F80
+     assert len(encode_bytes([0.0] * 8, "bf16")) == 16
+diff --git a/tests/runtime/test_input_observation.py b/tests/runtime/test_input_observation.py
+index 6120f55..525b3d1 100644
+--- a/tests/runtime/test_input_observation.py
++++ b/tests/runtime/test_input_observation.py
+@@ -11,10 +11,12 @@ import pytest
+ from test_whole_model_readback import _frame
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower import c_runtime
+-from merlin.runtime.input_observation import revalidate_observation, verify_observed_inputs
+-from merlin.runtime.out_bin import parse_binary_console_details
+-from merlin.runtime.whole_model_readback import ReadbackError, decode_outputs
++from merlin.compiler.lower.c import runtime as c_runtime
++from merlin.runtime.harness.output_observation import revalidate_observation, verify_observed_inputs
++from merlin.runtime.harness.output_decoding import parse_binary_console_details
++from merlin.runtime.harness.output_observation import ReadbackError, decode_outputs
++
++from merlin.runtime.backends.baremetal import model_build as _model_build
+ 
+ 
+ def bundle(root, *, state=True):
+@@ -194,7 +196,7 @@ def test_custom_stream_path_and_actual_step_zero_bytes_are_bound(tmp_path):
+ 
+ 
+ def test_whole_model_decoder_accepts_only_the_exact_selected_extra_frame_roster(tmp_path):
+-    from merlin.compile.baremetal_model import read_full_outputs
++    from merlin.verification.references.saved_model import read_full_outputs
+ 
+     capture, _output, info = generated(tmp_path)
+     record = info["readonly_input_observation"]
+@@ -211,7 +213,7 @@ def test_whole_model_decoder_accepts_only_the_exact_selected_extra_frame_roster(
+ 
+ 
+ def test_genuine_but_different_observation_cannot_replace_original_request(tmp_path):
+-    from merlin.runtime.input_observation import require_observation_selection
++    from merlin.runtime.harness.output_observation import require_observation_selection
+ 
+     capture = bundle(tmp_path / "capture")
+     info = c_runtime.generate(capture, tmp_path / "out", capture / "inputs.npz", readonly_input_indices=(0,))
+@@ -293,8 +295,8 @@ int main(void) {{
+ def test_ordinary_readback_setup_binds_manifest_to_actual_compilation_recipe(tmp_path):
+     from pathlib import Path
+ 
+-    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+-    from merlin.runtime.input_observation import setup_readback
++    from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
++    from merlin.runtime.harness.output_observation import setup_readback
+ 
+     capture, output, info = generated(tmp_path)
+     recipe = CompilationRecipe(output, producer=Path(c_runtime.__file__))
+@@ -312,10 +314,10 @@ def test_actual_builder_registers_driver_observation_before_first_compile(
+ ):
+     from pathlib import Path
+ 
+-    from merlin.llvmlower import toolchain
+-    from merlin.llvmlower.compilation_recipe import CompilationRecipe
+-    from merlin.llvmlower.source_optimization_policy import SourceOptimizationPolicy
+-    from merlin.runtime.backends import spike, spike_model
++    from merlin.compiler.lower.model import toolchain
++    from merlin.compiler.lower.model.compilation_recipe import CompilationRecipe
++    from merlin.compiler.lower.source.source_optimization_policy import SourceOptimizationPolicy
++    from merlin.runtime.backends.baremetal import spike_launcher as spike, image_link as spike_model
+ 
+     policy = SourceOptimizationPolicy(False, False, 0, (), 0) if pending_policy else None
+     tools = (toolchain.clang(), toolchain.m2m_python(), spike.gcc_path())
+@@ -348,7 +350,8 @@ def test_actual_builder_registers_driver_observation_before_first_compile(
+             assert hashlib.sha256(Path(original["path"]).read_bytes()).hexdigest() == original["sha256"]
+             assert policy.record()["maximum_added_operations"] == 0
+         policy_pin = preparation["host_compiler_policy"]
+-        assert Path(policy_pin["path"]).name == "host_compiler_policy.py"
++        from merlin.common.paths import module_source_path
++        assert Path(policy_pin["path"]).resolve() == module_source_path("merlin.runtime.backends.baremetal.model_build")
+         assert hashlib.sha256(Path(policy_pin["path"]).read_bytes()).hexdigest() == policy_pin["sha256"]
+         assert "readonly_input_observation" in preparation
+         pinned = preparation["readonly_input_observation"]
+@@ -363,7 +366,7 @@ def test_actual_builder_registers_driver_observation_before_first_compile(
+ 
+     monkeypatch.setattr(CompilationRecipe, "_run", first)
+     with pytest.raises(FirstInvocationReached):
+-        spike_model.build(
++        _model_build.build(
+             capture,
+             work,
+             backend="scalar",
+diff --git a/tests/runtime/test_input_word_sizes.py b/tests/runtime/test_input_word_sizes.py
+index ec16872..22ddb14 100644
+--- a/tests/runtime/test_input_word_sizes.py
++++ b/tests/runtime/test_input_word_sizes.py
+@@ -5,10 +5,10 @@ import json
+ import numpy as np
+ import pytest
+ 
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.frontends.model_shape_facts import WORD_PROFILE, ShapeFacts
+-from merlin.frontends.shape_expressions import Program
+-from merlin.llvmlower.runtime_invocation import resolve
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.frontend.intake.model_shape_facts import WORD_PROFILE, ShapeFacts
++from merlin.compiler.frontend.intake.shape_expressions import Program
++from merlin.compiler.lower.options.runtime_invocation import resolve
+ 
+ SOURCE = """module {func.func @forward(%count:tensor<i32>)->tensor<?xi32> {
+   %raw="tensor.extract"(%count):(tensor<i32>)->i32
+diff --git a/tests/runtime/test_out_bin.py b/tests/runtime/test_out_bin.py
+index 84b4a8e..162a7d6 100644
+--- a/tests/runtime/test_out_bin.py
++++ b/tests/runtime/test_out_bin.py
+@@ -8,7 +8,7 @@ import subprocess
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.runtime.out_bin import OutBinError, parse_binary_console, restore_onlcr_console
++from merlin.runtime.harness.output_decoding import OutBinError, parse_binary_console, restore_onlcr_console
+ 
+ 
+ def _frame(payload: bytes, *, name: str = "out") -> bytes:
+diff --git a/tests/runtime/test_owned_result_allocator.py b/tests/runtime/test_owned_result_allocator.py
+index 7f6c0b7..4b89696 100644
+--- a/tests/runtime/test_owned_result_allocator.py
++++ b/tests/runtime/test_owned_result_allocator.py
+@@ -5,7 +5,7 @@ import subprocess
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower.toolchain import clang
++from merlin.compiler.lower.model.toolchain import clang
+ 
+ 
+ @pytest.fixture(scope="module", params=["thread-local", "serial", "serial-external"])
+diff --git a/tests/runtime/test_owned_result_context.py b/tests/runtime/test_owned_result_context.py
+index c3da5f4..10e1adc 100644
+--- a/tests/runtime/test_owned_result_context.py
++++ b/tests/runtime/test_owned_result_context.py
+@@ -5,7 +5,7 @@ import subprocess
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower import toolchain
++from merlin.compiler.lower.model import toolchain
+ 
+ 
+ @pytest.mark.parametrize("macro", ["MERLIN_OWNED_RESULTS_SERIAL_CONTEXT", "MERLIN_OWNED_RESULTS_EXTERNAL_FAILURE"])
+@@ -21,8 +21,8 @@ def test_context_and_failure_selections_cannot_be_implicitly_disabled(tmp_path,
+ 
+ 
+ def test_actual_cross_runtime_uses_serial_context_and_explicit_failure_hook(tmp_path):
+-    from merlin.runtime.backends import spike
+-    from merlin.runtime.backends.host_compiler_policy import selected_model_compiler_plan
++    from merlin.runtime.backends.baremetal import spike_launcher as spike
++    from merlin.runtime.backends.baremetal.model_build import selected_model_compiler_plan
+ 
+     try:
+         gcc = spike.gcc_path()
+diff --git a/tests/runtime/test_owned_result_driver_control.py b/tests/runtime/test_owned_result_driver_control.py
+index 3d906a6..8e082fa 100644
+--- a/tests/runtime/test_owned_result_driver_control.py
++++ b/tests/runtime/test_owned_result_driver_control.py
+@@ -5,7 +5,7 @@ import subprocess
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower.toolchain import clang
++from merlin.compiler.lower.model.toolchain import clang
+ 
+ DRIVER = r'''
+ #include "owned_result_driver.h"
+diff --git a/tests/runtime/test_owned_result_image.py b/tests/runtime/test_owned_result_image.py
+index 05156db..f9d683a 100644
+--- a/tests/runtime/test_owned_result_image.py
++++ b/tests/runtime/test_owned_result_image.py
+@@ -14,10 +14,12 @@ from owned_result_fixture import COMPACT
+ 
+ from merlin.common.digest import sha256_file
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_lowering import lower_owned_results
+-from merlin.runtime.backends import spike, spike_model
+-from merlin.runtime.backends.host_compiler_policy import selected_model_compiler_plan
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_lowering import lower_owned_results
++from merlin.runtime.backends.baremetal import spike_launcher as spike, image_link as spike_model
++from merlin.runtime.backends.baremetal.model_build import selected_model_compiler_plan
++
++from merlin.runtime.backends.baremetal import model_build as _model_build
+ 
+ DRIVER = r'''
+ #include "htif.h"
+@@ -74,8 +76,8 @@ def test_serial_owned_result_runtime_executes_on_actual_image(tmp_path, resource
+         COMPACT, workdir=tmp_path / "lower", data_layout=observed["data_layout"],
+         index_bits=observed["index_bits"], timeout=30,
+     )
+-    harness, abi = spike.harness_dir(), runtime_dir() / "abi"
+-    layout = spike_model._layout(4 << 20, 0, dram_bytes=64 << 20, code_reserve=2 << 20)
++    harness, abi = (runtime_dir() / "baremetal/spike"), runtime_dir() / "abi"
++    layout = _model_build._layout(4 << 20, 0, dram_bytes=64 << 20, code_reserve=2 << 20)
+     driver = tmp_path / "driver.c"
+     driver.write_text(DRIVER)
+     flags = plan["gcc_cflags"]
+diff --git a/tests/runtime/test_owned_result_model.py b/tests/runtime/test_owned_result_model.py
+index b33226d..21b7616 100644
+--- a/tests/runtime/test_owned_result_model.py
++++ b/tests/runtime/test_owned_result_model.py
+@@ -10,14 +10,16 @@ import pytest
+ from owned_result_fixture import COMPACT
+ 
+ from merlin.common.digest import sha256_file
+-from merlin.frontends.execution_result_signature import MODE, select_signature
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.owned_result_driver import load_arguments
+-from merlin.runtime.backends import spike, spike_model
++from merlin.compiler.frontend.intake.execution_result_signature import MODE, select_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.options.owned_result_driver import load_arguments
++from merlin.runtime.backends.baremetal import spike_launcher as spike, image_link as spike_model
+ from merlin.runtime.backends.owned_result_model import build_if_selected
+ from merlin.runtime.owned_result_readback import PROFILE, decode
+ 
++from merlin.runtime.backends.baremetal import model_build as _model_build
++
+ 
+ def signature(source=COMPACT):
+     return select_signature(parse_mlir_text(source), {
+@@ -42,11 +44,11 @@ def test_production_model_builder_emits_observed_result_shapes_on_actual_image(t
+         pytest.skip("existing native/cross/Spike tools required")
+     x = np.asarray(words, np.int32)
+     model, contract = setup(tmp_path, x)
+-    report = spike_model.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
++    report = _model_build.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
+         runtime_signature=tmp_path / "signature.json", backend="scalar", arena_mb=4,
+         dram_bytes=64 << 20, code_reserve=2 << 20, full_readback=True, readonly_input_indices=(0,))
+     assert report["readback_profile"] == PROFILE and report["allocation_context"] == "serial-nonconcurrent"
+-    assert spike_model.declared_harts(report["elf"]) == 1
++    assert _model_build.declared_harts(report["elf"]) == 1
+     process = spike_model.run_process(report["elf"], isa=spike_model.declared_isa(report["elf"]), timeout=30)
+     (tmp_path / "stdout.bin").write_bytes(process.stdout)
+     (tmp_path / "stderr.bin").write_bytes(process.stderr)
+@@ -73,7 +75,7 @@ def test_selected_unimplemented_options_refuse_before_building(tmp_path, option,
+     model, _contract = setup(tmp_path, np.arange(3, dtype=np.int32))
+     options = {"full_readback": True, "readonly_input_indices": (0,), option: value}
+     with pytest.raises(ValueError, match="execution-owned target build"):
+-        spike_model.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
++        _model_build.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
+                           runtime_signature=tmp_path / "signature.json", **options)
+     assert not (tmp_path / "image").exists()
+ 
+@@ -108,7 +110,7 @@ def test_runtime_archives_are_bounded_before_loading_payloads(tmp_path, damage):
+ def test_baremetal_main_requires_builder_supplied_input_placement(tmp_path):
+     from merlin.common.paths import runtime_dir
+     runtime, abi = runtime_dir() / "c", runtime_dir() / "abi"
+-    harness = spike.harness_dir()
++    harness = (runtime_dir() / "baremetal/spike")
+     done = subprocess.run([str(toolchain.clang()), "-fsyntax-only", "-I", str(runtime), "-I", str(abi),
+                            "-I", str(harness), str(harness / "owned_result_main.c")],
+                           capture_output=True, text=True, check=False, timeout=10)
+@@ -132,7 +134,7 @@ def test_zero_input_target_program_and_actual_arena_exhaustion(tmp_path, exhaust
+     contract = select_signature(parse_mlir_text(source), {"entry": "forward", "inputs": []}, MODE)
+     (tmp_path / "signature.json").write_text(json.dumps(contract))
+     np.savez(tmp_path / "inputs.npz")
+-    report = spike_model.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
++    report = _model_build.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
+         runtime_signature=tmp_path / "signature.json", backend="scalar", arena_mb=1,
+         dram_bytes=64 << 20, code_reserve=2 << 20, full_readback=True)
+     process = spike_model.run_process(report["elf"], isa=spike_model.declared_isa(report["elf"]), timeout=30)
+diff --git a/tests/runtime/test_owned_result_readback.py b/tests/runtime/test_owned_result_readback.py
+index e623e84..23dfa48 100644
+--- a/tests/runtime/test_owned_result_readback.py
++++ b/tests/runtime/test_owned_result_readback.py
+@@ -6,9 +6,9 @@ import numpy as np
+ import pytest
+ from owned_result_fixture import COMPACT
+ 
+-from merlin.frontends.execution_result_signature import MODE, select_signature
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.runtime.out_bin import parse_binary_console_details, parse_binary_console_payloads
++from merlin.compiler.frontend.intake.execution_result_signature import MODE, select_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.runtime.harness.output_decoding import parse_binary_console_details, parse_binary_console_payloads
+ from merlin.runtime.owned_result_readback import decode
+ 
+ 
+diff --git a/tests/runtime/test_owned_result_views.py b/tests/runtime/test_owned_result_views.py
+index ed53507..8019db6 100644
+--- a/tests/runtime/test_owned_result_views.py
++++ b/tests/runtime/test_owned_result_views.py
+@@ -5,7 +5,7 @@ import subprocess
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower.toolchain import clang
++from merlin.compiler.lower.model.toolchain import clang
+ 
+ DRIVER = r'''
+ #include "owned_result_views.h"
+diff --git a/tests/runtime/test_resizing_owned_results.py b/tests/runtime/test_resizing_owned_results.py
+index 60ac1c7..0a282f1 100644
+--- a/tests/runtime/test_resizing_owned_results.py
++++ b/tests/runtime/test_resizing_owned_results.py
+@@ -9,16 +9,18 @@ from owned_result_fixture import MULTI_RESIZE, RESIZE
+ 
+ from merlin.common.digest import sha256_file
+ from merlin.common.paths import runtime_dir
+-from merlin.frontends.execution_result_signature import MODE, select_signature
+-from merlin.frontends.linalg_mlir import parse_mlir_text
+-from merlin.llvmlower import toolchain
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.llvmlower.owned_result_driver import generate
+-from merlin.llvmlower.owned_result_program import load, save
+-from merlin.llvmlower.owned_results import compile_owned_results
+-from merlin.runtime.backends import spike, spike_model
++from merlin.compiler.frontend.intake.execution_result_signature import MODE, select_signature
++from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
++from merlin.compiler.lower.model import toolchain
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.compiler.lower.options.owned_result_driver import generate
++from merlin.compiler.lower.options.owned_result_program import load, save
++from merlin.compiler.lower.options.owned_results import compile_owned_results
++from merlin.runtime.backends.baremetal import spike_launcher as spike, image_link as spike_model
+ from merlin.runtime.owned_result_readback import decode
+ 
++from merlin.runtime.backends.baremetal import model_build as _model_build
++
+ pytestmark = pytest.mark.skipif(not toolchain.available(), reason="native MLIR unavailable")
+ 
+ 
+@@ -39,8 +41,8 @@ def program(tmp_path_factory):
+ 
+ def test_saved_resizing_program_replays_independent_shapes_without_compilation(program, monkeypatch):
+     root, original, saved = program
+-    import merlin.llvmlower.pipeline
+-    monkeypatch.setattr(merlin.llvmlower.pipeline, "lower_to_llvm_ir",
++    import merlin.compiler.lower.native.pipeline
++    monkeypatch.setattr(merlin.compiler.lower.native.pipeline, "lower_to_llvm_ir",
+                         lambda *a, **k: pytest.fail("compiled during replay"))
+     restored = load(saved)
+     record = json.loads(saved.read_text())
+@@ -115,7 +117,7 @@ def test_runtime_resizing_reaches_actual_target_images_with_complete_readback(tm
+     x = np.arange(capacity, dtype=np.int32) * -13
+     arrays = [x, np.asarray(steps, np.int32)]
+     np.savez(tmp_path / "inputs.npz", **{f"in{i}": value for i, value in enumerate(arrays)})
+-    report = spike_model.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
++    report = _model_build.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
+         runtime_signature=tmp_path / "signature.json", backend="scalar", arena_mb=4,
+         features=frozenset({"reuse_loop_tensor_destinations"}), dram_bytes=64 << 20,
+         code_reserve=2 << 20, full_readback=True, readonly_input_indices=(0, 1))
+@@ -155,7 +157,7 @@ def test_multiple_resizing_target_results_keep_f64_storage_words(tmp_path, steps
+                     0x3FF0000000000000, 1], np.uint64).view(np.float64)
+     arrays = [x, y, np.asarray(steps, np.int32)]
+     np.savez(tmp_path / "inputs.npz", **{f"in{i}": value for i, value in enumerate(arrays)})
+-    report = spike_model.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
++    report = _model_build.build(model, tmp_path / "image", inputs_npz=tmp_path / "inputs.npz",
+         runtime_signature=tmp_path / "signature.json", backend="scalar", arena_mb=4,
+         dram_bytes=64 << 20, code_reserve=2 << 20, full_readback=True, readonly_input_indices=(0, 1, 2))
+     process = spike_model.run_process(report["elf"], isa=spike_model.declared_isa(report["elf"]), timeout=30)
+diff --git a/tests/runtime/test_runtime_input_axes.py b/tests/runtime/test_runtime_input_axes.py
+index 6e77b21..12206f6 100644
+--- a/tests/runtime/test_runtime_input_axes.py
++++ b/tests/runtime/test_runtime_input_axes.py
+@@ -6,8 +6,8 @@ import struct
+ import numpy as np
+ import pytest
+ 
+-from merlin.llvmlower.c_runtime import generate
+-from merlin.llvmlower.runtime_invocation import resolve
++from merlin.compiler.lower.c.runtime import generate
++from merlin.compiler.lower.options.runtime_invocation import resolve
+ 
+ 
+ def example(root, length=7, kind="param"):
+diff --git a/tests/runtime/test_runtime_invocation.py b/tests/runtime/test_runtime_invocation.py
+index a2663a1..33ec27d 100644
+--- a/tests/runtime/test_runtime_invocation.py
++++ b/tests/runtime/test_runtime_invocation.py
+@@ -10,11 +10,11 @@ import numpy as np
+ import pytest
+ 
+ from merlin.common.paths import runtime_dir
+-from merlin.llvmlower.c_runtime import generate
+-from merlin.llvmlower.runtime_invocation import resolve
+-from merlin.llvmlower.abi import ScalarArg
+-from merlin.runtime.input_observation import revalidate_observation, verify_observed_inputs
+-from merlin.runtime.out_bin import parse_binary_console_details
++from merlin.compiler.lower.c.runtime import generate
++from merlin.compiler.lower.options.runtime_invocation import resolve
++from merlin.compiler.lower.model.oracle import ScalarArg
++from merlin.runtime.harness.output_observation import revalidate_observation, verify_observed_inputs
++from merlin.runtime.harness.output_decoding import parse_binary_console_details
+ from test_whole_model_readback import _frame
+ 
+ 
+diff --git a/tests/runtime/test_whole_model_readback.py b/tests/runtime/test_whole_model_readback.py
+index d8bc6e8..c3c59ab 100644
+--- a/tests/runtime/test_whole_model_readback.py
++++ b/tests/runtime/test_whole_model_readback.py
+@@ -8,8 +8,8 @@ import subprocess
+ import numpy as np
+ import pytest
+ 
+-from merlin.runtime import out_bin
+-from merlin.runtime import whole_model_readback as W
++from merlin.runtime.harness import output_decoding as out_bin
++from merlin.runtime.harness import output_observation as W
+ 
+ 
+ def _frame(name: str, array: np.ndarray, width: int, signed: bool) -> bytes:

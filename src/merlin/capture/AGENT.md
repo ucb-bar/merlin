@@ -1,4 +1,4 @@
-# AGENT.md — src/merlin/capture
+# src/merlin/capture
 
 Owns shared capture bundle access, deterministic rewrites, and workload identities.
 No dependency on experiment orchestration, baseline frameworks, or DSE analysis.
@@ -33,3 +33,19 @@ The explicit original-program selection adapter reopens a pre-dispatch graph pin
 roster and joins fresh emitted trace, MLIR and complete session membership. It
 never extracts an original graph from post-capture metadata. These selections
 bind source-format bytes only; original-producer qualification remains separate.
+
+`pytorch` owns source capture and the original worker/transaction callbacks;
+`cachekey` binds the complete request and producer bytes. `receipts` validates
+realized arithmetic. `carriers` observes parsed linalg; `demands` owns complete
+source demand/interface correspondence. Neither imports corpus orchestration.
+`artifacts` preserves exact input/provenance and materialized-source admission;
+`loaders` owns public deterministic templates and `spec` captures authored
+reference programs. Capsule construction and workload declarations live under
+`merlin.experiments.corpus`, with unchanged source and numerical obligations.
+
+`contraction_formats.py` also owns pinned-file snapshots: it reopens explicitly selected regular
+files and creates exclusive owner-private streamed snapshots with exact source/output hashes.
+Callers own protected parent directories, resource locking, complete input membership and
+actual consumer correspondence. A file snapshot is never a compiler, hardware, runtime,
+numerical or timing qualification. Failed attempts are retained by the caller and return no
+snapshot selection; mode bits alone do not prove immutability.

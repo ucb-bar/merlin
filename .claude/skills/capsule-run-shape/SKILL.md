@@ -73,7 +73,7 @@ the total. A converged submission re-paid all of it on every post-turn grade, fo
 program had not changed a byte since a certificate was earned for it, sometimes minutes earlier in the
 same turn by the promotion path above.
 
-`merlin.targetgen.tier_cache` is the reader. The ladder asks it before paying for a tier and tells it
+`merlin.development.targetgen.oracles.tier_cache` is the reader. The ladder asks it before paying for a tier and tells it
 after executing one:
 
 - **Key** = the *execution identity* (`tier_promote.execution_digest`'s own — ELF bytes x target x every
@@ -99,7 +99,7 @@ after executing one:
 Knobs: `MERLIN_TIER_CERT_CACHE=0` switches it off, or set it to a directory to relocate the store
 (default `out/artifacts/cache/tier-certs/`); `MERLIN_TIER_CERT_LEDGER` names `qa/tier_state.json`
 promotion ledgers to consult as a second, strictly weaker source. Tests:
-`merlin/tests/targetgen/test_tier_certificate_cache.py` — every direction is a mutation of a state that
+`tests/targetgen/test_tier_certificate_cache.py` — every direction is a mutation of a state that
 hits.
 
 ## Invariants to preserve
@@ -136,4 +136,4 @@ hits.
 - `GP0`/`GP1`/`GP2` declare `epilogue: ['maxpool']`, which `command_buffer.schema.json` forbids; the
   interpreter pools via `pool_*` attributes on the store instead. `additionalProperties: True` lets a
   wrong carrier validate silently. Ratcheted in
-  `merlin/tests/targetgen/test_capsule_carrier_consistency.py`.
+  `tests/targetgen/test_capsule_carrier_consistency.py`.

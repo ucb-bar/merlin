@@ -1,0 +1,1 @@
+../../build_tools/packaging/extension_setup.py

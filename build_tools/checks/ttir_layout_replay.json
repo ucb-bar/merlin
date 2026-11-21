@@ -1,0 +1,497 @@
+{
+  "source_commit": "53e7b01158c918dbd6d4dad0ac38ba0a901f16ba",
+  "incoming_layout_commit": "2451b8134a7995d4e73efa3a465f975a1d532727",
+  "patch_sha256": "c372bea37de856f01920c9bb5db9278e51da3fe4c7269834850a6e984ba27f6e",
+  "files": [
+    {
+      "source": "merlin/tests/fixtures/AGENT.md",
+      "path": "tests/fixtures/AGENT.md",
+      "sha256": "74c032e01556fe0944f7494783054c69e559cbf9d00fb5458056c9c1d1e905bf"
+    },
+    {
+      "source": "merlin/tests/fixtures/owned_result_fixture.py",
+      "path": "tests/fixtures/owned_result_fixture.py",
+      "sha256": "2971e3fd59bc2978d36edb746d5432cfea8017809375d0c2d73cea6f627dcb54"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_compare_exchange.py",
+      "path": "tests/ir/test_atomic_compare_exchange.py",
+      "sha256": "7637a7938fcb960d6881998bef8f3c3031761c2e6e5879b8eff640c66de6a782"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_f32_add.py",
+      "path": "tests/ir/test_atomic_f32_add.py",
+      "sha256": "d15e1429862c9c21a4cb710c346acd12fc6acd3846aae08a0951922b8cbaa753"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_half_add.py",
+      "path": "tests/ir/test_atomic_half_add.py",
+      "sha256": "5a21e8615a236891a002edd3602d616c616cd61f350380d82cc9a488aef2d50e"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_integer_regions.py",
+      "path": "tests/ir/test_atomic_integer_regions.py",
+      "sha256": "4489caa06379637c8f1bb716c1c1ea59c9c0f688088c6aab071bd1faa783e01b"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_loop_pipeline.py",
+      "path": "tests/ir/test_atomic_loop_pipeline.py",
+      "sha256": "94ec56192f2d8f4d9c948563887b9c3d514d09677da37431fcd1125cd99e8c18"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_word_compare_exchange.py",
+      "path": "tests/ir/test_atomic_word_compare_exchange.py",
+      "sha256": "5fbbd9fe246dc9e7ee8e674c8ec2018d3a6b5798efd7c09fc47dccbde3d7f493"
+    },
+    {
+      "source": "merlin/tests/ir/test_atomic_word_views.py",
+      "path": "tests/ir/test_atomic_word_views.py",
+      "sha256": "2201bc0eff427d7c279f1cfcbced29c7654b408700b8d270cff6dc74eb9028dc"
+    },
+    {
+      "source": "merlin/tests/ir/test_bfloat_elementwise.py",
+      "path": "tests/ir/test_bfloat_elementwise.py",
+      "sha256": "9bceb4bd17e525be0a048e285829d7d02dd844001ce516d6f95f4eb0e92f66d2"
+    },
+    {
+      "source": "merlin/tests/ir/test_bfloat_integer_casts.py",
+      "path": "tests/ir/test_bfloat_integer_casts.py",
+      "sha256": "6744852f1d1e325a20503ebc43c0f2e118fd7f0e60328fe3dace150821ff55bd"
+    },
+    {
+      "source": "merlin/tests/ir/test_bfloat_transport.py",
+      "path": "tests/ir/test_bfloat_transport.py",
+      "sha256": "37f76e7e44425b99b08b9242ca19a69e653e068d2508b016c9035a403e8836d6"
+    },
+    {
+      "source": "merlin/tests/ir/test_bufferization_layout.py",
+      "path": "tests/ir/test_bufferization_layout.py",
+      "sha256": "96edbede6000d3a733e75593725b2e813cf6cb52462c172a46811acadd8088a8"
+    },
+    {
+      "source": "merlin/tests/ir/test_compile_inputs.py",
+      "path": "tests/ir/test_compile_inputs.py",
+      "sha256": "801139740a0686433683a89e99536fd140755227a274336be1afea59b6fb76de"
+    },
+    {
+      "source": "merlin/tests/ir/test_compiler_constants.py",
+      "path": "tests/ir/test_compiler_constants.py",
+      "sha256": "985405d0cca959b349286c83b2d1f574a8c9719925e43a8ad6cb2e8722018cb6"
+    },
+    {
+      "source": "merlin/tests/ir/test_dealloc_sinking.py",
+      "path": "tests/ir/test_dealloc_sinking.py",
+      "sha256": "4f89310c2696f2f978808f700239eec7881e695aa66f1f3618afd728a712bc58"
+    },
+    {
+      "source": "merlin/tests/ir/test_dense_constant_splats.py",
+      "path": "tests/ir/test_dense_constant_splats.py",
+      "sha256": "c0b615f8a553673c0fac147c9327fe6f035465573a658d0000ca22f00c5a9161"
+    },
+    {
+      "source": "merlin/tests/ir/test_dense_float_serialization.py",
+      "path": "tests/ir/test_dense_float_serialization.py",
+      "sha256": "3af7ea44c4d31eab65deef5938770b88f35f99c33bc3d1997ea0f88a17566585"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_compile_inputs.py",
+      "path": "tests/ir/test_derived_compile_inputs.py",
+      "sha256": "9748fe0c3b2f7fb60c49d4062eb29512b0662eb916b560b836850403586a3090"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_live_arguments.py",
+      "path": "tests/ir/test_derived_live_arguments.py",
+      "sha256": "17c3f3b2312cdb8e6aaebef76e2fe4a04c46db31673e8c0705f57acd888aabeb"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_runtime_arguments.py",
+      "path": "tests/ir/test_derived_runtime_arguments.py",
+      "sha256": "749a368d4d6b815884c6eead6663806652f50f073e000b83d568c94c7937a735"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_size_sources.py",
+      "path": "tests/ir/test_derived_size_sources.py",
+      "sha256": "de3d62a86429d23e0f61f3884f930a09badb063a572475c11f6ceb0fbf0923dc"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_source_views.py",
+      "path": "tests/ir/test_derived_source_views.py",
+      "sha256": "6741dda760a1fc5dcfcc5a2d8c09b5da8f2420d7d06a96953f1a019660b58310"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_symbolic_shapes.py",
+      "path": "tests/ir/test_derived_symbolic_shapes.py",
+      "sha256": "b65ddde387ad9e0b152166503c15719cf50e303f0eae4109e79e1836477ed092"
+    },
+    {
+      "source": "merlin/tests/ir/test_derived_tensor_views.py",
+      "path": "tests/ir/test_derived_tensor_views.py",
+      "sha256": "7fd30dd0d7be7bfc82798f234aea76b20623004c80edaf3f23409b293cce8b7d"
+    },
+    {
+      "source": "merlin/tests/ir/test_effect_compile_inputs.py",
+      "path": "tests/ir/test_effect_compile_inputs.py",
+      "sha256": "cb0f4a9405afb649b6df169d7f68641d4500b2294a7532f0506f52201a77f00c"
+    },
+    {
+      "source": "merlin/tests/ir/test_execute_region_attributes.py",
+      "path": "tests/ir/test_execute_region_attributes.py",
+      "sha256": "bf6e88d3a1c715912c45df9c1ec6f21584169f179f7056cfdb65687a876b6e5e"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_call_views.py",
+      "path": "tests/ir/test_execution_call_views.py",
+      "sha256": "16a33f65e6112ed0d235fb9013b0a13a6f59d8368f869e1e95384695ce5f275b"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_functional_state.py",
+      "path": "tests/ir/test_execution_functional_state.py",
+      "sha256": "fdb439b340026a5f9b2baad1a03206fab1f7cb64e7dfc2badc25de63d319a0ff"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_model_correspondence.py",
+      "path": "tests/ir/test_execution_model_correspondence.py",
+      "sha256": "fd0c9f95c637c69eabfdb88c4aeeda0c92eb0ce691cef6961a4b3c7dbbe6f41d"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_model_staging.py",
+      "path": "tests/ir/test_execution_model_staging.py",
+      "sha256": "5a12945db91c57e4579e25157892829d5a0277cf7b4d0b7c51dc4bafc84c9291"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_rank_views.py",
+      "path": "tests/ir/test_execution_rank_views.py",
+      "sha256": "4408479bf24ae5f526b0a7519c32f9455770493d02af8cad14ba8135a8c59f80"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_resource_policy.py",
+      "path": "tests/ir/test_execution_resource_policy.py",
+      "sha256": "e845cad2ae010344e21a1654a5a164cb73d80b4c0faedba065537eb01eb8321a"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_result_staging.py",
+      "path": "tests/ir/test_execution_result_staging.py",
+      "sha256": "846f682c13bdcb87e381de1e02955d53a5bd70f42e9e887460e457b065223b94"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_runtime_views.py",
+      "path": "tests/ir/test_execution_runtime_views.py",
+      "sha256": "5b25f4d63121d87dbc22d30b6e7127272b2dd85c1330524129c104b9109c715b"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_source_coordinates.py",
+      "path": "tests/ir/test_execution_source_coordinates.py",
+      "sha256": "1b7475734d13836fa30e5f92e2f150822609567eb9e5770fbc30a5cfae6ef83f"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_source_layouts.py",
+      "path": "tests/ir/test_execution_source_layouts.py",
+      "sha256": "d25d9317b5a40a34a6280d9a3b1229c917756a8e1ec2c4111b2fad89703a88cf"
+    },
+    {
+      "source": "merlin/tests/ir/test_execution_storage_views.py",
+      "path": "tests/ir/test_execution_storage_views.py",
+      "sha256": "83fe9493f58af1c8738872cc81d97429bc5ac56bfbc58c706f6a2d32e3cecb44"
+    },
+    {
+      "source": "merlin/tests/ir/test_fp8_feature_composition.py",
+      "path": "tests/ir/test_fp8_feature_composition.py",
+      "sha256": "77abded240de7bb975371d8e393269287f5bf6aa483676c2bde1ff58e930c677"
+    },
+    {
+      "source": "merlin/tests/ir/test_fp8_float_constraints.py",
+      "path": "tests/ir/test_fp8_float_constraints.py",
+      "sha256": "1df747f4b604f8c78d5e78cd17958e23cd3053e6e2083863e00327c21b46e5e2"
+    },
+    {
+      "source": "merlin/tests/ir/test_fp8_narrowing.py",
+      "path": "tests/ir/test_fp8_narrowing.py",
+      "sha256": "718679cc1cec226b46e514fbd602952898fc7b8a135d2948f89387ac4f6473ab"
+    },
+    {
+      "source": "merlin/tests/ir/test_fp8_widening.py",
+      "path": "tests/ir/test_fp8_widening.py",
+      "sha256": "228eb78c0608e6f14e3edc3125c393d2bf660548ed9ea9bc69fdc29291707a86"
+    },
+    {
+      "source": "merlin/tests/ir/test_fusion_guard.py",
+      "path": "tests/ir/test_fusion_guard.py",
+      "sha256": "2c5a17ceab6af4e0929ab9a1f1ea85ad97711573addfbd80fd80b20dfe807ddc"
+    },
+    {
+      "source": "merlin/tests/ir/test_host_codegen_invocations.py",
+      "path": "tests/ir/test_host_codegen_invocations.py",
+      "sha256": "d8e61708132fa89889e03fb78a434d547a8644132b61e9d6727078348b1279b5"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_allocation_sources.py",
+      "path": "tests/ir/test_kernel_allocation_sources.py",
+      "sha256": "04065bffd34ac3ff39d1dc8dae50a545e2a04c8d072cf598c2aa4578f3f35c5e"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_atomic_source.py",
+      "path": "tests/ir/test_kernel_atomic_source.py",
+      "sha256": "fcd346a6acd04853098a8d5eb21858a905539a465326307383e6264e68c314b6"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_atomic_storage_context.py",
+      "path": "tests/ir/test_kernel_atomic_storage_context.py",
+      "sha256": "55fd9cb491fa24e901f2c2745aff0b1c2d79d957a9f521afbf16fb856855cfab"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_barrier_evidence.py",
+      "path": "tests/ir/test_kernel_barrier_evidence.py",
+      "sha256": "fecf54c78f3136c44be22917df271e116559203b614cd28e8503d0fde57cb0ba"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_byte_atomic_evidence.py",
+      "path": "tests/ir/test_kernel_byte_atomic_evidence.py",
+      "sha256": "e76b7aaf82c230caf48df84b1409f2fd16c5505289fe3bb113ba33aef951961c"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_cfg_evidence.py",
+      "path": "tests/ir/test_kernel_cfg_evidence.py",
+      "sha256": "b7323ea394db18df9e2617d92a092d0327de1bd4cdca4743cef3c68498171b0f"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_compile_inputs.py",
+      "path": "tests/ir/test_kernel_compile_inputs.py",
+      "sha256": "a75a3860bc476af3815333f03698f0c033370bf5e44d94b39087851ea47c0de8"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_half_atomic_evidence.py",
+      "path": "tests/ir/test_kernel_half_atomic_evidence.py",
+      "sha256": "4d33390bba8dd975307f1b8747cb1ceb7bdaacef65aa0420f713fcc6b3a6c810"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_literal_evidence.py",
+      "path": "tests/ir/test_kernel_literal_evidence.py",
+      "sha256": "c189eeac52e9ab6725aba749a3ead8626ee21834fcb223acf412a93dd3a9691c"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_shape_abi.py",
+      "path": "tests/ir/test_kernel_shape_abi.py",
+      "sha256": "b002e75e3d72c6d87889505c6d181ecb9352a7adbef33567ee9c5bfabd82b35d"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_typed_storage.py",
+      "path": "tests/ir/test_kernel_typed_storage.py",
+      "sha256": "baa64259b9b809538b6f0af7ae54f8d66f464394fafc339e9d03e33048917402"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_volatile_evidence.py",
+      "path": "tests/ir/test_kernel_volatile_evidence.py",
+      "sha256": "ab9b91e2c43744a0dcd8ea1e147813a51e909ae9e917339bc699e514b64179a7"
+    },
+    {
+      "source": "merlin/tests/ir/test_kernel_word_source_effects.py",
+      "path": "tests/ir/test_kernel_word_source_effects.py",
+      "sha256": "6d0287265675bdc5426b9f0243276f50af5dfce3203ac1cde4e716cd60a118fe"
+    },
+    {
+      "source": "merlin/tests/ir/test_length_aware_diagnostics.py",
+      "path": "tests/ir/test_length_aware_diagnostics.py",
+      "sha256": "fe0182c148d5f9a82c73def652db5c7fe079680df8b21a955a96a472b58736e8"
+    },
+    {
+      "source": "merlin/tests/ir/test_linalg_named_regions.py",
+      "path": "tests/ir/test_linalg_named_regions.py",
+      "sha256": "b2acb59879291dd8163c3bbdd0df60a78d43426445b7251076c1ccf3009901d3"
+    },
+    {
+      "source": "merlin/tests/ir/test_loop_byte_atomic_snapshots.py",
+      "path": "tests/ir/test_loop_byte_atomic_snapshots.py",
+      "sha256": "983821e8711a0c987835cfd02ab4d1a40dc219ea8056cc68cfdaa86364eae19f"
+    },
+    {
+      "source": "merlin/tests/ir/test_loop_tensor_destinations.py",
+      "path": "tests/ir/test_loop_tensor_destinations.py",
+      "sha256": "6ef552f2ab96bf9a37e4ed1a2027bfda6dada6b3306b8144ab0f95b24ab55a0d"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_bfloat_results.py",
+      "path": "tests/ir/test_owned_bfloat_results.py",
+      "sha256": "0e88a228301a5407ed3c97061a9a2a8e7886bb36378b693729b14626ff8a44ca"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_buffer_loop_check.py",
+      "path": "tests/ir/test_owned_buffer_loop_check.py",
+      "sha256": "699d3200d21222b366c13a06c1e5ed89ad1f1e17a93cf58811ab4a762a9bcbca"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_result_c.py",
+      "path": "tests/ir/test_owned_result_c.py",
+      "sha256": "4d18780072e64f4f228a9304e9f41eb6d0b5146726352f32eef7f0072eaa5afe"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_result_driver.py",
+      "path": "tests/ir/test_owned_result_driver.py",
+      "sha256": "36cd04bce39a970a4638b52b7f6f47b238f28681cddae1c000610168ab993e45"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_result_execution.py",
+      "path": "tests/ir/test_owned_result_execution.py",
+      "sha256": "0ac3ca12c01b279cb95409f46f14dfc20ab1dd9b2dc64f1a3ad2f333df332e70"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_result_lowering.py",
+      "path": "tests/ir/test_owned_result_lowering.py",
+      "sha256": "bd14abd5258eabec3a4aa4ea6ad00a55b10b4068c87d78f85c1e629e210d24ef"
+    },
+    {
+      "source": "merlin/tests/ir/test_owned_result_program.py",
+      "path": "tests/ir/test_owned_result_program.py",
+      "sha256": "863e8b0087a1bbd27be1a0ead80637ceb1da85c30cd5e4153e33c3969dffddc9"
+    },
+    {
+      "source": "merlin/tests/ir/test_promoted_loop_ownership.py",
+      "path": "tests/ir/test_promoted_loop_ownership.py",
+      "sha256": "883c2fefcd9cbfa10f6cc6c7978aeefbeded0404342af3f825e529769b081ef7"
+    },
+    {
+      "source": "merlin/tests/ir/test_qinner_binding.py",
+      "path": "tests/ir/test_qinner_binding.py",
+      "sha256": "f3e8c20f36786f3ca049460c83f4baef9120b4b160651c6aa54faae408c80bd0"
+    },
+    {
+      "source": "merlin/tests/ir/test_scalar_diagnostics.py",
+      "path": "tests/ir/test_scalar_diagnostics.py",
+      "sha256": "15cfed57d50eae9d9293ca71a60db4016d821f7665ea906c5e4413c35525b685"
+    },
+    {
+      "source": "merlin/tests/ir/test_sliced_elementwise_output.py",
+      "path": "tests/ir/test_sliced_elementwise_output.py",
+      "sha256": "bf93f74bd84c1fb5809ac36cd3636d222aaae43c7920f54383d6ed327d9de557"
+    },
+    {
+      "source": "merlin/tests/ir/test_standard_arith.py",
+      "path": "tests/ir/test_standard_arith.py",
+      "sha256": "b138e3f9c5f053ceb3810d89e8dc9b7dc52b7e8ab6d066e2183eed2e85b654c7"
+    },
+    {
+      "source": "merlin/tests/ir/test_standard_bufferization.py",
+      "path": "tests/ir/test_standard_bufferization.py",
+      "sha256": "4706c7c153cc03b945e7d86653faf5bf70c0863e4cc2e03411793958dfc27620"
+    },
+    {
+      "source": "merlin/tests/ir/test_standard_memref.py",
+      "path": "tests/ir/test_standard_memref.py",
+      "sha256": "c1e64b4e5c7fa8f17e199959b10ef77c2049637651c993e91895132bd648df5d"
+    },
+    {
+      "source": "merlin/tests/ir/test_standard_parallel_tensor.py",
+      "path": "tests/ir/test_standard_parallel_tensor.py",
+      "sha256": "601b06fc73c052cf84fb07b7acfb6bd781b3d5e201490f65bd762900a845bd19"
+    },
+    {
+      "source": "merlin/tests/runtime/test_c_runtime_constants.py",
+      "path": "tests/runtime/test_c_runtime_constants.py",
+      "sha256": "dda78264eebedd985ae6a21baf77f003af3212a5fb68c5f0cf74fd7706db19e4"
+    },
+    {
+      "source": "merlin/tests/runtime/test_c_runtime_fp8_storage.py",
+      "path": "tests/runtime/test_c_runtime_fp8_storage.py",
+      "sha256": "77e2534f0b5eaa3ce420688240b432a0e4fccf11f8e38e94263d8326d536ad67"
+    },
+    {
+      "source": "merlin/tests/runtime/test_capture_constant_table.py",
+      "path": "tests/runtime/test_capture_constant_table.py",
+      "sha256": "e3d285a57760b867e0046b7485bfe218cb06c2a0991856f6ebfcd41cc52aad19"
+    },
+    {
+      "source": "merlin/tests/runtime/test_derived_size_invocation.py",
+      "path": "tests/runtime/test_derived_size_invocation.py",
+      "sha256": "840dad98d95f628936363457745f6bab3438856133259043e8d0d8e4722f7aef"
+    },
+    {
+      "source": "merlin/tests/runtime/test_effect_observation.py",
+      "path": "tests/runtime/test_effect_observation.py",
+      "sha256": "5baf67879d6684a95b64ece2ed69fb46ce77c6072cc63685213db14708b3dc60"
+    },
+    {
+      "source": "merlin/tests/runtime/test_fixed_decimal.py",
+      "path": "tests/runtime/test_fixed_decimal.py",
+      "sha256": "f5c19533ff844b5de8dc230de008afe202808a446996792a2f1922cf2bec559d"
+    },
+    {
+      "source": "merlin/tests/runtime/test_fp8_formats.py",
+      "path": "tests/runtime/test_fp8_formats.py",
+      "sha256": "d884a72dd4eb0177ea0f88ff520baf9fe4e8ab92343523e894e951db3936043a"
+    },
+    {
+      "source": "merlin/tests/runtime/test_half_extend.py",
+      "path": "tests/runtime/test_half_extend.py",
+      "sha256": "2e243153c7407d1844881804c2554a90532bd6209179a0b1b9e3dd1895f19e4e"
+    },
+    {
+      "source": "merlin/tests/runtime/test_input_observation.py",
+      "path": "tests/runtime/test_input_observation.py",
+      "sha256": "61ae43f6deb3682b1e4f23f85b6301193327bfd5f4e2470ba7908ac70882de55"
+    },
+    {
+      "source": "merlin/tests/runtime/test_input_word_sizes.py",
+      "path": "tests/runtime/test_input_word_sizes.py",
+      "sha256": "b0d9ef91065c8086e0c9ad1d2c03b75d284af016e60fec7fb6afda8a370028d2"
+    },
+    {
+      "source": "merlin/tests/runtime/test_out_bin.py",
+      "path": "tests/runtime/test_out_bin.py",
+      "sha256": "42acea03efe0b631a77ce5d0255b52d24e58acc9bc9e1d1a53814878110f0eae"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_allocator.py",
+      "path": "tests/runtime/test_owned_result_allocator.py",
+      "sha256": "1a1d6bd22ead0e0ca516fe977ae875512af7efc794f8eac763c41b45285ef466"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_context.py",
+      "path": "tests/runtime/test_owned_result_context.py",
+      "sha256": "b1ecd4fb2def151e27ab71000c24adae1630cfd9bd833344679ad3384fda0f77"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_driver_control.py",
+      "path": "tests/runtime/test_owned_result_driver_control.py",
+      "sha256": "618f3337a22af06d13db60b0273e7feb6ba5f2f14ae22e861ee42a254fac0704"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_image.py",
+      "path": "tests/runtime/test_owned_result_image.py",
+      "sha256": "6bb0b1ad7027c6964397a9afb58654ce0251231942f0db87380370b3b0692954"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_model.py",
+      "path": "tests/runtime/test_owned_result_model.py",
+      "sha256": "416c87d95f460dee740a97b0c5b7eae503221d8f82f6572869263e467cdba9cc"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_readback.py",
+      "path": "tests/runtime/test_owned_result_readback.py",
+      "sha256": "e30de9950e103fd37bfadfdd90bb0cf7959e26836e76be42a264fe14daf3eb54"
+    },
+    {
+      "source": "merlin/tests/runtime/test_owned_result_views.py",
+      "path": "tests/runtime/test_owned_result_views.py",
+      "sha256": "6a8103a3191aa2460242c483a826ebab64e21d8a164a7dc6c99fbc14a9fd59c8"
+    },
+    {
+      "source": "merlin/tests/runtime/test_resizing_owned_results.py",
+      "path": "tests/runtime/test_resizing_owned_results.py",
+      "sha256": "baac3d0f485cda00351a831b12a4f3d8c1477ecd6aba5cdaf7111e2b01962e31"
+    },
+    {
+      "source": "merlin/tests/runtime/test_runtime_input_axes.py",
+      "path": "tests/runtime/test_runtime_input_axes.py",
+      "sha256": "8e0c6b133f56672c2bb6c5d960c9226cdc69b801b7432c25e58fe11c2a548a7a"
+    },
+    {
+      "source": "merlin/tests/runtime/test_runtime_invocation.py",
+      "path": "tests/runtime/test_runtime_invocation.py",
+      "sha256": "755fbe4f85421f03edd0d21c62dcaa39f4764d616a836c7868d57a2846e564a4"
+    },
+    {
+      "source": "merlin/tests/runtime/test_whole_model_readback.py",
+      "path": "tests/runtime/test_whole_model_readback.py",
+      "sha256": "e76ddde176dc981509cbe3e275be821305061d47a079a18ed7a577b32972d106"
+    }
+  ]
+}

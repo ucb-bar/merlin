@@ -1,0 +1,11 @@
+# Generic in-scope files whose IDENTIFIERS or program strings named a target when the token check of
+# check_no_target_name.py was added (2026-10-08). Known debt, not an allowlist: this list may only
+# SHRINK (check_ratchets_shrink.py holds it). A file leaves when its last identifier/string mention is
+# derived or moved to its target's example; the gate reports an entry whose file no longer needs it.
+# growth-accepted: new ledger; the token check widened the gate from whole-word lower-case string literals to identifiers and case-insensitive text, and these files are the pre-existing debt it found
+# Consumed by: check_no_target_name.py
+
+# ---------------------------------------------------------------- the gate that hunts named sources
+# overfit_register.yaml `fact-provenance-gate-names-the-sources-it-forbids`: the env vars a non-RTL
+# model is reached through ARE the subject of that gate.
+build_tools/scripts/check_fact_provenance.py  # muon: MERLIN_MUON_CONFIG / _CYCLOTRON / _GSIM_EMU, config_muon.toml

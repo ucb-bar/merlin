@@ -1,12 +1,15 @@
 # Experiment definitions
 
-This is the catalog and its generic templates. Target-specific definitions live
-under examples/<target>/experiment.yaml, referenced by this catalog without copies.
-Shared authored inputs live in `templates/`; definitions select them explicitly.
-Neither location is another implementation
-of the phase engines. Keep generated execution artifacts beneath the configured
-run root. `reference-data/` holds byte-preserved historical analysis evidence and
-explicitly selected public derivation references;
-it is read-only input, not an execution destination or a grading answer surface.
-Do not commit grading goldens, hidden capsule identities, credentials, or
-machine-specific paths. Paths inside definitions are relative to the definition.
+The catalog selects authored definitions in `definitions/` and target workflows
+under `examples/compiler-generation/`. Shared templates belong in `templates/`;
+authored target and workload sources belong under `examples/`. Installed test-generation
+and backend-generation engines live in `src/merlin/development/`.
+
+Keep generated corpora, bundles, captures, compiler snapshots and reports under
+the configured `out/` root. Historical payloads are explicit run inputs; never
+silently select a retained artifact as a fresh reviewed release. Preserve original
+source and acceptance identities during replay. Definitions resolve paths relative
+to themselves; descriptors and frozen records retain their declared conventions.
+
+Do not commit hidden capsule identities, golden answers, credentials or
+machine-specific paths.

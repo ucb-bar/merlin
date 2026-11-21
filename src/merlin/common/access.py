@@ -12,14 +12,19 @@ import contextlib
 import os
 import sys
 import threading
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.machinery import all_suffixes
 from pathlib import Path, PurePosixPath
 
+from merlin.common.source_aliases import MODULE_RELOCATIONS as _MODULE_RELOCATIONS
+
+# ---- access ------------------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class PythonSourceRoot:
-    """One explicitly supported checkout location for an import namespace."""
+    """One current or historical source location used to discover withheld code."""
 
     namespace: str
     path: str
@@ -28,6 +33,10 @@ class PythonSourceRoot:
 PYTHON_SOURCE_ROOTS = (
     PythonSourceRoot("merlin", "merlin/python/merlin"),
     PythonSourceRoot("merlin", "src/merlin"),
+    PythonSourceRoot("merlin_experiments", "src/merlin_experiments"),
+    PythonSourceRoot("merlin_dse", "src/merlin_dse"),
+    PythonSourceRoot("merlin_mining", "src/merlin_mining"),
+    PythonSourceRoot("merlin_analysis", "src/merlin_analysis"),
     PythonSourceRoot("merlin", "packages/merlin-experiments/src/merlin"),
     PythonSourceRoot("merlin_experiments", "packages/merlin-experiments/src/merlin_experiments"),
     PythonSourceRoot("merlin", "packages/merlin-dse/src/merlin"),
@@ -39,7 +48,13 @@ PYTHON_SOURCE_ROOTS = (
 )
 
 # This is the existing public input grammar exception, NOT an exemption for the core or an extension.
-PUBLIC_INPUT_MODULE = "merlin.xdsl_dialects.interface"
+PUBLIC_INPUT_MODULE = "merlin.compiler.dialects.interface"
+PUBLIC_INPUT_CONTRACT_MODULES = (
+    PUBLIC_INPUT_MODULE,
+    "merlin.compiler.dialects.visibility",
+    "merlin.compiler.ir.interface_contract",
+    "merlin.compiler.ir.readout",
+)
 
 
 # The transcript audit and every consumer of its recorded evidence share one vocabulary.
@@ -88,24 +103,58 @@ def module_matches(module: str, prefix: str) -> bool:
 #: Whole packages withheld from every compiler author, independent of arm and mode. One identity for
 #: the full-compiler copy boundary, the author SDK staging and the pre-launch acceptance suite.
 AUTHOR_WITHHELD_PREFIXES = (
-    "merlin.baselines",
-    "merlin.kernels",
-    "merlin.mining",
-    "merlin.model_check",
-    "merlin.validation",
+    "merlin.analysis.kernels",
+    "merlin.analysis.mining",
+    "merlin.evaluation.model",
+    "merlin.verification.validation",
     "merlin.runtime.reference",
     "merlin.runtime.simulator",
     "merlin_experiments",
+    "merlin.experiments",
+    # The evaluation package as it was before the regroup; evaluation/harness (the former benchharness) was
+    # never withheld, and evaluation/model is withheld by its own entry above.
+    "merlin.evaluation.capsule",
+    "merlin.evaluation.w8a8_eager",
+    "merlin.evaluation.w8a8_execution",
+    # Migrated orchestration has the same author-private role as its legacy package.
+    "merlin.development.backend",
+    "merlin.development.testgen",
     # Operator-only consumers of the withheld packages above. Each needs a mined schedule package, the
     # mined host-action catalogue or an expert-corpus CCA lift (the bare-metal model build also needs
     # declared oracle runtime backends). No public module imports one at module level; the operator
     # host-model build reaches the bare-metal builder lazily. In the public tree each could only fail or
-    # report nothing. The generic analyses the withheld packages held live in merlin.compile.analysis
+    # report nothing. The generic analyses the withheld packages held live in merlin.analysis
     # and stay public.
-    "merlin.compile.baremetal_model",
-    "merlin.compile.scalar_host_qualification",
-    "merlin.llvmlower.host_policy",
-    "merlin.sched.expressiveness",
+    "merlin.model",
+    # Exact canonical closure of the original saved-model operator workflow.
+    # Build/run/reference decomposition does not expose its private authority.
+    "merlin.model",
+    "merlin.compiler.build.saved",
+    "merlin.compiler.build.modeloptions",
+    "merlin.runtime.model",
+    "merlin.verification.model",
+    "merlin.verification.scalar_host",
+    "merlin.verification.scalar_host",
+    "merlin.compiler.lower.model.host_policy",
+    "merlin.compiler.kernel_ir.expressiveness",
+)
+
+
+# Exact moved leaves, not their entire new public parent packages.
+AUTHOR_WITHHELD_PREFIXES += (
+    "merlin.analysis.observation.matrix_units",
+    "merlin.analysis.perf.measurement.authority",
+    "merlin.analysis.programs.work",
+    "merlin.compiler.build.saved_model",
+    "merlin.compiler.lower.host.host_policy",
+    "merlin.development.targetgen.execution.host.common_transforms",
+    "merlin.development.targetgen.generation.generated_target",
+    "merlin.development.targetgen.generation.load",
+    "merlin.development.targetgen.generation.validation_validate",
+    "merlin.runtime.engine.reference",
+    "merlin.runtime.engine.simulator",
+    "merlin.runtime.execution.saved_model",
+    "merlin.verification.references.saved_model",
 )
 
 
@@ -119,7 +168,7 @@ def is_harness_module(module: str) -> bool:
 
 
 def is_public_input_module(module: str) -> bool:
-    return module_matches(module, PUBLIC_INPUT_MODULE)
+    return module_matches(module, PUBLIC_INPUT_MODULE) or module in PUBLIC_INPUT_CONTRACT_MODULES
 
 
 def module_name_for(rel_path: str) -> str | None:
@@ -157,56 +206,74 @@ class ModuleAccess:
     directory: bool = False
 
 
+# Relocated implementations retain the access class of their issued identity.
+
+
 def _module(module: str, origin: str, *, directory: bool = False, aliases: tuple[str, ...] = ()) -> ModuleAccess:
     # The staged evaluation split retains the targetgen tail; aliases are DENIES, never new grants.
     modules = (module, *aliases)
     modules += tuple(
-        "merlin_experiments.evaluation." + name.removeprefix("merlin.targetgen.")
+        "merlin_experiments.evaluation." + name.removeprefix("merlin.development.targetgen.")
         for name in modules
-        if name.startswith("merlin.targetgen.")
+        if name.startswith("merlin.development.targetgen.")
     )
-    return ModuleAccess(module, origin, modules, directory)
+    # Retain every archived spelling while denying the same relocated implementation.
+    modules += tuple(
+        name.replace("merlin_experiments", "merlin.experiments", 1)
+        for name in modules
+        if module_matches(name, "merlin_experiments")
+    )
+    modules += tuple(alias for name in modules for alias in _MODULE_RELOCATIONS.get(name, ()))
+    return ModuleAccess(module, origin, tuple(dict.fromkeys(modules)), directory)
 
 
 module_access = _module
 
 
 MODULE_ACCESS = (
-    _module("merlin.perf.analysis_worker", "grader"),
-    _module("merlin.perf.command_recorder", "grader"),
+    # Evaluation implementations retain the original host-only grader boundary.
+    # The evaluation package as it was before the regroup (evaluation/harness was never a grader surface).
+    _module("merlin.evaluation.capsule", "grader", directory=True),
+    _module("merlin.evaluation.w8a8_eager", "grader"),
+    _module("merlin.evaluation.w8a8_execution", "grader"),
+    # Independent mesh gates/references are not candidate compiler source grants.
+    _module("merlin.verification.mesh", "grader"),
+    _module("merlin.verification.mesh_reference", "oracle", aliases=("merlin.verification.mesh_reference",)),
+    _module("merlin.analysis.perf.analysis_worker", "grader"),
+    _module("merlin.analysis.perf.command_recorder", "grader"),
     # The whole-model build reads a model capsule's golden and recomputes its oracle; the rest of the
     # family grades or measures what a candidate built. Host code, withheld from a candidate compiler.
     _module(
-        "merlin.perf.whole_model_build",
+        "merlin.analysis.perf.whole_model_build",
         "oracle",
         aliases=(
-            "merlin.perf.whole_model_oracle",
-            "merlin.perf.whole_model_memory",
-            "merlin.perf.whole_model_headers",
-            "merlin.perf.whole_model_object_cache",
-            "merlin.perf.whole_model_passes",
-            "merlin.perf.whole_model_replies",
-            "merlin.perf.whole_model_builder",
-            "merlin.perf.whole_model_open",
-            "merlin.perf.whole_model_chunks",
-            "merlin.perf.whole_model_open_oracle",
-            "merlin.perf.whole_model_open_service",
-            "merlin.perf.whole_model_open_bench",
-            "merlin.perf.whole_model_reference",
+            "merlin.analysis.perf.whole_model_oracle",
+            "merlin.analysis.perf.whole_model_memory",
+            "merlin.analysis.perf.whole_model_headers",
+            "merlin.analysis.perf.whole_model_object_cache",
+            "merlin.analysis.perf.whole_model_passes",
+            "merlin.analysis.perf.whole_model_replies",
+            "merlin.analysis.perf.whole_model_builder",
+            "merlin.analysis.perf.whole_model_open",
+            "merlin.analysis.perf.whole_model_chunks",
+            "merlin.analysis.perf.whole_model_open_oracle",
+            "merlin.analysis.perf.whole_model_open_service",
+            "merlin.analysis.perf.whole_model_open_bench",
+            "merlin.analysis.perf.whole_model_reference",
         ),
     ),
-    _module("merlin.perf.isa_prohibition", "grader", aliases=("merlin.perf.isa_scan",)),
-    _module("merlin.perf.isolated_probe_provider", "grader"),
-    _module("merlin.perf.controlled_context_provider", "grader"),
-    _module("merlin.perf.paired_context_provider", "grader"),
-    _module("merlin.perf.host_region_qualifier", "grader"),
-    _module("merlin.perf.host_physical_transition_qualifier", "grader"),
-    _module("merlin.perf.lane_migration_qualifier", "grader"),
-    _module("merlin.perf.source_contraction_preparation", "grader"),
-    _module("merlin.perf.source_convolution_preparation", "grader"),
-    _module("merlin.perf.source_program_pair", "grader"),
-    _module("merlin.perf.source_initializer_elision", "grader"),
-    _module("merlin.perf.source_program_pair_provider", "grader"),
+    _module("merlin.analysis.perf.isa_prohibition", "grader", aliases=("merlin.analysis.perf.isa_scan",)),
+    _module("merlin.analysis.perf.isolated_probe_provider", "grader"),
+    _module("merlin.analysis.perf.controlled_context_provider", "grader"),
+    _module("merlin.analysis.perf.paired_context_provider", "grader"),
+    _module("merlin.analysis.perf.host_region_qualifier", "grader"),
+    _module("merlin.analysis.perf.host_physical_transition_qualifier", "grader"),
+    _module("merlin.analysis.perf.lane_migration_qualifier", "grader"),
+    _module("merlin.analysis.perf.source_contraction_preparation", "grader"),
+    _module("merlin.analysis.perf.source_convolution_preparation", "grader"),
+    _module("merlin.analysis.perf.source_program_pair", "grader"),
+    _module("merlin.analysis.perf.source_initializer_elision", "grader"),
+    _module("merlin.analysis.perf.source_program_pair_provider", "grader"),
     _module("merlin_experiments.execution", "grader", directory=True),
     _module("merlin_experiments.measured_launch", "grader"),
     _module("merlin_experiments.frozen_python", "grader", aliases=("perf_frozen_python",)),
@@ -226,7 +293,15 @@ MODULE_ACCESS = (
     _module("merlin_experiments.phase1.brokers", "grader", directory=True),
     _module("merlin_experiments.phase1.feedback", "grader", directory=True),
     _module("merlin_experiments.phase1.telemetry", "grader", directory=True),
-    _module("merlin_experiments.phase1.session", "grader"),
+    _module(
+        "merlin_experiments.phase1.session",
+        "grader",
+        aliases=(
+            "merlin_experiments.phase1.session_resume",
+            "merlin_experiments.phase1.session_guidance",
+            "merlin_experiments.phase1.session_preflight",
+        ),
+    ),
     _module("merlin_experiments.phase1.authoring", "grader"),
     _module("merlin_experiments.phase1.authoring_conformance", "grader"),
     _module("merlin_experiments.phase1.spend", "grader"),
@@ -248,78 +323,91 @@ MODULE_ACCESS = (
     _module("merlin.runtime.reference", "oracle"),
     _module("merlin.runtime.simulator", "oracle"),
     _module("merlin.runtime.backends", "oracle", directory=True),
-    _module("merlin.targetgen._dynamic_integer_reference", "oracle"),
-    _module("merlin.targetgen.materialized_reference", "oracle"),
+    _module("merlin.development.targetgen._dynamic_integer_reference", "oracle"),
+    _module("merlin.development.targetgen.materialized_reference", "oracle"),
     _module(
-        "merlin.targetgen.program_oracle",
+        "merlin.development.targetgen.program_oracle",
         "oracle",
-        aliases=("merlin.targetgen.program_values", "merlin.targetgen.program_engine_policy"),
+        aliases=("merlin.development.targetgen.program_values", "merlin.development.targetgen.program_engine_policy"),
     ),
     # The operator CLI is installed with the broadly bound Python toolchain, but this
     # search implementation belongs to the host-private diagnostic treatment. A CLI
     # subcommand is not an agent tool grant; mask its importable implementation too.
-    _module("merlin.targetgen.semantic_search", "grader", directory=True),
-    _module("merlin.targetgen.heavy_oracles", "oracle"),
-    _module("merlin.targetgen.rtl.mlc_bridge", "oracle"),
-    _module("merlin.targetgen.rocc.decode", "grader"),
-    _module("merlin.targetgen.trace_check", "grader"),
-    _module("merlin.targetgen.capsule_grade", "grader"),
-    _module("merlin.targetgen.capsule_perf_ledger", "grader"),
-    _module("merlin.targetgen.capsule_tier_result", "grader"),
-    _module("merlin.targetgen.capsule_lane_evidence", "grader"),
-    _module("merlin.targetgen.executed_program", "grader"),
-    _module("merlin.targetgen.oracle_readback", "grader"),
-    _module("merlin.targetgen.native_model_values", "grader"),
-    _module("merlin.targetgen.native_model_input_storage", "grader"),
-    _module("merlin.targetgen.native_model_output_binding", "grader"),
+    _module("merlin.development.targetgen.semantic_search", "grader", directory=True),
+    _module("merlin.development.targetgen.heavy_oracles", "oracle"),
+    _module("merlin.development.targetgen.rtl.mlc_bridge", "oracle"),
+    _module("merlin.development.targetgen.rocc.decode", "grader"),
+    _module("merlin.development.targetgen.trace_check", "grader"),
+    _module("merlin.development.targetgen.capsule_grade", "grader"),
+    _module("merlin.development.targetgen.capsule_perf_ledger", "grader"),
+    _module("merlin.development.targetgen.capsule_tier_result", "grader", aliases=("merlin.evaluation.capsule.tier",)),
     _module(
-        "merlin.targetgen.native_model_execution",
+        "merlin.development.targetgen.capsule_lane_evidence",
+        "grader",
+        aliases=("merlin.evaluation.capsule.lanes_evidence",),
+    ),
+    _module("merlin.development.targetgen.executed_program", "grader"),
+    _module("merlin.development.targetgen.oracle_readback", "grader"),
+    _module("merlin.development.targetgen.native_model_values", "grader"),
+    _module("merlin.development.targetgen.native_model_input_storage", "grader"),
+    _module("merlin.development.targetgen.native_model_output_binding", "grader"),
+    _module(
+        "merlin.development.targetgen.native_model_execution",
         "grader",
         aliases=(
-            "merlin.targetgen.native_model_policy",
-            "merlin.targetgen.native_pointer_source_execution",
-            "merlin.targetgen.native_pointer_source_binding",
-            "merlin.targetgen.native_instruction_audit",
-            "merlin.targetgen.native_numerical_audit",
-            "merlin.targetgen.native_pointer_source_audit",
-            "merlin.targetgen.frozen_source_eligibility",
+            "merlin.development.targetgen.native_model_policy",
+            "merlin.development.targetgen.native_pointer_source_execution",
+            "merlin.development.targetgen.native_pointer_source_binding",
+            "merlin.development.targetgen.native_instruction_audit",
+            "merlin.development.targetgen.native_numerical_audit",
+            "merlin.development.targetgen.native_pointer_source_audit",
+            "merlin.development.targetgen.frozen_source_eligibility",
         ),
     ),
     _module(
-        "merlin.targetgen.checked_source_model_diagnostic",
+        "merlin.development.targetgen.checked_source_model_diagnostic",
         "grader",
-        aliases=("merlin.targetgen.checked_source_model_diagnostic_execution",),
+        aliases=("merlin.development.targetgen.checked_source_model_diagnostic_execution",),
     ),
     _module(
         "merlin_experiments.phase1.feedback.compiler_pass_delegation",
         "grader",
         aliases=("merlin_experiments.phase1.feedback.compiler_pass_parent_proof",),
     ),
-    _module("merlin.targetgen.capsule_candidate_context", "grader"),
     _module(
-        "merlin.targetgen.owned_host_model_execution",
+        "merlin.development.targetgen.capsule_candidate_context",
         "grader",
-        aliases=("merlin.targetgen.owned_host_dispatch_checks",),
+        aliases=("merlin.evaluation.capsule.model_context",),
     ),
-    _module("merlin.targetgen.owned_host_leaf_execution", "grader"),
     _module(
-        "merlin.targetgen.native_component_execution", "grader", aliases=("merlin.targetgen.native_component_inputs",)
-    ),
-    _module("merlin.targetgen.native_dispatch_accounting", "grader"),
-    _module(
-        "merlin.targetgen.capsule_golden",
-        "grader",
-        aliases=("merlin.targetgen.golden_provenance", "merlin.targetgen.capsule_inputs"),
-    ),
-    _module("merlin.targetgen.numeric_falsifiability", "grader"),
-    _module(
-        "merlin.targetgen.original_operator_reference",
+        "merlin.development.targetgen.owned_host_model_execution",
         "grader",
         aliases=(
-            "merlin.targetgen.original_reference_values",
-            "merlin.targetgen.original_pointwise_reference",
-            "merlin.targetgen.original_pointwise_stress",
-            "merlin.targetgen.original_transpose_reference",
+            "merlin.development.targetgen.owned_host_dispatch_checks",
+            "merlin.development.targetgen.owned_host_selections",
+        ),
+    ),
+    _module("merlin.development.targetgen.owned_host_leaf_execution", "grader"),
+    _module(
+        "merlin.development.targetgen.native_component_execution",
+        "grader",
+        aliases=("merlin.development.targetgen.native_component_inputs",),
+    ),
+    _module("merlin.development.targetgen.native_dispatch_accounting", "grader"),
+    _module(
+        "merlin.development.targetgen.capsule_golden",
+        "grader",
+        aliases=("merlin.development.targetgen.golden_provenance", "merlin.development.targetgen.capsule_inputs"),
+    ),
+    _module("merlin.development.targetgen.numeric_falsifiability", "grader"),
+    _module(
+        "merlin.development.targetgen.original_operator_reference",
+        "grader",
+        aliases=(
+            "merlin.development.targetgen.original_reference_values",
+            "merlin.development.targetgen.original_pointwise_reference",
+            "merlin.development.targetgen.original_pointwise_stress",
+            "merlin.development.targetgen.original_transpose_reference",
         ),
     ),
     _module(
@@ -340,32 +428,39 @@ MODULE_ACCESS = (
             "merlin_experiments.phase0.original_standard_ir_observer",
         ),
     ),
-    _module("merlin.targetgen.torch_schema_batch_observer", "grader"),
-    _module("merlin.targetgen.rtl.gen_rocc_replay", "grader"),
-    _module("merlin.verify.replay", "grader"),
-    _module("merlin.verify.replay_layers", "grader"),
-    _module("merlin.targetgen.model_slice_export", "grader"),
-    _module("merlin.targetgen.group_capsules", "grader"),
-    _module("merlin.targetgen.store_probe", "grader"),
-    _module("merlin.targetgen.evaluation_cohort", "grader"),
+    _module("merlin.development.targetgen.torch_schema_batch_observer", "grader"),
+    _module("merlin.development.targetgen.model_slice_export", "grader"),
+    _module("merlin.development.targetgen.group_capsules", "grader"),
     _module(
-        "merlin.targetgen.capsule_runner",
+        "merlin.evaluation.capsule.runner",
         "grader",
         aliases=(
-            "merlin.targetgen.oracle_policy",
-            "merlin.targetgen._capsule_bundle_worker",
-            "merlin.targetgen.capsule_diagnostics",
+            "merlin.development.targetgen.oracle_policy",
+            "merlin.development.targetgen._capsule_bundle_worker",
+            "merlin.development.targetgen.capsule_bundle",
+            "merlin.development.targetgen.capsule_diagnostics",
+            "merlin.evaluation.capsule.runner",
+            "merlin.evaluation.capsule.bundle",
+            "merlin.evaluation.capsule.diagnostics",
         ),
     ),
-    _module("merlin.targetgen.capsule_dram", "grader"),
-    _module("merlin.targetgen.capsule_source_identity", "grader"),
+    _module("merlin.development.targetgen.capsule_dram", "grader"),
     _module(
-        "merlin.targetgen.oot_runner",
-        "grader",
-        aliases=("merlin.targetgen.package_runtime", "merlin.targetgen.package_certification"),
+        "merlin.development.targetgen.capsule_source_identity", "grader", aliases=("merlin.evaluation.capsule.source",)
     ),
-    _module("merlin.targetgen.coverage_report", "grader"),
-    _module("merlin.targetgen.eval", "grader", directory=True),
+    _module(
+        "merlin.development.targetgen.package_runtime",
+        "grader",
+        aliases=("merlin.development.targetgen.package_runtime", "merlin.development.targetgen.package_certification"),
+    ),
+    _module("merlin.development.targetgen.coverage_report", "grader"),
+    _module("merlin.development.targetgen.eval", "grader", directory=True),
+    # Independent MX arithmetic reference; never part of candidate compiler support.
+    _module(
+        "merlin.verification.references.microscaling_flash",
+        "oracle",
+        aliases=("merlin.development.targetgen.mx_flash_ref",),
+    ),
 )
 
 
@@ -597,14 +692,28 @@ def legacy_module_paths(origin: str, *, items: tuple[ModuleAccess, ...] = MODULE
 # Resource ownership and physical layout are distinct. These aliases are consulted together during
 # staged moves so a stale duplicate answer file cannot survive merely because the new copy was found.
 CONTRACT_RESOURCE_ROOTS = (
+    "src/merlin/resources/contracts",
+    "experiments/corpora",
     "merlin/contract",
     "src/merlin/_data/contract",
+    "src/merlin_experiments/_data/contract",
     "packages/merlin-experiments/src/merlin_experiments/_data/contract",
 )
 
 
 def contract_resource_roots(root: Path, *parts: str) -> tuple[Path, ...]:
-    paths = [root.joinpath(rel, *parts) for rel in CONTRACT_RESOURCE_ROOTS]
+    # Capsules moved out of the installed contract tree. Preserve that logical
+    # child while enumerating both current and historical answer locations.
+    paths = [root.joinpath(rel, *parts) for rel in CONTRACT_RESOURCE_ROOTS if rel != "experiments/corpora"]
+    if not parts:
+        paths.append(root / "experiments/corpora")
+    elif parts[0] == "capsules":
+        paths.append(root.joinpath("experiments/corpora", *parts[1:]))
+    paths.extend(
+        package.joinpath("resources/contracts", *parts)
+        for namespace, package in runtime_package_roots(root)
+        if namespace == "merlin"
+    )
     paths.extend(
         package.joinpath("_data/contract", *parts)
         for namespace, package in runtime_package_roots(root)
@@ -619,3 +728,67 @@ KEY_FILENAME = "recovery_key.yaml"
 KEY_ENV = "MERLIN_RECOVERY_KEY"
 KEY_TOPIC = "perf-recovery"
 KEY_TOPIC_FOLDED = ("perf-studies", "recovery")
+
+
+# ---- path_scrub --------------------------------------------------------------------------------
+# Scrub host filesystem paths out of text that crosses into an agent-visible document.
+#
+# An error message from a build or a simulator routinely names files outside the agent's work tree, and
+# quoting it verbatim would disclose host layout the agent has no use for. This replaces
+# every absolute path in ``text`` with :data:`TOKEN`, except a path under one of the ``keep`` roots (the
+# agent's own visible work tree), and first rewrites any ``rewrite`` prefix (a host-private snapshot of
+# that tree) to the root the agent knows it by.
+#
+# Structural, not pattern-based: a path starts with ``/`` at the beginning of the text or after a
+# delimiter, and runs to the next delimiter. Nothing here names a host, a user or a directory.
+
+TOKEN = "<host-path>"
+
+#: Characters that end a path, or may sit immediately before one.
+_DELIMITERS = frozenset(" \t\r\n'\"`()[]{}<>,;=|")
+
+
+def _norm(root: str | Path) -> str:
+    text = str(root)
+    return text.rstrip("/") if text != "/" else text
+
+
+def scrub_host_paths(
+    text: str,
+    *,
+    keep: Sequence[str | Path] = (),
+    rewrite: Mapping[str | Path, str | Path] | None = None,
+) -> str:
+    """``text`` with every absolute path outside ``keep`` replaced by :data:`TOKEN`."""
+    if not text:
+        return text
+    roots = sorted((_norm(k) for k in keep if str(k)), key=len, reverse=True)
+    mapping = sorted(((_norm(a), _norm(b)) for a, b in (rewrite or {}).items()), key=lambda p: -len(p[0]))
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        char = text[i]
+        if char == "/" and (i == 0 or text[i - 1] in _DELIMITERS or text[i - 1] == ":"):
+            j = i
+            while j < n and text[j] not in _DELIMITERS:
+                j += 1
+            if j == i + 1:  # a bare slash is not a path
+                out.append(char)
+                i += 1
+                continue
+            path = text[i:j]
+            trailing = ""
+            while path and path[-1] in ".:":
+                trailing = path[-1] + trailing
+                path = path[:-1]
+            for source, target in mapping:
+                if path == source or path.startswith(source + "/"):
+                    path = target + path[len(source) :]
+                    break
+            visible = any(path == root or path.startswith(root + "/") for root in roots)
+            out.append((path if visible else TOKEN) + trailing)
+            i = j
+            continue
+        out.append(char)
+        i += 1
+    return "".join(out)

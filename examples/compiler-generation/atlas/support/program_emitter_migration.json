@@ -1,0 +1,21 @@
+{
+  "kind": "program_emitter_source_relocation_inventory",
+  "source_commit": "da909d8da571b4beb69772120a1b9a617ec416d8",
+  "status": "migration_only_not_numerical_or_hardware_qualification",
+  "files": [
+    {
+      "source": "src/merlin/development/targetgen/oracle_helpers/npu_emit.py",
+      "source_sha256": "5f6aa38f7bb896c4f1939f22191961016e4808c19dff40004d2bbb31483e2324",
+      "destination": "atlas_program_emit.py",
+      "destination_sha256": "5f6aa38f7bb896c4f1939f22191961016e4808c19dff40004d2bbb31483e2324",
+      "change": "byte-identical helper relocation; no model imports or execution during qualification"
+    }
+  ],
+  "contract_delta": {
+    "path": "contracts/target_contract.yaml",
+    "source_companion_commit": "f38605ad7223edd8812ce57f9d97e5e7838e4199",
+    "source_sha256": "27a2cad475eea1e7f158b4212560f959747da93abfa4fc5778fd5b2ad7d78738",
+    "destination_sha256": "1eefe1d5941869b3063a09e82944fbb765934f50a93f27b78ebde86bddd98af0",
+    "change": "runner.program_emitter explicitly declares provider-contained atlas_program_emit.py and target-owned --fix-itype-rd option"
+  }
+}

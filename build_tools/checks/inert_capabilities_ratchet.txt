@@ -1,0 +1,61 @@
+# Inert capabilities that MAY ONLY SHRINK.
+#
+# Each line is `<kind> <id>` -- a capability that is DECLARED and cannot fire.
+# NEVER ADD A LINE. A new entry means a new feature that does nothing and says
+# nothing; fix it, or delete the declaration. Regenerate with:
+#   build_tools/scripts/check_inert_capabilities.py --write-ratchet
+#
+# count: 55
+unchecked-subprocess-input build_tools/scripts/k1_int8_fair_compare.py:main
+unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_ver
+unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_write_product
+always-empty-field build_tools/scripts/check_docs_freshness.py:drift
+always-empty-field merlin/python/merlin/dse_guidance/contract.py:dse_knobs
+always-empty-field merlin/python/merlin/kernels/space.py:coords
+always-empty-field merlin/python/merlin/plotting/cpu_host_experiment_figures.py:actions
+always-empty-field merlin/python/merlin/targetgen/isa_corpus_coverage.py:covered
+always-empty-field merlin/python/merlin/targetgen/isa_corpus_coverage.py:uncovered
+always-empty-field merlin/python/merlin/xdsl_dialects/lowering/passes.py:requirements
+registry-asymmetry impr-features/ranked-levers:registered-not-consumed:fuse_elementwise_after_generalize
+registry-asymmetry impr-features/ranked-levers:registered-not-consumed:opu_matmul
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:AFFINITY
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:REPEAT
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:RSS
+unproduced-member merlin/python/merlin/baselines/executorch_session.py:_MARKER_KINDS:THREADS
+unproduced-member merlin/python/merlin/compare/executorch_packages.py:_ALLOWED_INHERITED_ENV_KEYS:CMAKE_GENERATOR
+unproduced-member merlin/python/merlin/dse_guidance/section_select.py:_LAYER_TOKENS:transformer_blocks
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:dispatch_begin
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:dispatch_end
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:engine_idle
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:engine_stall
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:local_load
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:local_store
+unproduced-member merlin/python/merlin/kernels/dyntrace.py:EVENT_KINDS:queue_wait
+unproduced-member merlin/python/merlin/compiler/quantization/linalg.py:_DEQUANT_KINDS:quant_ext.dequantize_per_group
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:dtype_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:layout_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:reuse_known
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:shape_static
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:ASSUMPTION_KINDS:stable_over_lifetime
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:accumulator_not_user_visible
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:epilogue_consumes_accumulator
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:event_token_support
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:lhs_immutable
+unproduced-member merlin/python/merlin/xdsl_dialects/contract.py:KNOWN_PREDICATES:runtime_persistent_handle
+unreferenced-def build_tools/scripts/check_contract_copies.py:_build_excluded_suffixes
+unreferenced-def build_tools/scripts/k1_int8_recipe_ab.py:_instret
+unreferenced-def merlin/python/merlin/baselines/exo.py:_venv_python
+unreferenced-def merlin/python/merlin/compare/paper_report.py:_attribution_records
+unreferenced-def merlin/python/merlin/dse_guidance/presentation_plots.py:_r_primitive_coverage
+unreferenced-def merlin/python/merlin/targetgen/program_oracle.py:_load_verilator_runner
+unreferenced-def merlin/python/merlin/targetgen/rtl/gen_rocc_replay.py:_arg_roles
+unreferenced-def merlin/python/merlin/targetgen/rtl/introspect.py:_fir_lines
+unreferenced-def merlin/python/merlin/verify/faults.py:_cb_drop_requant
+# growth-accepted: five data-selected option members kept by reviewed decision (2026-10-06). Each is a
+#   value a contract, bundle or operator flag selects; none is selected by any data in the tree today,
+#   and deleting it would either change a fail-closed path or drop a live option. Net vs main: 68 -> 55.
+unproduced-member packages/merlin-experiments/src/merlin/experiments/phase2/claims/affine.py:_VARIABLE_KINDS:input_elements  # selected by a phase-0 performance claim's fit.variable_source.kind; stays because it is the structural read for an elementwise/movement claim whose cost scales with input size, and no claim template declares one yet
+unproduced-member merlin/python/merlin/perf/layer_bench/reference.py:ELEM_MODES:sparse_binary  # selected by the operator flag `firesim_gemm_windows.py --elem-mode` (outside the census roots); stays because an arm that reads the accumulator at scale 1 needs it, or its digest checks a saturation pattern instead of values
+unproduced-member merlin/python/merlin/sched/mach/model.py:COMPLETION_KINDS:polled  # selected by a target schedule contract's latency rule `completion:`; stays because it is the only kind for a data-dependent completion, and derive refuses an unrecognised kind (latency.completion unknown), so removing it would turn every declared polled completion into an uncosted rule
+unproduced-member merlin/python/merlin/targetgen/bundle_gate.py:REFERENCE_KINDS:w8a8_execution  # selected by a bundle contract's `reference:`; stays because its scope text is what gate_for quotes when a W8A8 device run is graded against the host's own int8 arithmetic (cos 1.0 by construction)
+unproduced-member merlin/python/merlin/targetgen/bundle_gate.py:REFERENCE_KINDS:weight_only_int8  # selected by a bundle contract's `reference:`; stays because its scope text is the refusal that names the cos 0.484 case (grading a W8A8 run against a weight-only reference)

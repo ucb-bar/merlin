@@ -1,0 +1,37 @@
+schema_version: 2
+kind: template
+id: atlas-functional
+target: atlas
+description: Test generation and combined correctness/performance backend generation; select reviewed operator inputs before execution.
+stages:
+  test-generation:
+    adapter: capsule_derivation
+    config:
+      recipe: test-generation/recipe.yaml
+      software_spec: target/software-spec.yaml
+      capability_contract: target/contracts/target_contract.yaml
+      hardware_spec: target/hardware.yaml
+      evidence_mode: diagnostic
+      performance_template: ../../../experiments/templates/test-generation/performance.yaml
+      descriptor: target/descriptor.yaml
+  backend-generation:
+    adapter: capsule_bench
+    config:
+      # Supply --corpus-seal and --bundle-manifest from the same reviewed release.
+      require_reviewed_corpus: true
+      # Select actual reviewed files with --backend-joint-campaign / --backend-oracle-timing.
+      joint_campaign: ../../../out/operator-inputs/atlas/joint-policy.json
+      fresh_backend: true
+      schedule: continuous
+      descriptor: target/descriptor.yaml
+      level: EL4
+      bundle: OPERATOR_BUNDLE_ID
+      bundle_manifest: ../../../out/operator-inputs/atlas/input_bundle_manifest.yaml
+      oracle_timing: ../../../out/operator-inputs/atlas/oracle-timing.json
+      model: claude-opus-4-8
+      effort: high
+      driver: claudecode
+      provider: subscription
+      max_wall_s: 43200
+      round_timeout: 43200
+      grade_interval: 900

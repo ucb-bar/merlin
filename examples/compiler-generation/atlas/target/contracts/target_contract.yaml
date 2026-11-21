@@ -1,0 +1,75 @@
+# Atlas reference capability candidate. Executable support is selected separately.
+# Geometry, storage capacities and instruction codes come from a selected RTL fact
+# bundle; none are copied into this authored declaration.
+name: atlas
+version: '0.1'
+status: prototype
+requires_human_review: true
+family: tensor_resident
+features: [self_hosted_isa, systolic_array, fp8_mxu, bf16_accumulate]
+capabilities:
+  ops: [matmul]
+compute_units:
+  - name: mxu
+    kind: systolic
+    dtypes: [fp8_e4m3]
+    ops: [matmul]
+    accumulate:
+      - {in: fp8_e4m3, weight: fp8_e4m3, acc: bf16}
+    semantic_capabilities:
+      - {family: contraction, dtypes: [fp8_e4m3], ranks: [2, 3]}
+      # Both below are what capability_derive establishes from the selected RTL facts and ISA role
+      # (derivation: merlin.target.capabilities.discovery.semantic_derivation.derive, via merlin.target.capabilities.manifest.manifest_for)
+      # census (semantic_capabilities_derived of manifest_for('atlas')), declared so the audit's
+      # drift is empty rather than reporting them missing:
+      #   elementwise_map <- role 'acc_readout_scaled' (MXUAccumulatorPopE1): the scaled readout of
+      #     this array's accumulator, in this unit's format, fused with the contraction only;
+      #   movement <- role 'memory' (TensorBaseOffset). It evidences no engine, so it carries the
+      #     formats of the units the facts derive (fp8_e4m3 here, bf16 on the lane engine).
+      - {family: elementwise_map, dtypes: [fp8_e4m3], composed_with: [contraction]}
+      - {family: movement, dtypes: [fp8_e4m3, bf16]}
+  # DERIVED, not authored: the unit capability_manifests.manifest_for('atlas') synthesizes from the
+  # selected RTL facts (AtlasRocketConfig FIRRTL, sha256 fefa711dba44498317573ee5af2cfd82edb674cdfff1505318ea93e896fc123d).
+  # The ISA role census evidences the engine; the lane-replication reader names its element format.
+  # tests/targetgen/test_lane_datapaths.py re-derives it and compares whenever that checkout is present.
+  - name: vector_unit
+    kind: vector
+    dtypes: [bf16]
+    ops: [elementwise]
+    scaling: none
+    requant: {ref: none}
+    semantic_capabilities:
+      - {family: elementwise_map, dtypes: [bf16]}
+    derived_from: "isa_role: ISA role 'tensor_compute_binary' -> ['TensorComputeBinary']"
+    dtypes_derived_from: >-
+      rtl_facts.lane_datapaths[VectorEngineTop] (firrtl_lane_replication): module VectorEngineTop
+      (a unit beside the compute array) replicates 6 primitive(s) once per lane, 16x each: AddRecFN,
+      MulRawFN, RecFNToRecFN, RoundRawFNToRecFN_e8_s8, Tanh, VectorAddRecFN; `RoundRawFNToRecFN_e8_s8`
+      is a hardfloat primitive parameterised e8/s8 (8 exponent + 7 fraction bits = bf16 in the format
+      registry) and declares the 17-bit port it implies
+# Marks the vector unit above as synthesized from evidence, never as author-declared.
+derived_compute_units: [vector_unit]
+memory_model:
+  resident: true
+  accumulators: true
+compiler_obligations: [must_tile_to_mesh_shape]
+hardware_promises: []
+runtime_promises: []
+legality: []
+runtime:
+  backends: [simulator]
+  default_backend: simulator
+runner:
+  dtype: fp8_e4m3
+  fourth_output_name: kernel.S
+  model_ext: npu_model
+provenance: >-
+  Candidate compute format and MXU intent from the curated Atlas MxuParams.scala,
+  PE.scala and software-spec.yaml; geometry, storage and decoder facts require
+  one explicitly selected FIRRTL/CIRCT source bundle. This reference is not an
+  executable backend or a numerical/transfer qualification.
+notes: >-
+  Model-operand scale encoding and block size remain unknown. The E8M0-named
+  command byte is observed on result-pack paths and does not establish an
+  operand block scale or an executable requantization route. Operation and
+  transfer admission remain unreviewed in software-spec.yaml.

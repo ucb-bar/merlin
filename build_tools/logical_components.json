@@ -1,0 +1,98 @@
+{
+  "schema": "merlin.logical_components.v1",
+  "research": {
+    "merlin-experiments": {
+      "namespaces": [
+        "merlin.evaluation.harness",
+        "merlin.development.targetgen.sandbox",
+        "merlin.experiments",
+        "merlin.evaluation.capsule",
+        "merlin.development.backend",
+        "merlin.development.testgen"
+      ],
+      "modules": [
+        "merlin.analysis.optimization.probes.analysis_worker",
+        "merlin.analysis.optimization.probes.context_providers",
+        "merlin.analysis.optimization.witnesses.contraction_preparation",
+        "merlin.analysis.optimization.witnesses.host_physical_transition_qualifier",
+        "merlin.analysis.optimization.witnesses.initializer_elision",
+        "merlin.analysis.optimization.witnesses.lane_migration_qualifier",
+        "merlin.analysis.optimization.witnesses.program_pair_provider",
+        "merlin.analysis.optimization.witnesses.region_evidence",
+        "merlin.analysis.optimization.witnesses.region_qualifier",
+        "merlin.analysis.optimization.witnesses.source_convolution_preparation",
+        "merlin.analysis.optimization.witnesses.source_program_pair",
+        "merlin.development.targetgen.corpus.group_capsules",
+        "merlin.development.targetgen.execution.host.checked_source_diagnostics",
+        "merlin.development.targetgen.execution.host.common_transforms",
+        "merlin.development.targetgen.execution.host.dispatch_checks",
+        "merlin.development.targetgen.execution.host.leaf_execution",
+        "merlin.development.targetgen.execution.host.model_audit",
+        "merlin.development.targetgen.execution.host.model_execution",
+        "merlin.development.targetgen.execution.host.selections",
+        "merlin.development.targetgen.execution.host.source_composition_preferences",
+        "merlin.development.targetgen.execution.native.candidate_model",
+        "merlin.development.targetgen.execution.native.dispatch_accounting",
+        "merlin.development.targetgen.execution.native.model_policy",
+        "merlin.development.targetgen.execution.native.native_component_execution",
+        "merlin.development.targetgen.execution.native.native_component_inputs",
+        "merlin.development.targetgen.execution.native.native_model_execution",
+        "merlin.development.targetgen.execution.native.native_model_input_storage",
+        "merlin.development.targetgen.execution.native.native_model_values",
+        "merlin.development.targetgen.execution.native.native_pointer_source_binding",
+        "merlin.development.targetgen.execution.native.native_pointer_source_execution",
+        "merlin.development.targetgen.execution.native.pointer_source_audit",
+        "merlin.development.targetgen.execution.native.private_dispatch",
+        "merlin.development.targetgen.execution.runner.native_readback",
+        "merlin.development.targetgen.grading.coverage_report",
+        "merlin.development.targetgen.grading.enforcement",
+        "merlin.development.targetgen.grading.golden",
+        "merlin.development.targetgen.grading.golden_inputs",
+        "merlin.development.targetgen.grading.grade_offload",
+        "merlin.development.targetgen.grading.model_checks",
+        "merlin.development.targetgen.grading.perf_ledger",
+        "merlin.development.targetgen.grading.run_ledgers",
+        "merlin.development.targetgen.grading.scheduling",
+        "merlin.development.targetgen.grading.seeded_grade",
+        "merlin.development.targetgen.grading.submission",
+        "merlin.development.targetgen.grading.trace_check",
+        "merlin.development.targetgen.oracles.certificates",
+        "merlin.development.targetgen.oracles.executed_program",
+        "merlin.development.targetgen.oracles.heavy_oracles",
+        "merlin.development.targetgen.oracles.oracle_readback",
+        "merlin.development.targetgen.oracles.ordering_gates",
+        "merlin.development.targetgen.oracles.schedule",
+        "merlin.development.targetgen.packaging.certification",
+        "merlin.development.targetgen.packaging.group_reference",
+        "merlin.evaluation.model.bundles.w8a8_eager",
+        "merlin.evaluation.model.bundles.w8a8_execution",
+        "merlin.verification.references.microscaling_flash"
+      ]
+    },
+    "merlin-dse": {
+      "namespaces": [],
+      "modules": []
+    },
+    "merlin-mining": {
+      "namespaces": [],
+      "modules": [
+        "merlin.analysis.mining.fork",
+        "merlin.analysis.mining.reconstruction.diagnoses",
+        "merlin.analysis.mining.reconstruction.experiment_packets",
+        "merlin.analysis.mining.reconstruction.history",
+        "merlin.analysis.mining.reconstruction.learning",
+        "merlin.analysis.mining.reconstruction.pass_slot",
+        "merlin.analysis.mining.reconstruction.proposals",
+        "merlin.analysis.mining.reconstruction_reference",
+        "merlin.analysis.mining.references.aot_compilation",
+        "merlin.analysis.mining.references.cca_extraction",
+        "merlin.analysis.mining.references.database",
+        "merlin.analysis.mining.references.subsets"
+      ]
+    },
+    "merlin-analysis": {
+      "namespaces": [],
+      "modules": []
+    }
+  }
+}

@@ -1,8 +1,0 @@
-[
-  {
-    "capsule": "SY_movement_i8_aligned",
-    "status": "refused",
-    "category": "OSError",
-    "detail": "[Errno 22] Invalid argument"
-  }
-]

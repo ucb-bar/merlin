@@ -13,16 +13,16 @@ Generated output in this repo lives under a **single top-level `out/` root**, wi
 (`out/runs/`, `out/artifacts/`, `out/build/`). Never write generated files anywhere else (no top-level
 `runs/`/`artifacts/`/`build/`, no `output/`, `results/`, `selfcheck_out/`, `docs/presentation/`, or
 per-experiment `runs/`/`reports/` — those are retired). A PreToolUse hook
-(`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/scripts/check_artifact_layout.py`
+(`.claude/hooks/guard_artifact_writes.py`) blocks violations; `build_tools/checks/check_artifact_layout.py`
 lints them. Resolve roots via `merlin.common.paths` — `out_dir()`/`runs_dir()`/`artifacts_dir()`/
 `build_dir()` (honoring `MERLIN_OUT_ROOT`); never hard-code the literal strings.
 
 | Root | Holds | How to create |
 |------|-------|---------------|
 | `out/runs/<target>/<suite>/<run-id>/` | aet experiment runs (logs/ metrics/ artifacts/ generated/ contracts/ + run_record.json) | `merlin.common.artifacts.start_run(...)` |
-| `out/runs/<target>/phase<N>/<TS>_<method>_<sha7>/` | a phase run (engine output; `oot/` = harness-owned git history) | `start_phase_run(target=, phase=, method=)`; `merlin.common.oot_repo` for `oot/` |
+| `out/runs/<target>/phase<N>/<TS>_<method>_<sha7>/` | a phase run (engine output; `oot/` = harness-owned git history) | `start_phase_run(target=, phase=, method=)`; `merlin.development.backend.session.workspaces` for `oot/` |
 | `out/artifacts/protocols/<target>/phase0-<TS>-<sha7>/` | sealed phase-0 corpus release (pinned) | `merlin experiment corpus prepare` + `seal` |
-| `out/artifacts/targets/<target>/champions/<package_id>/` | phase-2 champion from a `best` tag (pinned) | `merlin.targetgen.champions.export_champion` |
+| `out/artifacts/targets/<target>/champions/<package_id>/` | phase-2 champion from a `best` tag (pinned) | `merlin.development.targetgen.packaging.champions.export_champion` |
 | `out/artifacts/targets/<target>/INDEX.yaml` | generated per-target index | `merlin experiment index <target>` |
 | `out/artifacts/<topic>/<target>/v<ver>/<leaf>/` | versioned products (+ manifest.yaml, `latest` symlink) | `merlin.common.artifacts.new_product(...)` |
 | `out/artifacts/cache/<ns>/` | large regenerable caches (PURGEABLE) | `merlin.common.artifacts.cache_dir(ns)` |
@@ -40,12 +40,11 @@ natural axis — do not force a hardware target where it doesn't apply:
 | `kernel-mining/<target>/<op>/` | **target** backend | `merlin-rvv-mine/-autotune/-report` |
 | `kernel-index/<framework>/` | source framework | `kernel-index/-extract/-audit` |
 | `ceiling/` | cross-framework | `kernel-bench` |
-| `compare/<ts>/` | config×workload | `merlin-compare` |
 | `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` | substrate→model→experiment | `scripts/k1_*`, firesim/zephyr/baremetal sweeps |
 | `recaptures/<model>_<dtype>/` | model+dtype (PURGEABLE) | capture harness |
 | `perf-bench/<target>/`, `capsule-bench/<target>/` | target | experiment reports |
 | `targets/<target>/<package_id>/` | **target** backend | `merlin-rvv-mine/-autotune`, `merlin-targetgen` (codegen packages) |
-| `presentation/`, `cache/`, `selfcheck/` | topic / ns / target | misc |
+| `presentation/`, `cache/`, `probes/`, `archive/` | topic / ns | misc (full list: `storage.yaml`) |
 
 `out/runs/<target>/<suite>/<run-id>/` is for aet experiment runs (target-centric). `out/build/` for compiler output.
 
@@ -93,7 +92,7 @@ via the m2m exporter).
 
 ## Before deleting anything: ask what cites it
 
-PURGEABLE says a tree *can* be regenerated, not that nothing still cites it. Sealed Phase 0
+PURGEABLE says a tree *can* be regenerated, not that nothing still cites it. Sealed test generation
 evidence was deleted twice by cleanups that judged by name or age. Each time, a record that
 outlived the cleanup pinned the deleted path by digest. Reclaim with `merlin-storage prune` /
 `retain`, which refuse cited paths. Before any manual or scripted `rm`, run
@@ -101,7 +100,7 @@ outlived the cleanup pinned the deleted path by digest. Reclaim with `merlin-sto
 release, run record or derivation still cites the path, so leave it. Never unlock a `chattr +i`
 tree to delete it; that flag is a seal. A damaged sealed derivation is repaired, never re-copied by
 hand: use `merlin-experiment corpus evidence repair`, which restores digest-equal bytes and writes
-a receipt. See `docs/guides/storage.md`.
+a receipt. See `docs/guides/12-experiments.md`.
 
 ## Escape hatch
 

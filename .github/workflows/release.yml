@@ -1,0 +1,13 @@
+name: release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    # Use the same build/install checks and their exact retained artifacts.
+    # Publishing and hardware deployment have no configured authorization here.
+    uses: ./.github/workflows/integration.yml

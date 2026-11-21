@@ -4,7 +4,7 @@ description: >-
   Which external hardware revision a result is about — pinning, verifying and recording RTL/toolchain
   versions in merlin. Use whenever you run RTL or a simulator, derive facts from an external checkout
   (Scala/Verilog/headers), build a binary for a board or sim, or write any artifact that claims a
-  numerical or functional verdict. One registry: merlin/contract/hardware_pins.yaml.
+  numerical or functional verdict. One registry: src/merlin/resources/contracts/hardware_pins.yaml.
 ---
 
 # Hardware provenance (MANDATORY for anything that claims a verdict)
@@ -38,7 +38,7 @@ is the raising form — use it where proceeding under drift would be meaningless
 
 ## The four rules
 
-1. **Declare the revision in `merlin/contract/hardware_pins.yaml`.** Tracked and reviewed, so changing
+1. **Declare the revision in `src/merlin/resources/contracts/hardware_pins.yaml`.** Tracked and reviewed, so changing
    what a result is measured against is a diff someone sees. Full 40-char shas, quoted (an all-digit sha
    is valid hex and YAML reads it as a number, silently dropping leading zeros — the loader rejects this).
 
@@ -66,7 +66,7 @@ is the raising form — use it where proceeding under drift would be meaningless
 
 Sometimes the artifact a body of results is attributed to no longer exists and cannot be rebuilt.
 **Record the loss; do not repair it.** `lost_artifacts:` in the registry, read by
-`merlin.common.provenance_lost` (`load_lost`, `lost_for_digest`, state `UNRECOVERABLE`). A record says
+`merlin.common.provenance_claims` (`load_lost`, `lost_for_digest`, state `UNRECOVERABLE`). A record says
 what was lost, when, why it cannot be rebuilt and what still verifies, and it **claims** its digest: the
 loaders refuse any pin or artifact that re-declares those bytes. The two moves that look like fixes are
 worse than the loss — repointing the declaration at whatever is on disk now (every citation becomes
@@ -79,7 +79,7 @@ prints every loss record on each run.
 - **Never mutate someone's checkout to satisfy a pin.** Other people and sessions work in those trees on a
   shared host; silently moving HEAD is a worse failure than the drift. Verify and record.
 - **Never treat `UNKNOWN` as "unchanged".** A fact that could not be read is drift, not agreement.
-- **Never add to `build_tools/scripts/provenance_ratchet.txt`.** That list may only shrink; a new entry is
+- **Never add to `build_tools/checks/provenance_ratchet.txt`.** That list may only shrink; a new entry is
   a new unattributable result. Regenerate the artifact with provenance instead.
 - **Never claim a verdict for hardware you did not verify you were on.** If the pin drifts materially
   (wrong commit, missing required path, forbidden path present), the report's `gaps` must say so and it
@@ -87,7 +87,7 @@ prints every loss record on each run.
 
 ## Enforcement
 
-- `build_tools/scripts/check_provenance.py` — pre-commit (`--staged`), session Stop hook (`--stop-hook`),
+- `build_tools/checks/check_provenance.py` — pre-commit (`--staged`), session Stop hook (`--stop-hook`),
   and `--verify-pins` for live checkout verification. It scans **untracked** reports under
   `out/artifacts/` too, because that is where the reports actually live; a version that only looked at
   tracked files passed while an unattributed certification sat on disk. **`--staged` runs that scan as

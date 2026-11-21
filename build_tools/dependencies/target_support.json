@@ -1,0 +1,187 @@
+{
+  "schema": "merlin.upstream_support_migration.v2",
+  "status": "examples_support_in_repo",
+  "merlin_source_baseline": "6b83c05a7ea7e7eb50fc688670cfa547f16f315c",
+  "branch": "refactor/merlin-phase-architecture",
+  "runtime_defaults_changed": true,
+  "canonical_sources_removed": true,
+  "selection": "MERLIN_TARGET_PATH selects support explicitly and always wins. Unset, each target's in-repo provider under examples/<category>/<example>/support is selected, keyed by its provider.yaml target, never by directory name; an empty value selects none. Historical companion paths are provenance, never runtime defaults.",
+  "qualification_scope": "Read-only provider identity, exact source SHA256 parity, plugin reference existence, schema diagnostic parity. No hardware execution or compiler qualification.",
+  "candidate_boundary": "Support plugins are experimenter-side answer-bearing code, not candidate payload. Every in-repo examples/*/*/support tree, canonical or vendored, is an answer surface whatever MERLIN_TARGET_PATH selects: agent sandboxes, bundle snapshots and clean rooms withhold it (only an explicit contracts/ grant can reach inside, and no bundle declares one), and publication refuses a support provider as a candidate. Existing recursive integrity policy remains unchanged.",
+  "vendoring": {
+    "root": "examples/<category>/<example>/support",
+    "record": "examples/<category>/<example>/SOURCE.yaml",
+    "date": "2026-10-07",
+    "verification": "merlin/tests/infra/test_example_support.py recomputes each vendored tree id from the tracked bytes, and the companion tree id with each normalized file's companion blob put back",
+    "normalization": "A vendored file may differ from its companion only where SOURCE.yaml lists it under normalized, with the companion blob id and the change. Absolute vendoring-host paths in provenance records are rewritten repo-relative there."
+  },
+  "companions": [
+    {
+      "target": "muon",
+      "url": null,
+      "local_worktree": "out/build/upstreams/muon-support",
+      "base_ref": null,
+      "base_commit": null,
+      "catalog_commit": null,
+      "root_role": "support",
+      "companion_commit": "5d52f2bb5660a909ba947420ed6f44ba92a43986",
+      "companion_commit_relation": "same_commit",
+      "provider_root": ".",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/targets/muon/support",
+        "source_record": "examples/targets/muon/SOURCE.yaml",
+        "commit": "5d52f2bb5660a909ba947420ed6f44ba92a43986",
+        "tree": "6293adbf1e53084daec008a08119680f557032d1",
+        "vendored_tree": "6293adbf1e53084daec008a08119680f557032d1",
+        "file_count": 26
+      },
+      "copied_files": 19,
+      "file_provenance": "provenance.json",
+      "contract_sha256": "c39878928d8d674ded768a293b8bd8f662bf1b7f6f09d2e36f8208c310cb14d1",
+      "schema_valid": null,
+      "removed_canonical_directories": [
+        "merlin/targets/muon/backend"
+      ],
+      "removed_canonical_owners": [
+        "merlin/targets/muon/sim_oracle.py"
+      ],
+      "qualification_scope": "Original 19-file migration provenance retained; subsequent companion changes include an OOT-owned codegen smoke and shared OracleUnavailable inheritance. Isolated explicit provider/oracle metadata imports, private support classification, synthetic runtime ABI/cache tests, and nine process-blocked codegen smoke cases. No native execution.",
+      "blockers": [
+        "Standalone local support repository only; no publication remote configured and no changes pushed.",
+        "Provider identity muon and experiment identity radiance remain distinct. No implicit alias or native fallback was added.",
+        "Retained Radiance backend_package_dir still declares historical metadata/pin locations; qualified facts/IRDL provisioning and declaration migration remain unfinished.",
+        "No RTL facts are bundled. Missing selected-provider facts remain unavailable; native compiler, Cyclotron and RTL execution have not been qualified.",
+        "Cache source ownership now follows the installed lowering package; complete transitive toolchain and resource identity remains broader work.",
+        "Support code is host-private, not a candidate compiler payload. Historical frozen runs and certificates are not relabeled."
+      ]
+    },
+    {
+      "target": "saturn",
+      "url": "https://github.com/ucb-bar/rvv-mlir.git",
+      "local_worktree": "out/build/upstreams/rvv-mlir",
+      "base_ref": "stable/sol_k1_int8",
+      "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
+      "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
+      "root_role": "host_schedule",
+      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "companion_commit_relation": "same_commit",
+      "provider_root": "saturn-support",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/targets/saturn/support",
+        "source_record": "examples/targets/saturn/SOURCE.yaml",
+        "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+        "tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
+        "vendored_tree": "8febeda8958c9edcae820d5b50c3247dec31c4b4",
+        "file_count": 19
+      },
+      "copied_files": 7,
+      "file_provenance": "saturn-support/provenance.json",
+      "contract_sha256": "a123384e2132b3491b9d2747194a3efae27344077506060a5e45fc60f3c3b76a",
+      "opu_shim_provenance": "saturn-support/opu_shim_migration.json",
+      "matrix_adapter_provenance": "saturn-support/matrix_adapter_migration.json",
+      "schema_valid": null,
+      "removed_canonical_directories": [
+        "merlin/targets/saturn/backend",
+        "merlin/targets/saturn/dialect"
+      ],
+      "qualification_scope": "Exact seven-file source commitments, explicit Saturn provider and backend discovery, generic emitter identity reuse, pure xDSL dialect construction/lowering. No native execution.",
+      "blockers": [
+        "Separate Saturn support identity; sibling merlin-support describes RVV and is not an alias. Neither is the Saturn OPU experiment identity.",
+        "Contract and dialect plan are preserved reference inputs, not newly extracted or qualified RTL facts. Schema qualification was not performed for this move.",
+        "Shared Spike harness/toolchain dependencies remain in Merlin. Broader OPU implementations and reference metadata still require migration.",
+        "No native compiler, simulator, hardware or candidate certification. Existing RVV publication certification does not extend to this support package.",
+        "Companion branch is local and unpushed; frozen historical inputs remain unchanged."
+      ]
+    },
+    {
+      "target": "rvv",
+      "url": "https://github.com/ucb-bar/rvv-mlir.git",
+      "local_worktree": "out/build/upstreams/rvv-mlir",
+      "base_ref": "stable/sol_k1_int8",
+      "base_commit": "3e48d41813ae17f6e6112ba63c741e923b0e496d",
+      "catalog_commit": "a568f412625539cfdb29484869093721b027be5c",
+      "root_role": "host_schedule",
+      "companion_commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+      "companion_commit_relation": "same_commit",
+      "provider_root": "merlin-support",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/targets/rvv/support",
+        "source_record": "examples/targets/rvv/SOURCE.yaml",
+        "commit": "d6863380d43f61dcc22ebe498c0f6b9341018e29",
+        "tree": "cdfed452de48491da2f09a772b251b8b827e8bda",
+        "vendored_tree": "0e857f223910460294bd028998534883ca81238a",
+        "file_count": 6
+      },
+      "copied_files": 1,
+      "file_provenance": "merlin-support/provenance.json",
+      "contract_sha256": "b08117fecc0eef967ce639ab55314d2b8a163dd1733603f11133f452dd8ec4a4",
+      "schema_valid": true,
+      "blockers": [
+        "Published root rvv-opt is a no-op publication skeleton; actual payload is a host schedule, not a standalone compiler.",
+        "No dialect plan exists in the source snapshot.",
+        "No hardware or schedule execution performed; historical certificate applies only to the original base revision."
+      ]
+    },
+    {
+      "target": "atlas",
+      "url": "https://github.com/ucb-bar/atlas-mlir.git",
+      "local_worktree": "out/build/upstreams/atlas-mlir",
+      "base_ref": null,
+      "base_commit": null,
+      "catalog_commit": null,
+      "root_role": null,
+      "companion_commit": "392eb077c8a48bd3a21b253d9e488ba3d7ad74cf",
+      "companion_commit_relation": "same_commit",
+      "provider_root": "merlin-support",
+      "provider_role": "support",
+      "vendored": {
+        "path": "examples/compiler-generation/atlas/support",
+        "source_record": "examples/compiler-generation/atlas/SOURCE.yaml",
+        "commit": "392eb077c8a48bd3a21b253d9e488ba3d7ad74cf",
+        "tree": "42315503deaf7d52b1196354abd9b24eabaf7dc4",
+        "vendored_tree": "c68fb5508610f67372b73936231edd476c6fe2e0",
+        "file_count": 10
+      },
+      "copied_files": 2,
+      "file_provenance": "merlin-support/provenance.json",
+      "contract_sha256": "1eefe1d5941869b3063a09e82944fbb765934f50a93f27b78ebde86bddd98af0",
+      "program_emitter_provenance": "merlin-support/program_emitter_migration.json",
+      "removed_canonical_owners": [
+        "merlin.target.isa.npu_emit"
+      ],
+      "required_capabilities": {
+        "runner.program_emitter": "Named-program assembly and explicit tensor layout require the selected support helper. Encoding options are target-owned; no in-tree fallback remains."
+      },
+      "schema_valid": true,
+      "blockers": [
+        "Remote had no commits; companion remains a local unpushed support package.",
+        "Program-emitter migration preserves the old model-specific ISA shim byte-for-byte; neither the shim nor full frozen model-venv execution is newly qualified.",
+        "Source contract retains prototype, requires-human-review, incomplete datapath grounding and no RTL-certification claims.",
+        "No compiler candidate, hardware execution or measured performance qualification."
+      ]
+    },
+    {
+      "target": "gemmini",
+      "ownership": "generic_data_support",
+      "provider_root": "examples/compiler-generation/gemmini/support",
+      "provider_role": "support",
+      "generic_data_support": {
+        "path": "examples/compiler-generation/gemmini/support",
+        "source_record": "examples/compiler-generation/gemmini/SOURCE.yaml",
+        "tree": "5c5d8292eed80621c031d7db94ae1997d6752743",
+        "file_count": 8,
+        "backend": "merlin.runtime.backends.rocc.chipyard_backend"
+      },
+      "qualification_scope": "Data-only provider: reviewed contract copy + plugin pointers to generic core modules (runtime backend, RoCC semantics, RTL checks) + an ISA-headers spec that references the pinned gemmini-rocc-tests bare-metal runtime by per-file sha256. The include path holds only that runtime and a header generated from RTL facts; the vendor kernel library (include/gemmini.h) is excluded and refused. Historical record at 41788c72c reports execution of a hand-written mvin/mvout ELF bit-exact on spike and GSIM through run_elf. That record named tree d858e65967f358d7e85875ce161fa39ace1314f2 while the commit retained support tree 738f6119c54042979d2cb630df1716bcc64de55a; the execution claim is retained as historical evidence only, not qualification of the current regenerated tree. The current closure establishes source parity only, with no new hardware execution.",
+      "blockers": [
+        "plugin.rocc_semantics and plugin.rtl_checks name generic core modules that land separately; until then RoCC decoding and EL4 RTL checks refuse with a clear error.",
+        "plugin.backend re-exports the generic harness renderer (merlin.target.contract.harness.harness_render); until it lands, render_harness refuses.",
+        "The upstream syscalls.c has no printbuf(); the binary full-value readback transport needs the harness to supply its own write path.",
+        "No compiler candidate or Phase 1/2 run has been executed against this provider."
+      ]
+    }
+  ]
+}

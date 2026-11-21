@@ -1,0 +1,195 @@
+name: pr-fast
+
+# Retain the existing visible workflow/check names during consolidation.
+# Native hardware qualification remains separate from hosted boundary checks.
+on:
+  push:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  comparison:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      base: ${{ steps.base.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: resolve a real comparison base
+        id: base
+        env:
+          REQUESTED_BASE: ${{ github.event.merge_group.base_sha || github.event.pull_request.base.sha || github.event.before }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          base="$REQUESTED_BASE"
+          case "$base" in
+            ''|0000000000000000000000000000000000000000)
+              base="$(git merge-base HEAD "refs/remotes/origin/$DEFAULT_BRANCH")" ;;
+          esac
+          base="$(git rev-parse --verify "$base^{commit}")"
+          printf 'sha=%s\n' "$base" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: comparison
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          # full history: the ratchet gate diffs every ledger against the PR base / previous push,
+          # and the docs-freshness ratchet dates code_refs by `git log` (a shallow clone grafts every
+          # path onto one commit, so every doc would read as drifted)
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          version: '0.9.6'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.13'
+      - name: install the single package with hosted-check dependencies
+        run: >-
+          uv sync --frozen
+          --extra dev --extra verify --extra semantic-search
+          --extra kernels-ast --extra kernels-exo --extra kernels-parquet
+          --extra kernels-plots --extra experiments --extra analysis
+      - name: provision independent constant-math reference headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libmpfr-dev libgmp-dev
+      # Repository checks; generated-input qualification runs separately.
+      - name: structure gate
+        run: uv run --no-sync python build_tools/checks/check_structure.py
+      - name: artifact-layout gate
+        run: uv run --no-sync python build_tools/checks/check_artifact_layout.py
+      - name: no-target-name gate (derive-don't-overfit)
+        run: uv run --no-sync python build_tools/checks/check_no_target_name.py
+      - name: no-regex gate (derive-don't-overfit)
+        run: uv run --no-sync python build_tools/checks/check_no_regex.py
+      - name: no-assumed-constants gate (derive-don't-overfit)
+        run: uv run --no-sync python build_tools/checks/check_no_assumed_constants.py
+      - name: no-local-paths gate (public repo; no personal directories)
+        run: uv run --no-sync python build_tools/checks/check_no_local_paths.py
+      - name: overfit-register gate (declared coupling may only shrink)
+        run: uv run --no-sync python build_tools/checks/check_overfit_register.py
+      - name: semantic-coverage gate (generalization debt may only shrink)
+        run: uv run --no-sync python build_tools/checks/check_semantic_coverage.py --allow-unresolved
+      - name: mutation-proof gate (every check has a recorded failing direction)
+        run: uv run --no-sync python build_tools/checks/check_mutation_proofs.py --prove
+      - name: silent-default gate (a substituted datum may not become a verdict)
+        run: uv run --no-sync python build_tools/checks/check_silent_defaults.py
+      - name: schedule-IR coverage gate (every axis declared; status measured, not asserted)
+        run: uv run --no-sync python build_tools/checks/check_schedule_ir_coverage.py
+      - name: rtl-facts schema gate (every facts artifact matches its declared family)
+        run: uv run --no-sync python build_tools/checks/check_rtl_facts_schema.py
+      - name: target-package duplication gate (no two targets implement the same function)
+        run: uv run --no-sync python build_tools/checks/check_target_package_duplication.py
+      - name: ratchet gate (every ledger may only shrink)
+        run: uv run --no-sync python build_tools/checks/check_ratchets_shrink.py --base "${{ needs.comparison.outputs.base }}"
+      - name: docs freshness ratchet (no NEW drift in current docs)
+        run: uv run --no-sync python build_tools/checks/check_docs_freshness.py --ratchet --current-only
+      - name: no-holdout-names gate (a holdout's name is an answer key)
+        run: uv run --no-sync python build_tools/checks/check_no_holdout_names.py
+      - name: holdout-disjointness gate (hidden set disjoint from public)
+        run: uv run --no-sync python build_tools/checks/check_holdout_disjointness.py
+      - name: fact-provenance gate (a hardware fact derives from RTL, not from prose)
+        run: uv run --no-sync python build_tools/checks/check_fact_provenance.py
+      - name: opcode-documentation gate (every accepted op has ABI semantics)
+        run: uv run --no-sync python build_tools/checks/check_opcode_documentation.py
+      - name: grammar-documentation gate (spec, dialect and parser accept the same ops)
+        run: uv run --no-sync python build_tools/checks/check_grammar_documentation.py
+      - name: mesh-assertion gate (resolved contracts; missing generated targets unqualified)
+        run: uv run --no-sync python build_tools/checks/check_mesh_assertion_not_weakened.py --allow-unresolved
+      - name: route-partition gate
+        run: uv run --no-sync python build_tools/checks/check_route_partition.py --fail-on-violation
+      - name: numeric falsifiability (partial public audit; missing oracles unmeasured)
+        run: uv run --no-sync python build_tools/checks/check_numeric_falsifiability.py --allow-unmeasured
+      - name: capability-drift report (advisory; no RTL facts in CI)
+        continue-on-error: true
+        run: uv run --no-sync python build_tools/checks/check_capability_drift.py --fail-on-over-declared
+      - name: pass-obligation report (advisory; no capsule logs in CI)
+        continue-on-error: true
+        run: uv run --no-sync python build_tools/checks/check_pass_obligations.py
+      - name: execute the five public interactive tutorials
+        run: >-
+          uv run --no-sync --with 'nbclient>=0.11,<0.12'
+          --with 'ipykernel>=7,<8' --with 'ipywidgets>=8.1,<9'
+          python build_tools/checks/check_tutorials.py
+          --output out/build/python/ci/tutorials
+      - name: complete test collection budget (150 parameterized cases maximum)
+        run: >-
+          uv run --no-sync python build_tools/checks/check_test_budget.py
+          --output out/build/python/ci/test-budget.json
+      - name: compact behavioral suite
+        run: >-
+          uv run --no-sync pytest tests -q -ra
+          --junitxml=out/build/python/ci/core.xml
+      - name: retain exact collection and test outcomes
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: core-results
+          path: out/build/python/ci/
+          if-no-files-found: error
+          retention-days: 14
+
+  ruff:
+    needs: comparison
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
+        with:
+          version: '0.9.6'
+      # BLOCKING, and incremental: Python this change adds or modifies must be formatted. ~410 files
+      # were left alone because other work had them checked out; they converge as they are edited.
+      - name: format gate (changed Python must be ruff-formatted)
+        run: python3 build_tools/checks/check_format.py --base "${{ needs.comparison.outputs.base }}"
+      # Advisory until the untouched remainder reaches zero; then fold into the gate above.
+      - name: full-tree ruff lint + format report (advisory)
+        continue-on-error: true
+        run: |
+          uvx ruff@0.16.8 check .
+          uvx ruff@0.16.8 format --check .
+
+  integration:
+    uses: ./.github/workflows/integration.yml
+
+  fast:
+    # Always report the established required check, including dependency failure.
+    if: ${{ always() }}
+    needs: [comparison, checks, ruff, integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: require every selected gate
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 -c 'import json,os; rows=json.loads(os.environ["RESULTS"]); assert rows and all(row["result"] == "success" for row in rows.values()), rows'
+
+  docs-freshness:
+    # Preserve the old docs check without executing structure a second time.
+    if: ${{ always() }}
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: require the shared structure and documentation gate
+        env:
+          RESULT: ${{ needs.checks.result }}
+        run: test "$RESULT" = success

@@ -1,0 +1,785 @@
+"""Explicit source-bound host/provider objects for the ordinary model link.
+
+Device catalogs retain their own closed-object contract. This separate seam
+checks imported compilation identities and typed function boundaries, records
+ordered linking, and closes every required symbol in the final image. It grants
+no numerical, effect, target capability or source-fallback permission.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from types import MethodType
+
+from merlin.common.digest import sha256_file
+from merlin.common.paths import module_source_path
+from merlin.compiler.lower.source import source_optimization_policy as P
+from merlin.compiler.lower.source import source_optimization_selection as S
+from merlin.compiler.lower.source.source_optimization_request import request_from_record
+
+# ---- host_provider -----------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class HostFunctionABI:
+    symbol: str
+    result: str
+    arguments: tuple[str, ...]
+    variadic: bool = False
+
+
+@dataclass(frozen=True)
+class HostProviderObject:
+    path: Path
+    sha256: str
+    llvm_path: Path
+    llvm_sha256: str
+    defined: tuple[HostFunctionABI, ...]
+    required: tuple[HostFunctionABI, ...]
+    compilation_pins: tuple[tuple[Path, str], ...]
+    compile_commands: tuple[tuple[str, ...], ...]
+    compile_cwd: Path
+
+
+@dataclass(frozen=True)
+class HostProviderBuild:
+    prepared_sha256: str
+    model_llvm_sha256: str
+    model_object_sha256: str
+    objects: tuple[HostProviderObject, ...]
+    numerical_witness_sha256: str
+    effect_witness_sha256: str
+
+
+@dataclass(frozen=True)
+class HostProviderContext:
+    prepared_path: Path
+    model_llvm_path: Path
+    model_object_path: Path
+    workdir: Path
+    compiler: Path
+    compiler_flags: tuple[str, ...]
+    compile: Callable
+
+
+def _identity(path):
+    path = Path(path)
+    if not path.is_file() or path.is_symlink():
+        raise ValueError("provider artifacts require regular files")
+    return dict(path=str(path.resolve()), sha256=sha256_file(path))
+
+
+def _pin(value):
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def _function_abis(source):
+    """Read canonical LLVM function headers using typed tokens, never names.
+
+    Accept only the simple C scalar/pointer ABI used by ranked descriptor and
+    primitive calls. Aggregate, byval/sret, address-space, non-C conventions and
+    unknown ABI attributes refuse rather than guessing a function type.
+    """
+    from merlin.compiler.lower.quant.late_quant_rne import _identity as name
+    from merlin.compiler.lower.quant.late_quant_rne import _tokens
+
+    scalar = {"void", "ptr", "float", "double", "i1", "i8", "i16", "i32", "i64"}
+    abi = {}
+    for line in source.splitlines():
+        line = line.strip()
+        if not line.startswith(("define ", "declare ")):
+            continue
+        words = [t.text for t in _tokens(line)]
+        at = next((i for i, word in enumerate(words) if word.startswith("@")), None)
+        if at is None or at < 2 or words[at + 1] != "(":
+            raise ValueError("unsupported provider LLVM function header")
+        # Other functions are irrelevant unless imported as an explicit boundary.
+        # Retain a refusal sentinel for unsupported headers; lookup then refuses.
+        symbol = name(words[at])
+        result = words[at - 1]
+        prefix = words[1 : at - 1]
+        # A returned integer range constrains values, not the machine ABI.
+        # Consume only one well-formed, same-type range; unknown attributes
+        # still refuse below, including calling-convention/aggregate changes.
+        if "range" in prefix:
+            index = prefix.index("range")
+            attribute = prefix[index : index + 7]
+            valid_range = (
+                prefix.count("range") == 1
+                and len(attribute) == 7
+                and attribute[1] == "("
+                and attribute[2] == result
+                and result in scalar - {"void", "ptr", "float", "double"}
+                and attribute[4] == ","
+                and attribute[6] == ")"
+            )
+            if valid_range:
+                try:
+                    bounds = (int(attribute[3]), int(attribute[5]))
+                    width = int(result[1:])
+                    valid_range = all(-(1 << (width - 1)) <= value < (1 << width) for value in bounds)
+                except ValueError:
+                    valid_range = False
+            if not valid_range:
+                abi[symbol] = None
+                continue
+            prefix = prefix[:index] + prefix[index + 7 :]
+        allowed_prefix = {
+            "ccc",
+            "dso_local",
+            "dso_preemptable",
+            "internal",
+            "private",
+            "external",
+            "hidden",
+            "protected",
+            "default",
+            "dllimport",
+            "dllexport",
+            "linkonce",
+            "linkonce_odr",
+            "weak",
+            "weak_odr",
+            "available_externally",
+            "noundef",
+            "signext",
+            "zeroext",
+            "nonnull",
+            "noalias",
+        }
+        if result not in scalar or any(word not in allowed_prefix for word in prefix):
+            abi[symbol] = None
+            continue
+        extension = [word for word in prefix if word in ("signext", "zeroext")]
+        if len(extension) > 1:
+            abi[symbol] = None
+            continue
+        result = " ".join([*extension, result])
+        segments, segment, depth = [], [], 0
+        for word in words[at + 2 :]:
+            if word == ")" and depth == 0:
+                if segment:
+                    segments.append(segment)
+                break
+            if word == "," and depth == 0:
+                segments.append(segment)
+                segment = []
+                continue
+            if word in ("(", "[", "{", "<"):
+                depth += 1
+            if word in (")", "]", "}", ">"):
+                depth -= 1
+            segment.append(word)
+        else:
+            raise ValueError("multiline or unterminated provider function ABI")
+        arguments, variadic, valid = [], False, True
+        for index, parameter in enumerate(segments):
+            if parameter == ["..."] and index == len(segments) - 1:
+                variadic = True
+                continue
+            if (
+                not parameter
+                or parameter[0] not in scalar - {"void"}
+                or any(
+                    word in parameter
+                    for word in (
+                        "byval",
+                        "byref",
+                        "sret",
+                        "inalloca",
+                        "preallocated",
+                        "inreg",
+                        "nest",
+                        "swiftself",
+                        "swifterror",
+                        "addrspace",
+                    )
+                )
+            ):
+                valid = False
+                break
+            extension = [word for word in parameter if word in ("signext", "zeroext")]
+            if len(extension) > 1:
+                valid = False
+                break
+            arguments.append(" ".join([*extension, parameter[0]]))
+        value = HostFunctionABI(symbol, result, tuple(arguments), variadic) if valid else None
+        if symbol in abi:
+            raise ValueError("duplicate provider LLVM function boundary")
+        abi[symbol] = value
+    return abi
+
+
+def read_host_function_abi(path, symbol):
+    """Read one explicitly named boundary from immutable companion LLVM."""
+    value = _function_abis(Path(path).read_text()).get(symbol)
+    if value is None:
+        raise ValueError("provider function ABI is absent or unsupported")
+    return value
+
+
+def _symbols(path, inspector):
+    if inspector is None:
+        raise ValueError("provider symbol inspector is unavailable")
+    result = subprocess.run(
+        [str(inspector), "--format=posix", "--extern-only", str(path)], capture_output=True, text=True, check=True
+    )
+    defined, required = {}, set()
+    for line in result.stdout.splitlines():
+        words = line.split()
+        if len(words) < 2 or len(words[1]) != 1:
+            raise ValueError("unreadable provider object symbols")
+        symbol, kind = words[:2]
+        if kind in ("U", "w", "v"):
+            required.add(symbol)
+        else:
+            defined.setdefault(symbol, []).append(kind)
+    return defined, required
+
+
+def prepare_model_host_provider(
+    builder,
+    *,
+    prepared_path,
+    model_ir,
+    workdir,
+    compiler,
+    compiler_flags,
+    compilation,
+    runner,
+    inspector,
+):
+    """Bind ordinary model artifacts and observed compilation to the provider."""
+
+    def compile_provider(cmd, *, inputs, output):
+        return compilation.run(cmd, runner=runner, inputs=inputs, output=Path(output))
+
+    return prepare_host_provider(
+        builder,
+        HostProviderContext(
+            Path(prepared_path),
+            Path(model_ir),
+            workdir / "model.o",
+            workdir / "host_provider",
+            Path(compiler),
+            tuple(compiler_flags),
+            compile_provider,
+        ),
+        inspector=inspector,
+    )
+
+
+def prepare_host_provider(builder, context, *, inspector):
+    """Invoke an explicit builder and validate every imported boundary and pin."""
+    if builder is None:
+        return (), None
+    if type(builder) is MethodType:
+        from merlin.compiler.lower.source.routing import resolve_pointwise_provider
+
+        builder = resolve_pointwise_provider(builder, context)
+        if builder is None:
+            return (), None
+    if not callable(builder):
+        raise ValueError("host_provider_builder must be explicitly callable")
+    if inspector is None:
+        raise ValueError("provider symbol inspector is unavailable")
+    context.workdir.mkdir(parents=True, exist_ok=True)
+    receipt_path = context.workdir / "host_provider.json"
+    receipt_path.unlink(missing_ok=True)
+    originals = [
+        _identity(path) for path in (context.prepared_path, context.model_llvm_path, context.model_object_path)
+    ]
+    build = builder(context)
+    if (
+        not isinstance(build, HostProviderBuild)
+        or not build.objects
+        or any(not _pin(pin) for pin in (build.numerical_witness_sha256, build.effect_witness_sha256))
+        or [build.prepared_sha256, build.model_llvm_sha256, build.model_object_sha256]
+        != [identity["sha256"] for identity in originals]
+        or originals
+        != [_identity(path) for path in (context.prepared_path, context.model_llvm_path, context.model_object_path)]
+    ):
+        raise ValueError("provider lost exact source/model or explicit numerical/effect identities")
+    model_abis = _function_abis(context.model_llvm_path.read_text())
+    model_defined, _ = _symbols(context.model_object_path, inspector)
+    all_defined, all_required, paths, pins, records = {}, {}, [], {}, []
+    for artifact in build.objects:
+        if not isinstance(artifact, HostProviderObject):
+            raise ValueError("explicit pinned provider objects required")
+        object_id, llvm_id = _identity(artifact.path), _identity(artifact.llvm_path)
+        if (
+            object_id["sha256"] != artifact.sha256
+            or llvm_id["sha256"] != artifact.llvm_sha256
+            or object_id["path"] in paths
+            or not artifact.compilation_pins
+        ):
+            raise ValueError("provider object/LLVM/imported compilation identity changed")
+        paths.append(object_id["path"])
+        for path, pin in (
+            *artifact.compilation_pins,
+            (artifact.path, artifact.sha256),
+            (artifact.llvm_path, artifact.llvm_sha256),
+        ):
+            identity = _identity(path)
+            if identity["sha256"] != pin or not _pin(pin):
+                raise ValueError("provider compilation dependency changed")
+            if identity["path"] in pins and pins[identity["path"]] != pin:
+                raise ValueError("ambiguous provider compilation dependency")
+            pins[identity["path"]] = pin
+        # Imported recipes are explicit evidence, not inferred from an object.
+        # Pin both emissions and the actual compiler, while retaining full argv.
+        if not artifact.compile_commands or not Path(artifact.compile_cwd).is_dir():
+            raise ValueError("provider requires explicit compilation commands and working directory")
+        outputs = set()
+        for command in artifact.compile_commands:
+            executable = shutil.which(str(command[0])) if command else None
+            if executable is None:
+                raise ValueError("provider compilation command has no executable")
+            compiler = _identity(Path(executable).resolve())
+            if pins.get(compiler["path"]) != compiler["sha256"]:
+                raise ValueError("provider compilation executable is not pinned")
+            if "-o" not in command or command.count("-o") != 1:
+                raise ValueError("provider compilation command requires one explicit output")
+            output_index = command.index("-o") + 1
+            if output_index == len(command):
+                raise ValueError("provider compilation output is absent")
+            output = Path(command[output_index])
+            outputs.add(str((Path(artifact.compile_cwd) / output).resolve()))
+        if not {object_id["path"], llvm_id["path"]}.issubset(outputs):
+            raise ValueError("provider object and companion LLVM emissions are not both declared")
+        if any(not isinstance(abi, HostFunctionABI) for abi in (*artifact.defined, *artifact.required)):
+            raise ValueError("provider requires explicit typed function boundaries")
+        local = _function_abis(artifact.llvm_path.read_text())
+        defined, required = _symbols(artifact.path, inspector)
+        expected_def = {abi.symbol: abi for abi in artifact.defined}
+        expected_req = {abi.symbol: abi for abi in artifact.required}
+        if (
+            len(expected_def) != len(artifact.defined)
+            or len(expected_req) != len(artifact.required)
+            or set(defined) != set(expected_def)
+            or required != set(expected_req)
+            or any(kinds != ["T"] for kinds in defined.values())
+            or set(expected_def).intersection(model_defined)
+        ):
+            raise ValueError("provider has missing, extra, weak, data or ambiguous object symbols")
+        for kind, contracts, combined in [
+            ("defined", expected_def, all_defined),
+            ("required", expected_req, all_required),
+        ]:
+            for symbol, abi in contracts.items():
+                if (
+                    local.get(symbol) != abi
+                    or symbol in model_abis
+                    and model_abis[symbol] != abi
+                    or symbol in combined
+                    and (kind == "defined" or combined[symbol] != abi)
+                ):
+                    raise ValueError("provider typed function ABI differs or is ambiguous")
+                combined[symbol] = abi
+        records.append(
+            dict(
+                object=object_id,
+                llvm=llvm_id,
+                defined=[asdict(abi) for abi in artifact.defined],
+                required=[asdict(abi) for abi in artifact.required],
+                compile_commands=[list(map(str, cmd)) for cmd in artifact.compile_commands],
+                compile_cwd=str(Path(artifact.compile_cwd).resolve()),
+            )
+        )
+    if any(symbol in all_defined and all_defined[symbol] != abi for symbol, abi in all_required.items()):
+        raise ValueError("provider-to-provider typed function ABI differs")
+    record = dict(
+        schema="source_bound_host_provider_v1",
+        status="prepared",
+        source_model=originals,
+        objects=records,
+        compilation_pins=pins,
+        numerical_witness_sha256=build.numerical_witness_sha256,
+        effect_witness_sha256=build.effect_witness_sha256,
+        required_symbols=sorted(all_required),
+        scope="Imported compilation/typed ABI evidence; no numerical/effect/target qualification inferred",
+        receipt_path=str(receipt_path.resolve()),
+    )
+    receipt_path.write_text(json.dumps(record, indent=2) + "\n")
+    return tuple(Path(path) for path in paths), record
+
+
+def close_host_provider(
+    record, objects, executable, *, inspector, link_flags=(), native_dynamic_imports=None, native_link_inputs=()
+):
+    """Recheck immutable imports and final ordered object/symbol resolution."""
+    if record is None:
+        return
+    for identity in record["source_model"]:
+        if _identity(identity["path"]) != identity:
+            raise ValueError("provider source/model changed before final link closure")
+    for path, pin in record["compilation_pins"].items():
+        if _identity(path)["sha256"] != pin:
+            raise ValueError("provider import changed before final link closure")
+    ordered = [_identity(path) for path in objects]
+    declared = [row["object"] for row in record["objects"]]
+    if any(ordered.count(identity) != 1 for identity in declared):
+        raise ValueError("provider object missing or duplicated in ordered final link")
+    wrappers = {}
+    for flag in link_flags:
+        prefix = "-Wl,--wrap="
+        if str(flag).startswith(prefix):
+            symbol = str(flag)[len(prefix) :]
+            wrappers[symbol] = "__wrap_" + symbol
+    defined, unresolved = _symbols(executable, inspector)
+    inherited = set()
+    if native_dynamic_imports is not None:
+        if (
+            type(native_dynamic_imports) is not tuple
+            or len(set(native_dynamic_imports)) != len(native_dynamic_imports)
+            or any(type(symbol) is not str or not symbol or "@" in symbol for symbol in native_dynamic_imports)
+            or type(native_link_inputs) is not tuple
+            or not native_link_inputs
+            or any(_identity(path)["sha256"] != digest for path, digest in native_link_inputs)
+        ):
+            raise ValueError("native provider requires original unchanged model/runtime imports")
+        inherited = set(native_dynamic_imports)
+        # ELF symbol versions refine an original unversioned link requirement.
+        # Preserve those actual versions in the receipt, never ignore a name.
+        if {symbol.partition("@")[0] for symbol in unresolved} - inherited:
+            raise ValueError("native provider introduced an unsupported dynamic import")
+    resolved = {symbol: wrappers.get(symbol, symbol) for symbol in record["required_symbols"]}
+    exported = [abi["symbol"] for row in record["objects"] for abi in row["defined"]]
+    required = [symbol for symbol in resolved.values() if symbol not in inherited]
+    if (unresolved and native_dynamic_imports is None) or any(
+        len(defined.get(symbol, ())) != 1 for symbol in [*exported, *required]
+    ):
+        raise ValueError("final provider symbol resolution is incomplete or ambiguous")
+    if native_dynamic_imports is not None:
+        record["native_dynamic_link"] = {
+            "inherited_imports": list(native_dynamic_imports),
+            "actual_undefined_symbols": sorted(unresolved),
+            "original_inputs": [_identity(path) for path, _ in native_link_inputs],
+            "scope": "original host link requirements only; dynamic loader/runtime qualification remains external",
+        }
+    record.update(
+        status="completed",
+        ordered_link_objects=ordered,
+        actual_link_flags=list(map(str, link_flags)),
+        resolved_required_symbols=resolved,
+        executable=_identity(executable),
+    )
+    Path(record["receipt_path"]).write_text(json.dumps(record, indent=2) + "\n")
+
+
+def revalidate_host_provider(record):
+    """Reopen one completed provider through the read-only batch boundary."""
+    revalidate_host_providers((record,))
+
+
+def revalidate_host_providers(records, *, max_records=4096):
+    """Reopen original completed records with one hash per exact path per batch.
+
+    The caller retains the producer's original records and excludes concurrent
+    writes during this callback-free boundary. This is not an atomic filesystem
+    snapshot. Each new call reopens all files; no identity survives the batch.
+    Records are frozen before checking and must remain unchanged through return.
+    ``max_records`` bounds the number of original records before any snapshots
+    or file reads. No ABI, numerical, effect or execution qualification is granted.
+    """
+    if type(max_records) is not int or max_records <= 0:
+        raise ValueError("provider custody record budget must be a positive integer")
+    if type(records) not in (tuple, list):
+        raise ValueError("provider custody requires an explicit finite record sequence")
+    if len(records) > max_records:
+        raise ValueError("provider custody record sequence exceeds its explicit budget")
+    originals = tuple(records)
+    for record in originals:
+        if record is not None and (
+            type(record) is not dict
+            or record.get("schema") != "source_bound_host_provider_v1"
+            or record.get("status") != "completed"
+        ):
+            raise ValueError("provider custody requires its completed link record")
+    snapshots = tuple(json.dumps(record) for record in originals)
+    identities = {}
+
+    def identity(path):
+        key = str(path)
+        path = Path(path)
+        # Preserve each raw occurrence's regular-file check, even on a hit.
+        # Distinct spellings and aliases do not acquire shared read authority.
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("provider artifacts require regular files")
+        if key not in identities:
+            identities[key] = _identity(path)
+        return identities[key]
+
+    for snapshot in snapshots:
+        record = json.loads(snapshot)
+        if record is None:
+            continue
+        receipt = Path(record["receipt_path"])
+        identity(record["receipt_path"])
+        # JSON normalizes the producer's tuple-valued ABI argument lists.
+        if json.loads(receipt.read_text()) != record:
+            raise ValueError("provider completed receipt changed")
+        for expected in (*record["source_model"], *record["ordered_link_objects"], record["executable"]):
+            if identity(expected["path"]) != expected:
+                raise ValueError("provider source, link object or executable changed after link closure")
+        for path, pin in record["compilation_pins"].items():
+            if identity(path)["sha256"] != pin:
+                raise ValueError("provider compilation dependency changed after link closure")
+        for expected in record.get("native_dynamic_link", {}).get("original_inputs", ()):
+            if identity(expected["path"]) != expected:
+                raise ValueError("native provider original model/runtime input changed after link closure")
+    if (
+        len(records) != len(originals)
+        or any(current is not original for current, original in zip(records, originals, strict=True))
+        or tuple(json.dumps(record) for record in originals) != snapshots
+    ):
+        raise ValueError("provider original custody records changed during revalidation")
+
+
+# ---- source_optimization_build -----------------------------------------------------------------
+# Keep an original source-pass selection live across ordinary object/link IO.
+#
+# Static requests retain their exact source identity. An original host policy
+# binds once to the actual prepared input; it issues no permission, numerical
+# policy, target qualification or sandbox grant.
+
+
+def _optimization_source_pin(path):
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError("source optimization transport requires a direct regular artifact")
+    return {"path": str(path.resolve()), "sha256": sha256_file(path), "bytes": path.stat().st_size}
+
+
+def _record(value):
+    return json.dumps(value, sort_keys=True, allow_nan=False)
+
+
+class SourceOptimizationBuild:
+    """Original snapshot, then an existing guard bound to actual prepared IR."""
+
+    def __init__(self, selection, *, backend=None):
+        self.selection, self._source, self._report, self._guard = selection, None, None, None
+        self._completed = self._bound_selection = None
+        self._original = self._library = None
+        if selection is None:
+            return
+        if type(selection) not in (S.SourceOptimizationSelection, P.SourceOptimizationPolicy):
+            raise ValueError("ordinary source choices require the original typed selection or policy")
+        if backend is not None and backend not in ("scalar", "rvv"):
+            raise ValueError("selected compiler backend has no source optimization consumer")
+        self._original = _record(selection.record())
+        from merlin.compiler.lower.host import automatic_destinations, automatic_gathers
+
+        directory = Path(S.__file__).parent
+        self._library = [
+            _optimization_source_pin(path)
+            for path in dict.fromkeys(
+                (
+                    Path(__file__),
+                    *((Path(P.__file__),) if type(selection) is P.SourceOptimizationPolicy else ()),
+                    *(
+                        directory / name
+                        for name in (
+                            "source_optimization_selection.py",
+                            "source_optimization_request.py",
+                        )
+                    ),
+                    module_source_path("merlin.compiler.lower.options.optional_passes"),
+                    *automatic_gathers.implementation_paths(),
+                    *automatic_destinations.implementation_paths(),
+                )
+            )
+        ]
+
+    def revalidate(self):
+        if self.selection is None:
+            return
+        if _record(self.selection.record()) != self._original or any(
+            _optimization_source_pin(row["path"]) != row for row in self._library
+        ):
+            raise ValueError("original source optimization selection changed during build/execution")
+        if self._guard is not None:
+            self._guard.revalidate()
+            if _optimization_source_pin(self._source["path"]) != self._source:
+                raise ValueError("actual prepared source changed after source choice consumption")
+        if self._report is not None:
+            if _optimization_source_pin(self._report["path"]) != self._report:
+                raise ValueError("consumed source optimization report changed")
+            report = json.loads(Path(self._report["path"]).read_bytes())
+            try:
+                expected = self._guard.report(
+                    gather=report["consumers"]["automatic-host-gathers"],
+                    packing=report["consumers"]["automatic-host-permutations"],
+                )
+            except (KeyError, TypeError) as error:
+                raise ValueError("consumed source optimization report is incomplete") from error
+            if _record(report) != _record(expected):
+                raise ValueError("consumed source optimization report does not match original selection")
+        if self._completed is not None:
+            from merlin.compiler.lower.model.compilation_recipe import verify_completed_recipe
+
+            recipe, executable = self._completed
+            if (
+                _optimization_source_pin(recipe["path"]) != recipe
+                or _optimization_source_pin(executable["path"]) != executable
+            ):
+                raise ValueError("source optimization completed build changed")
+            actual = verify_completed_recipe(
+                Path(recipe["path"]), executable=Path(executable["path"]), expected_recipe_sha256=recipe["sha256"]
+            )
+            bound = actual.get("preparation", {})
+            if (
+                bound.get("source_optimization_input") != self._source
+                or bound.get("source_optimization_selection") != self._report
+            ):
+                raise ValueError("source optimization is absent from actual completed compilation")
+
+    def bind(self, path):
+        """Bind once after ordinary preparation, never refresh a stale input."""
+        self._bind(path)
+
+    def _bind(self, path, returned_selection=None):
+        self.revalidate()
+        if self.selection is None:
+            return
+        if self._guard is not None:
+            raise ValueError("source optimization input is already bound")
+        source = _optimization_source_pin(path)
+        text = Path(source["path"]).read_text()
+        if type(self.selection) is P.SourceOptimizationPolicy:
+            selected = self.selection.bind(text) if returned_selection is None else returned_selection
+            self.selection.verify_selection(selected, text)
+            if selected.request.source_sha256 != source["sha256"]:
+                raise ValueError("source optimization policy requires exact prepared source bytes")
+        else:
+            selected = self.selection
+        self._guard = S.SourceCompilationOptimization(text, selected)
+        self._bound_selection, self._source = selected, source
+        self.revalidate()
+
+    def options(self):
+        self.revalidate()
+        return {} if self.selection is None else {"source_optimizations": self._bound_selection or self.selection}
+
+    def consumed(self, compilation, workdir):
+        # The independent exact-preparation flag shares this ordinary lowering
+        # boundary. Retain its actual effects even without a pass-policy request.
+        report = Path(workdir) / "tensor-preparation-cse.json"
+        if report.is_file():
+            compilation.bind_preparation("tensor_preparation_sharing", report)
+            compilation.bind_preparation(
+                "tensor_preparation_shared_source", Path(workdir) / "model.tensor-preparations.mlir"
+            )
+        if self.selection is None:
+            return
+        if self._guard is None:
+            raise ValueError("source optimization has no actual prepared input")
+        self._report = _optimization_source_pin(Path(workdir) / "source-optimization-selection.json")
+        self.revalidate()
+        compilation.bind_preparation("source_optimization_input", Path(self._source["path"]))
+        compilation.bind_preparation("source_optimization_selection", Path(self._report["path"]))
+
+    def identity(self):
+        self.revalidate()
+        if type(self.selection) is P.SourceOptimizationPolicy:
+            if self._bound_selection is None:
+                raise ValueError("source optimization policy has no actual prepared input")
+            return _record(
+                {"policy": self._original, "selection": self._bound_selection.record(), "library": self._library}
+            ).encode()
+        return (
+            b"" if self.selection is None else _record({"selection": self._original, "library": self._library}).encode()
+        )
+
+    def selection_record(self):
+        self.revalidate()
+        return None if self.selection is None else json.loads(self._original)
+
+    def finish(self, compilation, executable):
+        self.revalidate()
+        compilation.completed(executable)
+        if self.selection is not None:
+            self._completed = (_optimization_source_pin(compilation.path), _optimization_source_pin(executable))
+
+    def record(self):
+        self.revalidate()
+        if self.selection is None:
+            return None
+        if self._source is None or self._report is None or self._completed is None:
+            raise ValueError("source optimization has no completed consumption")
+        return json.loads(
+            _record(
+                {
+                    "schema": "merlin.source_optimization_build.v2"
+                    if type(self.selection) is P.SourceOptimizationPolicy
+                    else "merlin.source_optimization_build.v1",
+                    **(
+                        {"policy": json.loads(self._original)}
+                        if type(self.selection) is P.SourceOptimizationPolicy
+                        else {}
+                    ),
+                    "selection": self._bound_selection.record(),
+                    "library": self._library,
+                    "input": self._source,
+                    "report": self._report,
+                    "recipe": self._completed[0],
+                    "executable": self._completed[1],
+                }
+            )
+        )
+
+    def accept(self, record, *, build_dir, executable):
+        """Reopen only a current ordinary producer, under this live selection."""
+        self.revalidate()
+        if self.selection is None:
+            if record is not None:
+                raise ValueError("unselected source optimization returned an unexpected receipt")
+            return
+        policy = type(self.selection) is P.SourceOptimizationPolicy
+        expected_fields = {
+            "schema",
+            "selection",
+            "library",
+            "input",
+            "report",
+            "recipe",
+            "executable",
+        } | ({"policy"} if policy else set())
+        expected_schema = "merlin.source_optimization_build.v2" if policy else "merlin.source_optimization_build.v1"
+        if type(record) is not dict or set(record) != expected_fields or record["schema"] != expected_schema:
+            raise ValueError("selected source optimization returned no exact producer receipt")
+        expected = (Path(build_dir) / "lower/source-optimization-selection.json").resolve()
+        if Path(record["report"]["path"]) != expected:
+            raise ValueError("source optimization receipt names a foreign consumed report")
+        returned_selection = None
+        if policy:
+            if _record(record["policy"]) != self._original:
+                raise ValueError("source optimization receipt changed original policy")
+            returned = record["selection"]
+            if type(returned) is not dict or set(returned) != {
+                "request",
+                "original_permitted_passes",
+                "original_maximum_added_operations",
+            }:
+                raise ValueError("source optimization receipt has no exact bound selection")
+            returned_selection = S.SourceOptimizationSelection(
+                request_from_record(returned["request"]),
+                self.selection.permitted_passes,
+                self.selection.original_maximum_added_operations,
+            )
+            if _record(returned_selection.record()) != _record(returned):
+                raise ValueError("source optimization receipt changed original permissions or ceiling")
+        self._bind(record["input"]["path"], returned_selection)
+        self._report = _optimization_source_pin(expected)
+        self._completed = (
+            _optimization_source_pin(Path(build_dir) / "compilation_recipe.json"),
+            _optimization_source_pin(executable),
+        )
+        if _record(self.record()) != _record(record):
+            raise ValueError("source optimization receipt changed original source, library or selection")

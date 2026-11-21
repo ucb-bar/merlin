@@ -1,0 +1,4 @@
+{
+  "suite": "gemmini-perf-bench",
+  "cycle_window": "gemmini_region"
+}

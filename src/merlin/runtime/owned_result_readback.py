@@ -9,12 +9,11 @@ import math
 
 import numpy as np
 
-from merlin.frontends.execution_result_signature import validate_signature
-from merlin.frontends.linalg_mlir import parse_mlir_text
-from merlin.llvmlower.execution_result_inputs import resolve
-from merlin.llvmlower.owned_results import _NUMPY
-
-from .out_bin import parse_binary_console_payloads
+from merlin.compiler.frontend.intake.execution_result_signature import validate_signature
+from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+from merlin.compiler.lower.options.execution_result_inputs import resolve
+from merlin.compiler.lower.options.owned_results import _NUMPY
+from merlin.runtime.harness.output_decoding import parse_binary_console_payloads
 
 PROFILE = "merlin.execution-owned-readback.v1"
 
@@ -29,8 +28,12 @@ def decode(source, signature, arguments, raw, *, max_console_bytes=(128 << 20) +
     if type(raw) is not bytes or len(raw) > max_console_bytes:
         raise ValueError("execution readback exceeds its console byte budget")
     values, metrics, frames = parse_binary_console_payloads(raw)
-    names = {f"{prefix}{i}{suffix}" for prefix, rows in (("in", signature["inputs"]), ("out", signature["outputs"]))
-             for i in range(len(rows)) for suffix in ("", "_shape")}
+    names = {
+        f"{prefix}{i}{suffix}"
+        for prefix, rows in (("in", signature["inputs"]), ("out", signature["outputs"]))
+        for i in range(len(rows))
+        for suffix in ("", "_shape")
+    }
     if set(values) != names or set(frames) != names:
         raise ValueError("execution readback omits or changes the complete input/result roster")
     observed, result_bytes = [], 0
@@ -42,8 +45,10 @@ def decode(source, signature, arguments, raw, *, max_console_bytes=(128 << 20) +
             if (shape_frame.rows, shape_frame.cols, shape_frame.word_bytes, shape_frame.signed) != (1, rank, 8, False):
                 raise ValueError("execution readback changes the actual source rank")
             shape = tuple(int(value) for value in np.frombuffer(values[name + "_shape"], dtype="<u8"))
-            if len(shape) != rank or any(not 0 <= size < 1 << 63 or wanted is not None and size != wanted
-                                        for size, wanted in zip(shape, row["shape"], strict=True)):
+            if len(shape) != rank or any(
+                not 0 <= size < 1 << 63 or wanted is not None and size != wanted
+                for size, wanted in zip(shape, row["shape"], strict=True)
+            ):
                 raise ValueError("execution readback changes a source static dimension")
             dtype = np.dtype(_NUMPY[row["dtype"]])
             count = math.prod(shape)
@@ -69,8 +74,11 @@ def decode(source, signature, arguments, raw, *, max_console_bytes=(128 << 20) +
                     raise ValueError("execution changed an original invocation input")
             else:
                 observed.append(np.frombuffer(payload, dtype=dtype.newbyteorder("<")).reshape(shape).copy())
-    return tuple(observed), {"profile": PROFILE, "shapes": [list(value.shape) for value in observed],
-                             "complete_result_bytes": result_bytes, "functional_inputs_preserved": True,
-                             "metrics": metrics,
-                             "scope": ("complete transport and input observations; "
-                                       "numerical/target-equivalence-unverified")}
+    return tuple(observed), {
+        "profile": PROFILE,
+        "shapes": [list(value.shape) for value in observed],
+        "complete_result_bytes": result_bytes,
+        "functional_inputs_preserved": True,
+        "metrics": metrics,
+        "scope": ("complete transport and input observations; numerical/target-equivalence-unverified"),
+    }

@@ -11,16 +11,16 @@ from __future__ import annotations
 from importlib import import_module
 
 _EXPORTS = {
-    "Tensor": "tensor",
-    "Metrics": "metrics",
-    "COMMON_METRIC_NAMES": "metrics",
-    "load_command_buffer": "commandbuffer",
-    "validate_command_buffer": "commandbuffer",
-    "materialize_inputs": "commandbuffer",
-    "simulate": "simulator",
-    "SimulationError": "simulator",
-    "reference_outputs": "reference",
-    "outputs_match": "reference",
+    "Tensor": "engine.command_buffer",
+    "Metrics": "engine.command_buffer",
+    "COMMON_METRIC_NAMES": "engine.command_buffer",
+    "load_command_buffer": "engine.command_buffer",
+    "validate_command_buffer": "engine.command_buffer",
+    "materialize_inputs": "engine.command_buffer",
+    "simulate": "engine.simulator",
+    "SimulationError": "engine.simulator",
+    "reference_outputs": "engine.reference",
+    "outputs_match": "engine.reference",
 }
 
 __all__ = [

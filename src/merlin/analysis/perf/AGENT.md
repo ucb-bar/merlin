@@ -1,0 +1,279 @@
+# src/merlin/analysis/perf
+
+## Purpose
+
+The performance layer: what a target's legal choices *cost*. Derives archetypes and traits, emits a
+performance contract whose terms carry provenance and a validity domain, composes a predicted cycle
+count with gap attribution, and classifies workloads by which lever has headroom.
+
+`dynamic_census` observes only the original selected neutral Spike trace behind
+the host's live one-ELF boxed launch. Online command multiplicity, operand and
+reported memory requests are bounded; linked entry PCs and instruction bytes
+own lexical host attribution. Outside-entry/callee work stays unpriced UNKNOWN.
+Truncation, unsupported decoding and changed sources/tools/products refuse;
+unresolved cleanup aborts the enclosing job and retains its owner. Raw streams
+and real invocation records stay private. This is descriptive ISS activity,
+not a numerical verdict, emitter-integrity proof, physical traffic, utilization,
+cycles or replay. Per-process RLIMIT and sampled scratch do not supply aggregate
+resource enforcement; the original external owner supplies selected hard caps.
+
+`component_applicability` holds pure frozen joint semantic cells for measured
+payload/resource, tile/tail, streaming, dependency, reuse and composition scope.
+Exact membership cannot imply range or repetition transfer. These declarations
+and complete-cost arithmetic do not issue hardware/timer authority; experiments
+owns source/runtime provenance, actual controls and held qualification.
+
+`component_measurement_plan` retains the complete development roster and selects
+bounded existing distinguishing measurements for overlapping intervals. Disjoint
+intervals may defer development measurement only; unsupported or new joint cells
+require independent requalification. Arithmetic owner/status inputs do not issue
+qualification. Correctness, held and final rosters cannot select this pruning.
+
+`component_source_demand` derives bounded logical payload, work, dependency and
+last-needed intervals from the original checked functionalized tensor program
+under an explicit complete topological schedule. Alias relations share logical
+values; updates retain fresh SSA epochs and complete publication. No shaped
+data or references are allocated. Eager logical payload and operand extents are
+not physical allocations, bus traffic, capacity bounds or timing/ranking facts.
+Unknown grammar and arithmetic limits remain explicit before analysis expansion.
+
+`compiled_static_features` reuses the complete typed emitted LLVM observer and
+structural ELF reader for bounded site/access-width histograms and linked code
+extents. Counts are before native optimization. They are neither executed
+instruction counts nor physical traffic, staging, capacity or cycle features.
+Unsupported bodies refuse; experiments owns actual compile-consumption joins.
+
+`candidate_diagnostics`, `candidate_source` and `candidate_features` project bounded
+own public source/emission, typed shapes and numeric declarations, source affine
+reduction/MAC demands, host CFG activity, representations and linked section/frame
+records. Reuse original source/global-plan and affine observers. Declarations do
+not establish execution lanes, numerical equivalence or physical costs; absent
+products and unsupported multiplicity remain UNKNOWN. Feature keys are closed,
+unpriced observations. Experiments owns actual public selection, original emission
+and invocation reopening. Never project literal tensor payloads or private paths.
+
+`compiler_plan_evidence` parses emitted LLVM through the public typed metadata
+context. Preserve original annotation bytes and operand/CFG verification; do
+not strip optimization properties to make a source/emission join pass. Parsed
+metadata never establishes arithmetic, target effects or timing equivalence.
+
+`candidate_cost_graph` retains verified original task/source ownership and per-task
+host CFG demand, declared representation/device requests and exact missing effects.
+Opaque calls/assembly and unowned work remain UNKNOWN. Conditional CycleInterval
+composition reuses ActivityTimeline: serial addition is an explicit premise;
+overlap needs externally independently observed complete intervals with matching
+stage IDs, prices and dependencies. Pure arithmetic issues no prices, overlap
+qualification or complete-program cost; kernel-excluded preparation/readback and
+cold/warm costs retain their separate original measurement owners.
+
+`component_measurement_stream` checks one bounded, explicitly ordered raw event
+frame containing every original complete-cost stage. Counter wrap and control
+changes are retained. Event labels do not establish actual stage boundaries;
+there is no elapsed-cost subtraction, clock unit or cold/warm inference. Stage,
+timer, observer, resource, runtime and held qualification remain independent.
+
+`component_coherent_measurement` splits an explicitly selected complete ordered
+object file using the original typed ABI, repeated-call, counter and fixed
+harness-phase plans. It rechecks immutable inputs and retains every output
+history and raw counter/control sample. Experiments reopens the actual same-ELF
+decoder/process products and recomputes each call's original numerical gate.
+This is raw observation grammar, not ELF loading, observer integrity, device
+completion, counter units, cold/warm or complete-cost qualification. Omitted
+startup, return, parent readback and sample publication costs remain UNKNOWN.
+
+The namespace is shared without duplicate implementations: experiments owns
+the isolated/controlled/paired probe providers, host-region/physical-transition/lane-migration
+qualifiers, source contraction/convolution preparation, source-program-pair binding and execution,
+initializer-elision admission, and `analysis_worker` (bounded experiment workers that load
+the installed backend optimization emission analyzer). These owners consume concrete experiment revisions
+and execution capabilities; they are not core primitives. Analysis owns
+`recovery` (known-answer benchmark scoring and `merlin-recovery`). Keep pure cost/evidence
+primitives here; sandbox capability enforcement stays with experiments. Audit classification
+is shared policy in `merlin.common.access`, independent of either optional distribution.
+Compiler edit-surface vocabulary is read from the selected manifest schema during
+`inspect_compiler_package`, never during import. Its explicit `contract` argument
+must not fall back to checkout data when a selected schema is missing or invalid.
+
+`compiler_edit_scope` preserves V1 authority and accepts explicitly selected V2
+new Python component directories owned by existing surfaces. Pass code may be
+added only within that frozen scope; manifests grant nothing. Numerical inputs,
+independent verification and evaluator code remain outside candidate authority.
+`agent_guidance.build_compiler_edit_contract` selects this V2 boundary only with
+explicit host-owned `new_python_components`; its default preserves V1 identity.
+Inventory intent checks do not replace the freeze gate's actual absence check.
+
+## The rule that governs everything here
+
+Every module is a **generic, trait-gated analysis**. Gating is on **derived traits**, never on an
+archetype name and never on a target name — an archetype is only a prior (it decides *which questions
+to ask*); the RTL-derived traits decide *which of them apply*. The target is a parameter (`target=`)
+threaded from the descriptor/manifest.
+
+A tool that only works where it was written is manual overfitting with extra steps. The bar: the same
+code runs on two targets of different archetypes and produces **different, correct** answers.
+
+## What does not belong here
+
+- Target-name literals of any kind. `check_no_target_name.py` scans this tree, and its advisory
+  `--coupling` pass also flags imports and substring symbol hits in any file whose own path does not
+  name a target — which `perf/` never will. **Do not add allowlist entries**; that list only shrinks.
+- `import re`. Parse structurally.
+- Assumed geometry, capacities, opcodes or latencies. Derive them, or record `UNKNOWN` and fail
+  closed. `UNKNOWN` is a distinct inhabited state and must never be readable as `0.0`.
+- Generated output. Products go to `out/artifacts/` via `merlin.common.paths` / `artifacts` helpers.
+
+`capsule_roofline` provides conservative floors, not runtime predictions. Geometry
+alone cannot imply an instruction schedule or MAC throughput. Require explicit
+arithmetic counts for every discovered array before bounding useful work; missing
+sites or counts remain UNKNOWN. No stationary-row, orientation, command or tile
+law is universal. Logical bytes require proof of crossing the named interface
+before use as compulsory movement, especially across fused/resident groups.
+Its `partial_roofline` projection keeps numeric useful work and structural floors
+visible while reporting logical-request ideal client service separately. Padded
+work and storage fit are explicit conditional premises; neither becomes physical
+traffic, placement, overlap, whole-call attainment or timing authority.
+
+## Invariants
+
+- `constant_control_cfg` may batch original constant loop domains through the shared
+  byte-copy interpreter in count-only mode. Every branch still needs constant-derived
+  operands; loads and opaque results remain unknown. This supplies execution counts,
+  never permission for host tensor arithmetic or proof of device effects.
+- `constant_control_regions` derives closed nested pretested domains only when
+  every internal backedge is independently proved. Their acyclic iteration body
+  may contain constant-derived conditionals. Prefer the unchanged original leaf
+  path if a conservative CFG/domain visit bound fits, or that bound is unknown.
+  Only new nested candidates need exact outer-IV key bounds within the unchanged
+  operation/cache limits; unsupported keys cannot select a new nested summary. Header domains
+  include the final false test. Tensor/opaque values remain unknown, escapes and
+  extra exits refuse, and the byte-copy owner cannot consume these count-only
+  regions as transport permission. Original scalar/operation/lane bounds remain.
+
+- **Distinguish bounds from predictions.** The maximum of necessary service floors
+  remains a lower bound with unknown overlap; it asserts no attainable schedule.
+  Runtime prediction needs independently qualified composition. Add demands only
+  on one shared resource or an explicitly proved nonoverlapping completion path;
+  bank count and command order alone prove neither overlap nor serialization.
+- **Prefer moved bytes to algorithmic bytes.** Transfer amplification is real and large; a bound built
+  on the bytes an algorithm needs rather than the bytes a program moves is optimistic by that factor.
+- **Fixed terms are first-class.** Pipeline fill and drain are intercepts, not rates. A rate-only model
+  mispredicts every small workload.
+- **At least two points per fitted parameter.** A single rate cannot price a unit whose cost is a rate
+  plus a fixed overhead.
+- **A partial whole-model build is never a whole model.** `only_groups` (`whole_model_partial`) marks
+  the record, the oracle and the expectations. The verdict, the grade, the gate and the measured
+  service each refuse the marker; a new whole-model reader must call `whole_model_partial.refuse`.
+- Build stages are compile-trace stages (`whole_model_build.BUILD_STAGES`, the stage clock's own
+  vocabulary); the builder CLI lives in `whole_model_build_cli` so the builder module holds the build.
+- Tests go in an existing bucket — there is no `perf` bucket and the list is an enum. Contract, record
+  and profile tests live in `tests/targetgen/`; envelope, attribution and analysis tests in
+  `tests/dse/`. Resolve paths via `merlin.common.paths.repo_root()`.
+
+## Where the task register lives
+
+`experiments/studies/performance_contract/TASKS.md` — input identities, measurement validation and reporting requirements.
+Rationale for the cost and oracle decisions: `docs/guides/12-experiments.md`.
+
+`debug_companion` admits only byte/address/attribute-identical allocated ELF
+sections and normalized relocations before mapping an existing PC census.
+Target tools, compiler recipes, source identities and numerical/ISA gates remain
+caller-owned. Every address is retained once, including missing source metadata;
+inline frames preserve context and their counts overlap parent call-site totals.
+Instruction counts never imply hardware cycles. The ELF reader explicitly
+refuses unsupported formats rather than guessing them. Tests live in the DSE
+bucket and exercise actual compiler/symbolizer twins plus changed-byte refusals.
+Its production caller is `merlin experiment inspect --trace` (the group build's `debug_companion`).
+
+`address_locality` counts first touches and exact distinct-intervening-region
+recurrence distances from explicitly ordered requested addresses. Granule and
+resource budget are caller inputs; capacity thresholds exclude first touches.
+These are logical locality features, not physical traffic or timing estimates.
+Its production callers are `merlin experiment inspect --group gN --trace`, which records the
+group program's committed memory requests from the functional model's commit log
+(`requested_addresses.json`) and censuses them at each `--locality-granule`, and
+`merlin experiment census locality` (`census_cli`), which re-takes the census from that file and
+refuses a trace longer than the stated budget.
+`fast_estimate_validation` is called by `whole_model_screen.fit_calibration`, which validates every
+refit of the structure screen's calibration against held-out board-measured groups under the board's
+derived noise margin and records the screen's ranking as `unvalidated` whenever that does not hold.
+
+
+`execution_boundaries` summarizes explicit provider-decoded instruction extents,
+execution counts, call classifications, stack access widths and frame facts.
+Every instruction is covered once; unknown facts remain unknown. Entry-normalized
+counts and repeated stack sites are descriptive features, not physical traffic,
+peak stack usage, interprocedural dependencies or cycle prices. Its training-only
+boundary envelope checks an unpriced subdomain and never approves a ranking.
+The provider owns decoding/ABI and exact artifact verification; the existing
+fitter and held-out ordering gate remain separate. Independent expanded event
+traces and multiple provider geometries test the summary and refusal behavior.
+Its production caller is `merlin experiment census boundaries` / `boundary-domain`
+(`census_cli`), which reads the provider's records and digests from disk. No provider writes those
+records yet: call kinds, callees and stack widths are host-ABI decoding a target's support owns, and
+no vendored provider declares a decoder for them. A provider that adds one is the producer.
+
+`schedule_proxy` prices what a schedule asks the device for in array-tile transactions (compute tiles
+plus moved bytes, never one without the other). It is validated as an ORDER against 71 FireSim-measured
+groups (`tests/dse/test_schedule_proxy.py`, points in `examples/<target>/phase2/`) and is the
+`cost_proxy` rung of `src/merlin/resources/contracts/measurement_ladder.yaml`: ranking only, never a cycle count.
+Its production caller is `group_headroom.group_rank`, reported beside each stated group's bound.
+
+`load_state_residency`/`load_state_claim`, `stationary_residency`/`stationary_claim` and
+`movein_placement`/`movein_claim` decide the template's EMITS families (PD, PA, PJ) from a
+candidate's own decoded stream. Every bound is derived through the selected support (the
+load-configuration layout and retain sentinel via `targetgen.rocc.decode`) or the target's RTL
+facts, and an underivable one REFUSES. Callers: `trace_check`'s declared residency modes and
+`merlin.development.backend.optimization.claims.dispatch`. The measured-claims coordinator refuses to seal them:
+they read no cycles.
+
+`staged_roofline` V2 preserves useful work independently from hypothetical tiling
+waste, never labels requested bytes physical, and requires explicit compulsory
+interface crossings for movement floors. Saved V1 evidence is unchanged.
+`capsule_roofline.compose_service_floor` aggregates structural rate ceilings and
+original-owner compulsory resource demands with exact rational arithmetic. Unknown
+service remains unknown; candidate-specific waste has emitted-schedule scope only.
+Its pure output issues no execution, timing or convergence qualification.
+
+`execution_roofline_feedback` joins caller-bound partial source work with original
+same-report/model/counter-window count and exploratory-estimate projections.
+Its compute-floor ratio is never complete attainment; requested service and
+RTL-proof-selected host service remain conditional and nonadditive. Counter
+boundary conventions remain explicit. Whole-trace model breakdowns cannot supply
+kernel decomposition. Pure projections issue no execution or promotion authority.
+
+`constant_control_counts` accepts an explicit watched operation roster for bounded
+operand observation. Only closed, unobserved regions may reuse loop summaries;
+unknown control, poison, escaped SSA and exhausted bounds still refuse the whole
+observation. The rectangular count projection uses original constant loop domains
+and rejects non-loop conditional branches and early exits. It supplies no memory
+effect or arithmetic permission, and default count-only behavior is unchanged.
+
+## Research workflow responsibilities
+
+Owns portfolio probe execution, scoped qualification, source-pair preparation/admission
+and bounded whole-model experiment workers, not compiler performance contracts.
+Implementations retain their logical `merlin.analysis.perf` imports: `isolated_probe_provider`,
+`controlled_context_provider`, `paired_context_provider`, `host_region_qualifier`,
+`host_physical_transition_qualifier`, `lane_migration_qualifier`,
+`source_contraction_preparation`, `source_convolution_preparation`, `source_program_pair`,
+`source_initializer_elision`, `source_program_pair_provider` and `analysis_worker`.
+Providers consume the concrete portfolio probe owner and its admitted revision session.
+Core retains pure witness extraction, compiler IR and cost/evidence primitives; do not
+introduce core-to-experiment callbacks or duplicate scientific implementations.
+All these execution/admission modules retain host-private identities in the shared access
+registry, including when the optional distribution is absent. Preserve logical host-policy
+roles and archived bytes; moving files does not expand historical V2 source-policy rosters.
+Core owns `merlin.analysis.perf.__init__`; do not add a competing namespace initializer here.
+Preserve verifier provenance, admission gates and host-only evaluation boundaries.
+The analysis worker loads the canonical installed emission analyzer and exchanges JSON
+with its parent. Requests supply explicit source and contract-root paths. Honor the
+active canonical import finder, verify its source origin and compile fresh loader-provided
+source; never fall back to native stages or cached bytecode. Preserve deadlines,
+process-group cleanup, frozen transport and output checks. Moving its owner does not
+qualify installed standalone backend optimization execution or arbitrary managed-worker deployments.
+
+## Research workflow responsibilities
+
+Owns the optional recovery-analysis implementation and `merlin-recovery` command.
+Core owns `merlin.analysis.perf.__init__`; do not add a competing namespace initializer here.
+Generic performance contracts and observation types remain in core.

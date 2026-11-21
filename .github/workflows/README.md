@@ -1,33 +1,90 @@
 # CI workflows
 
-| Workflow | Trigger | What it gates |
-|---|---|---|
-| [`pr-fast.yml`](pr-fast.yml) | push / PR | Fast gate: structure + artifact-layout + docs anti-drift + a fast test subset (blocking); ruff lint/format (advisory). |
-| [`docs.yml`](docs.yml) | push (docs/schemas/pkg) / PR | Documentation anti-drift: stale generated docs, invalid front-matter, retired-path references. |
+| Workflow | Trigger | What it establishes |
+| --- | --- | --- |
+| [`ci.yml`](ci.yml) (`pr-fast`) | Push, pull request, merge queue | Source and documentation gates, changed-file formatting, five executed tutorials, the complete test collection budget, and the compact behavioral suite. Its aggregate also requires integration. |
+| [`integration.yml`](integration.yml) | Called by CI, weekly, manual | Builds the wheel and source archive, checks distribution contents, installs the exact wheel outside the checkout, and checks six pinned OOT provider boundaries plus their source wiring. |
+| [`release.yml`](release.yml) | Manual | Runs the same integration qualification and retains its distributions and results. Publication and hardware deployment are not configured. |
 
-Heavier test buckets (`rvv/`, `gemmini/`, `runtime/`) need hardware or RTL sims (spike, verilator,
-FireSim, boards) and run out-of-band, not in these hosted-runner workflows.
+`ci.yml` resolves one real Git comparison revision for formatting and ledger
+checks. Its `fast` aggregate requires every selected job to succeed; the retained
+`docs-freshness` check reports the shared source/documentation job's result.
+Source gates run once. Current-document freshness and shrinking debt ledgers
+remain enforced. Advisory steps report their own limitations and do not establish
+missing execution evidence.
 
-## Gates that deliberately run nowhere
+CI does not scan the retired `experiments/corpora` or study directories. Those
+checks could run without any inputs after the generated data left Git. Corpus
+coverage and independent numerical assessment belong to a selected generation
+or evaluation run, not a source-checkout status.
 
-A gate nobody runs is worse than no gate, because it reads as coverage. Measured 2026-09-16, 15 of
-the 34 `build_tools/scripts/check_*.py` ran in no hook, no Stop-hook and no workflow — among them
-`check_no_holdout_names`, which was *failing*: a tracked ratchet named two held-out capsules
-outright, and a holdout's name is an answer key. Seven of the fifteen now run in `pr-fast.yml`.
+The permanent Merlin suite is capped at **150 collected cases**, including
+parameterization. Collection errors, collection-time skips, deselection and an
+empty collection fail the budget check. Execution skips remain visible in JUnit;
+they do not establish that the skipped obligation passed. CI retains collection
+identities, test outcomes and built distributions under each run's artifacts.
 
-The rest stay out, each for a stated reason rather than by omission:
+Integration selects exact companion revisions from
+[`backend-boundaries.json`](../../build_tools/dependencies/backend-boundaries.json).
+Their selected installed cases must run without skips against the same main
+wheel, using the declared xDSL environments. Source-consumer pins additionally
+select read-only source files for the wiring graph; those files are not imported
+or offered to compiler candidates. These checks establish packaging and the
+selected provider contracts, not accelerator execution, accuracy or performance.
 
-| Script | Why it is not wired |
-|---|---|
-| `check_standalone_install.py` | Builds and installs a wheel in a clean venv; > 4 min. Out-of-band. |
-| ~~`check_claim_set_disjointness.py`~~ | **Wired 2026-09-22** into `pr-fast.yml` with `--fail-on-circular`. The ">4 min on a populated `out/`" reason was measured locally; a CI runner clones fresh with no `out/`, and the full six-target walk times at 2m30s here. |
-| `check_conformance_coverage.py` | **Partly wired since 2026-09-22.** The `--write` / re-derivation path reads every capture and rebuilds the requirement (> 4 min), and stays out-of-band. Comparing the corpus against the TRACKED spec (`--spec … --ratchet … --fail-on-uncovered`) skips all of that — measured **4.8 s** for gemmini — and runs in `pr-fast.yml`, because what a diff can break is the corpus, not the requirement. |
-| `check_isa_matches_rtl.py` | 171 s over all targets, and needs RTL fact bundles a hosted runner does not have. Currently FAILS (`saturn_opu_rvv` compares nothing), which is real debt, not a wiring gap. |
-| `check_inert_capabilities.py` | ~60 s and currently reports debt against its own ratchet; wire it once that ledger is honest. |
-| `check_generated_target.py` | Takes a path to one generated target repo — a per-target tool, not a repo-wide property. |
-| `check_opset_coverage.py` | Requires an explicitly selected public op/form request through `--input`. Run it for that intake; a repository-wide invocation has no selected denominator. It must not discover a corpus or create debt implicitly. |
-| `check_repro_env.py` | A preflight that reports which repro capabilities THIS machine has. Its answer is environment-dependent by design, so failing CI on it would be meaningless. |
-| `check_cert_affordability.py` | Wired, but advisory: ~60 s, and it prices a cohort rather than asserting a property of the diff under review. |
-| `report_generalization_claim.py` | Not a `check_*`, but it is the script that produces the generalization number, so its absence belongs here too. Its denominator is the target's DECLARED roster and its evidence is `out/artifacts/recaptures/` — 130 GB a hosted runner does not have. With zero captures present it would report 0/0 on every PR, which reads as coverage while measuring nothing; `--require-roster` would fail every PR for the same reason. Run out-of-band. Measured 2026-09-22 for gemmini, `--require-roster` clean: across 9 captures of the declared roster (`resnet50`, `tiny_llama`), 45 of 188 Core ATen operators appear, 12278/14132 classifiable regions route to the accelerator (86.9%), accounting for 99.8% of the roster's loop-nest work. |
+Pinned companion commits must be available remotely for hosted CI. Local review
+can use `check_backend_boundaries.py --source ID=PATH` with a clean checkout at the
+selected commit. Local results do not establish that hosted CI ran. Actions use
+full commit pins, read-only repository permissions and checkout without persisted
+credentials.
 
-Adding a `check_*.py` means adding it here too — as a row in this table or as a step in a workflow.
+## Prepared corpus qualification
+
+Generated corpora and conformance requirements belong in ignored `out/` storage.
+They are not tracked fixtures or inputs supplied by an ordinary source checkout.
+Run coverage checking after generating, reviewing and selecting a corpus release:
+
+```bash
+# Set these to the reviewed release, not a source-pool example descriptor.
+: "${TARGET:?set the descriptor's declared target}"
+: "${DESCRIPTOR:?set the prepared descriptor containing the selected grading roots}"
+: "${CONFORMANCE_SPEC:?set the generated and reviewed requirement YAML}"
+test -f "$DESCRIPTOR"
+test -f "$CONFORMANCE_SPEC"
+
+MERLIN_TARGET_EXPERIMENT="$DESCRIPTOR" \
+uv run --no-sync python build_tools/checks/check_conformance_coverage.py \
+  --target "$TARGET" --spec "$CONFORMANCE_SPEC" \
+  --fail-on-uncovered --fail-on-unverifiable --json
+```
+
+The descriptor selects the corpus roots; `--spec` selects the requirement and any
+hash-bound application sidecar it declares. Use the release's reviewed provider,
+contracts, facts and source environment. Missing inputs or unmeasured required
+axes prevent a complete coverage result. This command omits `--allow-unresolved`
+and does not exempt gaps through a repository-wide historical ratchet. It audits
+the supplied declarations; actual numerical, runtime and hardware qualification
+remain separate obligations.
+
+Check derivation/claim separation against the selected capture artifacts as a
+second explicit audit. `QUALIFICATION_OUT` is the chosen output root containing
+`artifacts/recaptures/<bundle>/model.mlir`; the gate partitions those bundles using
+the reviewed claim-model policy:
+
+```bash
+: "${QUALIFICATION_OUT:?set the selected capture artifact root}"
+test -d "$QUALIFICATION_OUT/artifacts/recaptures"
+
+MERLIN_OUT_ROOT="$QUALIFICATION_OUT" \
+uv run --no-sync python build_tools/checks/check_claim_set_disjointness.py \
+  --target "$TARGET" --fail-on-circular --fail-on-unverifiable --json
+```
+
+An absent capture set, missing claim models, unresolved contract or empty derived
+requirement cannot pass this strict invocation. Neither artifact audit runs as an
+implicit source-checkout qualification in ordinary CI.
+
+Native tools, independent references, generated inputs, device execution and model
+quality require prepared qualification environments. The independent verification
+implementation lives under `src/merlin/verification/` and evaluation owners.
+FireSim provisioning and infrastructure launch remain external.

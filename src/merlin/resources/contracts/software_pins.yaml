@@ -1,0 +1,39 @@
+# Pinned external SOFTWARE sources -- which revision of a frontend/toolchain a captured program came from.
+#
+# Same schema and the same verifier as hardware_pins.yaml (merlin.common.provenance): the SHA is the
+# truth, `requires_paths` are the files the work actually reads, and `content_check` compares their
+# BYTES against the pinned commit out of the object store, so an uncommitted edit in a shared checkout
+# reads as off-pin rather than as the pinned revision. Kept in its own file because a toolchain is not
+# a hardware revision: nothing here carries `targets`, and no hardware tier is claimed from it.
+#
+# Consumed by merlin.common.external_tools (capture_pin / verify_capture_checkout).
+version: 1
+
+pins:
+
+  model2mlir_capture:
+    description: >-
+      The model2MLIR revision whole-model captures are made with. It carries exact signed integer
+      shift and floor-division decompositions, PT2E integer-contraction capture, and literal
+      quantization-parameter lowering; missing any of these leaves supported operations opaque.
+    repo_canonical: https://github.com/ucb-bar/model2MLIR.git
+    commit: "905d2c918f839596c9d1198cbdeb42d4c12a325b"
+    root_env: MERLIN_M2M_DIR
+    requires_paths:
+      - m2m/ir/decompositions.py
+      - m2m/ir/import_fx.py
+      - m2m/capture/pt2e_integer_reference.py
+      - m2m/capture/pt2e_integerize.py
+      - m2m/capture/bundle.py
+      - m2m/capture/causal_session.py
+      - m2m/capture/provenance.py
+      - m2m/capture/torchao_pipeline.py
+      - m2m/capture/torch_mlir_bridge.py
+      - tests/test_integer_shift_floordiv.py
+    content_check: true
+    notes: >-
+      Published model2MLIR main selected for fresh, source-closed Phase 0 captures.
+      Includes same-conversion bundle receipts and frontend traces, integer contraction
+      capture, signed-integer lowering, direct f32 conversion of clamp scalars,
+      causal prefill/decode masks and current Transformers static-cache handling.
+      Historical capture receipts retain their original source identities.

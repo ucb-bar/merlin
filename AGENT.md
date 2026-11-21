@@ -1,19 +1,33 @@
 # Merlin repository
 
-Merlin derives capsule tests and develops target compilers. The joint experiment
-combines correctness and performance authoring using the native Phase 1 engine;
-historical Phase 0/1/2 names remain in the module layout and separate workflows.
+Merlin derives capsule tests and develops target compilers. Test generation derives a reviewed corpus; backend generation develops correctness
+and performance together through the native authoring engine.
 
 ## Ownership
 
 - `src/merlin/`: canonical Python source. Keep shared compiler, scheduling, capture,
   target/toolchain and verification primitives independent of research orchestration.
-- `packages/`: optional research distributions. Do not duplicate core implementations.
-- `experiments/`: the experiment catalog and versioned definitions; start here to run a study.
-- `merlin/`: schemas, tests, native runtime, and legacy engines/resources during migration.
-  `merlin/python/merlin` is a compatibility symlink, not another source tree.
+- `src/merlin/evaluation/`: independent execution assessment and grading. Source
+  relocation preserves withheld access roles and binds actual implementation bytes.
+- `src/merlin/development/` and `src/merlin/experiments/`: backend generation and experiment orchestration
+  in the same namespace; optional dependencies stay lazy
+  and compiler/research access boundaries remain explicit.
+- `src/merlin/resources/` and `src/merlin/runtime/native/`: installed public data
+  and target-independent native runtime sources, respectively.
+- `tools/`: the console, independent timing observer and board measurement commands.
+- `examples/`: small walkthroughs and target-owned public inputs.
+- `experiments/`: nine authored catalog, definition, template and instruction files.
+  Engine implementations live under `src/merlin/development/{testgen,backend}/`.
+  Generated corpora and historical study payloads are explicit artifacts under ignored `out/`.
+- `tests/`: the permanent suite, capped at 150 collected cases including parametrization.
 - `build_tools/`, `docs/`, `third_party/`: build/gates, durable docs, and opt-in upstream dependencies.
-- `out/{runs,artifacts,build}/`: generated state. Required source/reference fixtures belong elsewhere.
+- `out/{runs,artifacts,build}/`: generated runs, captures, corpora, bundles and caches.
+  Keep only small authored inputs and the compact suite's distinct pinned regressions in source.
+
+There is one installed package at `src/merlin/`; the root `merlin/` tree is gone.
+The src layout prevents the working directory from supplying an accidental second
+package. See `docs/reference/repo_structure.md` for actual implementation owners
+and retained compatibility modules.
 
 ## Invariants
 
@@ -48,7 +62,7 @@ into general passes and cost models. Check additional shapes, tails and independ
 and retain precise fallback/refusal when the optimization cannot be proved.
 
 Preserve corpus identities, hidden answers, frozen compiler/certificate attribution, and native
-phase grading semantics. Register access identities before relocating graders or oracles.
+generation and grading semantics. Register access identities before relocating graders or oracles.
 Never infer dead runs from age or a directory suffix; use leases and explicit retention pins.
 Do not modify historical evidence during migrations.
 
@@ -72,9 +86,17 @@ even when the final tree passes tests or a push has been requested urgently.
 Never force-push a shared or published branch to repair history. If poor history has already
 been published, report it and prepare a separate reviewed remedy before changing that branch.
 
+## Readability
+
+Follow `CONTRIBUTING.md` for module ownership and comment conventions. Keep one
+coherent concept understandable in its owner. Review decomposition near 400
+handwritten lines and ordinarily keep new or substantially rewritten modules
+under 600; avoid both mechanical splits and monoliths just below a CI ceiling.
+Preserve real verification, source-identity and ABI boundaries when splitting.
+
 ## Verification
 
 Run the relevant behavior tests, source-layout/access checks, and
-`python build_tools/scripts/check_structure.py`. Regenerate code-derived docs after changes.
+`python build_tools/checks/check_structure.py`. Regenerate code-derived docs after changes.
 Release checks must inspect actual wheels/sdists and install outside the checkout without optional
-research packages. Report unavailable hardware separately from passing tests.
+research dependencies. Report unavailable hardware separately from passing tests.

@@ -1,0 +1,14 @@
+# Public top-level definitions under the instrumented packages that no production code
+# references, and at least one test does. One `<policy path>::<name>` per line.
+#
+# WHY A SECOND GRANULARITY. An imported module is `wired` whatever is inside it, so the
+# module-level ledger beside this one cannot see a function nobody calls.
+#
+# WHAT IS *NOT* HERE, and why this list is shorter than the debt. The scan is deliberately
+# conservative -- see check_wiring.py's docstring: references are matched by name (so dynamic
+# dispatch counts as use), decorated definitions are never flagged (a decorator may register
+# the object), a definition with no test behind it is left to ordinary dead-code review, and a
+# symbol inside a module the module-level ledger already holds is recorded once, there.
+#
+# May only shrink: call it from the path it was built for, or delete it.
+# growth-accepted: the symbol granularity is new; this is debt it discovered, not debt added.

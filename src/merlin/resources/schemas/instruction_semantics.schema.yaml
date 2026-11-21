@@ -1,0 +1,59 @@
+# yaml-language-server: $schema=none
+# Cross-workstream vocabulary; nested validation lives in instruction_semantics.py.
+title: Instruction Semantics
+purpose: >-
+  Versioned, target-owned descriptions of exact instruction computations, typed
+  operands/results, legal parameter domains, and memory effects. Phase 0 binds
+  this authored resource to selected software-spec and CIRCT-fact bytes. Neither
+  extraction nor this schema proves that hardware executes the authored numerics.
+required_top_level_fields:
+  - schema
+  - target
+  - instructions
+producer: selected OOT support provider
+consumers:
+  - merlin.target.spec.instructions
+  - merlin.development.targetgen.authoring.semantic_search
+validation_notes: >-
+  Use merlin.target.spec.instructions.normalize_instruction_semantics for
+  nested validation and deterministic input identities. Missing computations,
+  effects, memory facts and software-operation links become explicit UNKNOWNs.
+  A software-operation link names one SW spec declaration; dtype and rank axes
+  are screened, while selectors and unhandled legality clauses remain UNKNOWN
+  until source provenance and target execution establish them.
+  Scalar bodies use the same typed SSA references and printed MLIR attributes
+  as the structural frontend. Fixed byte ranges are supported in v1.
+example: |
+  schema: merlin.instruction_semantics.v1
+  target: fixture_target
+  memory_spaces:
+    local:
+      capacity_bytes: 4096
+      alignment_bytes: 16
+      banks: 2
+      bank_width_bytes: 16
+  instructions:
+    - id: vector_add
+      software_operation: elementwise_add
+      operands: [{name: lhs, type: 'tensor<4xi32>'}, {name: rhs, type: 'tensor<4xi32>'}]
+      results: [{name: output, type: 'tensor<4xi32>'}]
+      computation:
+        kind: linalg.generic
+        indexing_maps: ['affine_map<(d0) -> (d0)>', 'affine_map<(d0) -> (d0)>', 'affine_map<(d0) -> (d0)>']
+        iterator_types: [parallel]
+        scalar_body:
+          arguments: [i32, i32, i32]
+          captures: []
+          operations:
+            - {op: arith.addi, operands: ['arg:0', 'arg:1'], results: [i32], attributes: {}, effects: [], regions: 0}
+          yields: ['op:0:0']
+          effects: []
+      parameters: {}
+      constraints:
+        operand_spaces: {lhs: local, rhs: local}
+        result_spaces: {output: local}
+        distinct_banks: [lhs, rhs]
+      effects:
+        - {kind: read, space: local, operand: lhs, range: {offset_bytes: 0, length_bytes: 16}}
+        - {kind: read, space: local, operand: rhs, range: {offset_bytes: 0, length_bytes: 16}}
+        - {kind: write, space: local, result: output, range: {offset_bytes: 0, length_bytes: 16}}

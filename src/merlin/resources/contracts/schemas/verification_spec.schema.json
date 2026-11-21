@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "merlin/contract/schemas/verification_spec.schema.json",
+  "title": "Agent-facing verification spec (verification_spec_v1)",
+  "description": "The answer-free acceptance contract handed to a bring-up agent, DERIVED by merlin.development.targetgen.verification_spec from the graded capsules' own declarations (capsule.yaml only -- never golden.yaml). Written into the agent workspace as verification_spec.md plus this JSON sibling. Because it is derived from the graded corpus, whatever the corpus does not demand it does not require; `not_checked` is the explicit admission of the obligations nothing enforces, which is the half an agent could not otherwise see.",
+  "type": "object",
+  "required": ["schema", "target", "n_capsules", "ops", "not_checked"],
+  "properties": {
+    "schema": {"const": "verification_spec_v1"},
+    "target": {"type": "string", "minLength": 1},
+    "n_capsules": {"type": "integer", "minimum": 0},
+    "ops": {
+      "type": "object",
+      "description": "One entry per operation the graded capsules declare. The key is the capsule's own `operation.op`.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["dtypes", "accept", "coverage", "epilogues", "checked_by"],
+        "properties": {
+          "dtypes": {"type": "array", "items": {"type": "string"}},
+          "accept": {"type": "array", "items": {"type": "string"}},
+          "coverage": {"type": "array", "items": {"type": "string"}},
+          "epilogues": {"type": "array", "items": {"type": "string"}},
+          "checked_by": {
+            "type": "object",
+            "description": "WHAT ACTUALLY LOOKS at a submission for this operation, derived from the capsules' declarations. A false/empty field is not a relaxation -- it means nothing enforces that obligation, and the matching `not_checked` entry says so in words.",
+            "required": ["oracle_tiers", "datapath_coverage", "must_accelerate"],
+            "properties": {
+              "oracle_tiers": {"type": "array", "items": {"type": "string"}},
+              "datapath_coverage": {"type": "boolean"},
+              "must_accelerate": {"type": "boolean"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "not_checked": {
+      "type": "array",
+      "description": "Obligations this spec states or implies that nothing enforces. NEVER EMPTY: the first entry is the standing admission that no checker compares a submission to this document at all.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["obligation", "scope", "why_not_checked"],
+        "properties": {
+          "obligation": {"type": "string", "minLength": 1},
+          "scope": {"type": "string", "minLength": 1},
+          "why_not_checked": {"type": "string", "minLength": 1}
+        },
+        "additionalProperties": false
+      }
+    },
+    "isa_docs": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": false
+}

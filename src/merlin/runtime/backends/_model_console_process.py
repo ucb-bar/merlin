@@ -10,10 +10,13 @@ import subprocess
 
 def run_text(command, *, timeout, error_type, parse_console, label):
     process = subprocess.run([str(c) for c in command], capture_output=True, timeout=timeout)
-    console = (process.stdout or b"").decode("utf-8", errors="replace") + (
-        process.stderr or b"").decode("utf-8", errors="replace")
+    console = (process.stdout or b"").decode("utf-8", errors="replace") + (process.stderr or b"").decode(
+        "utf-8", errors="replace"
+    )
     if process.returncode != 0:
-        raise error_type(f"{label} exited {process.returncode} even though it may have printed OUT/DONE:\n{console[-2000:]}")
+        raise error_type(
+            f"{label} exited {process.returncode} even though it may have printed OUT/DONE:\n{console[-2000:]}"
+        )
     return parse_console(console)
 
 

@@ -1,0 +1,156 @@
+"""xDSL dense-float IO and the lock that serializes in-process MLIR parsing."""
+
+from __future__ import annotations
+
+import threading
+
+from xdsl.dialects.builtin import AnyFloat, BytesAttr, DenseIntOrFPElementsAttr, StringAttr
+from xdsl.parser import Parser
+from xdsl.printer import Printer
+from xdsl.utils.mlir_lexer import MLIRLexer, MLIRTokenKind
+
+# ---- dense_float_ir ----------------------------------------------------------------------------
+# Bit-preserving dense float IO at Merlin's xDSL boundary.
+#
+# xDSL 0.68 reads unquoted dense float hex literals as numeric integers, and
+# its default printer decodes/re-encodes NaNs. Keep actual bytes authoritative.
+# All grammar, shape checks and non-floating literals remain xDSL-owned. These
+# adapters confer no numerical equivalence or permission to change arithmetic.
+
+
+class DenseFloatPrinter(Printer):
+    """Use MLIR's raw-byte form, retaining NaN payloads and signed zeros."""
+
+    def print_bytes_literal(self, bytestring):
+        # Match xDSL's byte escaping exactly, preserving every byte value.
+        escaped = []
+        for byte in bytestring:
+            if byte == 0x5C:
+                escaped.append("\\\\")
+            elif byte == 0x22 or byte < 0x20 or byte >= 0x7F:
+                escaped.append(f"\\{byte:02X}")
+            else:
+                escaped.append(chr(byte))
+        self.print_string('"' + "".join(escaped) + '"')
+
+    def print_attribute(self, attribute):
+        if isinstance(attribute, DenseIntOrFPElementsAttr) and isinstance(attribute.get_element_type(), AnyFloat):
+            data = attribute.data.data
+            width = attribute.get_element_type().compile_time_size
+            # Compare bytes: NaN equality and +0/-0 equality cannot identify splats.
+            if data and data == data[:width] * (len(data) // width):
+                data = data[:width]
+            self.print_string(f'dense<"0x{data.hex().upper()}"> : ')
+            self.print_attribute(attribute.type)
+            return
+        super().print_attribute(attribute)
+
+
+class DenseFloatParser(Parser):
+    """Retain typed hex bit patterns without passing them through Python floats.
+
+    The parent parses and validates the complete dense grammar. Hex float leaves
+    use a temporary zero during its packing, then their exact original bytes replace
+    those slots. This also avoids overflow and signaling-NaN quieting in conversion.
+    Nested attribute parsing has its own saved leaf list, never global parser state.
+    """
+
+    def _parse_optional_builtin_attr(self):
+        attribute = super()._parse_optional_builtin_attr()
+        # Native MLIR prints non-ASCII strings as escaped UTF-8 bytes. Decode
+        # only a lossless UTF-8 attribute token, leaving raw dense data and
+        # non-UTF-8 byte attributes under their existing byte representation.
+        if isinstance(attribute, BytesAttr):
+            try:
+                return StringAttr(attribute.data.decode("utf-8"))
+            except UnicodeDecodeError:
+                pass
+        return attribute
+
+    class _DenseElement(Parser._TensorLiteralElement):
+        def to_type(self, parser, type):
+            leaves = getattr(parser, "_dense_float_leaves", None)
+            if leaves is None:
+                return super().to_type(parser, type)
+            raw = None
+            if isinstance(type, AnyFloat):
+                lexer = MLIRLexer(self.span.input)
+                lexer.pos = self.span.start
+                token = lexer.lex()
+                signed = token.kind == MLIRTokenKind.MINUS
+                if signed:
+                    token = lexer.lex()
+                hexadecimal = token.text.lower().startswith("0x")
+                if signed and hexadecimal:
+                    parser.raise_error(
+                        "Floating-point hex bit patterns cannot have a sign prefix", at_position=self.span
+                    )
+                if hexadecimal:
+                    try:
+                        raw = self.value.to_bytes(type.compile_time_size, "little")
+                    except (OverflowError, ValueError) as exc:
+                        parser.raise_error(
+                            f"Floating-point bit pattern does not fit {type}: {exc}", at_position=self.span
+                        )
+            leaves.append(raw)
+            return 0.0 if raw is not None else super().to_type(parser, type)
+
+    def _parse_tensor_literal_element(self):
+        element = super()._parse_tensor_literal_element()
+        return self._DenseElement(element.is_negative, element.value, element.span)
+
+    def parse_dense_int_or_fp_elements_attr(self, type):
+        previous = getattr(self, "_dense_float_leaves", None)
+        self._dense_float_leaves = []
+        try:
+            attribute = super().parse_dense_int_or_fp_elements_attr(type)
+            leaves = self._dense_float_leaves
+            if not any(raw is not None for raw in leaves):
+                return attribute
+            data = bytearray(attribute.data.data)
+            width = attribute.get_element_type().compile_time_size
+            if len(leaves) == 1:
+                data[:] = leaves[0] * len(attribute)
+            else:
+                for index, raw in enumerate(leaves):
+                    if raw is not None:
+                        data[index * width : (index + 1) * width] = raw
+            return DenseIntOrFPElementsAttr(attribute.type, BytesAttr(bytes(data)))
+        finally:
+            self._dense_float_leaves = previous
+
+
+# ---- ir_lock -----------------------------------------------------------------------------------
+# One lock serializing in-process MLIR parse/lowering, because xDSL's parser is not thread-safe.
+#
+# Two whole-model builds running in the same process — the obvious way to use a 48-core host for a set
+# of images that are otherwise independent — corrupt each other inside the parser. The failure is not a
+# crash in shared state you can see; it surfaces as a bogus *parse error* on perfectly valid IR::
+#
+#     xdsl.utils.exceptions.ParseError: <unknown>:406:5
+#         %618 = linalg.matmul {prov.region_id = "matmul_0", ...} ins(...) outs(...)
+#         ^^^^
+#         Could not build linalg op
+#
+# measured with three concurrent ``build_app`` calls: one succeeded and two died there, at three
+# different line numbers, on modules that parse fine on their own. So the hazard is per-parse global
+# state in the dialect/op construction path, not anything in this repo, and it cannot be fixed by
+# passing a fresh context.
+#
+# The cost of serializing is small and known: lowering a whole model is tens of seconds, while the spike
+# run that follows it is minutes to tens of minutes (spectformer is 2.78 G cycles). Holding this lock
+# across parse+lower and releasing it before the compile/link/simulate subprocesses keeps the part that
+# actually dominates wall clock fully parallel.
+#
+# Use it around *any* in-process MLIR work that could run concurrently::
+#
+#     from merlin.compiler.ir.xdsl_io import IR_LOCK
+#
+#     with IR_LOCK:
+#         prepared, features = prepare_for_lowering(...)
+#         res = lower_model_file(prepared, ...)
+#
+# It is an ``RLock`` so a nested helper that also takes it does not deadlock.
+
+#: Held for the duration of parse/lowering. Module-level, so every importer shares one lock.
+IR_LOCK = threading.RLock()

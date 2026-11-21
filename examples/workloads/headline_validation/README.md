@@ -1,7 +1,7 @@
 # Headline model capture and lowering
 
 TinyLlama, SmolVLA and ResNet50 are held-out validation workloads, not inputs to
-Phase 0 capsule selection. Their real model loaders live in model2MLIR. Merlin
+test generation capsule selection. Their real model loaders live in model2MLIR. Merlin
 does not copy those implementations or infer target support from host lowering.
 Use a fresh artifact directory for every run.
 
@@ -29,14 +29,14 @@ to the same revision and that the loaded layer count matches that config.
 
 ```sh
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 M2M_SEQ=8 \
-  "$LLAMA_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$LLAMA_CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/headline_validation/tiny_llama_loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \
   --out "$HEADLINE_ROOT/tinyllama-prefill"
 
 M2M_RESNET_RANDOM=1 M2M_SESSION_STEPS=1 \
-  "$RESNET_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$RESNET_CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader "$MODEL2MLIR_ROOT/workloads/resnet50_v1_5/loader.py" \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -44,7 +44,7 @@ M2M_RESNET_RANDOM=1 M2M_SESSION_STEPS=1 \
 
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
   M2M_SMOLVLA_PRETRAINED=1 M2M_SMOLVLA_SESSION=e2e \
-  "$SMOLVLA_CAPTURE_PYTHON" src/merlin/targetgen/_m2m_capture_worker.py \
+  "$SMOLVLA_CAPTURE_PYTHON" src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader "$MODEL2MLIR_ROOT/workloads/smolvla/loader.py" \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -69,7 +69,7 @@ before treating independently lowered stages as one program:
 PYTHONPATH=src:packages/merlin-experiments/src "$MERLIN_COMPILER_PYTHON" - "$CAPTURE" <<'PY'
 import sys
 from pathlib import Path
-from merlin_experiments.model_qualification import inspect_workflow
+from merlin.experiments.inspection.qualification_workflow import inspect_workflow
 
 report = inspect_workflow(Path(sys.argv[1]))
 print([(row["name"], row["missing_runtime_inputs"]) for row in report["programs"]])
@@ -91,7 +91,7 @@ that lineage obligation open even if later LLVM lowering succeeds.
 
 For each captured program, inspect the groups the selected target would route to
 an accelerator. This writes a small derivation report without creating goldens,
-running a compiler, or adding validation shapes to the Phase 0 corpus:
+running a compiler, or adding validation shapes to the test generation corpus:
 
 ```sh
 merlin experiment corpus groups \
@@ -114,7 +114,7 @@ executed on the device; zero unstated groups does not establish complete offload
 `inputs` records SHA-256 of the capture, manifest, experiment definition,
 selected software spec, capability contract, OOT provider contract and RTL facts actually
 read. The command refuses absent or source-unverified facts before routing any groups;
-`--rtl-facts` pins the same selected artifact used for Phase 0. This checks the
+`--rtl-facts` pins the same selected artifact used for test generation. This checks the
 artifact's recorded source-consistency status, not independent source qualification.
 `missing_input_receipts` exposes any
 selection that could not be byte-bound. `materialization: not_requested` means
@@ -130,7 +130,7 @@ width. The bound itself is not full-kernel execution evidence.
 
 `merlin lower` consumes one complete `model.mlir` at a time. Run it with the
 selected compiler interpreter and MLIR toolchain configured as in
-[the lowering guide](../../../docs/guides/model_lowering.md). For TinyLlama and
+[the lowering guide](../../../docs/guides/06-lowering.md). For TinyLlama and
 ResNet50, `CAPTURE` is their bundle. For SmolVLA, repeat once each for
 `stages/prefix_encode`, `stages/flow_denoise`, and `stages/action_decode`:
 
@@ -146,7 +146,7 @@ and biases are in the parallel safetensors file. The lowering result's
 `audit_index` points to named intermediate MLIR and LLVM IR stages under the
 fresh output directory. Inspect the index and terminal `model.ll` for **each**
 program. Successful host LLVM lowering proves neither OOT accelerator codegen
-nor numerical execution. Phase 1 must still account for host/accelerator
+nor numerical execution. backend generation must still account for host/accelerator
 placement, precision, complete sessions and independent numerical results.
 
 ## Current diagnostic evidence
@@ -154,7 +154,7 @@ placement, precision, complete sessions and independent numerical results.
 The checks below used selected local model2MLIR and compiler builds, full model
 checkpoints, and seeded synthetic inputs on 2026-09-28. Their capture receipts
 still say `source_closure_verified: false`,
-so none of these bundles is an admitted Phase 0 corpus or a target/compiler
+so none of these bundles is an admitted test generation corpus or a target/compiler
 certificate. Keep producer trace status, Merlin's exact-byte join, LLVM lowering,
 and numerical execution as separate checks.
 
@@ -188,8 +188,8 @@ without generator refusal; a repeat generation produced identical capsule files
 have not been executed against the selected target. The capture still records
 unverified source closure,
 and the portable Q/DQ diagnostic differs from the selected integer reference.
-Neither the trace nor the demand plan admits a Phase 0 corpus or certifies a
-Phase 1 compiler.
+Neither the trace nor the demand plan admits a test generation corpus or certifies a
+backend generation compiler.
 
 For a bounded device check, prepared node `g:prepared:root:n283` in that
 TinyLlama capture is an i8×i8→i32 contraction with source geometry 8×2048×256.

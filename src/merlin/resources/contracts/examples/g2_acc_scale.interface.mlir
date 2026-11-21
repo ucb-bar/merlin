@@ -1,0 +1,1 @@
+../../../../../examples/gemmini/phase0/reference/g2_acc_scale.interface.mlir

@@ -9,7 +9,7 @@ Capture one case with the existing worker and a selected model2MLIR interpreter:
 
 ```bash
 M2M_HOST_PROBE_CASE=integer_to_float "$CAPTURE_PYTHON" \
-  src/merlin/targetgen/_m2m_capture_worker.py \
+  src/merlin/capture/preparation/worker.py \
   --m2m-dir "$MODEL2MLIR_ROOT" \
   --loader examples/workloads/host_control_math/loader.py \
   --dtype fp32 --seed 0 --materialize-bundle \
@@ -66,7 +66,7 @@ probes, not a host admission. The selected MLIR `arith.maximumf` gives positive
 zero priority over negative zero, whereas PyTorch CPU `amax` may retain the
 first zero sign; a strict mismatch must remain a failed numerical check.
 
-Use the existing `merlin.compile.scalar_host_qualification` command with an explicit
+Use the existing `merlin.verification.scalar_host` command with an explicit
 scalar package, board catalog and pinned DTS. That checker requires bit-identical
 saved-capture outputs: a mismatch must remain a mismatch. Sine/cosine library
 implementations may differ; do not loosen the checker or substitute easy inputs

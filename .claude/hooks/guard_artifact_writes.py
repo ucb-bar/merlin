@@ -13,6 +13,7 @@ Source edits (merlin/, build_tools/, experiments/*/scripts/, tests/, *.md docs, 
 Escape hatch: env MERLIN_ALLOW_ARTIFACT_WRITE=1, or list a path prefix in
 .claude/hooks/artifact_allowlist.txt. Contract: exit 0 = allow; exit 2 + stderr message = deny.
 """
+
 from __future__ import annotations
 
 import json
@@ -25,8 +26,13 @@ SKELETON_NAMES = {"AGENT.md", "README.md", ".gitkeep"}
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 # Retired top-level generated roots (now consolidated under out/) + legacy forbidden locations.
 FORBIDDEN_SUBSTR = (
-    "output/", "results/", "selfcheck_out/", "mined_knowledge/", "/presentation/",
-    "_dse_analysis", "_recap",
+    "output/",
+    "results/",
+    "selfcheck_out/",
+    "mined_knowledge/",
+    "/presentation/",
+    "_dse_analysis",
+    "_recap",
 )
 
 
@@ -50,7 +56,7 @@ def _allowlisted(rel: str, root: Path) -> bool:
 
 
 def _declared(root: Path) -> tuple[set, set]:
-    """``(out roots, concerns)`` from merlin/contract/storage.yaml.
+    """``(out roots, concerns)`` from src/merlin/resources/contracts/storage.yaml.
 
     Read with a deliberately small parser rather than a YAML library: this hook runs under whatever
     interpreter the harness gives it, and a missing import here would either crash the hook or,
@@ -72,7 +78,7 @@ def _declared(root: Path) -> tuple[set, set]:
         if section not in found or not line.strip() or line.lstrip().startswith("#"):
             continue
         if not line.startswith("  ") or line.startswith("   "):
-            continue                      # a continuation of the previous entry's value, not a key
+            continue  # a continuation of the previous entry's value, not a key
         entry = line.strip()
         name = entry[2:] if entry.startswith("- ") else entry.split(":", 1)[0]
         name = name.strip().strip("'\"")
@@ -85,10 +91,10 @@ def _undeclared_destination(rel_posix: str, root: Path) -> str | None:
     """The part of this path the storage contract does not name, or None if it is all declared."""
     parts = rel_posix.split("/")
     if parts[0] != "out" or len(parts) < 3:
-        return None                       # tmp/, or a file sitting directly in the out/ root
+        return None  # tmp/, or a file sitting directly in the out/ root
     roots, concerns = _declared(root)
     if not roots:
-        return None                       # no readable roster: the rule is off, not failing closed
+        return None  # no readable roster: the rule is off, not failing closed
     if parts[1] not in roots:
         return f"out/{parts[1]}/, an undeclared top-level root"
     if parts[1] == "artifacts" and len(parts) >= 4 and parts[2] not in concerns:
@@ -138,7 +144,7 @@ def main() -> int:
         if undeclared:
             sys.stderr.write(
                 f"BLOCKED by guard_artifact_writes: '{rel_posix}' writes into {undeclared}, which\n"
-                "merlin/contract/storage.yaml does not declare. The out/ root has three roots and a\n"
+                "src/merlin/resources/contracts/storage.yaml does not declare. The out/ root has three roots and a\n"
                 "closed set of concerns; the roster drifted to 52 undeclared concerns against 16\n"
                 "declared ones because nothing checked it at the moment one was created.\n"
                 "Write into a declared concern, or add this one to that file with a line saying what\n"
