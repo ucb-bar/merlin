@@ -55,6 +55,7 @@ def main() -> int:
         "schema": "merlin.ttir-layout-replay.v1",
         "source_commit": selection["source_commit"],
         "patch_sha256": selection["patch_sha256"],
+        "reviewed_profile_updates": selection.get("reviewed_profile_updates", []),
         "consumer_commit": subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=repo, text=True
         ).strip(),

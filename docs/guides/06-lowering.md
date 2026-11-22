@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-22
 related: [05-transformations, 07-building]
-code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
+code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/dialects/fp8.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
 ---
 
 # 6. Lower through scalar and OOT implementations
@@ -138,6 +138,17 @@ Integer updates through f16 storage use a private i16 return transport, then
 restore the original bitcast at the caller; the native helper checks its full
 body rather than trusting the view annotation. The same word semantics apply
 to explicitly ordered, actively aligned byte-backed i16 views.
+
+Direct bitwise exchange also covers f16, BF16 and the four pinned FP8 formats.
+The existing atomic-word feature derives the actual storage type and retains
+each returned old value using i8/i16 helper arguments and results. It admits
+default-space rank-one storage, casting static shapes to the helper ABI, and
+checks the complete allocation-free borrowing body. Floating addition policies
+remain separate. `compiler/dialects/fp8.py` includes MemRef's copied float
+constraints in its standard type registration; reader admission grants no
+arithmetic policy. The frozen replay records reviewed updates when an old
+non-support assertion becomes a qualified capability, preserving the refusal
+guard with a valid unqualified body and retaining the original source blobs.
 
 `merlin.compiler.lower.native.pipeline.lower_to_llvm_ir` retains
 `owned_result_allocations=` and its typed resource selection. Destination reuse

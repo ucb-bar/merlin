@@ -161,6 +161,7 @@ if HAS_XDSL:
             "xdsl.printer",
             "xdsl.dialects.arith",
             "xdsl.dialects.math",
+            "xdsl.dialects.memref",
             "xdsl.dialects.linalg.ops",
             "xdsl.dialects.linalg.abstract_ops",
         ):
@@ -213,6 +214,7 @@ if HAS_XDSL:
             ("builtin", "Builtin"),
             ("arith", "Arith"),
             ("math", "Math"),
+            ("memref", "MemRef"),
             ("linalg", "Linalg"),
         ):
             dialect = getattr(import_module("xdsl.dialects." + module_name), dialect_name)

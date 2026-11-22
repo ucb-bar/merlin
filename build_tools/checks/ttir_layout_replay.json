@@ -1,7 +1,7 @@
 {
   "source_commit": "53e7b01158c918dbd6d4dad0ac38ba0a901f16ba",
   "incoming_layout_commit": "2451b8134a7995d4e73efa3a465f975a1d532727",
-  "patch_sha256": "c372bea37de856f01920c9bb5db9278e51da3fe4c7269834850a6e984ba27f6e",
+  "patch_sha256": "7fa4d361704c97d45f8f959b0f7f8eab8152034f5eb0168e383d727d6362a5ce",
   "files": [
     {
       "source": "merlin/tests/fixtures/AGENT.md",
@@ -492,6 +492,15 @@
       "source": "merlin/tests/runtime/test_whole_model_readback.py",
       "path": "tests/runtime/test_whole_model_readback.py",
       "sha256": "e76ddde176dc981509cbe3e275be821305061d47a079a18ed7a577b32972d106"
+    }
+  ],
+  "reviewed_profile_updates": [
+    {
+      "path": "tests/ir/test_atomic_word_compare_exchange.py",
+      "original_obligation": "Two half floating assignment refusals, with constant and outside SSA values.",
+      "replacement_obligation": "Two valid but unqualified nonlinear floating updates must refuse before any rewrite.",
+      "reason": "Bitwise half exchange is now implemented with integer call transport and exact old/new words. Keeping its old non-support assertion would contradict the new required capability. Preserve the complete-plan refusal guard with actual unqualified arithmetic; no positive regression or collected case is removed.",
+      "positive_replacement": "tests/ir/test_narrow_atomic_native.py::test_float_exchange_transports_original_bits_without_float_calls; public triton2MLIR scalar/tiled exchange programs qualify all six low-precision formats."
     }
   ]
 }

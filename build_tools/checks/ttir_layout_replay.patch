@@ -91,10 +91,9 @@ index f5d65e5..5bb3b6c 100644
  
  @pytest.mark.parametrize("families", [(CAS,), (WORD,), (INTEGER,), (CAS, WORD, INTEGER)])
 diff --git a/tests/ir/test_atomic_word_compare_exchange.py b/tests/ir/test_atomic_word_compare_exchange.py
-index 557d813..053629d 100644
 --- a/tests/ir/test_atomic_word_compare_exchange.py
 +++ b/tests/ir/test_atomic_word_compare_exchange.py
-@@ -5,8 +5,8 @@ import subprocess
+@@ -5,8 +5,8 @@
  
  import pytest
  
@@ -105,6 +104,26 @@ index 557d813..053629d 100644
  
  pytestmark = pytest.mark.skipif(not available(), reason="existing native MLIR required")
  
+@@ -134,8 +134,10 @@
+ 
+ 
+ @pytest.mark.parametrize("constant", [False, True])
+-def test_half_floating_assignments_refuse_during_complete_plan_validation(tmp_path, constant):
+-    body = "%constant=arith.constant 0x7C11:f16\nmemref.atomic_yield %constant:f16" if constant else "memref.atomic_yield %outside:f16"
++def test_unqualified_half_updates_refuse_during_complete_plan_validation(tmp_path, constant):
++    declarations = "%constant=arith.constant 0x7C11:f16\n" if constant else ""
++    operand = "%constant" if constant else "%outside"
++    body = declarations + f"%updated=arith.mulf %current,{operand}:f16\nmemref.atomic_yield %updated:f16"
+     program = f"""module {{ func.func @forward(%p:memref<?xf16>,%i:index,%outside:f16)->f16 {{
+       %old=memref.generic_atomic_rmw %p[%i]:memref<?xf16> {{
+       ^bb0(%current:f16): {body}
+@@ -148,5 +150,5 @@
+ except ValueError:
+     assert str(module)==before
+ else:
+-    raise AssertionError('unqualified half floating assignment accepted')
++    raise AssertionError('unqualified half floating update accepted')
+ """)
 diff --git a/tests/ir/test_atomic_word_views.py b/tests/ir/test_atomic_word_views.py
 index 8a1cd0b..fea3b24 100644
 --- a/tests/ir/test_atomic_word_views.py

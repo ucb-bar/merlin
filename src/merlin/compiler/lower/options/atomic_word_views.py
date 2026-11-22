@@ -20,6 +20,94 @@ SUPPORT = (
         r"""
 _WORD_OPS = {'arith.addi': 'add', 'arith.andi': 'and', 'arith.ori': 'or', 'arith.xori': 'xor',
              'arith.maxsi': 'max', 'arith.minsi': 'min', 'arith.maxui': 'umax', 'arith.minui': 'umin'}
+_WORD_BIT_STORAGE = {'f16': 16, 'bf16': 16, 'f8E4M3FN': 8, 'f8E4M3FNUZ': 8,
+                     'f8E5M2': 8, 'f8E5M2FNUZ': 8}
+
+
+def _bitwise_exchange_match(op):
+    if op.name not in ('memref.atomic_rmw', 'memref.generic_atomic_rmw') or len(op.results) != 1:
+        return None
+    storage = str(op.results[0].type)
+    if storage not in _WORD_BIT_STORAGE:
+        return None
+    if op.name == 'memref.atomic_rmw':
+        if 'kind' not in op.attributes or ir.IntegerAttr(op.attributes['kind']).value != 3:
+            return None
+        if len(op.operands) != 3 or op.regions:
+            raise ValueError('bitwise exchange requires one actual value, memref and index')
+        value, memory, index = op.operands
+    else:
+        if len(op.operands) != 2 or len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
+            raise ValueError('bitwise exchange requires one typed atomic region')
+        block = op.regions[0].blocks[0]
+        operations = tuple(item.operation for item in block.operations)
+        if len(operations) == 1 and operations[0].name == 'memref.atomic_yield':
+            value, = operations[0].operands
+            if value in block.arguments or isinstance(value, ir.OpResult) and value.owner.operation.block == block:
+                return None
+        elif (len(operations) == 2 and operations[0].name == 'arith.constant'
+                and not operations[0].operands and len(operations[0].results) == 1
+                and operations[1].name == 'memref.atomic_yield'
+                and tuple(operations[1].operands) == tuple(operations[0].results)):
+            value = operations[0]
+        else:
+            return None
+        memory, index = op.operands
+    names = [item if isinstance(item, str) else item.name for item in op.attributes]
+    with op.context, ir.Location.unknown():
+        typed = ir.MemRefType(memory.type)
+        default = ir.MemRefType.get(typed.shape, op.results[0].type)
+    value_type = value.results[0].type if isinstance(value, ir.Operation) else value.type
+    if (len(typed.shape) != 1 or memory.type != default or value_type != op.results[0].type
+            or str(index.type) != 'index'
+            or any(name != 'kind' and not name.startswith('prov.') for name in names)):
+        raise ValueError('bitwise exchange requires exact default-space typed scalar memory; found '
+                         + str(memory.type) + ' with attributes ' + ', '.join(names))
+    op.verify()
+    return memory, index, value, _WORD_BIT_STORAGE[storage], 'exchange-bits:' + storage
+
+
+def _bitwise_exchange_source(symbol, storage):
+    import json
+    if storage not in _WORD_BIT_STORAGE:
+        raise ValueError('bitwise exchange has an unqualified storage format')
+    width = _WORD_BIT_STORAGE[storage]
+    source = '''module {
+      func.func private @SYMBOL(%buffer: memref<?xFORMAT>, %index: index,
+          %value: iBITS) -> iBITS attributes {llvm.linkage = #llvm.linkage<internal>} {
+        %bytes = arith.constant BYTES : index
+        %base = memref.extract_aligned_pointer_as_index %buffer : memref<?xFORMAT> -> index
+        %offset = arith.muli %index, %bytes : index
+        %address = arith.addi %base, %offset : index
+        %integer = arith.index_cast %address : index to i64
+        %pointer = llvm.inttoptr %integer : i64 to !llvm.ptr
+        %old = llvm.atomicrmw xchg %pointer, %value acq_rel : !llvm.ptr, iBITS
+        func.return %old : iBITS
+      }
+    }'''
+    return source.replace('SYMBOL', json.dumps(symbol)).replace('FORMAT', storage).replace(
+        'BITS', str(width)).replace('BYTES', str(width // 8))
+
+
+def _bitwise_exchange_helper_equal(op, symbol, module):
+    block = op.regions[0].blocks[0]
+    signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
+    if len(block.arguments) != 3 or len(signature.results) != 1:
+        return False
+    for storage, width in _WORD_BIT_STORAGE.items():
+        if (str(block.arguments[0].type) != 'memref<?x' + storage + '>'
+                or str(block.arguments[1].type) != 'index'
+                or str(block.arguments[2].type) != 'i' + str(width)
+                or str(signature.results[0]) != 'i' + str(width)):
+            continue
+        from torch_mlir import passmanager as _bits_pm
+        with module.context:
+            reference = ir.Module.parse(_bitwise_exchange_source(symbol, storage))
+            _bits_pm.PassManager.parse('builtin.module(canonicalize,cse)').run(reference.operation)
+        expected = tuple(reference.body.operations)[0].operation
+        return op.get_asm(print_generic_op_form=True, use_local_scope=True) == expected.get_asm(
+            print_generic_op_form=True, use_local_scope=True)
+    return False
 
 
 def _word_match(op):
@@ -127,6 +215,8 @@ def _word_match(op):
 
 
 def _word_source(symbol, width, kind):
+    if kind.startswith('exchange-bits:'):
+        return _bitwise_exchange_source(symbol, kind.removeprefix('exchange-bits:'))
 """
         "    if width == 16 and kind in ('fadd-ieee-f16', 'fadd-ieee-bf16', 'ie"
         "ee-quiet-identity-f16', 'ieee-quiet-identity-bf16'):\n"
@@ -187,6 +277,8 @@ def _word_source(symbol, width, kind):
 def _word_helper_equal(op, symbol, module):
     # This grants synchronous borrowing only. Reconstruct from the actual
     # primitive/type, never the symbol spelling, source tag or saved plan.
+    if _bitwise_exchange_helper_equal(op, symbol, module):
+        return True
     if _word_cas_helper_equal(op, symbol, module):
         return True
     if _half_add_helper_equal(op, symbol, module):

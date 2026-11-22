@@ -22,7 +22,9 @@ _FLOAT_CONTRACTS = {
     ("fadd", "f32"): ("ieee-f32-rne-add", "f32-rne-sign-preserving-ftz-add"),
 }
 _FLOAT_CONTRACTS.update({("fadd", dtype): (f"ieee-{dtype}-rne-add-quiet-nans",) for dtype in ("f16", "bf16")})
-_FLOAT_WIDTHS = {"f16": 16, "bf16": 16, "f32": 32, "f64": 64}
+_FLOAT_WIDTHS = {"f16": 16, "bf16": 16, "f32": 32, "f64": 64,
+                 "f8E4M3FN": 8, "f8E4M3FNUZ": 8, "f8E5M2": 8, "f8E5M2FNUZ": 8}
+_FLOAT_CONTRACTS.update({("exch", dtype): ("bitwise-exchange",) for dtype in _FLOAT_WIDTHS})
 
 
 def checked_source_atomic(op, declared, selection):
@@ -243,7 +245,7 @@ def checked_atomic_effects(admission, memory, records, buffers):
             )
             or not floating
             and ("value_dtype" in info or "numeric_contract" in info)
-            or info.get("word_bits") not in ((16, 32, 64) if floating else (8, 16, 32, 64))
+            or info.get("word_bits") not in (8, 16, 32, 64)
             or info.get("operation") not in _KINDS
             or info.get("standard_kind") != _KINDS[info["operation"]]
             or access.get("opcode")

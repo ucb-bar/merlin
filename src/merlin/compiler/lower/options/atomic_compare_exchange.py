@@ -116,7 +116,10 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
     operations = tuple(_cas_walk(module.operation))
     plans = []
     for op in operations:
-        if (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
+        if word_views and (match := _bitwise_exchange_match(op)) is not None:
+            memory, index, value, width, kind = match
+            plans.append((op, memory, index, (value,), width, 'word', kind))
+        elif (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
                 and str(op.results[0].type) in ('f16', 'bf16', 'f32', 'f64')):
             memory, index, value, width, kind = _word_match(op)
             values = value if kind == 'cas-word' else () if value is None else (value,)
@@ -152,10 +155,17 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         "        half_add = family == 'word' and width == 16 and kind in ('fadd"
         "-ieee-f16', 'fadd-ieee-bf16', 'ieee-quiet-identity-f16', 'ieee-quiet-i"
         "dentity-bf16')\n"
-        r"""        if half_add:
+        r"""        bits_exchange = family == 'word' and kind.startswith('exchange-bits:')
+        if half_add or bits_exchange:
             with ctx, ir.Location.unknown(), ir.InsertionPoint(op):
+                if bits_exchange:
+                    dynamic = ir.MemRefType.get([ir.ShapedType.get_dynamic_size()], op.results[0].type)
+                    if memory.type != dynamic:
+                        memory = ir.Operation.create('memref.cast', operands=[memory], results=[dynamic]).results[0]
+                    values = tuple(value.clone().results[0] if isinstance(value, ir.Operation) else value
+                                   for value in values)
                 values = tuple(ir.Operation.create('arith.bitcast', operands=[value],
-                    results=[ir.IntegerType.get_signless(16)]).results[0] for value in values)
+                    results=[ir.IntegerType.get_signless(width)]).results[0] for value in values)
         if family == 'word' and kind == 'cas-word':
             captured = []
             for value in values:
@@ -209,7 +219,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
                     attributes[name] = op.attributes[name]
 """
         "            integer_result = family == 'word' and (width == 16 "
-        "or kind == 'cas-word' or half_add)\n"
+        "or kind == 'cas-word' or half_add or bits_exchange)\n"
         r"""            result_type = ir.IntegerType.get_signless(width) if integer_result else op.results[0].type
             call = ir.Operation.create('func.call', operands=[memory, index, *values],
                 results=[result_type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),
