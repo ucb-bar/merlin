@@ -3,7 +3,7 @@ title: 6. Lower through scalar and OOT implementations
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-20
+last_verified: 2026-11-21
 related: [05-transformations, 07-building]
 code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
 ---
@@ -131,6 +131,16 @@ live in `compiler/lower/options`, with their original source and effect checks.
 and returned-loop ownership checks run at their existing bufferization and
 deallocation seams. Provenance does not authorize dropping effects, live storage
 or useful tiling.
+
+The Python native runner finalizes number min/max with explicit NaN selection.
+MLIR `arith.maxnumf`/`minnumf` select the numeric operand when only one operand
+is NaN; older LLVM `maxnum`/`minnum` intrinsics may propagate signaling NaNs.
+`lower/native/number_minmax.py` retains the original intrinsic for two numeric
+operands, including its signed-zero behavior, and selects the actual numeric
+operand for either NaN position. Propagating maximum/minimum operations and
+transport words remain unchanged. The retained LLVM-dialect product contains
+the same guarded computation that is translated and compiled. This Python
+runner legalization does not qualify the separately selected stock CLI driver.
 
 `merlin.compiler.lower.model.codegen.build_host_shared` delegates to the shared
 build owner and retains `owned_result_bridge=`. Caller-provided outputs and

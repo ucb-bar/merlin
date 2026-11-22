@@ -70,6 +70,7 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.lower.native.policy_pipeline",
         "merlin.compiler.lower.native.passes",
         "merlin.compiler.lower.native.normalize",
+        "merlin.compiler.lower.native.number_minmax",
         "merlin.compiler.lower.native.contract",
         "merlin.compiler.lower.native.parallel",
         "merlin.compiler.lower.native.native",

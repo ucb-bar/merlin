@@ -57,10 +57,12 @@ _SET_LAYOUT = (
 )
 
 
-EMIT_TRANSLATE = _SET_LAYOUT + "f.write(str(llvm.translate_module_to_llvmir(module.operation)))"
+EMIT_TRANSLATE = (
+    _SET_LAYOUT + "_merlin_number_minmax(module); f.write(str(llvm.translate_module_to_llvmir(module.operation)))"
+)
 
 
-EMIT_DUMP = _SET_LAYOUT + "f.write(str(module.operation))"
+EMIT_DUMP = _SET_LAYOUT + "_merlin_number_minmax(module); f.write(str(module.operation))"
 
 
 # Keep the common prelude order in one place. The ordinary runner inserts its
@@ -328,6 +330,7 @@ def _select_runner(
     multicore path carry the feature rewrites — see the EMIT_* comment.
     """
     from merlin.compiler.lower.model.oracle import bind_inspection
+    from merlin.compiler.lower.native.number_minmax import RUNNER_PRELUDE as number_minmax_prelude
     from merlin.compiler.lower.options.source_observation_stage import FEATURE as _SOURCE_OBSERVATION_FEATURE
     from merlin.compiler.lower.options.source_observation_stage import bind_runner as _bind_source_observation_runner
 
@@ -342,6 +345,7 @@ def _select_runner(
         source = _RUNNER_SRC.replace("__MERLIN_EMIT__", emit)
     from merlin.compiler.lower.options.automatic_host_features import bind_runner as bind_automatic_host_runner
 
+    source = number_minmax_prelude + source
     source = bind_automatic_host_runner(source, features=feats)
     from merlin.compiler.lower.options.adjacent_exp import bind_runner as bind_exact_exp_runner
 
