@@ -10,7 +10,9 @@ from tempfile import TemporaryDirectory
 from merlin.compiler.semantic.codegen import codegen_options, current_codegen_options
 from merlin.compiler.planning.cover_selection import application_plan
 from merlin.compiler.partition.semantic_regions import outline_semantic_regions
-from merlin.compiler.schedule.storage.residency import ResidencyRequest, ReservedInterval, plan_residency
+from merlin.compiler.schedule.storage.residency import (
+    ResidencyOverflow, ResidencyRequest, ReservedInterval, plan_residency,
+)
 
 _PUBLICATION = ContextVar("application_residency_publication", default=None)
 _DECLINED = ContextVar("application_residency_declined", default=None)
@@ -101,14 +103,20 @@ def _staging_before_arena(requests, base, capacity, alignment, geometry):
 
     The arena is packed once at an aligned base, so the same packing at the end of the region has the same size,
     and the measuring and bound compiles of one region end place every resident entry at the same address.
+    The capacity is all the region has, so an arena that does not fit, or leaves no staging, declines residency:
+    without it the dense parameters are staged as before.
     """
     step = max(alignment, *(request.alignment for request in requests))
     start = -(-base // step) * step
-    packed = plan_residency(requests, base=start, capacity=base + capacity - start,
-                            dma_base=geometry["dma_base"], dma_capacity=geometry["dma_capacity"])
+    try:
+        packed = plan_residency(requests, base=start, capacity=base + capacity - start,
+                                dma_base=geometry["dma_base"], dma_capacity=geometry["dma_capacity"])
+    except ResidencyOverflow as error:
+        raise Ineligible(f"the resident arena of {error.required_bytes} bytes does not fit the declared capacity "
+                         f"of {error.capacity_bytes} bytes") from None
     arena = (base + capacity - packed.required_bytes) // step * step
     if arena <= base:
-        raise ValueError(f"resident arena of {packed.required_bytes} bytes leaves no staging window")
+        raise Ineligible(f"the resident arena of {packed.required_bytes} bytes leaves no staging window")
     return arena - base
 
 
@@ -206,19 +214,20 @@ def _resident_layouts(source, adapter, parameters, state, options):
             uses.append((region.digest(), node_id, name))
     if not requests:
         raise Ineligible("no device operand of the application has a resident layout")
-    return geometry, requests, uses, layouts, pack_resident_input
-
-
-@contextmanager
-def _resident_publication(source, parameters, options, geometry, requests, uses, layouts, pack_resident_input):
-    """Pack the resident table once and publish it, with each region's bindings, for the compile."""
-    parameters = getattr(parameters, "original", parameters)
-    base, size = options.io_memory_base, options.io_memory_bytes
-    capacity_base, capacity_bytes = options.io_memory_capacity_base, options.io_memory_capacity_bytes
     staging_alignment = options.io_memory_alignment or geometry["alignment"]
     if (base, size) == (capacity_base, capacity_bytes):
         size = _staging_before_arena(requests, base, size, staging_alignment, geometry)
-        options = replace(options, io_memory_bytes=size)
+    return geometry, requests, uses, layouts, pack_resident_input, size, staging_alignment
+
+
+@contextmanager
+def _resident_publication(source, parameters, options, geometry, requests, uses, layouts, pack_resident_input,
+                          size, staging_alignment):
+    """Pack the resident table once and publish it, with each region's bindings, for the compile."""
+    parameters = getattr(parameters, "original", parameters)
+    base = options.io_memory_base
+    capacity_base, capacity_bytes = options.io_memory_capacity_base, options.io_memory_capacity_bytes
+    options = replace(options, io_memory_bytes=size)
     table = plan_residency(requests, base=capacity_base,
         capacity=capacity_bytes, dma_base=geometry["dma_base"], dma_capacity=geometry["dma_capacity"],
         reserved=[ReservedInterval("regional_io", base, size, staging_alignment,

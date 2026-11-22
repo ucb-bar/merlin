@@ -220,10 +220,16 @@ def test_one_undivided_region_puts_the_arena_at_its_end_and_stages_in_the_rest(i
         assert (current_codegen_options().io_memory_base, current_codegen_options().io_memory_bytes) == (32, 56)
         rows = {row["name"]: row for row in json.loads(residency.publication()["residency.json"])["entries"]}
         assert (rows["regional_io"]["address"], rows["regional_io"]["bytes"]) == (32, 56)
-    with pytest.raises(ValueError, match="leaves no staging window"):
-        with _scope(inputs, io_memory_bytes=8, io_memory_capacity_bytes=8):
-            pass
     assert inputs.packed_sources == [(inputs.region, "arg0", b"dense")]
+
+
+def test_an_arena_the_undivided_capacity_cannot_hold_with_staging_compiles_without_residency(inputs):
+    # The board's one region: dense parameters staged in it fit where the packed arena and staging do not.
+    inputs.options = replace(inputs.options, io_memory_bytes=8, io_memory_capacity_bytes=8)
+    assert _declined(inputs) == "the resident arena of 8 bytes leaves no staging window"
+    inputs.options = replace(inputs.options, io_memory_bytes=4, io_memory_capacity_bytes=4)
+    assert _declined(inputs) == "the resident arena of 8 bytes does not fit the declared capacity of 4 bytes"
+    assert not inputs.packed_sources
 
 
 def test_conflicting_inventory_for_one_parameter_is_rejected(inputs):
