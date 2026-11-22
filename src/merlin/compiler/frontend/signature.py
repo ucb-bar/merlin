@@ -123,8 +123,9 @@ def _argument_bindings(
             or file not in files
             or kind == "param"
             and file != "weights.safetensors"
-            or kind == "constant"
-            and file != CONSTANT_FILE
+            # Staging binds a constant to weights.safetensors only when it is a
+            # lifted constant whose bytes equal the receipt-checked copy and no
+            # other row names that stored tensor; it refuses every other one.
             or not isinstance(name, str)
             or not name
             or dtype is None

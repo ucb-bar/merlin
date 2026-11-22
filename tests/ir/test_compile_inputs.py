@@ -196,6 +196,89 @@ def test_changed_declared_input_refuses_without_publishing(tmp_path, name):
     with pytest.raises(ValueError, match="differs from receipt"):
         stage_compile_inputs(capture, staged)
     assert not staged.exists()
+    _check_named_capture_constant(tmp_path / "named")
+
+
+def _check_named_capture_constant(tmp_path):
+    import io
+    import struct
+
+    import numpy as np
+    import torch
+
+    from merlin.compiler.frontend.inputs import load_lifted_argument_bytes
+
+    table = torch.cos(torch.tensor([[0.5, 1.0], [2.0, 3.0]])).to(torch.bfloat16)  # nonzero, sign-mixed
+    reference = table.view(torch.int16).numpy().astype("<i2").tobytes()
+    storage = table.to(torch.float32).numpy()
+    weight = "module.table"
+    tmp_path.mkdir()
+
+    def build(directory, name="c_module_table", row=None, others=(), stored=None, payload=reference, first=None):
+        _write_weighted_capture(directory, shared_weight=bool(others))
+        more = "".join(f", %state{i}: tensor<2x2xbf16>" for i in range(1, len(others)))
+        source = (directory / "model.mlir").read_text()
+        source = source.replace("%shared: tensor<2x2xf32>", "%shared: tensor<2x2xbf16>" + more)
+        rows = {"0": first or {"kind": "constant", "name": name, "weight": weight, "dtype": "bfloat16", "shape": [2, 2],
+                               **(row or {})}}
+        rows.update({str(i): other for i, other in enumerate(others, 1)})
+        rows[str(len(rows))] = {"kind": "input", "name": "input"}
+        header = json.dumps({weight: stored or {"dtype": "BF16", "shape": [2, 2], "data_offsets": [0, 8]}}).encode()
+        extra = io.BytesIO()
+        np.savez(extra, **{name: storage})
+        members = {
+            "model.mlir": source.replace("%weight: tensor<2x2xf32>", "%table: tensor<2x2xbf16>").encode(),
+            "weights.safetensors": struct.pack("<Q", len(header)) + header + payload,
+            "weights.safetensors.manifest.json": json.dumps(rows).encode(),
+            "extra.npz": extra.getvalue(),
+        }
+        for member, raw in members.items():
+            (directory / member).write_bytes(raw)
+        trace = json.loads((directory / "frontend-trace.json").read_text())
+        trace["mlir"]["sha256"] = hashlib.sha256(members["model.mlir"]).hexdigest()
+        (directory / "frontend-trace.json").write_text(json.dumps(trace))
+        meta = json.loads((directory / "meta.json").read_text())
+        meta["frontend_trace"]["sha256"] = hashlib.sha256((directory / "frontend-trace.json").read_bytes()).hexdigest()
+        (directory / "meta.json").write_text(json.dumps(meta))
+        receipt = json.loads((directory / "capture_receipt.json").read_text())
+        receipt["lifted_constants"] = {name: {"shape": [2, 2], "dtype": "float32",
+                                             "sha256": hashlib.sha256(storage.tobytes()).hexdigest()}}
+        receipt["materialized_abi"]["lifted_constants"] = [name]
+        for member in {*receipt["artifacts"], *members}:
+            raw = (directory / member).read_bytes()
+            receipt["artifacts"][member] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+        (directory / "capture_receipt.json").write_text(json.dumps(receipt))
+        return directory
+
+    staged = tmp_path / "staged"
+    stage_compile_inputs(build(tmp_path / "capture"), staged)
+    loaded = load_compile_inputs(staged)
+    assert loaded.argument_bindings[0] == {"kind": "constant", "weight": weight, "shape": [2, 2], "dtype": "bf16",
+                                           "file": "weights.safetensors"}
+    assert load_lifted_argument_bytes(staged, loaded, kinds=("constant",), max_bytes=8) == {0: reference}
+    # Each changed or false claim refuses without publishing.
+    buffer = {"kind": "buffer", "weight": weight, "dtype": "bfloat16", "shape": [2, 2]}
+    # A constant without a lifted name never reaches the byte check, alone or beside a buffer.
+    plain, unnamed = {"kind": "constant", "name": "c_module_table"}, {**buffer, "kind": "constant",
+                                                                       "file": "weights.safetensors"}
+    for index, (case, message) in enumerate([
+        ({"payload": reference[:-1] + b"\x01"}, "differs from its declared source tensor"),
+        ({"row": {"weight": "module.absent"}}, "differs from its declared source tensor"),
+        ({"row": {"dtype": "float32"}}, "differs from its declared source tensor"),
+        ({"stored": {"dtype": "BF16", "shape": [2, 2], "data_offsets": [8, 0]}}, "differs from its declared source"),
+        ({"stored": {"dtype": "BF16", "shape": [2, 2], "data_offsets": [0, "8"]}}, "differs from its declared source"),
+        ({"stored": {"dtype": "F16", "shape": [2, 2], "data_offsets": [0, 8]}}, "safetensors shape or dtype differs"),
+        ({"row": {"weight": [weight]}}, "unknown manifest fields"),
+        ({"row": {"shape": [4, 1]}}, "shape differs from parsed function"),
+        ({"others": [buffer]}, "shares its declared source tensor"),
+        ({"first": plain, "others": [unnamed]}, "not bound through its receipt-checked copy"),
+        ({"first": plain, "others": [unnamed, buffer]}, "not bound through its receipt-checked copy"),
+        ({"name": "x"}, "invalid constant declaration"),
+        ({"name": "c_t\u00e4ble"}, "invalid constant declaration"),
+    ]):
+        with pytest.raises(ValueError, match=message):
+            stage_compile_inputs(build(tmp_path / f"case{index}", **case), tmp_path / f"refused{index}")
+        assert not (tmp_path / f"refused{index}").exists()
 
 
 def test_typed_stage_reader_preserves_identity_and_refuses_forged_abi(tmp_path):

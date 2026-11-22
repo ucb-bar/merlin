@@ -75,6 +75,23 @@ def _archive_info(
     return _ArchiveInfo(header, start, before.st_size, checked_sha256)
 
 
+def _stored_bytes(path: Path, info: _ArchiveInfo, name: str) -> bytes | None:
+    """One tensor's payload from a checked archive, or None when it is not stored there."""
+    row = info.header.get(name) if name != "__metadata__" else None
+    offsets = row.get("data_offsets") if isinstance(row, dict) else None
+    if (
+        not isinstance(offsets, list)
+        or len(offsets) != 2
+        or any(type(offset) is not int for offset in offsets)
+        or not 0 <= offsets[0] <= offsets[1] <= info.file_bytes - info.payload_start
+    ):
+        return None
+    begin, end = offsets
+    with path.open("rb") as stream:
+        stream.seek(info.payload_start + begin)
+        return stream.read(end - begin)
+
+
 def _sha(data: bytes | _ArchiveInfo) -> str:
     if isinstance(data, _ArchiveInfo):
         if data.checked_sha256 is None:
@@ -126,7 +143,12 @@ def needs_materialization(manifest: dict, receipt: dict) -> bool:
     if (
         not isinstance(lifted, dict)
         or not isinstance(names, list)
-        or any(not isinstance(name, str) or not name.startswith("c_lifted_tensor_") for name in lifted)
+        # The exporter's constant placeholder rule: an ASCII identifier with the
+        # c_ prefix, disjoint from the b_ buffer namespace.
+        or any(
+            not isinstance(name, str) or not name.isascii() or not name.isidentifier() or not name.startswith("c_")
+            for name in lifted
+        )
         or names != sorted(lifted)
     ):
         raise ValueError("capture has unbound lifted constants or an invalid constant declaration")
@@ -190,17 +212,21 @@ def materialize_arguments(
     receipt: dict,
     extra: bytes,
     dtypes: dict,
+    stored=lambda name: None,
 ) -> tuple[dict, bytes, dict]:
     """Produce a consumer manifest and one small safetensors archive.
 
     Existing model weights retain their bytes. Buffers remain state arguments;
-    storing their initializer does not make them immutable parameters.
+    storing their initializer does not make them immutable parameters. A
+    constant that declares a source tensor binds to it when ``stored(name)``
+    returns that tensor's bytes and they equal the receipt-checked constant.
     """
     if set(manifest) != {str(i) for i in range(len(argument_types))}:
         raise ValueError("capture manifest does not cover the parsed function arguments")
     lifted = receipt.get("lifted_constants", {})
     needs_materialization(manifest, receipt)
     result, tensors, entries, used = {}, {}, [], set()
+    named = [row.get("weight") for row in manifest.values() if isinstance(row, dict)]
     try:
         archive = zipfile.ZipFile(BytesIO(extra))
     except zipfile.BadZipFile as exc:
@@ -224,8 +250,21 @@ def materialize_arguments(
             if not isinstance(kind, str):
                 raise ValueError("capture manifest has an invalid argument kind")
             if kind in {"input", "constant"} and isinstance(name, str) and name in lifted:
+                # A constant the exporter named after its module attribute also
+                # declares that source tensor; its shape must equal the parsed type.
                 if set(row) != {"kind", "name"}:
-                    raise ValueError("lifted constant has unknown manifest fields")
+                    if (
+                        kind != "constant"
+                        or set(row) != {"kind", "name", "weight", "dtype", "shape"}
+                        or not isinstance(row["weight"], str)
+                        or not isinstance(row["dtype"], str)
+                    ):
+                        raise ValueError("lifted constant has unknown manifest fields")
+                    if row["shape"] != actual["shape"]:
+                        raise ValueError("lifted constant shape differs from parsed function")
+                    # A stored tensor another row also names may be mutable state.
+                    if named.count(row["weight"]) != 1:
+                        raise ValueError("lifted constant shares its declared source tensor with another argument")
                 key, role = name, "constant"
                 used.add(name)
             elif kind == "buffer" and set(row) == {"kind", "name"}:
@@ -233,6 +272,9 @@ def materialize_arguments(
                     raise ValueError("capture buffer has no unique initializer in the extra archive")
                 key, role = buffers[name][0], "buffer"
             else:
+                # Only the byte-equality path above binds a constant to weights.safetensors.
+                if kind == "constant" and row.get("file") != CONSTANT_FILE:
+                    raise ValueError("capture constant is not bound through its receipt-checked copy")
                 result[str(index)] = {**row, "file": "weights.safetensors"} if kind in {"param", "buffer"} else row
                 continue
             try:
@@ -251,6 +293,15 @@ def materialize_arguments(
                 ):
                     raise ValueError("lifted constant differs from its capture receipt")
             dtype, encoding, data, codec = _encode(array, actual, dtypes)
+            if role == "constant" and "weight" in row:
+                if row["dtype"] != dtype or stored(row["weight"]) != data:
+                    raise ValueError("lifted constant differs from its declared source tensor")
+                result[str(index)] = {**row, "dtype": dtype, "file": "weights.safetensors"}
+                del result[str(index)]["name"]
+                entries.append({"argument_index": index, "key": key, "role": role, "codec": codec,
+                                "source_tensor_sha256": original_sha, "file": "weights.safetensors",
+                                "tensor_sha256": hashlib.sha256(data).hexdigest()})
+                continue
             tensor = (encoding, actual["shape"], data)
             if name in tensors and tensors[name] != tensor:
                 raise ValueError("shared capture tensor has conflicting types or payloads")
@@ -272,7 +323,7 @@ def materialize_arguments(
                     "tensor_sha256": hashlib.sha256(data).hexdigest(),
                 }
             )
-    if used != set(lifted) or not tensors:
+    if used != set(lifted) or not entries:
         raise ValueError("capture has unbound lifted constants or no declared extra tensors")
     header, payloads, offset = {}, [], 0
     for name, (encoding, shape, data) in tensors.items():
@@ -469,6 +520,7 @@ def stage_compile_inputs(
             receipt,
             _checked_member(source, receipt, "extra.npz"),
             _WEIGHT_DTYPES,
+            lambda name: _stored_bytes(source / "weights.safetensors", weights, name),
         )
         copied["weights.safetensors.manifest.json"] = json.dumps(weight_manifest, sort_keys=True).encode()
         signature["schema"] = "merlin.compile-signature.v3"
