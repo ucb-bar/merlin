@@ -18,8 +18,8 @@ non-finite inputs, statistics or binary32 results; the second pass stores.
 from math import prod
 from struct import pack
 
-from merlin.compiler.semantic.linalg.source_compositions import FINITE_BF16, LAYER_NORM_SEMANTICS
-from merlin.compiler.semantic.model import IndexMap, TensorType, pointwise_identity_maps
+from merlin.compiler.semantic.linalg.source_compositions import FINITE_BF16, LAYER_NORM_SEMANTICS, row_reduction_maps
+from merlin.compiler.semantic.model import TensorType
 
 from ..dispatch import c_source_pair
 from .gelu import ENVIRONMENT_CHECK, literal
@@ -53,10 +53,8 @@ def emit_bf16_layer_norm_c(source, name):
         or node.type != TensorType(shape, "bf16", "raw-bit-pattern")
     ):
         raise ValueError("BF16 layer norm source type, operands, or policy differs")
-    identity = pointwise_identity_maps(rank, 1)[0]
-    trailing = IndexMap(rank, tuple(tuple(int(i == j) for i in range(rank)) for j in range(rank - k, rank)), (0,) * k)
-    if node.index_maps != (identity, *(trailing,) * len(roles), identity):
-        raise ValueError("BF16 layer norm indexing differs from row and trailing affine maps")
+    if node.index_maps != row_reduction_maps(rank, k, len(roles)):
+        raise ValueError("BF16 layer norm indexing differs from whole-row and affine maps")
     epsilon = attrs["epsilon_f32_bits"]
     if type(epsilon) is not int or not 0 <= epsilon < 0x7F800000:
         raise ValueError("BF16 layer norm epsilon must be a finite nonnegative binary32")

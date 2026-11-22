@@ -14,6 +14,7 @@ ORDER = {
     'f32_silu': 'Refuse non-finite input; x / RN(1 + e) with e = SLEEF expf(-x) at 1.0 ULP (fused steps), the torch 2.11.0+cpu vector kernel.',
     'f32_rsqrt': 'Refuse non-finite or negative input; RN(1 / RN(sqrt(x))).',
     'f32_row_sum': 'Refuse non-finite input or result before stores; per row the torch 2.11.0+cpu sum: for 8 or more elements, eight lanes each a four-partial four-level cascade over the row vectors, the tail fold added to lane 0, lanes folded in order; under 8 elements one cascade.',
+    'f32_softmax': 'Per last-axis row host-softmax-f32-left-fold-div-rne-v1: left-fold maximum from -inf, RN(x - max), merlin_host_expf, left-fold RN sum from +0, RN(e / sum); NaN results canonical 0x7fc00000.',
     'window_max': 'Refuse NaN input; scan each window in loop order, replace when strictly greater, keep the first equal; skip padding.',
     'f32_add': 'Project operands, exact signed sum, one binary32 RNE rounding.',
     'f32_sub': 'Project operands, flip right sign, exact signed sum, one binary32 RNE rounding.',

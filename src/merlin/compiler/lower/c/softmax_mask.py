@@ -189,72 +189,10 @@ static int {prefix}_prepare(const {score_type} *scores,const void *mask,uint8_t 
     )
 
 
-def emit_host_softmax_c(region, name, *, host_math, policy_path, contract, policy,
-                        mask_shape=()):
-    """Package scalar f32 C only for a bound, completely recognized source.
-
-    Scores and optional masks are disjoint from the output. Context is unused;
-    exponentials are stored in the output and normalized in place. The pinned
-    CORE-MATH expf source is embedded, so the region links no math library.
-    """
-    from merlin.runtime.host_math_supplier.embedded import embedded_host_math
-    from merlin.compiler.lower.c.host_ops.softmax_precision import (
-        HostSoftmaxContract, ORDER_RECORD, admit_host_math, validate_policy)
-    from merlin.compiler.lower.c.dispatch import c_source_pair
-    if not isinstance(contract, HostSoftmaxContract):
-        raise ValueError("recognized source contract required")
-    validate_policy(policy)
-    contract.validate_region(region)
-    if not name.isascii() or not name.isidentifier() or not name[0].isalpha():
-        raise ValueError("host softmax implementation name must be a C identifier")
-    mask_kind = contract.mask_kind
-    fill_bits, keep_when = contract.fill_bits, contract.keep_when
-    shape = tuple(region.shape)
-    if (not shape or any(type(n) is not int or n <= 0 for n in shape)
-            or prod(shape) > (2**63-1)//4 or mask_kind not in {'none', 'additive', 'select'}):
-        raise ValueError('host softmax needs bounded dense f32 rows and an explicit mask kind')
+def render_host_softmax_c(name, shape, embedded, *, mask_kind='none', mask_index='return 0;', mask_count=0,
+                          fill_bits=None, keep_when=None):
+    """Scalar C for dense last-axis f32 rows in the declared order host-softmax-f32-left-fold-div-rne-v1."""
     count, columns = prod(shape), shape[-1]
-    mask_shape = tuple(mask_shape)
-    if mask_kind != 'none' and mask_shape != tuple(region.mask_shape):
-        raise ValueError('mask shape differs from bound source contract')
-    mapping = getattr(region, 'mask_map', None)
-    mask_index = 'return 0;'
-    mask_count = 0
-    if mask_kind != 'none':
-        if (any(type(n) is not int or n <= 0 for n in mask_shape)
-                or prod(mask_shape) > (2**63-1)//4 or mapping is None
-                or len(mapping.coefficients) != len(mask_shape)
-                or len(mapping.offsets) != len(mask_shape)
-                or any(len(row) != len(shape) for row in mapping.coefficients)):
-            raise ValueError('host softmax requires a checked affine mask map')
-        for row, origin, extent in zip(mapping.coefficients, mapping.offsets, mask_shape):
-            lo = origin + sum(min(0, c*(n-1)) for c, n in zip(row, shape))
-            hi = origin + sum(max(0, c*(n-1)) for c, n in zip(row, shape))
-            if lo < 0 or hi >= extent:
-                raise ValueError('host softmax mask map leaves its source')
-        strides, stride = [], 1
-        for extent in reversed(mask_shape):
-            strides.insert(0, stride)
-            stride *= extent
-        coefficients = [sum(row[d]*s for row, s in zip(mapping.coefficients, strides)) for d in range(len(shape))]
-        offset = sum(o*s for o, s in zip(mapping.offsets, strides))
-        low = offset + sum(min(0, c*(n-1)) for c, n in zip(coefficients, shape))
-        high = offset + sum(max(0, c*(n-1)) for c, n in zip(coefficients, shape))
-        if low < 0 or high >= prod(mask_shape):
-            raise ValueError('host softmax mask map leaves its source')
-        # Size-one axes contribute zero and need no C integer literal.
-        coefficients = [0 if n == 1 else c for c, n in zip(coefficients, shape)]
-        # Signed intermediate products must also fit, even when they cancel.
-        if abs(offset) + sum(abs(c)*(n-1) for c, n in zip(coefficients, shape)) > 2**63-1:
-            raise ValueError('host softmax mask index exceeds int64')
-        steps = [f'size_t d{d}=index%{shape[d]}u; index/={shape[d]}u;' for d in reversed(range(len(shape)))]
-        expression = str(offset) + ''.join(f'+({c}LL)*(int64_t)d{d}' for d, c in enumerate(coefficients))
-        mask_index = ' '.join(steps) + f' return (size_t)({expression});'
-        mask_count = prod(mask_shape)
-    supplier = admit_host_math(host_math, policy_path)
-    if host_math.sha256(policy_path) != host_math.sha256(host_math.POLICY_PATH):
-        raise ValueError('host softmax embeds the supplier policy it admits')
-    embedded, _ = embedded_host_math(host_math, ('expf',))
     size = count*4
     mask_size = mask_count*(1 if mask_kind == 'select' else 4)
     score = (f'if (mask[{name}_mask_index(i)]!={int(keep_when)}u) return {name}_from({fill_bits}u);'
@@ -327,6 +265,76 @@ int {name}(void *context,const void *const *inputs,void *const *outputs) {{
   return 0;
 }}
 '''
+    return implementation
+
+
+def emit_host_softmax_c(region, name, *, host_math, policy_path, contract, policy,
+                        mask_shape=()):
+    """Package scalar f32 C only for a bound, completely recognized source.
+
+    Scores and optional masks are disjoint from the output. Context is unused;
+    exponentials are stored in the output and normalized in place. The pinned
+    CORE-MATH expf source is embedded, so the region links no math library.
+    """
+    from merlin.runtime.host_math_supplier.embedded import embedded_host_math
+    from merlin.compiler.lower.c.host_ops.softmax_precision import (
+        HostSoftmaxContract, ORDER_RECORD, admit_host_math, validate_policy)
+    from merlin.compiler.lower.c.dispatch import c_source_pair
+    if not isinstance(contract, HostSoftmaxContract):
+        raise ValueError("recognized source contract required")
+    validate_policy(policy)
+    contract.validate_region(region)
+    if not name.isascii() or not name.isidentifier() or not name[0].isalpha():
+        raise ValueError("host softmax implementation name must be a C identifier")
+    mask_kind = contract.mask_kind
+    fill_bits, keep_when = contract.fill_bits, contract.keep_when
+    shape = tuple(region.shape)
+    if (not shape or any(type(n) is not int or n <= 0 for n in shape)
+            or prod(shape) > (2**63-1)//4 or mask_kind not in {'none', 'additive', 'select'}):
+        raise ValueError('host softmax needs bounded dense f32 rows and an explicit mask kind')
+    mask_shape = tuple(mask_shape)
+    if mask_kind != 'none' and mask_shape != tuple(region.mask_shape):
+        raise ValueError('mask shape differs from bound source contract')
+    mapping = getattr(region, 'mask_map', None)
+    mask_index = 'return 0;'
+    mask_count = 0
+    if mask_kind != 'none':
+        if (any(type(n) is not int or n <= 0 for n in mask_shape)
+                or prod(mask_shape) > (2**63-1)//4 or mapping is None
+                or len(mapping.coefficients) != len(mask_shape)
+                or len(mapping.offsets) != len(mask_shape)
+                or any(len(row) != len(shape) for row in mapping.coefficients)):
+            raise ValueError('host softmax requires a checked affine mask map')
+        for row, origin, extent in zip(mapping.coefficients, mapping.offsets, mask_shape):
+            lo = origin + sum(min(0, c*(n-1)) for c, n in zip(row, shape))
+            hi = origin + sum(max(0, c*(n-1)) for c, n in zip(row, shape))
+            if lo < 0 or hi >= extent:
+                raise ValueError('host softmax mask map leaves its source')
+        strides, stride = [], 1
+        for extent in reversed(mask_shape):
+            strides.insert(0, stride)
+            stride *= extent
+        coefficients = [sum(row[d]*s for row, s in zip(mapping.coefficients, strides)) for d in range(len(shape))]
+        offset = sum(o*s for o, s in zip(mapping.offsets, strides))
+        low = offset + sum(min(0, c*(n-1)) for c, n in zip(coefficients, shape))
+        high = offset + sum(max(0, c*(n-1)) for c, n in zip(coefficients, shape))
+        if low < 0 or high >= prod(mask_shape):
+            raise ValueError('host softmax mask map leaves its source')
+        # Size-one axes contribute zero and need no C integer literal.
+        coefficients = [0 if n == 1 else c for c, n in zip(coefficients, shape)]
+        # Signed intermediate products must also fit, even when they cancel.
+        if abs(offset) + sum(abs(c)*(n-1) for c, n in zip(coefficients, shape)) > 2**63-1:
+            raise ValueError('host softmax mask index exceeds int64')
+        steps = [f'size_t d{d}=index%{shape[d]}u; index/={shape[d]}u;' for d in reversed(range(len(shape)))]
+        expression = str(offset) + ''.join(f'+({c}LL)*(int64_t)d{d}' for d, c in enumerate(coefficients))
+        mask_index = ' '.join(steps) + f' return (size_t)({expression});'
+        mask_count = prod(mask_shape)
+    supplier = admit_host_math(host_math, policy_path)
+    if host_math.sha256(policy_path) != host_math.sha256(host_math.POLICY_PATH):
+        raise ValueError('host softmax embeds the supplier policy it admits')
+    embedded, _ = embedded_host_math(host_math, ('expf',))
+    implementation = render_host_softmax_c(name, shape, embedded, mask_kind=mask_kind, mask_index=mask_index,
+                                           mask_count=mask_count, fill_bits=fill_bits, keep_when=keep_when)
     metadata = {
         'source_request_digest': region.source_digest,
         'implementation': name, 'inputs': [region.scores] + ([region.mask] if mask_count else []),
@@ -341,4 +349,44 @@ int {name}(void *context,const void *const *inputs,void *const *outputs) {{
     }
     return metadata, c_source_pair(name, public_headers={}, private_headers={},
         sources={'host_softmax.c': implementation},
+        declarations=f'int {name}(void *, const void *const *, void *const *);\n')
+
+
+def emit_source_softmax_c(source, name):
+    """One collapsed source f32 softmax over the last axis, unmasked, in the same declared order and C."""
+    from merlin.runtime import host_math_supplier as host_math
+    from merlin.runtime.host_math_supplier.embedded import embedded_host_math
+    from merlin.compiler.lower.c.dispatch import c_source_pair
+    from merlin.compiler.lower.c.host_ops.softmax_precision import ORDER, ORDER_RECORD, admit_host_math
+    from merlin.compiler.semantic.linalg.source_compositions import SOFTMAX_SEMANTICS, softmax_maps
+    from merlin.compiler.semantic.model import TensorType
+
+    pure = [node for node in source.nodes if node.effect == 'pure']
+    if len(pure) != 1 or source.physical_extents or source.boundary_layouts or source.output_layouts:
+        raise ValueError('source softmax needs one dense logical computation')
+    node = pure[0]
+    if node.op != 'source_f32_softmax_unqualified' or len(node.inputs) != 1 or source.outputs != (node.id,):
+        raise ValueError('source softmax needs one declared source softmax')
+    scores, shape = source.node(node.inputs[0]), node.type.shape
+    if (len(source.nodes) != 2 or source.constants or scores.effect != 'input' or scores.attrs or scores.index_maps
+            or len(shape) < 2 or any(n <= 0 for n in shape) or prod(shape) > (2**63-1)//4
+            or node.type != TensorType(shape, 'f32', 'raw-bit-pattern') or scores.type != node.type
+            or node.index_maps != softmax_maps(len(shape))
+            or dict(node.attrs) != {'axis': len(shape) - 1, 'numeric_semantics': SOFTMAX_SEMANTICS,
+                                    'reduction_order': 'unresolved'}):
+        raise ValueError('source softmax type, operand, indexing, or semantics differ')
+    if not name.isascii() or not name.isidentifier() or not name[0].isalpha():
+        raise ValueError('host softmax implementation name must be a C identifier')
+    supplier = admit_host_math(host_math, host_math.POLICY_PATH)
+    embedded, _ = embedded_host_math(host_math, ('expf',))
+    record = {
+        'source_request_digest': source.digest(), 'implementation': name, 'inputs': [scores.id],
+        'outputs': [node.id], 'numeric_semantics': ORDER, 'numeric_order': dict(ORDER_RECORD),
+        'host_math_revision': supplier['revision'],
+        'host_math_policy_sha256': host_math.sha256(host_math.POLICY_PATH),
+        'host_math_supplier': 'embedded-pinned-sources', 'host_math_symbols': ['merlin_host_expf'],
+        'qualification': 'requires-exact-receipt',
+    }
+    return record, c_source_pair(name, public_headers={}, private_headers={},
+        sources={'host_softmax.c': render_host_softmax_c(name, shape, embedded)},
         declarations=f'int {name}(void *, const void *const *, void *const *);\n')

@@ -14,7 +14,8 @@ import pytest
 
 from merlin.compiler.lower.c.pointwise_host import emit_host_pointwise_c
 from merlin.compiler.semantic.linalg.linalg_bridge import LinalgBridgeError, translate_linalg_text
-from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
+from merlin.compiler.semantic.linalg.source_compositions import row_reduction_maps
+from merlin.compiler.semantic.model import KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
 
 DATA = Path(__file__).parents[1] / "data" / "host_compositions"
 FIXTURE = DATA / "norm_gelu_bf16.mlir"
@@ -251,13 +252,11 @@ def _layer_norm_node(shape, k, roles, epsilon=0x358637BD):
     typ = TensorType(shape, "bf16", "raw-bit-pattern")
     operands = (SemanticNode("x", "input", (), typ, effect="input"),
                 *(SemanticNode(role, "input", (), replace(typ, shape=shape[rank - k:]), effect="input") for role in roles))
-    trailing = IndexMap(rank, tuple(tuple(int(i == j) for i in range(rank)) for j in range(rank - k, rank)), (0,) * k)
-    identity = pointwise_identity_maps(rank, 1)[0]
     node = SemanticNode("norm", "bf16_layer_norm", tuple(n.id for n in operands), typ,
                         attrs=(("affine_operands", ",".join(roles)), ("epsilon_f32_bits", epsilon),
                                ("input_domain", "finite-bf16"), ("normalized_rank", k),
                                ("numeric_semantics", "torch-2.11-cpu-fma-bf16-layer-norm-v1")),
-                        index_maps=(identity, *(trailing,) * len(roles), identity))
+                        index_maps=row_reduction_maps(rank, k, len(roles)))
     return operands, node
 
 

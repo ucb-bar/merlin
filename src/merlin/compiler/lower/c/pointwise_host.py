@@ -125,6 +125,10 @@ def emit_host_pointwise_c(source, name):
                      'source_f32_rsqrt_unqualified': (emit_f32_rsqrt_c, 'f32_rsqrt')}[operation]
         record, files = emit(source, name)
         order = ORDER[key]
+    elif operation == 'source_f32_softmax_unqualified':
+        from .softmax_mask import emit_source_softmax_c
+        record, files = emit_source_softmax_c(source, name)
+        order = ORDER['f32_softmax']
     elif operation == 'bf16_affine_contraction':
         from .host_ops.affine_contraction import emit_bf16_affine_contraction_c
         record, files = emit_bf16_affine_contraction_c(source, name)

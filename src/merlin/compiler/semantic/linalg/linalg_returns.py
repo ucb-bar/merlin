@@ -38,7 +38,7 @@ def translate(state: TranslationState, op, ordinal):
         outputs = tuple(env.get(value) for value in op.operands)
         if any(output is None for output in outputs):
             raise LinalgBridgeError("function returns an undefined or uninitialized tensor")
-        from merlin.compiler.semantic.linalg.source_compositions import collapse_source_compositions
+        from merlin.compiler.semantic.linalg.source_compositions import collapse_row_softmax, collapse_source_compositions
 
         origins, named = {}, {}
         for operation in operations:
@@ -51,8 +51,7 @@ def translate(state: TranslationState, op, ordinal):
             if key is not None and aten is not None:
                 named[key] = getattr(aten, "data", None)
         collapsed, bindings = collapse_source_compositions(tuple(nodes), outputs, tuple(constant_bindings), origins, named)
-        constants = {key: value for key, value in constants.items() if any(node.id == key for node in collapsed)}
-        request = KernelRequest(
+        request = collapse_row_softmax(KernelRequest(
             nodes=collapsed,
             outputs=outputs,
             output_storages=(boundary_storage,) * len(outputs),
@@ -61,7 +60,8 @@ def translate(state: TranslationState, op, ordinal):
             lowering_policy=lowering_policy,
             source_identity=sha256(source.encode()).hexdigest(),
             constants=bindings,
-        )
+        ), named)
+        constants = {key: value for key, value in constants.items() if any(node.id == key for node in request.nodes)}
         return LinalgTranslation(request, constants, tuple(source_operations))
         return True
 

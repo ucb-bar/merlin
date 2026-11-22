@@ -1,4 +1,4 @@
-"""Recover single BF16 source ops that the frontend decomposed, as one declared node.
+"""Recover single source ops that the frontend decomposed, as one declared node.
 
 model2MLIR lowers a BF16 GELU, layer norm, or unfolded (im2col) convolution to
 an exact widening, binary32 opmath and one final BF16 rounding spread over
@@ -11,6 +11,9 @@ GELU keeps the chain's arithmetic and literal bits, and the convolution keeps
 its unresolved reduction order. A layer norm node names the source aten op, whose
 declared semantics is the pinned torch wheel's dispatched CPU kernel (chunked Welford moments), not the two-pass
 moments of the decomposition.
+
+A source f32 softmax over the last axis keeps its scores, its unresolved
+reduction order and its unqualified exponential; the implementation declares the order.
 
 Temporary: the generic replacement is model2MLIR emitting each of these ops as
 one generic tagged with its numerical semantics, as it already does for BF16
@@ -30,6 +33,8 @@ GELU_SEMANTICS = "bf16-gelu-f32-opmath-v1"
 LAYER_NORM_SEMANTICS = "torch-2.11-cpu-fma-bf16-layer-norm-v1"
 CONTRACTION_SEMANTICS = "source-bf16-f32-affine-contraction-v1"
 SILU_SEMANTICS = "torch-2.11-cpu-f32-silu-v1"
+SOFTMAX_SEMANTICS = "source-f32-softmax-unqualified-v1"
+_SOFTMAX_SOURCES = {"aten._softmax.default", "aten.softmax.int"}
 FINITE_BF16 = "finite-bf16"
 FINITE_F32 = "finite-f32"
 _NAMED_SOURCES = {"source_f32_reduce_add_unqualified": "aten.mean.dim", "source_f32_rsqrt_unqualified": "aten.rsqrt.default"}
@@ -240,12 +245,11 @@ def _layer_norm(graph, narrow):
     if not _private(graph, private, narrow.id):
         return None
     roles = tuple(role for role in ("weight", "bias") if role in affine)
-    trailing = IndexMap(rank, tuple(tuple(int(i == j) for i in range(rank)) for j in axes), (0,) * k)
     node = SemanticNode(
         narrow.id, "bf16_layer_norm", (wide.inputs[0], *(affine[role].inputs[0] for role in roles)), narrow.type,
         attrs=(("affine_operands", ",".join(roles)), ("epsilon_f32_bits", epsilon), ("input_domain", FINITE_BF16),
                ("normalized_rank", k), ("numeric_semantics", LAYER_NORM_SEMANTICS)),
-        index_maps=(identity, *(trailing,) * len(roles), identity))
+        index_maps=row_reduction_maps(rank, k, len(roles)))
     return node, private
 
 
@@ -396,3 +400,65 @@ def collapse_source_compositions(nodes, outputs, constants, origins=None, source
                and any(node.id in graph.node(key).inputs for key in removed)}
     return (tuple(node for node in kept if node.id not in dropped),
             tuple(binding for binding in constants if binding.node_id not in dropped))
+
+
+def row_reduction_maps(rank, k, terms=0):
+    """Loops (rows..., j..., q...): the result at j reads its row at every q over the last k axes.
+
+    Each of the ``terms`` affine operands is read at j alone, so no split crosses a row.
+    """
+    loops = rank + k
+    unit = lambda loop: tuple(int(j == loop) for j in range(loops))
+    row = IndexMap(loops, (*(unit(i) for i in range(rank - k)), *(unit(rank + i) for i in range(k))), (0,) * rank)
+    term = IndexMap(loops, tuple(unit(rank - k + i) for i in range(k)), (0,) * k)
+    return (row, *(term,) * terms, IndexMap(loops, tuple(unit(i) for i in range(rank)), (0,) * rank))
+
+
+def softmax_maps(rank):
+    """Loops (rows..., j, k): the result at j reads its row's scores at every k, so no split crosses a row."""
+    return row_reduction_maps(rank, 1)
+
+
+def row_coupled_axes(node):
+    """Result axes whose elements all depend on the whole reduced row, so a piece of them cannot be computed alone."""
+    attrs = dict(node.attrs)
+    if node.op == "source_f32_softmax_unqualified":
+        return frozenset((attrs["axis"],))
+    if node.op == "bf16_layer_norm":
+        rank = len(node.type.shape)
+        return frozenset(range(rank - attrs["normalized_rank"], rank))
+    return frozenset()
+
+
+def collapse_row_softmax(request, sources):
+    """Return ``request`` with each complete last-axis f32 softmax region as one node.
+
+    ``sources`` maps a node to the source operation it was lowered from; the
+    region's division must come from a source softmax. The node keeps the
+    division's identity and reads the scores; a reduction seed no other node
+    reads is dropped.
+    """
+    from merlin.compiler.semantic.linalg.softmax_source import recognize_row_softmax
+
+    replaced, removed, seeds = {}, set(), set()
+    for node in request.nodes:
+        if node.op != "f32_div" or sources.get(node.id) not in _SOFTMAX_SOURCES:
+            continue
+        try:
+            region = recognize_row_softmax(request, node.id)
+        except (KeyError, ValueError):
+            continue
+        rank = len(region.shape)
+        replaced[node.id] = SemanticNode(
+            node.id, "source_f32_softmax_unqualified", (region.scores,), node.type,
+            attrs=(("axis", rank - 1), ("numeric_semantics", SOFTMAX_SEMANTICS), ("reduction_order", "unresolved")),
+            index_maps=softmax_maps(rank))
+        removed.update(key for key in region.computations if key != node.id)
+        seeds.update(region.initializers)
+    if not replaced:
+        return request
+    kept = [replaced.get(node.id, node) for node in request.nodes if node.id not in removed]
+    used = {key for node in kept for key in node.inputs} | set(request.outputs)
+    dropped = seeds - used
+    return replace(request, nodes=tuple(node for node in kept if node.id not in dropped),
+                   constants=tuple(binding for binding in request.constants if binding.node_id not in dropped))

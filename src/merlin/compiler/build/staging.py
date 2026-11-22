@@ -34,6 +34,7 @@ from typing import NamedTuple
 
 from merlin.compiler.lower.c.runtime import DT_BYTES
 from merlin.compiler.lower.c.layout import bounded_dense_read_map
+from merlin.compiler.semantic.linalg.source_compositions import row_coupled_axes
 from merlin.compiler.semantic.target_binding import NativeCompilationError
 
 
@@ -593,7 +594,7 @@ def _bands(region, axis):
     uses = {node.id: band for node in pure}
     for node in pure:
         maps = node.index_maps
-        if not maps or len(node.type.shape) != rank or node.type.shape[axis] != extent:
+        if not maps or len(node.type.shape) != rank or node.type.shape[axis] != extent or axis in row_coupled_axes(node):
             return None
         loops = maps[-1].loop_rank
         if (maps[-1].coefficients != tuple(tuple(int(i == j) for j in range(loops)) for i in range(rank))
