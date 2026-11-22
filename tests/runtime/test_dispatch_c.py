@@ -367,7 +367,7 @@ def test_whole_refused_region_replays_from_its_published_slices_and_calls_matchi
 
 # ---- On-chip view placement: the counted solver, then first fit once its budget is spent ----
 
-def _view_application(tmp_path, capacity, deployment="onchip", measured_host=None):
+def _view_application(tmp_path, capacity, deployment="onchip", measured_host=None, *, affine_view=False):
     """Five device regions and one dense view; first fit places this arena in 1024 bytes and the solver in 704."""
     from types import SimpleNamespace
 
@@ -376,7 +376,7 @@ def _view_application(tmp_path, capacity, deployment="onchip", measured_host=Non
                                                        RegionAlternative, ValueRepresentation)
     from merlin.compiler.partition.semantic_regions import extract_semantic_region
     from merlin.compiler.semantic.codegen import CodegenOptions, codegen_options
-    from merlin.compiler.semantic.model import KernelRequest, SemanticNode
+    from merlin.compiler.semantic.model import IndexMap, KernelRequest, SemanticNode, pointwise_identity_maps
     from merlin.compiler.semantic.search.exploration import SearchLimits
 
     rows = (("t0", ("x",), (96,)), ("t1", ("x", "t0"), (64,)), ("v", ("t1",), (8, 8)), ("t2", ("x", "t0", "t1"), (16,)),
@@ -384,6 +384,10 @@ def _view_application(tmp_path, capacity, deployment="onchip", measured_host=Non
     nodes = (SemanticNode("x", "input", (), _tensor((4,)), effect="input"), *(
         SemanticNode(key, "reshape" if key == "v" else "synthetic.mix", inputs, _tensor(shape))
         for key, inputs, shape in rows))
+    if affine_view:
+        nodes = tuple(replace(node, op="gather", index_maps=(
+            IndexMap(2, ((8, 1),), (0,)), pointwise_identity_maps(2, 1)[0]))
+            if node.id == "v" else node for node in nodes)
     source = KernelRequest(nodes, ("y",), ("external",), (("x", "external"),), "synthetic")
     dense = ValueRepresentation("memory", "dense", "f32")
     alternatives = []
@@ -442,7 +446,7 @@ def _memory(out):
 def test_view_arena_takes_the_solver_placement_while_its_budget_lasts(tmp_path):
     for capacity in (2048, 1024):
         for deployment in ("onchip", None):
-            manifest, out = _view_application(tmp_path, capacity, deployment)
+            manifest, out = _view_application(tmp_path, capacity, deployment, affine_view=capacity == 1024)
             assert not manifest.get("staged_deployment") and _memory(out)["arena_bytes"] == 704
             assert _memory(out)["offsets"] == {"t0": 0, "t1": 384, "t2": 640, "t3": 0, "v": 384}
     assert json.loads((tmp_path / "application-1024-onchip-None/deployment.json").read_bytes())["schema"] == (
