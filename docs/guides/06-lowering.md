@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-22
 related: [05-transformations, 07-building]
-code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/dialects/fp8.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_integer_regions.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
+code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/dialects/fp8.py, src/merlin/compiler/lower/options/fp8_widening.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_integer_regions.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
 ---
 
 # 6. Lower through scalar and OOT implementations
@@ -161,6 +161,12 @@ constraints in its standard type registration; reader admission grants no
 arithmetic policy. The frozen replay records reviewed updates when an old
 non-support assertion becomes a qualified capability, preserving the refusal
 guard with a valid unqualified body and retaining the original source blobs.
+
+Exact FP8 widening also admits native-verified `tensor.from_elements` as pure
+value transport. Scalar loads can form such a tensor before widening a later
+selected element, including inside source diagnostic/control code. The carrier
+preserves its original FP8 values; this does not admit FP8 arithmetic, opaque
+calls or new effects. The complete current module is verified before edits.
 
 `merlin.compiler.lower.native.pipeline.lower_to_llvm_ir` retains
 `owned_result_allocations=` and its typed resource selection. Destination reuse

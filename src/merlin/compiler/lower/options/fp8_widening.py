@@ -34,7 +34,7 @@ def _fp8_widen(module, *, _generalized=False):
         module.operation.verify()
         plans = []
         transport = {'arith.constant', 'arith.bitcast', 'arith.select',
-            'memref.load', 'memref.store', 'tensor.extract', 'tensor.insert',
+            'memref.load', 'memref.store', 'tensor.extract', 'tensor.insert', 'tensor.from_elements',
             'tensor.yield', 'linalg.yield', 'linalg.fill', 'linalg.generic', 'func.return',
             'scf.if', 'scf.for', 'scf.while', 'scf.yield', 'scf.condition', 'cf.br', 'cf.cond_br'}
         for op in tuple(_f8w_walk(module.operation)):
