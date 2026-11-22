@@ -84,8 +84,16 @@ def emit_application_c(
             (key, f"parameters->data+{entry.offset}u")
             for key, entry in zip(parameters.node_ids, parameters.entries, strict=True)
         )
+    fills = []
     for index, binding in enumerate(sorted(source.constants, key=lambda item: item.node_id)):
         symbol = f"{name}_constant_{index}"
+        width = DT_BYTES[source.node(binding.node_id).type.dtype]
+        words = np.frombuffer(bytes.fromhex(binding.data_hex), dtype=f"<u{width}")
+        if words.size > 1 and not np.any(words != words[0]):
+            # Preserve the exact repeated element bits in bounded workspace,
+            # avoiding a full tensor literal in the linked host image.
+            fills.append((binding.node_id, width, words.size, int(words[0])))
+            continue
         if binding.encoding == "f32-le-raw":
             values = np.frombuffer(bytes.fromhex(binding.data_hex), dtype="<f4")
             constants.append(
@@ -113,6 +121,12 @@ def emit_application_c(
                 f"_Alignas({alignment}) static const uint{width * 8}_t {symbol}[{values.size}]={{{initializer}}};"
             )
         pointers[binding.node_id] = symbol
+    fill_code = []
+    for key, width, count, word in fills:
+        pointers[key] = f"workspace+{offset}u"
+        fill_code.append(f"  for (size_t i=0;i<{count}u;i++) ((uint{width * 8}_t *)(workspace+{offset}u))[i]="
+                         f"UINT{width * 8}_C({word});")
+        offset = align(offset + width * count)
     for key in source.outputs:
         if key not in pointers:
             size = sizes[key]
@@ -213,7 +227,7 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
   unsigned char *workspace=memory;
   if ({name}_overlap(state,sizeof(*state),workspace,{offset}u)) return {driver_name.upper()}_INVALID;
   if ({" || ".join(input_checks + output_checks + parameter_checks) or "0"}) return {driver_name.upper()}_INVALID;
-  {driver_name}_buffer buffers[{len(driver["buffers"])}]={{{bindings}}};
+{"".join(line + chr(10) for line in fill_code)}  {driver_name}_buffer buffers[{len(driver["buffers"])}]={{{bindings}}};
   int status={driver_name}_run(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts);
   if (status) return status;
 {copy_outputs}

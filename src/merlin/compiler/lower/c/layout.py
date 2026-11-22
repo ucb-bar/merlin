@@ -12,6 +12,145 @@ from merlin.compiler.semantic.model import IndexMap, KernelRequest, pointwise_id
 # ---- layout ------------------------------------------------------------------------------------
 
 
+def permutation_axes(source, view):
+    """Return the result axis read by each source axis for a pure permutation.
+
+    ``view`` must be a complete, offset-free dimension permutation of
+    ``source`` with an identity write map and unchanged element type: every
+    source element is read exactly once and no value is converted. Anything
+    else, including broadcasts, slices and reversals, returns ``None``.
+    """
+    rank = len(source.type.shape)
+    if (view.op not in {"gather", "transpose"} or view.effect != "pure" or view.inputs != (source.id,)
+            or view.attrs or rank == 0 or len(view.type.shape) != rank or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)):
+        return None
+    read, write = view.index_maps
+    if (write != pointwise_identity_maps(rank, 1)[-1] or read.loop_rank != rank
+            or len(read.coefficients) != rank or any(read.offsets)):
+        return None
+    axes = []
+    for row, extent in zip(read.coefficients, source.type.shape, strict=True):
+        if len(row) != rank or set(row) - {0, 1} or sum(row) != 1:
+            return None
+        axis = row.index(1)
+        if view.type.shape[axis] != extent or axis in axes:
+            return None
+        axes.append(axis)
+    return tuple(axes)
+
+
+def render_permutation_slice_copy(source, view, name):
+    """Render checked byte packing for a contiguous slice of a permutation.
+
+    The slice uses the logical result's flat element order; the input remains
+    the complete original dense tensor. This lets a consumer preserve its own
+    chunk or reduction-group boundaries without materializing the whole view.
+    The generated helper returns -1 before any write on invalid spans or aliasing.
+    """
+    axes = permutation_axes(source, view)
+    if axes is None:
+        raise ValueError("slice packing requires a complete unchanged permutation")
+    terms = []
+    for dimension, axis in enumerate(axes):
+        logical_stride = prod(view.type.shape[axis + 1:])
+        source_stride = prod(source.type.shape[dimension + 1:])
+        terms.append(f"((linear/{logical_stride}u)%{view.type.shape[axis]}u)*{source_stride}u")
+    index = " + ".join(terms)
+    return _render_slice_copy(source, view, name, "", index)
+
+
+def bounded_dense_read_map(source, view):
+    """Recognize a byte-preserving affine read into an identity-written result.
+
+    Broadcasts, slices and reversals are allowed only when every read is
+    statically in bounds. This proves indexing, not ownership or placement.
+    """
+    rank = len(view.type.shape)
+    if (rank == 0 or view.op not in {"gather", "transpose"} or view.effect != "pure"
+            or view.inputs != (source.id,) or view.attrs or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)
+            or view.index_maps[-1] != pointwise_identity_maps(rank, 1)[-1]
+            or (view.op == "transpose" and permutation_axes(source, view) is None)):
+        return None
+    read = view.index_maps[0]
+    try:
+        _flat_map(read, view.type.shape, source.type.shape)
+    except ValueError:
+        return None
+    return read
+
+
+def repeated_dense_read_period(source, view):
+    """Prove that a dense affine read repeats the complete physical sequence.
+
+    Return its period in elements, or None. Unit-extent axes do not affect the
+    flattened address. Ownership, transport and whether caching is worthwhile
+    remain separate caller obligations.
+    """
+    mapping = bounded_dense_read_map(source, view)
+    period = prod(source.type.shape)
+    if mapping is None or prod(view.type.shape) <= period:
+        return None
+    strides = tuple(prod(source.type.shape[i + 1:]) for i in range(len(source.type.shape)))
+    if sum(offset * stride for offset, stride in zip(mapping.offsets, strides, strict=True)):
+        return None
+    rank = len(view.type.shape)
+    flat = tuple(sum(row[axis] * stride for row, stride in
+                     zip(mapping.coefficients, strides, strict=True)) for axis in range(rank))
+    for first in range(rank + 1):
+        if prod(view.type.shape[first:]) != period:
+            continue
+        expected = tuple(0 if axis < first else prod(view.type.shape[axis + 1:])
+                         for axis in range(rank))
+        if all(extent == 1 or actual == wanted for extent, actual, wanted in
+               zip(view.type.shape, flat, expected, strict=True)):
+            return period
+    return None
+
+
+def render_indexed_slice_copy(source, view, name):
+    """Pack a logical consumer slice through a checked dense affine read map."""
+    mapping = bounded_dense_read_map(source, view)
+    if mapping is None:
+        raise ValueError("slice packing requires a bounded unchanged dense read")
+    coordinates = "\n    ".join(
+        f"size_t d{i}=(linear/{prod(view.type.shape[i + 1:])}u)%{extent}u; (void)d{i};"
+        for i, extent in enumerate(view.type.shape))
+    return _render_slice_copy(source, view, name, coordinates,
+                              _flat_map(mapping, view.type.shape, source.type.shape))
+
+
+def _render_slice_copy(source, view, name, coordinates, index):
+    if not name or not name.isascii() or not name.isidentifier() or not name[0].isalpha():
+        raise ValueError("C helper name must begin with an ASCII letter")
+    width = _element_bytes(source.type.dtype)
+    count, source_count = prod(view.type.shape), prod(source.type.shape)
+    if min(count, source_count) <= 0 or max(count, source_count) * width > 2**63 - 1:
+        raise ValueError("layout exceeds the supported C size domain")
+    return f"""#include <stddef.h>
+#include <stdint.h>
+_Static_assert(SIZE_MAX/{width}u >= {max(count, source_count)}ULL, "layout tensor exceeds host size_t");
+static int {name}(void *destination,const void *source,size_t first,size_t count) {{
+  if (!source || !destination || !count || first>{count}u || count>{count}u-first)
+    return -1;
+  size_t bytes=count*{width}u;
+  uintptr_t input=(uintptr_t)source,output=(uintptr_t)destination;
+  if (input>UINTPTR_MAX-{source_count * width}u || output>UINTPTR_MAX-bytes ||
+      (input<output+bytes && output<input+{source_count * width}u)) return -1;
+  for (size_t j=0;j<count;++j) {{
+    size_t linear=first+j;
+    (void)linear;
+    {coordinates}
+    size_t source_index={index};
+    __builtin_memcpy((unsigned char *)destination+j*{width}u,
+                     (const unsigned char *)source+source_index*{width}u,{width}u);
+  }}
+  return 0;
+}}
+"""
+
+
 def _element_bytes(dtype: str) -> int:
     if dtype in DT_BYTES:
         return DT_BYTES[dtype]
@@ -250,7 +389,7 @@ def emit_layout_c(source: KernelRequest, name: str) -> tuple[dict, dict[str, str
     if len(computations) != 1:
         raise ValueError("layout C needs exactly one source computation")
     if computations[0].op == "indexed_insert_slice":
-        from merlin.compiler.lower.c.c_indexed_update import emit_indexed_update_c
+        from merlin.compiler.lower.c.indexed_update import emit_indexed_update_c
 
         return emit_indexed_update_c(source, computations[0], name)
     if computations[0].op == "embedding_lookup":

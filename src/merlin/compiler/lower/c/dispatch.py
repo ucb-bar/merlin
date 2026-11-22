@@ -84,6 +84,9 @@ def c_source_pair(
             else:
                 keyword, operand = "", ""
             if keyword in ("include", "include_next"):
+                # A trailing line comment, as in pinned vendor sources, is not part of the operand.
+                if operand.startswith("<") and ">" in operand and operand.split(">", 1)[1].lstrip().startswith("//"):
+                    operand = operand.split(">", 1)[0] + ">"
                 if keyword != "include" or len(operand) < 3 or operand[0] not in ('"', "<"):
                     raise ValueError(f"nonliteral or unsupported include in {member}")
                 closing = '"' if operand[0] == '"' else ">"
