@@ -118,6 +118,13 @@ def emit_host_pointwise_c(source, name):
         from .host_ops.layer_norm import emit_bf16_layer_norm_c
         record, files = emit_bf16_layer_norm_c(source, name)
         order = ORDER['layer_norm']
+    elif operation in {'f32_silu', 'source_f32_reduce_add_unqualified', 'source_f32_rsqrt_unqualified'}:
+        from .host_ops.f32_math import emit_f32_row_sum_c, emit_f32_rsqrt_c, emit_f32_silu_c
+        emit, key = {'f32_silu': (emit_f32_silu_c, 'f32_silu'),
+                     'source_f32_reduce_add_unqualified': (emit_f32_row_sum_c, 'f32_row_sum'),
+                     'source_f32_rsqrt_unqualified': (emit_f32_rsqrt_c, 'f32_rsqrt')}[operation]
+        record, files = emit(source, name)
+        order = ORDER[key]
     elif operation == 'bf16_affine_contraction':
         from .host_ops.affine_contraction import emit_bf16_affine_contraction_c
         record, files = emit_bf16_affine_contraction_c(source, name)

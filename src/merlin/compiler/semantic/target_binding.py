@@ -237,6 +237,7 @@ _COMPILER_SOURCE_FILES = (
     "compiler/lower/c/host_ops/batch_norm.py",
     "compiler/lower/c/host_ops/sigmoid.py",
     "compiler/lower/c/host_ops/gelu.py",
+    "compiler/lower/c/host_ops/f32_math.py",
     "compiler/lower/c/host_ops/layer_norm.py",
     "compiler/lower/c/host_ops/affine_contraction.py",
     "compiler/lower/c/host_ops/window_max.py",

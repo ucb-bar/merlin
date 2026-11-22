@@ -29,7 +29,10 @@ from merlin.compiler.semantic.model import IndexMap, SemanticNode, TensorType, p
 GELU_SEMANTICS = "bf16-gelu-f32-opmath-v1"
 LAYER_NORM_SEMANTICS = "torch-2.11-cpu-fma-bf16-layer-norm-v1"
 CONTRACTION_SEMANTICS = "source-bf16-f32-affine-contraction-v1"
+SILU_SEMANTICS = "torch-2.11-cpu-f32-silu-v1"
 FINITE_BF16 = "finite-bf16"
+FINITE_F32 = "finite-f32"
+_NAMED_SOURCES = {"source_f32_reduce_add_unqualified": "aten.mean.dim", "source_f32_rsqrt_unqualified": "aten.rsqrt.default"}
 _GELU_FORMS = {
     "tanh_gelu_f32": ("tanh", "0x3f000000,0x3f800000,0x3d372713,0x3f4c422a"),
     "erf_gelu_f32": ("none", "0x3f000000,0x3f800000,0x3f3504f3"),
@@ -324,8 +327,49 @@ def _gathered_contraction(graph, narrow):
     return node, private
 
 
-def collapse_source_compositions(nodes, outputs, constants):
-    """Return nodes and constant bindings with each closed chain as one node."""
+def _silu(graph, product, origins):
+    """x * sigmoid(x) that the capture derived from one source SiLU, whose arithmetic is x / (1 + exp(-x)).
+
+    The two generics must name the same original source node; a source that
+    really multiplies by a sigmoid has two origins and keeps its own arithmetic.
+    """
+    shape = product.type.shape
+    node = _binary(graph, product.id, "f32_mul", shape)
+    if node is None or node.index_maps != pointwise_identity_maps(len(shape), 2):
+        return None
+    operand, key = node.inputs
+    sigmoid = graph.node(key)
+    if (not _is(sigmoid, "source_f32_composite_unqualified", None, 1) or not _f32(sigmoid, shape)
+            or _attrs(sigmoid) != {"numeric_semantics": "source-f32-composite-unqualified-v1",
+                                   "operation": "sigmoid_f32", "literal_bits": "0x3f800000"}
+            or sigmoid.inputs != (operand,) or graph.node(operand).type != node.type
+            or sigmoid.index_maps != pointwise_identity_maps(len(shape), 1)
+            or not _private(graph, (sigmoid.id,), node.id)):
+        return None
+    origin = origins.get(node.id)
+    if not origin or origins.get(sigmoid.id) != origin:
+        return None
+    return (SemanticNode(node.id, "f32_silu", (operand,), node.type,
+                         attrs=(("input_domain", FINITE_F32), ("numeric_semantics", SILU_SEMANTICS)),
+                         index_maps=pointwise_identity_maps(len(shape), 1)), {sigmoid.id})
+
+
+def _named_source(node, sources):
+    """Name the source operation on a reduction or rsqrt that is that operation, not a piece of a larger one."""
+    expected = _NAMED_SOURCES.get(node.op)
+    if expected is None or sources.get(node.id) != expected:
+        return node
+    return replace(node, attrs=(*node.attrs, ("source_operation", expected)))
+
+
+def collapse_source_compositions(nodes, outputs, constants, origins=None, sources=None):
+    """Return nodes and constant bindings with each closed chain as one node.
+
+    ``origins`` maps a node to the original source nodes the capture recorded for
+    it, and ``sources`` to the source operation it was lowered from.
+    """
+    origins = origins or {}
+    sources = sources or {}
     graph = _Graph(nodes, outputs, constants)
     replaced, removed = {}, set()
     for node in nodes:
@@ -337,9 +381,16 @@ def collapse_source_compositions(nodes, outputs, constants):
                 replaced[node.id] = found[0]
                 removed |= found[1]
                 break
+    for node in nodes:
+        if node.id in removed or node.id in replaced:
+            continue
+        found = _silu(graph, node, origins) if node.op == "f32_mul" else None
+        if found is not None and not found[1] & (removed | set(replaced)):
+            replaced[node.id] = found[0]
+            removed |= found[1]
     if not replaced:
-        return tuple(nodes), tuple(constants)
-    kept = [replaced.get(node.id, node) for node in nodes if node.id not in removed]
+        return tuple(_named_source(node, sources) for node in nodes), tuple(constants)
+    kept = [_named_source(replaced.get(node.id, node), sources) for node in nodes if node.id not in removed]
     used = {key for node in kept for key in node.inputs} | set(outputs)
     dropped = {node.id for node in kept if node.effect == "constant" and node.id not in used
                and any(node.id in graph.node(key).inputs for key in removed)}
