@@ -82,8 +82,6 @@ def _word_match(op):
         r"""            op.verify()
             return (*op.operands, None, width, 'identity')
         raise ValueError('atomic identity requires exact inverse current-word bitcasts')
-    if width == 16:
-        raise ValueError('f16 word storage requires exact compare/exchange or current-word identity')
     if len(operations) == 4:
         viewed, updated, stored, terminal = operations
         if (not cast(viewed, block.arguments[0], integer) or updated.name not in _WORD_OPS
@@ -143,8 +141,10 @@ def _word_source(symbol, width, kind):
         return _float_add_source(symbol, identity=True)
     if width in (32, 64) and kind in ('ieee-quiet-identity', 'fadd-ieee-quiet'):
         return _float_add_source(symbol, identity=kind == 'ieee-quiet-identity', ieee=True, width=width)
-    if width not in (32, 64) or kind not in (*_WORD_OPS.values(), 'xchg', 'identity', 'exchange-float'):
+    if width not in (16, 32, 64) or kind not in (*_WORD_OPS.values(), 'xchg', 'identity', 'exchange-float'):
         raise ValueError('unqualified native word atomic operation or width')
+    if width == 16 and kind == 'exchange-float':
+        raise ValueError('f16 word exchange requires an integer bit-pattern argument')
     result = """module {
 '''
         "      func.func private @SYMBOL(%buffer: memref<?xfWIDTH>, %index: ind"
@@ -174,7 +174,11 @@ def _word_source(symbol, width, kind):
 """
         "            '%floating = arith.bitcast %old : iWIDTH to fWIDTH', '').r"
         "eplace('func.return %floating', 'func.return %old')\n"
-        r"""    return result.replace('WIDTH', str(width)).replace('BYTES', str(width // 8)).replace(
+        r"""    if width == 16:
+        result = result.replace(') -> fWIDTH', ') -> iWIDTH').replace(
+            '%floating = arith.bitcast %old : iWIDTH to fWIDTH', '').replace(
+            'func.return %floating : fWIDTH', 'func.return %old : iWIDTH')
+    return result.replace('WIDTH', str(width)).replace('BYTES', str(width // 8)).replace(
 """
         "        'KIND', '_' + kind if kind in ('and', 'or', 'xor') else kind)."
         "replace('SYMBOL', json.dumps(symbol))\n"
@@ -189,9 +193,15 @@ def _word_helper_equal(op, symbol, module):
         return True
     block = op.regions[0].blocks[0]
     signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
-    if len(signature.results) != 1 or str(signature.results[0]) not in ('f32', 'f64'):
+    if len(signature.results) != 1:
         return False
-    width = int(str(signature.results[0])[1:])
+    result = str(signature.results[0])
+    if result == 'i16' and block.arguments and str(block.arguments[0].type) == 'memref<?xf16>':
+        width = 16
+    elif result in ('f32', 'f64'):
+        width = int(result[1:])
+    else:
+        return False
     if len(block.arguments) == 2:
         kinds = ('identity',)
 """

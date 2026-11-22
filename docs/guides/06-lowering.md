@@ -3,9 +3,9 @@ title: 6. Lower through scalar and OOT implementations
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-21
+last_verified: 2026-11-22
 related: [05-transformations, 07-building]
-code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
+code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
 ---
 
 # 6. Lower through scalar and OOT implementations
@@ -125,6 +125,19 @@ annotations. Type readers live in `compiler/dialects`, receipt intake in
 `compiler/frontend/intake`, and native orchestration in `compiler/lower/native`.
 The selected atomic, diagnostic, low-precision and loop-destination legalizations
 live in `compiler/lower/options`, with their original source and effect checks.
+
+The private-invocation atomic intake admits i8/i16/i32/i64 integer words and
+checks the original dtype, operation, order, scope and every old-value result.
+`frontend/intake/kernel_atomic_evidence.py` keeps the producer's buffer and
+source facts independently checked; width admission does not grant an alias,
+an external participant or permission to omit an event. The native
+`lower/options/atomic_compare_exchange.py` helper retains exact integer
+comparison/update/old-value semantics for those byte-sized widths. Logical
+word views and their active alignment/byte-order checks remain explicit.
+Integer updates through f16 storage use a private i16 return transport, then
+restore the original bitcast at the caller; the native helper checks its full
+body rather than trusting the view annotation. The same word semantics apply
+to explicitly ordered, actively aligned byte-backed i16 views.
 
 `merlin.compiler.lower.native.pipeline.lower_to_llvm_ir` retains
 `owned_result_allocations=` and its typed resource selection. Destination reuse

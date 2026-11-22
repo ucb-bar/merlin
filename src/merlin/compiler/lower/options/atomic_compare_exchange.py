@@ -79,8 +79,8 @@ def _cas_match(op):
             or len(op.regions[0].blocks) != 1):
         raise ValueError('compare/exchange requires one typed rank-one atomic region')
     width = str(op.results[0].type)
-    if width not in ('i16', 'i32', 'i64') or str(op.operands[0].type) != 'memref<?x' + width + '>':
-        raise ValueError('compare/exchange requires identity-layout default-space i16/i32/i64 memory')
+    if width not in ('i8', 'i16', 'i32', 'i64') or str(op.operands[0].type) != 'memref<?x' + width + '>':
+        raise ValueError('compare/exchange requires identity-layout default-space i8/i16/i32/i64 memory')
     block = op.regions[0].blocks[0]
     operations = tuple(item.operation for item in block.operations)
 """
@@ -208,8 +208,8 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
                 if name.startswith('prov.'):
                     attributes[name] = op.attributes[name]
 """
-        "            integer_result = family == 'word' and (kind == 'cas-word' "
-        "or width == 16 and kind == 'identity' or half_add)\n"
+        "            integer_result = family == 'word' and (width == 16 "
+        "or kind == 'cas-word' or half_add)\n"
         r"""            result_type = ir.IntegerType.get_signless(width) if integer_result else op.results[0].type
             call = ir.Operation.create('func.call', operands=[memory, index, *values],
                 results=[result_type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),
