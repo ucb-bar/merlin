@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
@@ -30,8 +33,9 @@ from merlin.compiler.partition.global_plan_emission import dispatch_digest
 from merlin.compiler.partition.memory_plan import ArenaPlanError, MemoryPlan, _buf_bytes
 from merlin.compiler.partition.semantic_regions import outline_semantic_regions
 from merlin.compiler.planning.cover_selection import application_plan
-from merlin.compiler.schedule.storage.arena import ArenaRequirements
+from merlin.compiler.schedule.storage.arena import ArenaRequirements, arena_solver_work
 from merlin.compiler.semantic.model import KernelRequest
+from merlin.compiler.semantic.codegen import current_codegen_options
 from merlin.compiler.semantic.source_preparation import preparation_filename, verify_source_preparation
 from merlin.compiler.semantic.target_binding import NativeCompilationError, verify_native_publication
 from merlin.development.targetgen.execution.host.admission import validate_linkage_contract
@@ -379,6 +383,31 @@ def _sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+REPLAY_PROGRESS_SECONDS = 60.0
+
+
+class _ReplayProgress:
+    """Report verification replay progress on stderr at most once per interval.
+
+    Verification re-exports every region in memory and writes nothing until it
+    returns, so a caller that judges liveness by output needs this line. A single
+    replay that stalls still prints nothing.
+    """
+
+    def __init__(self, regions, *, interval=None, clock=time.monotonic, stream=None):
+        self.regions, self.clock, self.stream = regions, clock, stream
+        self.interval = REPLAY_PROGRESS_SECONDS if interval is None else interval
+        self.last, self.replays = clock(), 0
+
+    def __call__(self):
+        self.replays += 1
+        now = self.clock()
+        if now - self.last >= self.interval:
+            print(f"merlin verify: {self.replays} region exports replayed over {self.regions} source regions",
+                  file=self.stream or sys.stderr, flush=True)
+            self.last = now
+
+
 def _render(
     source,
     adapter,
@@ -391,11 +420,14 @@ def _render(
     state=None,
     parameters=None,
     native_root=None,
+    measured_host=None,
 ):
     # Materialization consumes the choice already used to compile/export each
     # region. Re-running provider enumeration here could silently select a
     # different implementation with the same source boundary.
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
+    from merlin.compiler.transforms.dense_views import checked_view_aliases
+    aliases = checked_view_aliases(source, plan)
     try:
         program = build_program(
             outlined.logical,
@@ -406,7 +438,9 @@ def _render(
                 capacity,
                 tuple(2 * i for i in range(len(graph.nodes))),
                 tuple(2 * i + 1 for i in range(len(graph.nodes))),
+                aliases=aliases,
                 dispatch_digest=dispatch_digest(graph),
+                first_fit=True,
             ),
         )
     except ArenaPlanError as error:
@@ -444,14 +478,18 @@ def _render(
         inputs = ",".join(f"inputs[{node.inputs.index(value)}]" for value in lowered.inputs) or "0"
         outputs = ",".join(f"outputs[{node.outputs.index(value)}]" for value in lowered.outputs) or "0"
         symbol = f"{name}_call_{index}"
-        wrappers.append(f"""int {symbol}(void *context,const void *const *inputs,void *const *outputs) {{
+        if tuple(lowered.inputs) == tuple(node.inputs) and tuple(lowered.outputs) == tuple(node.outputs):
+            # Ports already in dispatch order: the driver calls the region directly.
+            symbol = lowered.symbol
+        else:
+            wrappers.append(f"""int {symbol}(void *context,const void *const *inputs,void *const *outputs) {{
   (void)inputs;
   const void *ordered_inputs[{max(1, len(lowered.inputs))}]={{{inputs}}};
   void *ordered_outputs[{max(1, len(lowered.outputs))}]={{{outputs}}};
   return {lowered.symbol}(context,ordered_inputs,ordered_outputs);
 }}
 """)
-        calls[index] = DispatchCall(symbol, placements[key], context_index=index)
+        calls[index] = DispatchCall(symbol, placements[key], context_index=index, alias_safe=node.kind == "view")
         summaries.append(
             {
                 "id": key,
@@ -497,7 +535,14 @@ def _render(
     # copy of shared declarations; only the selected runtime source is linked.
     if state is not None:
         state.check(source)
-        initialization, state_files = state.emit_initializers(name, input_order=interface["inputs"])
+        from merlin.compiler.build.deployment import selected as deployment_selected
+        initialization, state_files = state.emit_initializers(
+            name, input_order=interface["inputs"], embed_captured=not deployment_selected())
+        if deployment_selected():
+            for port in state.ports:
+                if port.initial is None:
+                    raise ValueError("deployment state needs authenticated captured initialization")
+                files[f"handoff/state/{port.node_id}.bin"] = port.initial
         state_record = {**state.record(), **initialization}
         if parameters is not None:
             state_record["ports"] = [
@@ -516,10 +561,20 @@ def _render(
                 link_sources.append(filename)
     region_link_sources = tuple(link_sources)
     combined_name = name + "_combined"
+    from merlin.compiler.build.deployment import place, adapter_c, handoff_interface, publish
+    deployment = place(source, adapter, summaries, interface, native_root, parameters, measured_host)
+    if deployment is not None and deployment.get("paging"):
+        raise NativeCompilationError("unsupported_semantics", "paged deployment requires selected region replanning")
     binding_factory = getattr(adapter, "application_binding", None)
     binding = binding_factory(name, summaries, interface) if binding_factory else None
     if binding is not None and not isinstance(binding, ApplicationCBinding):
         raise TypeError("application binding must contain C declarations, implementation and interface")
+    if deployment is not None:
+        if binding is None:
+            raise NativeCompilationError("unsupported_semantics", "deployment requires a provider C binding")
+        declarations, implementation = adapter_c(name, deployment)
+        binding = ApplicationCBinding(binding.declarations + declarations,
+                                      binding.implementation + implementation, binding.interface)
     combined = c_source_pair(
         combined_name,
         public_headers={
@@ -587,11 +642,32 @@ original-model accuracy or execution on an integrated SoC or FPGA.
     if native_root is not None:
         from merlin.compiler.lower.c.application import application_handoff
 
-        files.update(application_handoff(source, interface, summaries, files, native_root))
+        files.update(application_handoff(source, handoff_interface(interface), summaries, files, native_root))
+    if deployment is not None:
+        publish(deployment, interface, files, native_root)
     return outlined, summaries, interface, link_sources, files
 
 
-def compile_semantic_application(
+def _render_staged(source, adapter, outlined, plan, compiled, reason, native_root, compile_slice,
+                   *, state, parameters, **selection):
+    from .staging import render
+
+    payload = (Path(native_root) / "handoff/parameters.bin").open("rb") if parameters is not None else nullcontext()
+    with payload as blob:
+        return render(source, adapter, outlined, plan, compiled,
+                      capacity=current_codegen_options().io_memory_capacity_bytes,
+                      native_root=native_root, compile_slice=compile_slice, reason=reason,
+                      state=state, parameters=parameters, payload=blob, **selection)
+
+
+def compile_semantic_application(source, **options):
+    """Compile every selected region; fail without substituting a different route."""
+    # One counted solver budget covers every arena that this compile places, including staged steps.
+    with arena_solver_work():
+        return _compile_semantic_application(source, **options)
+
+
+def _compile_semantic_application(
     source,
     *,
     adapter,
@@ -604,8 +680,8 @@ def compile_semantic_application(
     state=None,
     source_folding=None,
     parameters=None,
+    deterministic_receipts=False,
 ):
-    """Compile every selected region; fail without substituting a different route."""
     if state is not None:
         state.check(source)
     if parameters is not None:
@@ -621,16 +697,41 @@ def compile_semantic_application(
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     (destination / "selected-plan.json").write_bytes(_json(plan.to_dict()))
     selected = {item.id: item for item in plan.selected}
-    lowered = [
-        adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
-    _, summaries, interface, links, files = _render(
-        source, adapter, name, capacity, lowered, plan=plan, state=state, parameters=parameters, native_root=destination
-    )
+    from merlin.compiler.transforms.dense_views import IMPLEMENTATION
+    from .views import compile_view
+    from .deployment import selected as onchip_selected
+    from .region_fit import staging_reason
+    staging = staging_reason(outlined, plan, current_codegen_options().io_memory_capacity_bytes, parameters) if onchip_selected() else None
+    lowered = []
+    for i, (key, region) in enumerate(outlined.regions):
+        try:
+            lowered.append(compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
+                           adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits))
+        except NativeCompilationError as error:
+            if not onchip_selected() or error.status != "resource_limit":
+                raise
+            lowered.append(error)
+            staging = staging or error.reason
+    if staging is None:
+        try:
+            # The caller's measured link of this application's host, when it has one, bounds on-chip admission.
+            _, summaries, interface, links, files = _render(
+                source, adapter, name, capacity, lowered, plan=plan, state=state, parameters=parameters, native_root=destination,
+                measured_host=current_codegen_options().measured_host_bytes,
+            )
+        except NativeCompilationError as error:
+            if not onchip_selected() or error.status != "resource_limit":
+                raise
+            staging = error.reason
     if parameters is not None:
         (destination / "handoff").mkdir(exist_ok=True)
         parameters.write_payload(destination / "handoff/parameters.bin")
+    if staging is not None:
+        def compile_slice(index, key, region, request, label, root):
+            return adapter.compile_region(snapshot, request, selected[key], label, root / "segments", target_source, limits)
+        summaries, interface, links, files = _render_staged(
+            source, adapter, outlined, plan, lowered, staging, destination, compile_slice,
+            state=state, parameters=parameters)
     for filename, data in files.items():
         path = destination / filename
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -667,6 +768,7 @@ def compile_semantic_application(
         "application_interface": interface,
         "link_sources": links,
         "regions": summaries,
+        **({"staged_deployment": True} if staging is not None else {}),
         "stage_artifacts": {
             path.relative_to(destination).as_posix(): digest_file(path)[0]
             for path in sorted(destination.rglob("*"))
@@ -732,22 +834,59 @@ def verify_semantic_application(
         raise ValueError("application selected plan differs from source replay")
     outlined = outline_semantic_regions(source, entry=manifest["application_name"], plan=plan)
     selected = {item.id: item for item in plan.selected}
-    compiled = [
-        adapter.export_region(region, selected[key], f"region_{i:03d}", artifact / "segments", target_source)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
-    _, summaries, interface, links, files = _render(
-        source,
-        adapter,
-        manifest["application_name"],
-        manifest["application_memory_bytes"],
-        compiled,
-        plan=plan,
-        memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
-        state=state,
-        parameters=parameters,
-        native_root=artifact,
-    )
+    from merlin.compiler.transforms.dense_views import IMPLEMENTATION
+    from .views import compile_view
+    staged = manifest.get("staged_deployment", False)
+    if type(staged) is not bool:
+        raise ValueError("application staged deployment option must be Boolean")
+    published = json.loads((artifact / "deployment.json").read_bytes()) if staged else {"regions": []}
+    unsplit = {row["context_index"]: row["unsplit_refusal"] for row in published["regions"] if "unsplit_refusal" in row}
+    packages = {row["package"] for row in manifest["regions"]} if staged else set()
+    progress = _ReplayProgress(len(outlined.regions))
+    compiled = []
+    for i, (key, region) in enumerate(outlined.regions):
+        if selected[key].implementation != IMPLEMENTATION and i in unsplit and f"region_{i:03d}" not in packages:
+            # A whole compile that was refused published only its slices; those
+            # replay below, and the recorded refusal is carried.
+            compiled.append(NativeCompilationError("resource_limit", unsplit[i]))
+            continue
+        try:
+            compiled.append(compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
+                            adapter.export_region(region, selected[key], f"region_{i:03d}", artifact / "segments", target_source))
+        except NativeCompilationError as error:
+            if not staged or error.status != "resource_limit":
+                raise
+            compiled.append(error)
+        progress()
+    if staged:
+
+        def export_slice(index, key, region, request, label, root):
+            exported = adapter.export_region(request, selected[key], label, root / "segments", target_source)
+            progress()
+            return exported
+
+        summaries, interface, links, files = _render_staged(
+            source, adapter, outlined, plan, compiled, published["staging_reason"], artifact, export_slice,
+            state=state, parameters=parameters,
+            widths={row["id"]: row["width"] for row in published["regions"] if "width" in row and "axis" not in row},
+            counts={row["id"]: row["slices"] for row in published["regions"] if row["staging"] == "leading_rows"},
+            bands={row["id"]: (row["staging"], row["axis"], row["width"])
+                   for row in published["regions"] if "axis" in row},
+            tiles={row["id"]: (row["columns"], row["row_axis"], row["rows"])
+                   for row in published["regions"] if row["staging"] == "tiles"})
+    else:
+        _, summaries, interface, links, files = _render(
+            source,
+            adapter,
+            manifest["application_name"],
+            manifest["application_memory_bytes"],
+            compiled,
+            plan=plan,
+            memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
+            state=state,
+            parameters=parameters,
+            native_root=artifact,
+        )
     if (
         manifest["regions"] != summaries
         or manifest["application_interface"] != interface

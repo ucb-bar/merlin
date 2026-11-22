@@ -16,6 +16,13 @@ from pathlib import Path
 from typing import Any
 
 from merlin.compiler.dialects.lowering.analyses import lower_to_contract
+from merlin.compiler.dialects.lowering.queries import (
+    ELEMENTWISE_COMBINES as ELEMENTWISE_COMBINES,
+    elementwise_operands as elementwise_operands,
+    find_elementwise as find_elementwise,
+    find_matmuls as find_matmuls,
+    matmul_lhs_rhs as matmul_lhs_rhs,
+)
 from merlin.compiler.dialects.lowering.interface_stage import LoweringError, lower_to_interface, lower_to_schedule
 from merlin.compiler.dialects.lowering.runtime_stage import emit_command_buffer, lower_to_runtime
 from merlin.compiler.dialects.lowering.target_stage import lower_to_target
@@ -157,37 +164,6 @@ def build_vector_block(m: int = 8, k: int = 16, elem: str = "f32", combine: str 
     blk.add_ops(ops)
     fn = FuncOp("vecblock", FunctionType.from_lists([a_t, w_t, w_t], [o_t]), Region([blk]))
     return ModuleOp([fn])
-
-
-def find_matmuls(module):
-    """All linalg matmul-family ops in the module (quantized + plain)."""
-    from xdsl.dialects.linalg import ops as linalg_ops
-
-    found = []
-    for op in module.walk():
-        if isinstance(op, (linalg_ops.QuantizedMatmulOp, linalg_ops.MatmulOp)):
-            found.append(op)
-    return found
-
-
-def matmul_lhs_rhs(mm):
-    """(lhs, rhs) SSA values of a linalg matmul-family op (inputs[0], inputs[1])."""
-    return mm.inputs[0], mm.inputs[1]
-
-
-# linalg named ops that map onto a runtime VECTOR_MAP combine. `linalg.sub` is deliberately absent:
-# the runtime implements add and mul only, and lowering a subtract as an add would be a miscompile.
-ELEMENTWISE_COMBINES = {"linalg.add": "add", "linalg.mul": "mul"}
-
-
-def find_elementwise(module):
-    """All linalg elementwise ops the interface layer can materialize, as (op, combine) pairs."""
-    return [(op, ELEMENTWISE_COMBINES[op.name]) for op in module.walk() if op.name in ELEMENTWISE_COMBINES]
-
-
-def elementwise_operands(op):
-    """(lhs, rhs) SSA values of a linalg elementwise op."""
-    return op.inputs[0], op.inputs[1]
 
 
 # ---- pipeline ----------------------------------------------------------------------------------

@@ -6,6 +6,8 @@ path consumes resource/completion requirements; it does not infer concurrency.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from merlin.compiler.partition.dispatch_program import DispatchProgram
@@ -19,6 +21,23 @@ from merlin.compiler.partition.memory_plan import (
 )
 
 # ---- arena -------------------------------------------------------------------------------------
+
+# Counted Z3 work for all arena solves in one application compile, so a refusal never depends on elapsed time.
+# About 150 times the 67,802 units, with the pinned z3-solver, that prove a 174-buffer CNN plan cannot fit a
+# 786,432-byte window.
+ARENA_SOLVER_WORK = 10_000_000
+_solver_work: ContextVar[list[int] | None] = ContextVar("arena_solver_work", default=None)
+
+
+@contextmanager
+def arena_solver_work(units: int | None = None):
+    """Charge every arena solve placed inside this block to one counted budget."""
+    budget = [ARENA_SOLVER_WORK if units is None else units]
+    token = _solver_work.set(budget)
+    try:
+        yield budget
+    finally:
+        _solver_work.reset(token)
 
 
 @dataclass(frozen=True)
@@ -41,6 +60,8 @@ class ArenaRequirements:
     reserved: tuple[tuple[int, int], ...] = ()
     dispatch_digest: str = ""
     physical_sizes: tuple[tuple[str, int], ...] = ()
+    # Place by first fit when the solver cannot decide within the compile's counted budget.
+    first_fit: bool = False
 
 
 def _bounded_arena_inputs(prog: DispatchProgram, requirements: ArenaRequirements):
@@ -185,6 +206,7 @@ def plan_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements) -
         BufferAllocation,
         allocate_buffers,
         check_buffer_allocation,
+        first_fit_buffer_assignment,
     )
 
     sizes, requests, banks, reservations = _bounded_arena_inputs(prog, requirements)
@@ -217,7 +239,17 @@ def plan_bounded_arena(prog: DispatchProgram, requirements: ArenaRequirements) -
         else:
             result = BufferAllocation("sat", tuple(offsets.items()))
     if result is None:
-        result = allocate_buffers(requests, banks, reservations=reservations)
+        budget = _solver_work.get() or [ARENA_SOLVER_WORK]
+        result = BufferAllocation("unknown", reason="solver work budget exhausted")
+        if budget[0] > 0:
+            result = allocate_buffers(requests, banks, reservations=reservations, timeout_ms=None, rlimit=budget[0])
+            budget[0] -= result.work
+        if result.status == "unknown" and requirements.first_fit:
+            # Only when the solver cannot decide within the compile's budget: first fit also handles views,
+            # reservations and other alignments, and checks its own witness, but its arena can exceed the solver's.
+            proposal = first_fit_buffer_assignment(requests, banks, reservations=reservations)
+            if proposal is not None:
+                result = BufferAllocation("sat", tuple(proposal.items()))
     if result.status != "sat":
         raise ArenaPlanError(f"bounded arena allocation {result.status}: {result.reason}")
     offsets = dict(result.addresses)
