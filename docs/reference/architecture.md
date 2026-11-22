@@ -202,3 +202,72 @@ A selected region's artifact must agree with its callable boundary. A raw binary
 needs an admitted loader/wrapper; LLVM is only one possible output path.
 Numerical fidelity, complete target lowering and observed device execution are
 separate verification obligations, described in [chapter 9](../guides/09-verification.md).
+
+## Scaled FP8 numerical admission
+
+`compiler/quantization/contraction/scaled_fp8.py` owns the target-neutral
+`ScaledFP8Spec` representation and `ContractionNumerics` declarations. This is
+an admission boundary for a selected numerical route, not a new application
+compiler. Export adapters translate their operation spellings into these records;
+Merlin must retain source custody, explicit precision authorization, selected
+family identity and executable domain guards when connecting them to
+`compile_semantic_application`. Comparing declarations does not prove that an
+implementation realizes them. Adapters may bind the records at source intake;
+this boundary does not extend production region selection.
+
+An i8 code tensor and signed i32 power-of-two exponent tensor form **one value**:
+`decode_e4m3fn(code_bits) * 2**exponent`. The i8 sign is storage, never integer
+arithmetic on the code. For sign `s`, exponent field `e`, fraction `f`, decode is
+`(-1)**s * (1+f/8) * 2**(e-7)` for `e>0`, and
+`(-1)**s * f * 2**-9` for `e=0`. Exponent field 15 remains finite except
+fraction 7: bytes `0x7f` and `0xff` are reserved NaNs. Largest magnitude is
+448 (`0x7e`/`0xfe`). Both zeros and subnormals have representation meaning;
+this finite decoder refuses reserved NaNs. Its binary64 output is only an
+inspection value; decoding does not emulate an accumulator. It refuses overflow, nonzero
+underflow and inexact subnormal rounding of that inspection format; it never
+silently rounds the represented logical value. All signed i32 exponents retain
+their mathematical meaning even when this inspection decoder refuses them.
+
+Exponent axes are explicit logical code axes in increasing order. Exponent
+rank equals the number of mapped axes; each extent equals that code extent or
+one, and other axes broadcast. A scalar exponent maps no axes. A row exponent
+for `[M,K]` maps axis 0 and has shape `[M]`; adapters must explicitly normalize
+an exported `[M,1]` shape. No E8M0 reinterpretation, hidden transpose, per-block
+inference, or implicit trailing broadcast occurs in this generic representation.
+Physical packing, block-to-row expansion and device restrictions stay OOT.
+
+A contraction declaration identifies accumulation, readout, ordered stages,
+bias rounding and activation form. Admission by `require_same_numerics` requires
+exactly equal typed declarations. Changing any field refuses this equality
+route; a separate proof or existing explicit precision-change authorization is
+required. Availability of a target family is not authorization. In particular,
+`ordered-select` and `sign-clamp` are different declarations, as are post-cast
+BF16 RNE addition and BF16 chopping. These records do not extend the canonical
+Interface integer matmul subset or confer device qualification.
+
+## Replayable source bias separation
+
+The Atlas adapter now stores the versioned generic contraction record in
+`numerical.contraction`. This replaces `atlas.diagnostic_contraction_numerics`;
+old records must be regenerated from the unchanged authored source. Unknown or
+stale numerical fields are refused, and no old snapshot identity is reused.
+The record remains a diagnostic selected route, not source arithmetic equality.
+
+Generic `compiler/semantic/prequantized_bias.py` separates a BF16 column bias
+before indexing/constant preparation: a four-operand `.readout`, exact column
+`gather` `.bias`, then original-id `bf16_add` declaring
+`ieee754-bf16-add-rne-v1`. The readout retains accumulation, restoration and cast
+stages and removes only the final source bias stage. The splitter requires
+BF16 RNE, no fused activation and a unique final source bias stage when numerical
+metadata is present. f32 bias remains unsplit/unqualified. Constants are neither
+repacked nor changed. Legacy generic contractions without a numerical record
+can retain their structural contract; Atlas intake still requires its complete
+record and original metadata.
+
+The split receipt records original nodes and before/after digests. Verification
+restores and exactly replays the transformation; structural recognition alone
+is not origin authentication. Snapshot source inventory includes the new owner.
+Nonzero K32/K64 tests run generic preparation/replay then existing Atlas closed
+readout admission. They preserve code, signed exponent and bias bytes and reject
+stale biased metadata and altered RNE addition. These are graph/admission tests:
+no host emitter, MXU evaluation or application compilation was executed here.
