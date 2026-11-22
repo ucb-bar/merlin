@@ -53,137 +53,196 @@ def _hash_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-_NATIVE_SOURCE_FILES = (
-    "__init__.py",
-    "affine_views.py",
-    "allocate.py",
-    "allocation_schedule.py",
-    "allocation_types.py",
-    "buffer_allocation.py",
-    "codegen.py",
-    "constant_folding.py",
-    "constant_indexing.py",
-    "constant_math_backend.py",
-    "constant_math_precision.py",
-    "egg_bridge.py",
-    "extract.py",
-    "guarded_softmax_source.py",
-    "indexed_update_source.py",
-    "instruction.py",
-    "linalg_arithmetic.py",
-    "linalg_bridge.py",
-    "linalg_constants.py",
-    "linalg_contractions.py",
-    "linalg_preparation.py",
-    "linalg_recognition.py",
-    "linalg_returns.py",
-    "linalg_scalar.py",
-    "linalg_state.py",
-    "linalg_types.py",
-    "linalg_views.py",
-    "masks.py",
-    "model.py",
-    "ordered_scan_source.py",
-    "predicate_values.py",
-    "reference.py",
-    "reference_values.py",
-    "rules.py",
-    "scalar_reference.py",
-    "scalar_region.py",
-    "search.py",
-    "silu_source.py",
-    "snapshot.py",
-    "softmax_source.py",
-    "source_preparation.py",
-    "target_binding.py",
-    "tensor_assembly.py",
-    "tensor_constants.py",
-    "tiled_softmax.py",
-    "verify.py",
-    "view_descriptors.py",
-    "constant_math.c",
-)
-_FRONTEND_SOURCE_FILES = (
-    "bucketize_source.py",
-    "linalg_math_patterns.py",
-    "linalg_native_pointwise.py",
-    "linalg_composite_math.py",
-    "linalg_bf16_add.py",
-    "linalg_bf16_mul.py",
-    "linalg_bf16_relu.py",
-    "linalg_fp8_cast.py",
-    "linalg_mlir.py",
-    "linalg_ordered_fp8.py",
-    "linalg_patterns.py",
-    "linalg_scalar_support.py",
-    "linalg_boolean_patterns.py",
-    "linalg_integer_reductions.py",
-    "linalg_extremum_patterns.py",
-)
-_SHARED_SOURCE_FILES = (
+# Paths are relative to the installed merlin package, including moved owners.
+_COMPILER_SOURCE_FILES = (
+    "capture/safetensors.py",
+    "common/digest.py",
+    "common/fp8_formats.py",
+    "compiler/build/host_bridge.py",
+    "compiler/build/deployment.py",
+    "compiler/build/handoff.py",
+    "compiler/build/memory_budget.py",
+    "compiler/build/memory_placement.py",
+    "compiler/build/materialization.py",
+    "compiler/build/native.py",
+    "compiler/build/regions.py",
+    "compiler/build/region_fit.py",
+    "compiler/build/staging.py",
+    "compiler/build/views.py",
+    "compiler/transforms/dense_views.py",
+    "compiler/dialects/xdsl_context.py",
+    "compiler/frontend/__init__.py",
+    "compiler/frontend/input_types.py",
+    "compiler/frontend/inputs.py",
+    "compiler/frontend/linalg_mlir.py",
+    "compiler/frontend/patterns/__init__.py",
+    "compiler/frontend/patterns/bucketize.py",
+    "compiler/frontend/patterns/comparisons.py",
+    "compiler/frontend/patterns/linalg_composite_math.py",
+    "compiler/frontend/patterns/linalg_integer_reductions.py",
+    "compiler/frontend/patterns/linalg_math_patterns.py",
+    "compiler/frontend/patterns/linalg_native_pointwise.py",
+    "compiler/frontend/patterns/linalg_patterns.py",
+    "compiler/frontend/patterns/narrow_float.py",
+    "compiler/frontend/signature.py",
+    "compiler/frontend/staged.py",
+    "compiler/ir/boundary.py",
+    "compiler/ir/graph.py",
+    "compiler/ir/mlir_query.py",
+    "compiler/ir/xdsl_io.py",
+    "compiler/lower/c/application.py",
+    "compiler/lower/c/bf16_linear.py",
+    "compiler/lower/c/bucketize.py",
+    "compiler/lower/c/conversions.py",
+    "compiler/lower/c/dispatch.py",
+    "compiler/lower/c/float_arithmetic.py",
+    "compiler/lower/c/float_casts.py",
+    "compiler/lower/c/host_ops/__init__.py",
+    "compiler/lower/c/host_ops/order.py",
+    "compiler/lower/c/host_ops/relu.py",
+    "compiler/lower/c/host_ops/softmax_precision.py",
+    "compiler/lower/c/integer.py",
+    "compiler/lower/c/layout.py",
+    "compiler/lower/c/parameters.py",
+    "compiler/lower/c/pointwise_host.py",
+    "compiler/lower/c/softmax_mask.py",
+    "compiler/lower/c/indexed_update.py",
+    "compiler/lower/c/batched.py",
+    "compiler/lower/c/predicates.py",
+    "compiler/lower/c/runtime.py",
+    "compiler/lower/c/unary_math.py",
+    "compiler/lower/c/weights.py",
+    "compiler/partition/dispatch_program.py",
+    "compiler/partition/global_plan.py",
+    "compiler/partition/global_plan_emission.py",
+    "compiler/partition/memory_plan.py",
+    "compiler/partition/outline.py",
+    "compiler/partition/semantic_regions.py",
+    "compiler/planning/cover_selection.py",
     "compiler/quantization/contraction/__init__.py",
+    "compiler/quantization/contraction/codegen.py",
+    "compiler/quantization/contraction/constants.py",
     "compiler/quantization/contraction/contract.py",
     "compiler/quantization/contraction/intake.py",
-    "compiler/quantization/contraction/values.py",
-    "compiler/quantization/contraction/constants.py",
+    "compiler/quantization/contraction/lowering.py",
+    "compiler/quantization/contraction/scaled_fp8.py",
     "compiler/quantization/contraction/transform.py",
-    "compiler/quantization/contraction/codegen.py",
-    "compiler/transforms/contraction_k.py",
-    "compiler/transforms/contraction_mn.py",
-    "compiler/transforms/contraction_mnk.py",
+    "compiler/quantization/contraction/values.py",
+    "compiler/quantization/contraction/batched.py",
+    "compiler/schedule/counted_loop.py",
+    "compiler/schedule/launch_schedule.py",
+    "compiler/schedule/storage/arena.py",
+    "compiler/semantic/__init__.py",
+    "compiler/semantic/affine_views.py",
+    "compiler/semantic/allocation_types.py",
+    "compiler/semantic/codegen.py",
+    "compiler/semantic/constant_folding.py",
+    "compiler/semantic/constant_math.c",
+    "compiler/semantic/constant_math_backend.py",
+    "compiler/semantic/constant_math_precision.py",
+    "compiler/semantic/instruction.py",
+    "compiler/semantic/linalg/__init__.py",
+    "compiler/semantic/linalg/arithmetic.py",
+    "compiler/semantic/linalg/contractions.py",
+    "compiler/semantic/linalg/guarded_softmax_source.py",
+    "compiler/semantic/linalg/indexed_update_source.py",
+    "compiler/semantic/linalg/linalg_bridge.py",
+    "compiler/semantic/linalg/linalg_constants.py",
+    "compiler/semantic/linalg/linalg_preparation.py",
+    "compiler/semantic/linalg/linalg_recognition.py",
+    "compiler/semantic/linalg/linalg_returns.py",
+    "compiler/semantic/linalg/linalg_state.py",
+    "compiler/semantic/linalg/linalg_types.py",
+    "compiler/semantic/linalg/linalg_views.py",
+    "compiler/semantic/linalg/ordered_scan_source.py",
+    "compiler/semantic/linalg/qualified_rmsnorm_source.py",
+    "compiler/semantic/linalg/registered_source.py",
+    "compiler/semantic/linalg/rmsnorm_source.py",
+    "compiler/semantic/linalg/scalar.py",
+    "compiler/semantic/linalg/scalar_regions.py",
+    "compiler/semantic/linalg/silu_source.py",
+    "compiler/semantic/linalg/softmax_source.py",
+    "compiler/semantic/linalg/softmax_value_source.py",
+    "compiler/semantic/linalg/tensor_assembly.py",
+    "compiler/semantic/model.py",
+    "compiler/semantic/predicate_values.py",
+    "compiler/semantic/prequantized_bias.py",
+    "compiler/semantic/reference.py",
+    "compiler/semantic/rules.py",
+    "compiler/semantic/scalar_reference.py",
+    "compiler/semantic/search/__init__.py",
+    "compiler/semantic/search/allocation.py",
+    "compiler/semantic/search/allocation_schedule.py",
+    "compiler/semantic/search/buffers.py",
+    "compiler/semantic/search/exploration.py",
+    "compiler/semantic/search/extraction.py",
+    "compiler/semantic/search/verification.py",
+    "compiler/semantic/source_preparation.py",
+    "compiler/semantic/target_binding.py",
+    "compiler/semantic/tensor_constants.py",
+    "compiler/semantic/tiled_rmsnorm.py",
+    "compiler/semantic/tiled_softmax.py",
+    "compiler/semantic/view_descriptors.py",
+    "compiler/transforms/dense/ir.py",
+    "compiler/transforms/input_widening.py",
+    "compiler/transforms/operand_layouts.py",
+    "compiler/transforms/operand_permutations.py",
     "compiler/transforms/panels.py",
     "compiler/transforms/pointwise.py",
     "compiler/transforms/reduction.py",
-    "compiler/build/application.py",
-    "compiler/build/graphbridge.py",
-    "compiler/build/hostbridge.py",
-    "compiler/build/linkage.py",
-    "compiler/ir/boundary.py",
-    "compiler/ir/graph.py",
-    "compiler/lower/c/application.py",
-    "compiler/lower/c/dispatch.py",
-    "compiler/lower/c/handoff.py",
-    "compiler/lower/c/layout.py",
-    "compiler/lower/c/parameters.py",
-    "compiler/lower/c/sources.py",
-    "compiler/lower/c/state.py",
-    "compiler/partition/semantic.py",
-    "compiler/planning/application.py",
-    "compiler/schedule/arena.py",
-    "capture/safetensors.py",
-    "compiler/transforms/dense_ir.py",
-    "compiler/ir/xdsl_io.py",
-    "common/digest.py",
-    "compiler/ir/mlir_query.py",
-    "runtime/fp8_formats.py",
-    "runtime/program.py",
-    "compiler/lower/model/c_runtime.py",
-    "compiler/lower/model/weights_pack.py",
-    "development/targetgen/host_linkage_contract.py",
-    "development/targetgen/native_application.py",
-    "development/targetgen/native_application_cli.py",
-    "compiler/semantic/buffer_allocation.py",
-    "compiler/dialects/_common.py",
-    "compiler/dialects/fp8.py",
-    "compiler/dialects/lowering/arena_plan.py",
-    "compiler/dialects/lowering/dispatch_program.py",
-    "compiler/dialects/lowering/global_plan.py",
-    "compiler/dialects/lowering/global_plan_emission.py",
-    "compiler/dialects/lowering/outline.py",
-    "compiler/frontend/inputs.py",
-    "compiler/frontend/archives.py",
-    "compiler/frontend/signature.py",
-    "compiler/frontend/constants.py",
-    "compiler/frontend/state.py",
-    "compiler/frontend/native.py",
-    "compiler/frontend/layouts.py",
-    "compiler/frontend/tiling.py",
-    "compiler/quantization/native.py",
-    "compiler/build/native.py",
-    "compiler/build/native_records.py",
-    "verification/native.py",
-    "verification/native_records.py",
-    "development/targetgen/native_codegen_cli.py",
+    "compiler/transforms/result_narrowing.py",
+    "compiler/transforms/slice_sizes.py",
+    "compiler/transforms/tiling.py",
+    "development/targetgen/cli.py",
+    "development/targetgen/execution/host/admission.py",
+    "development/targetgen/execution/native/native_application.py",
+    "development/targetgen/execution/native/native_application_cli.py",
+    "development/targetgen/execution/native/native_codegen_cli.py",
+    "target/soc.py",
+    "target/system.py",
+    "runtime/host_math_supplier/README.md",
+    "runtime/host_math_supplier/__init__.py",
+    "runtime/host_math_supplier/build.py",
+    "runtime/host_math_supplier/embedded.py",
+    "runtime/host_math_supplier/hardware_sqrt.c",
+    "runtime/host_math_supplier/host-unary-math-policy.json",
+    "runtime/host_math_supplier/host_math.h",
+    "runtime/host_math_supplier/round_support.c",
+    "runtime/host_math_supplier/supplier_support.h",
+    "runtime/host_math_supplier/third_party/core-math/LICENSE",
+    "runtime/host_math_supplier/third_party/core-math/REVISION",
+    "runtime/host_math_supplier/third_party/core-math/cos.c",
+    "runtime/host_math_supplier/third_party/core-math/cosf.c",
+    "runtime/host_math_supplier/third_party/core-math/dint.h",
+    "runtime/host_math_supplier/third_party/core-math/erff.c",
+    "runtime/host_math_supplier/third_party/core-math/exp.c",
+    "runtime/host_math_supplier/third_party/core-math/expf.c",
+    "runtime/host_math_supplier/third_party/core-math/log.c",
+    "runtime/host_math_supplier/third_party/core-math/logf.c",
+    "runtime/host_math_supplier/third_party/core-math/pow/dint.h",
+    "runtime/host_math_supplier/third_party/core-math/pow/pow.c",
+    "runtime/host_math_supplier/third_party/core-math/pow/pow.h",
+    "runtime/host_math_supplier/third_party/core-math/pow/qint.h",
+    "runtime/host_math_supplier/third_party/core-math/powf.c",
+    "runtime/host_math_supplier/third_party/core-math/rsqrtf.c",
+    "runtime/host_math_supplier/third_party/core-math/sin.c",
+    "runtime/host_math_supplier/third_party/core-math/sinf.c",
+    "runtime/host_math_supplier/third_party/core-math/tanhf.c",
+    "verification/references/saved_model.py",
+    "compiler/frontend/patterns/linalg_batch_norm.py",
+    "compiler/frontend/patterns/linalg_bf16_sigmoid.py",
+    "compiler/frontend/patterns/linalg_window_max.py",
+    "compiler/frontend/policy_inputs.py",
+    "compiler/frontend/saved_program_signature.py",
+    "compiler/lower/c/host_ops/batch_norm.py",
+    "compiler/lower/c/host_ops/sigmoid.py",
+    "compiler/lower/c/host_ops/gelu.py",
+    "compiler/lower/c/host_ops/layer_norm.py",
+    "compiler/lower/c/host_ops/affine_contraction.py",
+    "compiler/lower/c/host_ops/window_max.py",
+    "compiler/quantization/policy_generation.py",
+    "compiler/semantic/linalg/cnn.py",
+    "compiler/semantic/linalg/source_compositions.py",
 )
 
 
@@ -199,17 +258,9 @@ def packaged_egg_bridge_path() -> Path:
 
 def _compiler_sources() -> dict[str, str]:
     """Bind the installed selector, frontend, and source-preparation controller."""
-    package = Path(__file__).resolve().parent
-    frontend = package.parent / "frontend"
-    targetgen = package.parent.parent / "development" / "targetgen"
-    merlin = package.parent.parent
+    merlin = Path(__file__).resolve().parent.parent.parent
     try:
-        return {
-            **{name: _hash_file(package / name) for name in _NATIVE_SOURCE_FILES},
-            **{f"frontends/{name}": _hash_file(frontend / name) for name in _FRONTEND_SOURCE_FILES},
-            **{name: _hash_file(merlin / name) for name in _SHARED_SOURCE_FILES},
-            "development/targetgen/cli.py": _hash_file(targetgen / "cli.py"),
-        }
+        return {name: _hash_file(merlin / name) for name in _COMPILER_SOURCE_FILES}
     except OSError as exc:
         raise ValueError("native compiler Python sources are unavailable") from exc
 
@@ -482,7 +533,7 @@ def verify_native_publication(
 ) -> None:
     """Check the immutable identity of files before publishing a target result."""
     persisted_path = staged / "manifest.json"
-    if not persisted_path.is_file():
+    if staged.is_symlink() or persisted_path.is_symlink() or not persisted_path.is_file():
         raise ValueError("selected target did not emit a native manifest")
     persisted = json.loads(persisted_path.read_text())
     if (
@@ -511,12 +562,23 @@ def verify_native_publication(
             artifact = staged / path
             if (
                 not isinstance(digest, str)
-                or artifact.is_symlink()
+                or any((staged / Path(*path.parts[:depth])).is_symlink() for depth in range(1, len(path.parts) + 1))
                 or not artifact.is_file()
                 or not artifact.resolve().is_relative_to(staged.resolve())
                 or digest_file(artifact)[0] != digest
             ):
                 raise ValueError(f"native stage artifact changed or is missing: {relative}")
+    if manifest.get("artifact_kind") == "host_application":
+        regions = manifest.get("regions")
+        segments = staged / "segments"
+        if (manifest.get("segments") != [] or not isinstance(regions, list) or not regions
+                or any(not isinstance(row, dict) or row.get("placement") != "host"
+                       or row.get("native_programs") != [] for row in regions)
+                or not isinstance(stage_artifacts, dict) or not stage_artifacts
+                or not segments.is_dir() or segments.is_symlink() or any(segments.iterdir())
+                or (staged / "program.bin").exists() or (staged / "execution_plan.json").exists()):
+            raise ValueError("host-only application must contain authenticated host regions and no device programs")
+        return
     if manifest.get("artifact_kind") == "program_set":
         if (staged / "program.bin").exists() or (staged / "execution_plan.json").exists():
             raise ValueError("program set must not masquerade as one native binary")
@@ -524,26 +586,36 @@ def verify_native_publication(
         if not isinstance(rows, list) or not rows:
             raise ValueError("native program set has no segment identities")
         seen: set[str] = set()
+        branches: dict[str, set[str]] = {"segments": set()}
         for index, row in enumerate(rows):
             if not isinstance(row, dict) or row.get("index") != index:
                 raise ValueError("native program set has invalid segment order")
             relative = row.get("path")
             if (
                 not isinstance(relative, str)
-                or not relative.startswith("segments/")
-                or relative != f"segments/{Path(relative).name}"
+                or len(Path(relative).parts) < 2
+                or Path(relative).parts[0] != "segments"
+                or Path(relative).as_posix() != relative
+                or "\\" in relative
                 or Path(relative).is_absolute()
                 or ".." in Path(relative).parts
                 or relative in seen
+                or any(relative.startswith(previous + "/") or previous.startswith(relative + "/") for previous in seen)
             ):
                 raise ValueError("native program set has an unsafe or repeated segment path")
             seen.add(relative)
+            parts = Path(relative).parts
+            for depth in range(1, len(parts)):
+                parent = Path(*parts[:depth]).as_posix()
+                branches.setdefault(parent, set()).add(parts[depth])
             segment = staged / relative
-            if not segment.is_dir() or segment.is_symlink() or not segment.resolve().is_relative_to(staged.resolve()):
+            if (any((staged / Path(*parts[:depth])).is_symlink() for depth in range(1, len(parts) + 1))
+                    or not segment.is_dir() or not segment.resolve().is_relative_to(staged.resolve())):
                 raise ValueError("native program set segment is missing or escapes its package")
             segment_manifest = segment / "manifest.json"
             if (
-                not segment_manifest.is_file()
+                segment_manifest.is_symlink()
+                or not segment_manifest.is_file()
                 or row.get("manifest_sha256") != hashlib.sha256(segment_manifest.read_bytes()).hexdigest()
             ):
                 raise ValueError("native program set segment manifest changed")
@@ -561,21 +633,33 @@ def verify_native_publication(
             )
         if not (staged / "segments").is_dir() or (staged / "segments").is_symlink():
             raise ValueError("native program set segment root is missing or linked")
-        if {item.name for item in (staged / "segments").iterdir()} != {Path(relative).name for relative in seen}:
-            raise ValueError("native program set has an unaccounted segment")
+        for relative, children in branches.items():
+            for item in (staged / relative).iterdir():
+                if item.name in children and item.is_dir() and not item.is_symlink():
+                    continue
+                # A multi-image region may retain source/plan metadata beside
+                # its image leaves. The parent publication must authenticate
+                # each such regular file; extra directories remain refused.
+                member = item.relative_to(staged).as_posix()
+                if (relative != "segments" and item.name not in {"manifest.json", "program.bin", "execution_plan.json"}
+                        and isinstance(stage_artifacts, dict) and member in stage_artifacts
+                        and not item.is_symlink() and item.is_file()):
+                    continue
+                raise ValueError("native program set has an unaccounted segment")
         return
     if manifest.get("artifact_kind") not in {None, "program"}:
         raise ValueError("unknown native publication kind")
     binary = staged / "program.bin"
     if (
-        not binary.is_file()
+        binary.is_symlink()
+        or not binary.is_file()
         or binary.stat().st_size == 0
         or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
     ):
         raise ValueError("native emitted binary differs from checked manifest")
     plan = staged / "execution_plan.json"
     expected_plan_digest = manifest.get("execution_plan_sha256")
-    if plan.exists() != (expected_plan_digest is not None):
+    if plan.is_symlink() or plan.exists() != (expected_plan_digest is not None):
         raise ValueError("native execution plan and manifest identity disagree")
     if plan.exists() and (not plan.is_file() or hashlib.sha256(plan.read_bytes()).hexdigest() != expected_plan_digest):
         raise ValueError("native execution plan differs from checked manifest identity")
