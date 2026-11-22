@@ -61,7 +61,7 @@ RUNNER = r"""
 def _owned_allocation_guards(ctx, module):
     from torch_mlir import ir as _oa_ir
     todo = []
-    widths = {'i1':1,'i8':1,'i16':2,'i32':4,'i64':8,'index':8,
+    widths = {'i1':1,'i4':1,'i8':1,'i16':2,'i32':4,'i64':8,'index':8,
               'f16':2,'bf16':2,'f32':4,'f64':8,
               'f8E4M3FN':1,'f8E4M3FNUZ':1,'f8E5M2':1,'f8E5M2FNUZ':1}
     def visit(op):

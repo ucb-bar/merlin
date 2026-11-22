@@ -13,6 +13,7 @@ def checked_bridge(inputs, outputs):
     """Append one-call validation; callers own invocation begin/end and copies."""
     storage = {
         "i1": "uint8_t",
+        "i4": "uint8_t",
         "i8": "uint8_t",
         "i16": "uint16_t",
         "i32": "uint32_t",

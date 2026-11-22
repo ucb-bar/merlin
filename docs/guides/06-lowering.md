@@ -126,7 +126,7 @@ annotations. Type readers live in `compiler/dialects`, receipt intake in
 The selected atomic, diagnostic, low-precision and loop-destination legalizations
 live in `compiler/lower/options`, with their original source and effect checks.
 
-The private-invocation atomic intake admits i1/i8/i16/i32/i64 integer words and
+The private-invocation atomic intake admits i1/i4/i8/i16/i32/i64 integer words and
 checks the original dtype, operation, order, scope and every old-value result.
 `frontend/intake/kernel_atomic_evidence.py` keeps the producer's buffer and
 source facts independently checked; width admission does not grant an alias,
@@ -143,8 +143,14 @@ For Boolean i1 storage, `lower/options/atomic_integer_regions.py` reuses the
 pure-integer callback and allocation-free byte-CAS loop. It truncates the
 observed byte before each logical update, then zero-extends the replacement;
 signed/unsigned comparisons, modular arithmetic and every old value keep the
-source width. The same native mechanism qualifies i4 arithmetic and adjacent
-cells, but no public i4 tensor carrier is claimed. An explicit byte-carrier
+source width. Public i4 tensors now use one unpacked uint8 cell per logical
+value, restricted to raw words 0..15. Runtime input checks reject noncanonical
+padding before entry; owned-result views check it before publication. Caller
+and execution-owned descriptors, C embedding and checked owned allocation
+budgets use one byte per cell. MLIR arithmetic and atomic callbacks remain i4.
+The public source-to-host programs qualify both result ABIs, all sixteen words,
+every old/final result and changed/empty/bounds replays. This adds no by-value
+i4 scalar ABI or paired packed-nibble mapping. An explicit byte-carrier
 read must truncate before using arbitrary high bits; a non-byte scalar load
 cannot assume that nonzero padding is a valid representation. Full helper and
 callback reconstruction still supply the borrowing premise, independently of

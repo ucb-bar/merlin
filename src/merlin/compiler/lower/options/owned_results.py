@@ -26,6 +26,7 @@ from merlin.compiler.lower.options.owned_result_abi import PROFILE, ScalarSlot, 
 
 _NUMPY = {
     "i1": np.bool_,
+    "i4": np.uint8,
     "i8": np.int8,
     "i16": np.int16,
     "i32": np.int32,
@@ -113,6 +114,8 @@ class OwnedResultProgram:
                 or any(want >= 0 and actual != want for actual, want in zip(argument.shape, slot.shape, strict=True))
             ):
                 raise ValueError("owned result input storage/rank/static dimensions differ from source")
+            if slot.dtype == "i4" and np.any(argument > 15):
+                raise ValueError("owned result i4 inputs require unpacked canonical uint8 cells in 0..15")
             buffers.append(argument)
             carriers.append(descriptor(argument.ctypes.data, argument.shape))
         if sum(array.nbytes for array in buffers) > self.max_bytes:
@@ -205,6 +208,8 @@ def _view(result, slot, capacity):
         offset=logical_start - base,
         strides=tuple(stride * dtype.itemsize for stride in strides),
     )
+    if slot.dtype == "i4" and np.any(view > 15):
+        raise ValueError("executed i4 result is not canonical unpacked uint8 storage")
     return view, base, math.prod(shape) * dtype.itemsize
 
 

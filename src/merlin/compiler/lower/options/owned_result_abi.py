@@ -17,6 +17,7 @@ from merlin.compiler.lower.options.runtime_invocation import SCALAR_C
 PROFILE = "merlin.execution-owned-results.v1"
 STORAGE = {
     "i1",
+    "i4",
     "i8",
     "i16",
     "i32",

@@ -23,6 +23,8 @@ def resolve(source, signature, arrays):
             or any(size is not None and size != actual for size, actual in zip(row["shape"], array.shape, strict=True))
         ):
             raise ValueError("execution result invocation changes original storage/rank/static dimensions")
+        if row["dtype"] == "i4" and np.any(array > 15):
+            raise ValueError("execution result i4 inputs require unpacked canonical uint8 cells in 0..15")
     for name, coordinate in constraints["dimension_bindings"].items():
         values[name] = arrays[coordinate["argument"]].shape[coordinate["axis"]]
     for row, array in zip(constraints["inputs"], arrays, strict=True):

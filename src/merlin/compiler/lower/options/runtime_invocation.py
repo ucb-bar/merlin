@@ -145,6 +145,8 @@ def resolve(model, contract_path, arguments, *, max_bytes=64 << 20):
                 raise ValueError("runtime invocation dtype differs from the actual program argument")
             if dtype == "i1" and np.any(array.view(np.uint8) > 1):
                 raise ValueError("runtime Boolean inputs require canonical source storage")
+            if dtype == "i4" and np.any(array > 15):
+                raise ValueError("runtime i4 inputs require unpacked canonical uint8 cells in 0..15")
             if not isinstance(type_, TensorType):
                 name, bounds = declared.get("scalar"), declared.get("bounds")
                 if (

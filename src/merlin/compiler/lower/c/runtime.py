@@ -61,6 +61,7 @@ C_OF = {
 DT_BYTES.update(dict.fromkeys(FP8_DTYPES, 1))
 NP_OF.update(dict.fromkeys(FP8_DTYPES, np.uint8))
 C_OF.update(dict.fromkeys(FP8_DTYPES, "unsigned char"))
+DT_BYTES["i4"], NP_OF["i4"], C_OF["i4"] = 1, np.uint8, "unsigned char"
 
 # Existing portable build-time append policy. This describes generated blob
 # placement; it supplies no target DMA, tensor alignment or no-alias fact.
@@ -1031,4 +1032,6 @@ def embed_array(arr: np.ndarray, dtype: str) -> str:
     """
     if dtype not in C_OF:
         raise ValueError(f"unsupported C array storage type: {dtype}")
+    if dtype == "i4" and (arr.dtype != np.uint8 or np.any(arr > 15)):
+        raise ValueError("C i4 inputs require unpacked canonical uint8 cells in 0..15")
     return _embed_array(arr, dtype)

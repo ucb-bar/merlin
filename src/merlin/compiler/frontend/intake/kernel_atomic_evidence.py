@@ -63,7 +63,7 @@ def checked_source_atomic(op, declared, selection):
     dtype = str(element)
     floating = dtype in _FLOAT_WIDTHS
     bits = getattr(element, "bitwidth", None)
-    integer_types = tuple(builtin.IntegerType(n) for n in (1, 8, 16, 32, 64))
+    integer_types = tuple(builtin.IntegerType(n) for n in (1, 4, 8, 16, 32, 64))
     if (
         floating
         and (cas or selection["profile"] != TYPED_EFFECT_PROFILE)
@@ -245,7 +245,7 @@ def checked_atomic_effects(admission, memory, records, buffers):
             )
             or not floating
             and ("value_dtype" in info or "numeric_contract" in info)
-            or info.get("word_bits") not in (1, 8, 16, 32, 64)
+            or info.get("word_bits") not in (1, 4, 8, 16, 32, 64)
             or info.get("operation") not in _KINDS
             or info.get("standard_kind") != _KINDS[info["operation"]]
             or access.get("opcode")

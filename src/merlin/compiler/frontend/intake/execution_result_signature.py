@@ -16,7 +16,7 @@ MODE = "execution-owned"
 PROFILE = "merlin.execution-owned-results.v1"
 SCHEMA = "merlin.compile-signature.v6"
 _SCALARS = {"i1", "i8", "i16", "i32", "i64", "f32", "f64"}
-_STORAGE = _SCALARS | {"f16", "bf16", "f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"}
+_STORAGE = _SCALARS | {"i4", "f16", "bf16", "f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ"}
 LIMITS_PROFILE = "merlin.owned-result-limits.v2"
 
 
