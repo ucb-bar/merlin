@@ -30,7 +30,7 @@ from pathlib import Path
 
 import yaml
 
-from merlin.development.targetgen.sandbox import grants as bwrap
+from merlin.development.targetgen.sandbox import bwrap
 from merlin.development.targetgen.sandbox import host_surfaces, toolchain
 from merlin.development.targetgen.sandbox.answer_surfaces import (
     AUDIT_ADVISORY_KINDS,

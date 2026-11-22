@@ -68,7 +68,8 @@ def _source(args, binding, target_identity):
     ):
         raise ValueError("application compilation requires staged inputs, diagnostic mode and no region overrides")
     factory = getattr(binding, "application_adapter", None)
-    if factory is None:
+    prepared_factory = getattr(binding, "application_adapter_for_prepared_source", None)
+    if factory is None and prepared_factory is None:
         raise NativeCompilationError("unsupported_semantics", "selected support has no semantic application adapter")
     directory = Path(args.compile_inputs)
     staged = load_compile_inputs(directory)
@@ -89,12 +90,15 @@ def _source(args, binding, target_identity):
         **({"kinds": ("constant", "buffer"), "max_bytes": 64 * 1024 * 1024} if external else {}),
     )
     state_arguments = {port.argument_index for port in declaration.ports} if declaration else set()
+    translator_factory = getattr(binding, "application_source_translators", None)
+    source_translators = translator_factory(staged.precision_policy) if translator_factory is not None else None
     source = translate_linalg_text(
         staged.program,
         entry=staged.entry,
         target_identity=target_identity,
         lowering_policy=args.mode,
         argument_constants={index: payload for index, payload in parameters.items() if index not in state_arguments},
+        source_operation_translators=source_translators,
     ).request
     state = None
     if external:
@@ -106,7 +110,12 @@ def _source(args, binding, target_identity):
                 (source.source_identity + ":state:" + declaration.compilation_identity(parameters)).encode()
             ).hexdigest(),
         )
-    adapter = factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
+    # Legacy providers retain their original factory signature and timing.
+    adapter = (
+        factory(staged.precision_policy, original_source_sha256=staged.original_source_sha256)
+        if prepared_factory is None
+        else None
+    )
     try:
         source, folding = prepare_source(
             source, constant_math_policy=(staged.precision_policy or {}).get("source_constant_math")
@@ -115,6 +124,14 @@ def _source(args, binding, target_identity):
         raise NativeCompilationError(error.status, str(error)) from error
     if folding.get("limits"):
         raise NativeCompilationError("resource_limit", json.dumps(folding["limits"], sort_keys=True))
+    if prepared_factory is not None:
+        adapter = prepared_factory(
+            staged.precision_policy,
+            original_source_sha256=staged.original_source_sha256,
+            source=source,
+            staged=staged,
+            compile_inputs=directory,
+        )
     if declaration is not None:
         state = declaration.bind(source, parameters)
     model_parameters = bind_application_parameters(directory, staged, source) if external else None
@@ -146,6 +163,7 @@ def compile_application_report(args, *, binding, snapshot, limits, write_status)
                 state=state,
                 source_folding=folding,
                 parameters=parameters,
+                deterministic_receipts=getattr(args, "deterministic_receipts", False),
             )
             _, current, _, current_state, current_folding, current_parameters = _source(
                 args, binding, snapshot.profile.target_identity

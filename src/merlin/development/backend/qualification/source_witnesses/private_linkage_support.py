@@ -11,8 +11,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from merlin_rvv.src.rvv.runtime import spike
-
 from merlin.common.digest import is_sha256, sha256_file
 from merlin.compiler.backend.host import load_host_package as load_rvv_package
 from merlin.compiler.backend.host import require_host_isa_dts

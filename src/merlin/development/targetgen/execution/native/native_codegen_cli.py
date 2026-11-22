@@ -15,7 +15,7 @@ def preparation_arguments(parser):
     parser.add_argument("--outer-tile-index", type=int, help="selected outer M/N output tile index")
 
 
-def add_arguments(sub, handlers):
+def add_arguments(sub, handlers, binding=None):
     from merlin.compiler.semantic.search.exploration import SearchAblations
 
     native_build = sub.add_parser("native-build", help="build an offline Merlin-native selection snapshot")
@@ -121,3 +121,17 @@ def add_arguments(sub, handlers):
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--out", required=True, help="external verification status JSON")
     native_verify.set_defaults(func=handlers["_cmd_native_verify"])
+
+    for parser in (native_build, native_select, native_compile, native_verify):
+        for name in ("io_memory_bytes", "io_memory_base", "io_memory_alignment",
+                     "io_memory_capacity_base", "io_memory_capacity_bytes",
+                     "program_size_limit_bytes", "execution_instruction_limit", "measured_host_bytes"):
+            parser.add_argument("--" + name.replace("_", "-"), type=lambda value: int(value, 0))
+        parser.add_argument("--application-buffer-views", action="store_true")
+        parser.add_argument("--application-residency", action="store_true")
+        parser.add_argument("--exact-float-unroll", action="store_true")
+        parser.add_argument("--recipe")
+        parser.add_argument("--board")
+        configure = getattr(binding, "configure_codegen_parser", None)
+        if configure:
+            configure(parser)

@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 import yaml
 from merlin.common.digest import is_sha256, sha256_bytes
-from merlin.development.testgen.witness_basis import build_witness_basis
+from merlin.development.testgen.evidence.witness_basis import build_witness_basis
 
 
 # ---- coverage_commitment -----------------------------------------------------------------------
