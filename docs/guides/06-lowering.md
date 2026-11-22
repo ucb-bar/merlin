@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-22
 related: [05-transformations, 07-building]
-code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/dialects/fp8.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
+code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/backend/providers.py, src/merlin/compiler/backend/scalar.py, src/merlin/compiler/backend/boundary.py, src/merlin/compiler/backend/c_abi.py, src/merlin/compiler/lower/device/region_lowering.py, src/merlin/compiler/lower/native, src/merlin/compiler/frontend/intake/kernel_atomic_evidence.py, src/merlin/compiler/dialects/fp8.py, src/merlin/compiler/lower/options/atomic_compare_exchange.py, src/merlin/compiler/lower/options/atomic_integer_regions.py, src/merlin/compiler/lower/options/atomic_word_views.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/interface_materialization.py, src/merlin/compiler/ir/interface_contract.py, src/merlin/compiler/build/completion.py, src/merlin/compiler/build/regions.py, src/merlin/compiler/compilation.py, src/merlin/compiler/records.py]
 ---
 
 # 6. Lower through scalar and OOT implementations
@@ -126,7 +126,7 @@ annotations. Type readers live in `compiler/dialects`, receipt intake in
 The selected atomic, diagnostic, low-precision and loop-destination legalizations
 live in `compiler/lower/options`, with their original source and effect checks.
 
-The private-invocation atomic intake admits i8/i16/i32/i64 integer words and
+The private-invocation atomic intake admits i1/i8/i16/i32/i64 integer words and
 checks the original dtype, operation, order, scope and every old-value result.
 `frontend/intake/kernel_atomic_evidence.py` keeps the producer's buffer and
 source facts independently checked; width admission does not grant an alias,
@@ -138,6 +138,18 @@ Integer updates through f16 storage use a private i16 return transport, then
 restore the original bitcast at the caller; the native helper checks its full
 body rather than trusting the view annotation. The same word semantics apply
 to explicitly ordered, actively aligned byte-backed i16 views.
+
+For Boolean i1 storage, `lower/options/atomic_integer_regions.py` reuses the
+pure-integer callback and allocation-free byte-CAS loop. It truncates the
+observed byte before each logical update, then zero-extends the replacement;
+signed/unsigned comparisons, modular arithmetic and every old value keep the
+source width. The same native mechanism qualifies i4 arithmetic and adjacent
+cells, but no public i4 tensor carrier is claimed. An explicit byte-carrier
+read must truncate before using arbitrary high bits; a non-byte scalar load
+cannot assume that nonzero padding is a valid representation. Full helper and
+callback reconstruction still supply the borrowing premise, independently of
+provenance or symbol names. Private invocation ownership supplies no external
+participant or packed-bit address semantics.
 
 Direct bitwise exchange also covers f16, BF16 and the four pinned FP8 formats.
 The existing atomic-word feature derives the actual storage type and retains

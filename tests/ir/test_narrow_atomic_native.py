@@ -176,3 +176,109 @@ with ir.Context() as ctx, ir.Location.unknown():
     from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
     parse_mlir_text(checked.stdout).verify()
+
+
+@pytest.mark.skipif(not (os.environ.get("MERLIN_COMPILER_PYTHON") and os.environ.get("MERLIN_CLANG")),
+                   reason="explicit native MLIR Python and host compiler required")
+@pytest.mark.parametrize("bits", [1, 4])
+def test_subbyte_updates_and_cas_keep_logical_words_and_adjacent_cells(tmp_path, bits):
+    word, entry = f"i{bits}", f"subbyte_{bits}"
+    kinds = ("addi", "maxs", "maxu", "mins", "minu", "andi", "ori", "xori", "assign")
+    branches = f"%selected8=memref.atomic_rmw assign %value,%memory[%index]:({word},memref<?x{word}>)->{word}"
+    for number in reversed(range(8)):
+        branches = f'''
+          %code{number}=arith.constant {number}:i64
+          %choose{number}=arith.cmpi eq,%which,%code{number}:i64
+          %selected{number}=scf.if %choose{number} -> ({word}) {{
+            %event{number}=memref.atomic_rmw {kinds[number]} %value,%memory[%index]:({word},memref<?x{word}>)->{word}
+            scf.yield %event{number}:{word}
+          }} else {{
+            {branches}
+            scf.yield %selected{number + 1}:{word}
+          }}'''
+    source = f'''module {{
+      func.func @{entry}(%raw:i64,%incoming:i64,%position:i64,%which:i64)->i64 attributes {{llvm.emit_c_interface}} {{
+        %seed=arith.trunci %raw:i64 to {word}
+        %value=arith.trunci %incoming:i64 to {word}
+        %byte=arith.trunci %raw:i64 to i8
+        %mask=arith.constant {(1 << bits) - 1}:i8
+        %other=arith.xori %byte,%mask:i8
+        %zero=arith.constant 0:index
+        %one=arith.constant 1:index
+        %two=arith.constant 2:index
+        %flip=arith.constant 1:{word}
+        %index=arith.index_cast %position:i64 to index
+        %raw_cells=memref.alloca():memref<2xi8>
+        memref.store %byte,%raw_cells[%zero]:memref<2xi8>
+        memref.store %other,%raw_cells[%one]:memref<2xi8>
+        %bytes=memref.cast %raw_cells:memref<2xi8> to memref<?xi8>
+        %memory=memref.view %bytes[%zero][%two]:memref<?xi8> to memref<?x{word}>
+        // Read the declared byte carrier, then truncate. A non-byte LLVM
+        // load requires zero padding; this probe deliberately supplies
+        // nonzero carrier padding to the atomic normalization itself.
+        %initial_byte=memref.load %raw_cells[%index]:memref<2xi8>
+        %initial=arith.trunci %initial_byte:i8 to {word}
+        %first=arith.xori %initial,%flip:{word}
+        %initial_old=memref.generic_atomic_rmw %memory[%index]:memref<?x{word}> {{
+          ^bb0(%current:{word}):
+            %equal=arith.cmpi eq,%current,%initial:{word}
+            %updated=arith.select %equal,%first,%current:{word}
+            memref.atomic_yield %updated:{word}
+        }}
+        {branches}
+        %current=memref.load %memory[%index]:memref<?x{word}>
+        %desired=arith.xori %seed,%flip:{word}
+        %before=memref.generic_atomic_rmw %memory[%index]:memref<?x{word}> {{
+          ^bb0(%actual:{word}):
+            %equal=arith.cmpi eq,%actual,%current:{word}
+            %updated=arith.select %equal,%desired,%actual:{word}
+            memref.atomic_yield %updated:{word}
+        }}
+        %wrong=arith.xori %desired,%flip:{word}
+        %failed=memref.generic_atomic_rmw %memory[%index]:memref<?x{word}> {{
+          ^bb0(%actual:{word}):
+            %equal=arith.cmpi eq,%actual,%wrong:{word}
+            %updated=arith.select %equal,%seed,%actual:{word}
+            memref.atomic_yield %updated:{word}
+        }}
+        %final_byte0=memref.load %raw_cells[%zero]:memref<2xi8>
+        %final_byte1=memref.load %raw_cells[%one]:memref<2xi8>
+        %final0=arith.trunci %final_byte0:i8 to {word}
+        %final1=arith.trunci %final_byte1:i8 to {word}
+    '''
+    values = ["initial_old", "selected0", "before", "failed", "final0", "final1"]
+    source += "\n%packed=arith.constant 0:i64\n"
+    previous = "packed"
+    for i, value in enumerate(values):
+        source += f'''%wide{i}=arith.extui %{value}:{word} to i64
+          %shift{i}=arith.constant {bits * i}:i64
+          %shifted{i}=arith.shli %wide{i},%shift{i}:i64
+          %packed{i}=arith.ori %{previous},%shifted{i}:i64\n'''
+        previous = "packed" + str(i)
+    source += f"return %{previous}:i64" + "}}"
+    lowered = lower_to_llvm_ir(source, workdir=tmp_path / "lowering",
+                               features=frozenset({"lower_integer_compare_exchange"}))
+    path = tmp_path / f"{entry}.ll"
+    path.write_text(lowered)
+    library = ctypes.CDLL(str(build_host_shared(path, tmp_path / f"{entry}.so")))
+    function = getattr(library, "_mlir_ciface_" + entry)
+    function.argtypes, function.restype = [ctypes.c_uint64] * 4, ctypes.c_uint64
+    mask, sign = (1 << bits) - 1, 1 << (bits - 1)
+
+    def signed(value):
+        return value - (1 << bits) if value & sign else value
+
+    for seed in range(mask + 1):
+        for value in range(mask + 1):
+            for position in (0, 1):
+                initial = seed if position == 0 else seed ^ mask
+                operand = initial ^ 1
+                expected_updates = (operand + value, max(signed(operand), signed(value)), max(operand, value),
+                    min(signed(operand), signed(value)), min(operand, value), operand & value,
+                    operand | value, operand ^ value, value)
+                for code, changed in enumerate(expected_updates):
+                    result = function(seed | 0xA0, value | 0x50, position, code)
+                    final = [seed, seed ^ mask]
+                    final[position] = seed ^ 1
+                    actual = [(result >> (bits * i)) & mask for i in range(len(values))]
+                    assert actual == [initial, operand, changed & mask, seed ^ 1, *final]

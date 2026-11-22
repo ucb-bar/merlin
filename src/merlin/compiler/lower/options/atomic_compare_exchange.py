@@ -116,7 +116,14 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
     operations = tuple(_cas_walk(module.operation))
     plans = []
     for op in operations:
-        if word_views and (match := _bitwise_exchange_match(op)) is not None:
+        if (match := _small_rmw_match(op)) is not None:
+            memory, index, value, width, kind = match
+            plans.append((op, memory, index, (value,), width, 'small-rmw', kind))
+        elif (op.name == 'memref.generic_atomic_rmw' and op.results
+                and str(op.results[0].type) in ('i1', 'i4')):
+            memory, index, captures, width = _region_match(op)
+            plans.append((op, memory, index, captures, width, 'integer-region', str(len(plans))))
+        elif word_views and (match := _bitwise_exchange_match(op)) is not None:
             memory, index, value, width, kind = match
             plans.append((op, memory, index, (value,), width, 'word', kind))
         elif (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
@@ -151,6 +158,11 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         "n module.body.operations if 'sym_name' in op.attributes}\n"
         r"""    helpers = {}
     for op, memory, index, values, width, family, kind in plans:
+        if width in (1, 4):
+            with ctx, ir.Location.unknown(), ir.InsertionPoint(op):
+                dynamic = ir.MemRefType.get([ir.ShapedType.get_dynamic_size()], op.results[0].type)
+                if memory.type != dynamic:
+                    memory = ir.Operation.create('memref.cast', operands=[memory], results=[dynamic]).results[0]
 """
         "        half_add = family == 'word' and width == 16 and kind in ('fadd"
         "-ieee-f16', 'fadd-ieee-bf16', 'ieee-quiet-identity-f16', 'ieee-quiet-i"
@@ -190,12 +202,13 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         r"""            while (symbol := prefix + '_' + str(ordinal)) in symbols:
                 ordinal += 1
             symbols.add(symbol)
-            if family == 'integer-region':
+            if family in ('integer-region', 'small-rmw'):
                 update_symbol = symbol + '_update'
                 while update_symbol in symbols:
                     update_symbol += '_'
                 symbols.add(update_symbol)
-                update = _region_update(ctx, op, update_symbol, values)
+                update = (_small_rmw_update(ctx, update_symbol, width, kind) if family == 'small-rmw'
+                          else _region_update(ctx, op, update_symbol, values))
                 module.body.append(update)
                 _CAS_GENERATED.append(update)
 """
@@ -206,7 +219,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         "                source = _cas_source(symbol, width) if family == 'cas'"
         " else _word_source(symbol, width, kind)\n"
         r"""            helper = ir.Module.parse(source, context=ctx)
-            function = tuple(helper.body.operations)[-1 if family == 'integer-region' else 0].operation
+            function = tuple(helper.body.operations)[-1 if family in ('integer-region', 'small-rmw') else 0].operation
             function.detach_from_parent()
             module.body.append(function)
             _CAS_GENERATED.append(function)
