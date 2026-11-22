@@ -42,22 +42,8 @@ def test_two_iteration_compiled_loop_exact_pointers_variants_and_failure(tmp_pat
     assert loop["loop"]["trip_count"] == 2
     for member, content in {**flat_files, **loop_files}.items():
         (tmp_path / member).write_text(content)
-    (tmp_path / "counted_alloc.c").write_text(r'''
-#include <stdlib.h>
-#include <assert.h>
-int allocations, fail_allocation;
-static void *tracked_malloc(size_t bytes) {
-  if (fail_allocation) return 0;
-  void *result=malloc(bytes);
-  assert(result); ++allocations; return result;
-}
-static void tracked_free(void *pointer) {
-  assert(pointer && allocations>0); --allocations; free(pointer);
-}
-#define malloc tracked_malloc
-#define free tracked_free
-#include "counted.c"
-''')
+    # The call table is static storage: a board host declares no heap, so the loop must not allocate.
+    assert not any(word in loop_files["counted.c"] for word in ("malloc", "free(", "stdlib"))
     (tmp_path / "check.c").write_text(r'''
 #include "flat.h"
 #include "counted.h"
@@ -68,7 +54,6 @@ typedef struct { int variant; void *context; const void *input, *constant; void 
 static Context ctx[6]={{0},{1},{2},{3},{4},{5}};
 static Log logs[6], expected[6];
 static int used, fail=-1, admissions, decision=1;
-extern int allocations, fail_allocation;
 static int execute(int i, void *c, const void *const *in, void *const *out) {
   assert(c == &ctx[i] && ((Context *)c)->variant == i);
   logs[used++]=(Log){i,c,in[0],in[1],out[0]};
@@ -81,7 +66,6 @@ static int execute(int i, void *c, const void *const *in, void *const *out) {
 WRAPPER(0) WRAPPER(1) WRAPPER(2) WRAPPER(3) WRAPPER(4) WRAPPER(5)
 static int admit(void *opaque, const counted_loop *loop) {
   assert(opaque==ctx && used==0);
-  assert(allocations==1);
   assert(loop->count==6 && loop->offset==1 && loop->period==2 && loop->trip_count==2);
   for (unsigned i=0;i<6;++i) {
     assert(loop->calls[i].context==&ctx[i]);
@@ -104,16 +88,11 @@ int main(void) {
   memcpy(expected,logs,sizeof(logs)); memcpy(reference,result,4);
   assert(fs.completed==6 && !fs.active);
   for (unsigned j=0;j<4;++j) assert(reference[j]==input[j]+6*constant[j]+15);
-  used=0; fail_allocation=1; counted_state untouched=ls;
-  assert(counted_run_loop(&ls,arena,64,b,3,&loop_ctx,admit,ctx)==COUNTED_INVALID);
-  assert(!used && !allocations && !admissions && !memcmp(&untouched,&ls,sizeof(ls)));
-  fail_allocation=0;
   for(int mode=0;mode<3;++mode) {
     used=0; memset(arena,0xcd,64); memset(result,0,4); ls=(counted_state){0};
     decision=mode==0?0:1;
     assert(counted_run_loop(&ls,arena,64,b,3,&loop_ctx,mode==2?0:admit,ctx)==COUNTED_OK);
     assert(used==6 && ls.completed==6 && !ls.active);
-    assert(!allocations);
     assert(!memcmp(reference,result,4));
     for(int i=0;i<6;++i) {
       assert(logs[i].variant==expected[i].variant && logs[i].context==expected[i].context);
@@ -124,20 +103,18 @@ int main(void) {
   assert(admissions==2);
   used=0; decision=2; counted_state before=ls;
   assert(counted_run_loop(&ls,arena,64,b,3,&loop_ctx,admit,ctx)==COUNTED_INVALID);
-  assert(!used && !allocations && !memcmp(&before,&ls,sizeof(ls)));
+  assert(!used && !memcmp(&before,&ls,sizeof(ls)));
   for(int mode=0;mode<2;++mode) {
     used=0; fail=4; decision=mode; ls=(counted_state){0};
     assert(counted_run_loop(&ls,arena,64,b,3,&loop_ctx,admit,ctx)==COUNTED_KERNEL_ERROR);
     assert(ls.active && ls.completed==4 && ls.kernel_status==37 && used==5);
-    assert(!allocations);
     assert(counted_run_loop(&ls,arena,64,b,3,&loop_ctx,admit,ctx)==COUNTED_BUSY && used==5);
-    assert(!allocations);
   }
   return 0;
 }
 ''')
     subprocess.run([compiler, "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
-                    "flat.c", "counted_alloc.c", "check.c", "-o", "check"],
+                    "flat.c", "counted.c", "check.c", "-o", "check"],
                    cwd=tmp_path, check=True, capture_output=True, timeout=60)
     subprocess.run([str(tmp_path / "check")], check=True, capture_output=True, timeout=10)
 
@@ -227,3 +204,17 @@ def test_loop_entry_symbol_collision_rejected():
     loop = prepare_dispatch_loop(program, calls, offset=1, period=2, trip_count=2)
     with pytest.raises(ValueError, match="conflicts"):
         emit_program_c(program, "test", calls, loop=loop)
+
+
+def test_a_counted_loop_calls_each_kernel_directly_and_takes_no_kernel_address():
+    """A static stack bound follows a function pointer to every address-taken function, so the table holds none."""
+    import re
+
+    program, calls = fixture()
+    schedule = prepare_dispatch_loop(program, calls, offset=1, period=2, trip_count=2)
+    _, files = emit_program_c(program, "counted", calls, loop=schedule)
+    source = files["counted.c"]
+    for call in calls.values():
+        uses = re.findall(r"\b" + call.symbol + r"\b.{0,24}", source)
+        assert uses and all(use.startswith((call.symbol + "(void *", call.symbol + "(call->context")) for use in uses), uses
+    assert "unsigned body;" in files["counted.h"] and not re.search(r"\(\*\w+\)\s*\(", source)

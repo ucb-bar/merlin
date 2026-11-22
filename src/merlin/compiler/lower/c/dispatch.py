@@ -601,9 +601,10 @@ int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
 """
     if loop is not None:
         header += f"""
-typedef int (*{name}_wrapper)(void *, const void *const *, void *const *);
+/* body numbers the call's kernel among this program's kernels; calls run by direct call, so no kernel's address
+ * is taken (a static stack bound would follow any function pointer to every address-taken function). */
 typedef struct {{
-  {name}_wrapper function;
+  unsigned body;
   void *context;
   const void *const *inputs;
   void *const *outputs;
@@ -623,12 +624,19 @@ int {name}_run_loop({name}_state *state, void *arena, size_t arena_bytes,
                     {name}_loop_hook hook, void *hook_context);
 """
     body = ["#include <stdint.h>"]
-    if loop is not None:
-        body.append("#include <stdlib.h>")
-    for symbol in sorted({call.symbol for call in calls.values()}):
+    kernels = sorted({call.symbol for call in calls.values()})
+    for symbol in kernels:
         if symbol == name + "_run" or (loop is not None and symbol == name + "_run_loop"):
             raise ValueError("kernel symbol conflicts with generated entry")
         body.append(f"extern int {symbol}(void *, const void *const *, void *const *);")
+    if loop is not None:
+        cases = "".join(f"  case {i}u: return {symbol}(call->context, call->inputs, call->outputs);\n"
+                        for i, symbol in enumerate(kernels))
+        body.append(f"""static int {name}_call_body(const {name}_call *call) {{
+  switch (call->body) {{
+{cases}  default: return -1;
+  }}
+}}""")
     signature = f"""int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
                const {name}_buffer *buffers, size_t buffer_count, void *context)"""
     if loop is not None:
@@ -715,12 +723,16 @@ int {name}_run_loop({name}_state *state, void *arena, size_t arena_bytes,
     else:
         input_count = sum(max(1, len(node.inputs)) for node in graph.nodes)
         output_count = sum(max(1, len(node.outputs)) for node in graph.nodes)
-        body.append(f"""  struct {{
+        # One static table, not the heap (a board host declares none) and not the stack (it grows with the calls).
+        body.append(f"""  static struct {name}_bindings {{
     {name}_call calls[{len(graph.nodes)}];
     const void *inputs[{input_count}];
     void *outputs[{output_count}];
-  }} *bindings = malloc(sizeof(*bindings));
-  if (!bindings) return {upper}_INVALID;""")
+  }} table;
+  static unsigned char table_busy;
+  if (table_busy) return {upper}_BUSY;
+  table_busy = 1;
+  struct {name}_bindings *bindings = &table;""")
     input_offset, output_offset = 0, 0
     for index, node in enumerate(graph.nodes):
         inputs = ", ".join(pointer(key) for key in node.inputs) or "0"
@@ -739,7 +751,7 @@ int {name}_run_loop({name}_state *state, void *arena, size_t arena_bytes,
                 body.append(f"  bindings->outputs[{output_offset}] = 0;")
             # Assign fields directly: a compound literal for every call can
             # itself produce a large automatic frame in unoptimized builds.
-            body.append(f"""  bindings->calls[{index}].function = {calls[index].symbol};
+            body.append(f"""  bindings->calls[{index}].body = {kernels.index(calls[index].symbol)}u;
   bindings->calls[{index}].context = {context};
   bindings->calls[{index}].inputs = bindings->inputs + {input_offset}u;
   bindings->calls[{index}].outputs = bindings->outputs + {output_offset}u;
@@ -758,7 +770,7 @@ int {name}_run_loop({name}_state *state, void *arena, size_t arena_bytes,
     if loop is not None:
         body.append(f"""  const {name}_loop schedule = {{bindings->calls, {len(graph.nodes)}u, {loop.offset}u, {loop.period}u, {loop.trip_count}u}};
   int admitted = hook ? hook(hook_context, &schedule) : 0;
-  if (admitted != 0 && admitted != 1) {{ free(bindings); return {upper}_INVALID; }}
+  if (admitted != 0 && admitted != 1) {{ table_busy = 0; return {upper}_INVALID; }}
   state->active = 1; state->completed = 0; state->kernel_status = 0;
   size_t next = 0;
   /* Flat and counted paths use the same immutable original call table. */
@@ -770,12 +782,12 @@ int {name}_run_loop({name}_state *state, void *arena, size_t arena_bytes,
     }}
     for (; next < stop; ++next) {{
       const {name}_call *call = &bindings->calls[next];
-      state->kernel_status = call->function(call->context, call->inputs, call->outputs);
-      if (state->kernel_status) {{ free(bindings); return {upper}_KERNEL_ERROR; }}
+      state->kernel_status = {name}_call_body(call);
+      if (state->kernel_status) {{ table_busy = 0; return {upper}_KERNEL_ERROR; }}
       state->completed = next + 1u;
     }}
   }}
-  free(bindings);""")
+  table_busy = 0;""")
     body.append(f"  state->active = 0; return {upper}_OK;\n}}")
     if loop is not None:
         body.append(f"""int {name}_run({name}_state *state, void *arena, size_t arena_bytes,
