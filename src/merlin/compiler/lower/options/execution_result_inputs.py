@@ -25,6 +25,9 @@ def resolve(source, signature, arrays):
             raise ValueError("execution result invocation changes original storage/rank/static dimensions")
         if row["dtype"] == "i4" and np.any(array > 15):
             raise ValueError("execution result i4 inputs require unpacked canonical uint8 cells in 0..15")
+        if row["dtype"] == "i1" and np.any(array.view(np.uint8) > 1):
+            raise ValueError("execution Boolean inputs require canonical source storage")
+    dimension_names = {size for row in constraints["inputs"] for size in row["shape"] if isinstance(size, str)}
     for name, coordinate in constraints["dimension_bindings"].items():
         values[name] = arrays[coordinate["argument"]].shape[coordinate["axis"]]
     for row, array in zip(constraints["inputs"], arrays, strict=True):
@@ -33,7 +36,8 @@ def resolve(source, signature, arrays):
                 raise ValueError("execution result scalar is outside its original input bounds")
             if "scalar" in row:
                 value = array.item()
-                if type(value) is not int or row["scalar"] in values and values[row["scalar"]] != value:
+                if (row["scalar"] in dimension_names and type(value) is not int
+                        or row["scalar"] in values and values[row["scalar"]] != value):
                     raise ValueError("execution result scalar/axis dimensions disagree")
                 values[row["scalar"]] = value
     for row, array in zip(constraints["inputs"], arrays, strict=True):

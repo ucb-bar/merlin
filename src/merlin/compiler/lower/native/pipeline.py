@@ -95,6 +95,7 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.lower.options.bfloat_integer_casts",
         "merlin.compiler.lower.options.bfloat_transport",
         "merlin.compiler.lower.options.fp8_widening",
+        "merlin.compiler.lower.options.fp8_elementwise",
         "merlin.compiler.lower.options.fp8_narrowing",
         "merlin.compiler.lower.options.atomic_compare_exchange",
         "merlin.compiler.lower.options.atomic_word_compare_exchange",

@@ -36,7 +36,8 @@ def _fp8_widen(module, *, _generalized=False):
         transport = {'arith.constant', 'arith.bitcast', 'arith.select',
             'memref.load', 'memref.store', 'tensor.extract', 'tensor.insert', 'tensor.from_elements',
             'tensor.yield', 'linalg.yield', 'linalg.fill', 'linalg.generic', 'func.return',
-            'scf.if', 'scf.for', 'scf.while', 'scf.yield', 'scf.condition', 'cf.br', 'cf.cond_br'}
+            'scf.if', 'scf.for', 'scf.while', 'scf.yield', 'scf.condition', 'cf.br', 'cf.cond_br',
+            'memref.atomic_rmw','memref.generic_atomic_rmw','memref.atomic_yield'}
         for op in tuple(_f8w_walk(module.operation)):
             values = tuple(op.operands)+tuple(op.results)
             if op.name == 'arith.extf' and any(
@@ -194,10 +195,15 @@ def bind_runner(source, *, selected):
 
 
 def edit_pipeline(passes):
+    from merlin.compiler.lower.options.fp8_elementwise import MARKER as ELEMENTWISE
     from merlin.compiler.lower.options.fp8_narrowing import MARKER as NARROWING
 
     if MARKER in passes:
         raise ValueError("FP8 widening requires an unmodified source pipeline")
+    if ELEMENTWISE in passes:
+        if passes.count(ELEMENTWISE) != 1 or passes[0] != ELEMENTWISE:
+            raise ValueError("FP8 math must precede casts at the initial source seam")
+        return [ELEMENTWISE, *edit_pipeline(passes[1:])]
     if NARROWING in passes:
         if passes.count(NARROWING) != 1 or passes[0] != NARROWING:
             raise ValueError("FP8 narrowing must precede widening at the initial source seam")

@@ -371,6 +371,10 @@ def _select_runner(
     from merlin.compiler.lower.options.fp8_narrowing import bind_runner as _bind_fp8_narrowing
 
     source = _bind_fp8_narrowing(source, selected=_FP8_NARROWING in feats)
+    from merlin.compiler.lower.options.fp8_elementwise import FEATURE as _FP8_ELEMENTWISE
+    from merlin.compiler.lower.options.fp8_elementwise import bind_runner as _bind_fp8_elementwise
+
+    source = _bind_fp8_elementwise(source, selected=_FP8_ELEMENTWISE in feats)
     from merlin.compiler.lower.options.bfloat_transport import FEATURE as _BFLOAT_TRANSPORT
     from merlin.compiler.lower.options.bfloat_transport import bind_runner as _bind_bfloat_transport
 

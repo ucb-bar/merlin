@@ -161,8 +161,14 @@ def bind_runner(source, *, selected):
 
 
 def edit_pipeline(passes):
+    from merlin.compiler.lower.options.fp8_elementwise import MARKER as ELEMENTWISE
+
     if MARKER in passes:
         raise ValueError("FP8 narrowing requires an unmodified source pipeline")
+    if ELEMENTWISE in passes:
+        if passes.count(ELEMENTWISE) != 1 or passes[0] != ELEMENTWISE:
+            raise ValueError("FP8 math must precede casts at the initial source seam")
+        return [ELEMENTWISE, MARKER, *passes[1:]]
     return [MARKER, *passes]
 
 

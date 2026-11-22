@@ -112,7 +112,7 @@ def _types(module, entry):
 def _constraints(inputs, rows, bindings):
     if not isinstance(rows, list) or len(rows) != len(inputs) or not isinstance(bindings, dict):
         raise ValueError("executed result inputs need their complete original constraints")
-    names, scalar_names = set(), set()
+    names, scalar_names, noninteger_scalars = set(), set(), set()
     for original, actual in zip(rows, inputs, strict=True):
         if (
             not isinstance(original, dict)
@@ -144,6 +144,8 @@ def _constraints(inputs, rows, bindings):
             if actual["kind"] != "scalar" or type(original["scalar"]) is not str or not original["scalar"]:
                 raise ValueError("invalid original scalar dimension binding")
             scalar_names.add(original["scalar"])
+            if actual["dtype"] in ("i1", "f32", "f64"):
+                noninteger_scalars.add(original["scalar"])
     for name, coordinate in bindings.items():
         if (
             type(name) is not str
@@ -161,6 +163,8 @@ def _constraints(inputs, rows, bindings):
             raise ValueError("execution input-axis binding changes its actual source coordinate")
     if names - set(bindings) - scalar_names:
         raise ValueError("execution input dimension has no original axis/scalar binding")
+    if names & noninteger_scalars:
+        raise ValueError("execution input dimensions require non-Boolean integer scalars")
 
 
 def select_signature(module, signature, mode, *, allocation_policy=None):

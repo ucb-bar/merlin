@@ -174,6 +174,17 @@ selected element, including inside source diagnostic/control code. The carrier
 preserves its original FP8 values; this does not admit FP8 arithmetic, opaque
 calls or new effects. The complete current module is verified before edits.
 
+`lower/options/fp8_elementwise.py` composes the official arithmetic and math
+float-emulation passes with f64 intermediates and exact FP8 result casts.
+New casts have neutral flags so every original rounding boundary remains;
+source fast-math permissions can use the strict refinement. FMA widens its
+original operands before multiplying. Negation, absolute value and copy-sign
+instead retain exact words, including NaN payloads and FNUZ zero/NaN rules.
+The feature implies both cast legalizations and runs before them. Cast handling
+does not authorize atomic effects; their separate source/body checks remain.
+Execution-owned input validation also distinguishes ordinary Boolean controls
+from integer dimensions and rejects noncanonical Boolean storage before entry.
+
 `merlin.compiler.lower.native.pipeline.lower_to_llvm_ir` retains
 `owned_result_allocations=` and its typed resource selection. Destination reuse
 and returned-loop ownership checks run at their existing bufferization and
