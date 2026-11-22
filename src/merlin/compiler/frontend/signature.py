@@ -18,7 +18,7 @@ from merlin.capture.safetensors import read_header
 from merlin.common import digest as _mdigest
 from merlin.common.digest import is_sha256
 from merlin.compiler.dialects.xdsl_context import text as module_text
-from merlin.compiler.frontend.inputs import CONSTANT_FILE, _ArchiveInfo
+from merlin.compiler.frontend.input_types import CONSTANT_FILE, _ArchiveInfo
 from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
 
 # ---- signature ---------------------------------------------------------------------------------
@@ -131,7 +131,7 @@ def _argument_bindings(
             or not isinstance(row.get("shape"), list)
             or any(type(extent) is not int or extent < 0 for extent in row["shape"])
             or row["shape"] != actual["shape"]
-            or dtype[0] != actual["dtype"]
+            or not (dtype[0] == actual["dtype"] or dtype_name == "uint8" and actual["dtype"] == "i8")
         ):
             raise ValueError("weight argument shape or dtype differs from parsed function")
         stored = headers[file].get(name)

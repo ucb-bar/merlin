@@ -11,7 +11,7 @@ from merlin.compiler.frontend.patterns.narrow_float import (
     recognize_bf16_f32_chop_sub,
     recognize_bf16_fp8_truncation,
     recognize_bf16_product_rne,
-    recognize_bf16_sign_clamp_relu,
+    SELECT_ATTRS, recognize_bf16_ordered_select_relu, recognize_bf16_sign_flip,
     recognize_ordered_fp8_bf16_reset_matmul,
 )
 from merlin.compiler.semantic.linalg.linalg_recognition import (
@@ -198,12 +198,17 @@ def translate(state: TranslationState, op, ordinal):
         return True
 
     if op.name == "linalg.generic" and len(op.inputs) == 1 and (_type(op.results[0].type).dtype == "bf16"):
+        operation, attrs = "relu", tuple(sorted(SELECT_ATTRS.items()))
         try:
-            source_value, destination = recognize_bf16_sign_clamp_relu(op)
+            source_value, destination = recognize_bf16_ordered_select_relu(op)
         except InvalidLinalgPattern as exc:
-            raise LinalgBridgeError(str(exc)) from exc
+            try:
+                source_value, destination = recognize_bf16_sign_flip(op)
+            except InvalidLinalgPattern:
+                raise LinalgBridgeError(str(exc)) from exc
+            operation, attrs = "bf16_neg", (("numeric_semantics", "bf16-sign-bit-flip-v1"),)
         if source_value not in env or env[source_value] is None or destination not in env:
-            raise LinalgBridgeError("BF16 ReLU reads an undefined or uninitialized tensor")
+            raise LinalgBridgeError("BF16 unary generic reads an undefined or uninitialized tensor")
         source_type = _type(source_value.type)
         destination_type = _type(destination.type)
         result_type = _type(op.results[0].type)
@@ -213,16 +218,16 @@ def translate(state: TranslationState, op, ordinal):
             or result_type.dtype != "bf16"
             or source_type.shape != result_type.shape
         ):
-            raise LinalgBridgeError("BF16 ReLU result or destination differs from its source shape and dtype")
+            raise LinalgBridgeError("BF16 unary generic result or destination differs from its source shape and dtype")
         node_id = f"op{ordinal}r0"
         nodes.append(
             SemanticNode(
                 node_id,
-                "relu",
+                operation,
                 (env[source_value],),
                 result_type,
-                attrs=(("input_domain", "finite-normal-or-zero-bf16"), ("numeric_semantics", "bf16-sign-clamp-v1")),
-                index_maps=pointwise_identity_maps(2, 1),
+                attrs=attrs,
+                index_maps=pointwise_identity_maps(len(result_type.shape), 1),
             )
         )
         env[op.results[0]] = node_id
