@@ -7,7 +7,8 @@ from pathlib import Path
 import pytest
 import sim_toolchain
 
-from merlin.development.targetgen.sandbox import grants as BW
+from merlin.development.targetgen.sandbox import bwrap as BW
+from merlin.development.targetgen.sandbox import grants
 from merlin.development.targetgen.sandbox.answer_surfaces import (
     AnswerSurface,
     answer_surfaces,
@@ -22,11 +23,11 @@ _NO_SANDBOX = None if _SANDBOX.usable else _SANDBOX.describe()
 
 def remove_bundle_snapshot(ws: Path) -> None:
     """Tear down this test's immutable scratch snapshot without chmodding shared blobs."""
-    root = BW.bundle_snapshot_root(ws)
+    root = grants.bundle_snapshot_root(ws)
     if root.is_symlink():
         raise RuntimeError(f"refusing to remove symlinked bundle snapshot: {root}")
     if root.exists():
-        BW._make_snapshot_writable(root)
+        grants._make_snapshot_writable(root)
         shutil.rmtree(root)
 
 
@@ -43,6 +44,7 @@ def _sim_family_policy_without_its_checkout(monkeypatch, tmp_path_factory):
 __all__ = [
     "AnswerSurface",
     "BW",
+    "grants",
     "_NO_SANDBOX",
     "_SANDBOX",
     "_sim_family_policy_without_its_checkout",

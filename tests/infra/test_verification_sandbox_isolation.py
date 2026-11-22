@@ -10,6 +10,7 @@ from verification_witnesses.sandbox_isolation import (
     _sim_family_policy_without_its_checkout,
     answer_surfaces,
     audit_tokens,
+    grants,
     probe_sandbox,
     pytest,
     remove_bundle_snapshot,
@@ -27,7 +28,7 @@ def test_missing_declared_grant_refuses_snapshot(tmp_path):
     bundle = {"allowed": [{"path": "does/not/exist.txt"}]}
     with pytest.raises(FileNotFoundError, match="unresolvable allowed grant"):
         BW.materialize_bundle_inputs(ws, bundle, repo=repo)
-    assert not BW.bundle_snapshot_root(ws).exists()
+    assert not grants.bundle_snapshot_root(ws).exists()
 
 
 @pytest.mark.usefixtures("_sim_family_policy_without_its_checkout")
@@ -46,9 +47,9 @@ def test_snapshot_bytes_do_not_follow_later_source_edits(tmp_path):
         assert manifest["n_files"] == 1
         assert manifest["n_bytes"] == len("before\n")
         assert len(manifest["content_sha256"]) == 64
-        frozen = BW.bundle_snapshot_root(ws) / manifest["grants"][0]["snapshot"]
+        frozen = grants.bundle_snapshot_root(ws) / manifest["grants"][0]["snapshot"]
         assert not frozen.stat().st_mode & 146
-        assert not BW.bundle_snapshot_root(ws).stat().st_mode & 146
+        assert not grants.bundle_snapshot_root(ws).stat().st_mode & 146
         ws.mkdir(parents=True)
         (ws / "contract.txt").symlink_to(source)
         source.write_text("after\n", encoding="utf-8")
