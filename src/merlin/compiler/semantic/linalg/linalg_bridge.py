@@ -19,8 +19,8 @@ binary64. Runtime-sized compaction and general control flow remain unsupported.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from math import prod
 
@@ -72,6 +72,59 @@ from merlin.compiler.semantic.scalar_reference import TensorValue
 # ---- linalg_bridge -----------------------------------------------------------------------------
 
 
+
+def _elementwise(node):
+    # insert_slice maps place its source into the destination (loops over the source); they are not reads over
+    # the result, even when an offset-zero placement equals the identity.
+    rank = len(node.type.shape)
+    return (node.effect == "pure" and rank > 0 and node.op != "insert_slice"
+            and len(node.index_maps) == len(node.inputs) + 1 and all(mapping.loop_rank == rank for mapping in node.index_maps)
+            and node.index_maps[-1] == pointwise_identity_maps(rank, 1)[-1])
+
+
+def broadcast_splat_literals(translation, splats):
+    """Keep each splat literal read only by elementwise nodes as one element.
+
+    Every read of a splat returns the same bits, so zero index-map rows over a
+    one-element tensor read exactly what the dense literal held. A literal with
+    any other reader, or returned, stays dense.
+    """
+    request = translation.request
+    readers = {key: [] for key in splats}
+    for node in request.nodes:
+        for key in node.inputs:
+            if key in readers:
+                readers[key].append(node)
+    scalar = {key for key, users in readers.items()
+              if key not in request.outputs and users and all(_elementwise(node) for node in users)}
+    if not scalar:
+        return translation
+
+    def one(type_):
+        return TensorType((1,) * len(type_.shape), type_.dtype, type_.numerical_policy)
+
+    def zero(mapping):
+        return IndexMap(mapping.loop_rank, tuple((0,) * mapping.loop_rank for _ in mapping.coefficients),
+                        (0,) * len(mapping.offsets))
+
+    nodes = []
+    for node in request.nodes:
+        if node.id in scalar:
+            node = SemanticNode(node.id, node.op, (), one(node.type), attrs=node.attrs, effect=node.effect)
+        elif any(key in scalar for key in node.inputs):
+            maps = tuple(zero(mapping) if key in scalar else mapping
+                         for key, mapping in zip((*node.inputs, None), node.index_maps))
+            node = SemanticNode(node.id, node.op, node.inputs, node.type, attrs=node.attrs, effect=node.effect,
+                                index_maps=maps)
+        nodes.append(node)
+    constants = translation.constants
+    widths = {key: len(constants[key].elements) for key in scalar}
+    bindings = tuple(ConstantBinding(row.node_id, row.encoding, row.data_hex[:len(row.data_hex) // widths[row.node_id]])
+                     if row.node_id in scalar else row for row in request.constants)
+    constants = {key: TensorValue(one(value.type), value.elements[:1]) if key in scalar else value
+                 for key, value in constants.items()}
+    return replace(translation, request=replace(request, nodes=tuple(nodes), constants=bindings), constants=constants)
+
 def translate_linalg_text(
     source: str,
     *,
@@ -80,17 +133,22 @@ def translate_linalg_text(
     lowering_policy: str = "strict-native",
     boundary_storage: str = "external",
     argument_constants: Mapping[int, bytes] | None = None,
+    source_operation_translators: Mapping[str, Callable] | None = None,
 ) -> LinalgTranslation:
     """Translate one admitted function, preserving its init and ordered returns.
 
     The source is parsed by Merlin's established xDSL frontend. The shared
     generic-matmul recognizer checks maps, iterators, scalar body,
     signed extension, widths, and operand connections before translation.
+    Explicit provider callbacks preserve ordered operands, result types, and
+    pure effects through shared registered-source admission checks; their
+    source semantics do not grant any target implementation.
     """
     from xdsl.dialects.builtin import DictionaryAttr, IntegerAttr, StringAttr
     from xdsl.dialects.linalg.attrs import IteratorType
 
     from merlin.compiler.frontend.linalg_mlir import parse_mlir_text
+    from merlin.compiler.semantic.linalg.registered_source import operation_name, translate_registered_source
     from merlin.compiler.frontend.patterns.comparisons import (
         StaticIotaResourceLimit,
         recognize_f32_nonzero,
@@ -109,10 +167,12 @@ def translate_linalg_text(
         recognize_bf16_f32_chop_sub,
         recognize_bf16_fp8_truncation,
         recognize_bf16_product_rne,
-        recognize_bf16_sign_clamp_relu,
         recognize_ordered_fp8_bf16_reset_matmul,
     )
 
+    translators = {} if source_operation_translators is None else dict(source_operation_translators)
+    if any(not isinstance(name, str) or not name or not callable(callback) for name, callback in translators.items()):
+        raise LinalgBridgeError("source translators require named callable registrations")
     module = parse_mlir_text(source)
     functions = [op for op in module.walk() if op.name == "func.func" and op.sym_name.data == entry]
     if len(functions) != 1:
@@ -139,6 +199,7 @@ def translate_linalg_text(
     f32_scalars: dict[object, int] = {}
     f64_scalars: dict[object, int] = {}
     boolean_scalars: dict[object, int] = {}
+    bf16_scalars: dict[object, int] = {}
     bf16_zeros: set[object] = set()
     zero_fills: set[object] = set()
     constants: dict[str, TensorValue] = {}
@@ -228,6 +289,7 @@ def translate_linalg_text(
         f32_scalars=f32_scalars,
         f64_scalars=f64_scalars,
         boolean_scalars=boolean_scalars,
+        bf16_scalars=bf16_scalars,
         bf16_zeros=bf16_zeros,
         zero_fills=zero_fills,
         constants=constants,
@@ -247,6 +309,9 @@ def translate_linalg_text(
         indexed_prelude=indexed_prelude,
         indexed_updates=indexed_updates,
     )
+    from merlin.compiler.semantic.linalg import cnn
+
+    windows, cnn_prelude = cnn.prepare(operations)
     handlers = (
         linalg_scalar.translate,
         linalg_preparation.translate,
@@ -256,11 +321,21 @@ def translate_linalg_text(
         linalg_returns.translate,
     )
     for ordinal, op in enumerate(operations):
-        source_operations.append(op.name)
+        source_name = operation_name(op)
+        source_operations.append(source_name)
+        if op in cnn_prelude or cnn.translate(state, op, ordinal, windows):
+            continue
+        translator = translators.get(source_name)
+        if translator is not None:
+            translate_registered_source(op, translator=translator, ordinal=ordinal, env=env, nodes=nodes)
+            continue
         for handler in handlers:
-            result = handler(state, op, ordinal)
+            try:
+                result = handler(state, op, ordinal)
+            except LinalgBridgeError as exc:
+                raise LinalgBridgeError(f"source operation {ordinal} ({source_name}): {exc}") from exc
             if isinstance(result, LinalgTranslation):
-                return result
+                return broadcast_splat_literals(result, set(splat_literals.values()))
             if result:
                 break
         else:

@@ -38,15 +38,19 @@ def translate(state: TranslationState, op, ordinal):
         outputs = tuple(env.get(value) for value in op.operands)
         if any(output is None for output in outputs):
             raise LinalgBridgeError("function returns an undefined or uninitialized tensor")
+        from merlin.compiler.semantic.linalg.source_compositions import collapse_source_compositions
+
+        collapsed, bindings = collapse_source_compositions(tuple(nodes), outputs, tuple(constant_bindings))
+        constants = {key: value for key, value in constants.items() if any(node.id == key for node in collapsed)}
         request = KernelRequest(
-            nodes=tuple(nodes),
+            nodes=collapsed,
             outputs=outputs,
             output_storages=(boundary_storage,) * len(outputs),
             input_storages=tuple(boundaries),
             target_identity=target_identity,
             lowering_policy=lowering_policy,
             source_identity=sha256(source.encode()).hexdigest(),
-            constants=tuple(constant_bindings),
+            constants=bindings,
         )
         return LinalgTranslation(request, constants, tuple(source_operations))
         return True
