@@ -31,9 +31,14 @@ _BIAS_SPLIT_SCHEMA = "merlin.prequantized_bias.v1"
 
 
 def is_prequantized_bias_add(source, node):
-    """Recognize split structure; the replay receipt authenticates its origin."""
-    if (node.effect != "pure" or node.op != "bf16_add"
-            or node.inputs != (node.id + ".readout", node.id + ".bias")
+    """Recognize a BF16 bias add after a prequantized readout.
+
+    The split form's replay receipt authenticates its origin. A source add has
+    the same operands in the same order, so it is admitted only with a live
+    column broadcast; a constant second operand stays an ordinary add.
+    """
+    split = node.inputs == (node.id + ".readout", node.id + ".bias")
+    if (node.effect != "pure" or node.op != "bf16_add" or len(node.inputs) != 2
             or node.type.dtype != "bf16" or not node.type.shape
             or node.type.numerical_policy != "raw-bit-pattern"
             or dict(node.attrs) != {"numeric_semantics": "ieee754-bf16-add-rne-v1"}):
@@ -51,6 +56,8 @@ def is_prequantized_bias_add(source, node):
                 and node.index_maps == pointwise_identity_maps(rank, 2)):
             return False
         if bias.effect == "constant":
+            if not split:
+                return False
             # Exact source preparation can fold the column broadcast. Its
             # dense bytes must still be declared by one complete BF16 binding;
             # the source-preparation receipt authenticates the fold's origin.
