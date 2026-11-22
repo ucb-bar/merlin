@@ -2,7 +2,6 @@
 from dataclasses import replace
 import shutil
 import subprocess
-from types import SimpleNamespace
 
 import pytest
 
@@ -158,9 +157,44 @@ def test_large_loop_has_bounded_stack_frame(tmp_path):
                    cwd=tmp_path, check=True, capture_output=True, timeout=60)
 
 
+def planned():
+    """Two repeated regions emitted from a selected plan, as the application render builds them."""
+    from merlin.compiler.partition.semantic_regions import outline_semantic_regions
+    from merlin.compiler.semantic.model import KernelRequest, SemanticNode, TensorType, pointwise_identity_maps
+    from semantic_application_fixtures import plan_for
+
+    tensor = TensorType((1,), "f32", "raw-bit-pattern")
+    nodes = [SemanticNode(key, "input", (), tensor, effect="input") for key in ("x", "w0", "w1")]
+    nodes += [SemanticNode(f"r{i}", "f32_add", (("x", "r0")[i], f"w{i}"), tensor,
+                           (("numeric_semantics", "ieee754-f32-add-rne-v1"),),
+                           index_maps=pointwise_identity_maps(1, 2)) for i in range(2)]
+    source = KernelRequest(tuple(nodes), ("r1",), ("external",), tuple((key, "external") for key in ("x", "w0", "w1")),
+                           "synthetic")
+    plan = plan_for(source, ((0,), (1,)))
+    plan = replace(plan, selected=(replace(plan.selected[0], placement="host", implementation="shared_kernel"),
+                                   replace(plan.selected[1], placement="host")))
+    outlined = outline_semantic_regions(source, entry="test", plan=plan)
+    program = build_program(outlined.logical, global_plan=plan, global_plan_emitter=outlined,
+                            memory_requirements=lambda graph: ArenaRequirements(
+                                256, (0, 2), (1, 3), dispatch_digest=dispatch_digest(graph)))
+    return program, {i: DispatchCall(f"variant{i}", "host", context_index=i) for i in range(2)}
+
+
 def test_stale_schedule_rejected():
-    for field in ("source", "placement", "symbol", "context", "binding", "memory", "authority"):
-        program, calls = fixture()
+    for field in ("source", "placement", "symbol", "context", "binding", "memory", "authority", "plan"):
+        program, calls = planned() if field == "plan" else fixture()
+        if field == "plan":
+            loop = prepare_dispatch_loop(program, calls, offset=0, period=1, trip_count=2)
+            emit_program_c(program, "test", calls, loop=loop)
+            # The same dispatch under a different selected implementation, with an emission updated to match.
+            plan = program.global_plan
+            program.global_plan = replace(plan, selected=(
+                replace(plan.selected[0], implementation="different_kernel"), *plan.selected[1:]))
+            program.global_plan_emission = replace(program.global_plan_emission,
+                                                   plan_digest=program.global_plan.digest)
+            with pytest.raises(ValueError, match="loop differs"):
+                emit_program_c(program, "test", calls, loop=loop)
+            continue
         loop = prepare_dispatch_loop(program, calls, offset=1, period=2, trip_count=2)
         if field == "source":
             program.dispatch.nodes[0].op = "changed"
@@ -185,13 +219,6 @@ def test_invalid_bounds_refused():
     for bounds in ((-1, 2, 2), (True, 2, 2), (1, 0, 2), (1, 2, 1), (1, 3, 2)):
         with pytest.raises(ValueError, match="bounds"):
             prepare_dispatch_loop(program, calls, offset=bounds[0], period=bounds[1], trip_count=bounds[2])
-
-
-def test_loop_authority_binds_the_emitted_plan_receipt():
-    program, calls = fixture()
-    loop = prepare_dispatch_loop(program, calls, offset=1, period=2, trip_count=2)
-    program.global_plan_emission = SimpleNamespace(receipt=lambda: {"plan_digest": "changed"})
-    assert prepare_dispatch_loop(program, calls, offset=1, period=2, trip_count=2) != loop
 
 
 def test_loop_entry_symbol_collision_rejected():

@@ -730,10 +730,19 @@ def _normal_loop(outlined, plan, adapter):
 
 
 def _bind_normal_region(adapter, candidate, compiled, region, alternative, segments, target_source):
+    from .deployment import selected as onchip_selected
+
     representative = compiled[candidate.index]
     if isinstance(representative, NativeCompilationError):
         return None
-    package = adapter.bind_loop_region(representative, region, alternative, candidate.nodes, segments, target_source)
+    try:
+        package = adapter.bind_loop_region(representative, region, alternative, candidate.nodes, segments,
+                                           target_source)
+    except NativeCompilationError as error:
+        # On-chip, a binding refused for resource_limit is a decline: the region compiles itself, as unbound.
+        if not onchip_selected() or error.status != "resource_limit":
+            raise
+        return None
     if package is None:
         return None
     if (
@@ -818,17 +827,21 @@ def _compile_semantic_application(
     from .region_fit import staging_reason
     staging = staging_reason(outlined, plan, current_codegen_options().io_memory_capacity_bytes, parameters) if onchip_selected() else None
     normal_loop, normal_bound = _normal_loop(outlined, plan, adapter) if staging is None else (None, {})
+    def compile_own(i, key, region):
+        return (compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
+                adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits))
+
     lowered = []
     for i, (key, region) in enumerate(outlined.regions):
         try:
-            if i in normal_bound:
+            # Once staging is known the loop is discarded, so later regions compile themselves.
+            if i in normal_bound and staging is None:
                 package = _bind_normal_region(adapter, normal_bound[i], lowered, region, selected[key],
                                               segments, target_source)
                 if package is not None:
                     lowered.append(package)
                     continue
-            lowered.append(compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
-                           adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits))
+            lowered.append(compile_own(i, key, region))
         except NativeCompilationError as error:
             if not onchip_selected() or error.status != "resource_limit":
                 raise
@@ -859,20 +872,24 @@ def _compile_semantic_application(
     if staging is not None:
         def compile_slice(index, key, region, request, label, root):
             return adapter.compile_region(snapshot, request, selected[key], label, root / "segments", target_source, limits)
-        # Staged publication has no shared bodies, so each bound region compiles itself.
-        normal_loop = None
-        lowered = list(unshared)
+        # Staged publication has no shared bodies: each bound region compiles itself, as an unbound compile does.
+        normal_loop, lowered = None, list(unshared)
         for i, item in enumerate(unshared):
             if getattr(item, "body_index", None) is None:
                 continue
+            if (segments / f"region_{i:03d}").exists():
+                raise ValueError(f"provider wrote region_{i:03d} while binding a shared body")
             key, region = outlined.regions[i]
             try:
-                lowered[i] = adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments,
-                                                    target_source, limits)
+                lowered[i] = compile_own(i, key, region)
             except NativeCompilationError as error:
                 if error.status != "resource_limit":
                     raise
                 lowered[i] = error
+        # Binding runs only when no reason was found before compilation; an unbound compile then stages for its
+        # first refused region, else for the render.
+        if normal_bound:
+            staging = next((row.reason for row in lowered if isinstance(row, NativeCompilationError)), staging)
         summaries, interface, links, files = _render_staged(
             source, adapter, outlined, plan, lowered, staging, destination, compile_slice,
             state=state, parameters=parameters)
