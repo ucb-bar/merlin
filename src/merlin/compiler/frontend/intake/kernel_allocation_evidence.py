@@ -182,7 +182,8 @@ def checked_allocation_sources(checked, provenance, bound_source):
         raise ValueError("allocation source capsule differs from original/bound source")
     arguments = json.loads(copied["allocation-arguments.json"])
     if (
-        arguments.get("schema") not in ("t2m.source-allocation-arguments.v1", "t2m.source-allocation-arguments.v2")
+        arguments.get("schema") not in ("t2m.source-allocation-arguments.v1", "t2m.source-allocation-arguments.v2",
+            "t2m.source-allocation-arguments.v3")
         or arguments.get("source_entry") != binding.get("source_entry")
         or not isinstance(arguments.get("arguments"), list)
     ):
@@ -190,13 +191,16 @@ def checked_allocation_sources(checked, provenance, bound_source):
     descriptor = binding.get("descriptor_bindings")
     if descriptor is not None and (
         not capsule["normalized"]
-        or arguments["schema"] != "t2m.source-allocation-arguments.v2"
-        or descriptor.get("schema") != arguments["schema"]
+        or arguments["schema"] not in ("t2m.source-allocation-arguments.v2", "t2m.source-allocation-arguments.v3")
+        or descriptor.get("schema") != "t2m.source-allocation-arguments.v2"
         or descriptor.get("grants_semantics") is not False
         or descriptor.get("source_entry") != binding["source_entry"]
         or descriptor.get("allocation_entry") != binding["allocation_entry"]
     ):
         raise ValueError("descriptor allocation source interface differs from its custody record")
+    from merlin.compiler.frontend.intake.kernel_entry_values import checked_entry_values
+
+    checked_entry_values(arguments, binding, provenance["spec"], copied["allocation-input.mlir"])
     stage = json.loads(copied["allocation-source-stage.json"])
     input_name = (
         "allocation-normalized.ttir"

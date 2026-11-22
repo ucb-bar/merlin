@@ -3,9 +3,9 @@ title: 3. Capture and prepare numerical semantics
 kind: guide
 status: current
 owner: compiler
-last_verified: 2026-11-21
+last_verified: 2026-11-22
 related: [02-targets, 04-planning]
-code_refs: [src/merlin/capture, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, src/merlin/compiler/frontend/bindings.py, src/merlin/compiler/quantization, src/merlin/compiler/lower/options/quantization_scope.py, src/merlin/compiler/ir/provenance.py, src/merlin/target/spec/quantization.py]
+code_refs: [src/merlin/capture, src/merlin/compiler/frontend/export.py, src/merlin/compiler/frontend/staged.py, src/merlin/compiler/frontend/bindings.py, src/merlin/compiler/frontend/intake/kernel_entry_values.py, src/merlin/compiler/quantization, src/merlin/compiler/lower/options/quantization_scope.py, src/merlin/compiler/ir/provenance.py, src/merlin/target/spec/quantization.py]
 ---
 
 # 3. Capture and prepare numerical semantics
@@ -36,6 +36,18 @@ that policy is separate from backend support and numerical qualification.
 Preparation neither freezes runtime state nor replaces the program with a
 static tensor subset. Its nested source evidence remains part of the published
 compiler-only artifact roster.
+
+Original TTIR value arguments/results can use the explicit v3 allocation
+configuration. The executable source wrapper loads exact numeric scalar/tile
+arguments, calls the real original body and stores every return value to its
+declared tensor port before ordinary source inlining. Low-precision values do
+not need a native by-value entry ABI. `intake/kernel_entry_values.py`
+independently checks the retained original function types, port roster,
+storage/effects and result order. Value inputs stay separate from mutable
+pointer state and result ports, preserving capture across logical programs.
+The original/bound source capsule remains compiler-only evidence with no
+numeric, source-equivalence or target grant. Public tensor/scalar ABI schemas
+stay unchanged; runtime data, references and qualification remain separate.
 
 Derived TTIR models also replay their parent graph, exact kernel implementations,
 shape/effect checks and compiler constant declarations. Staging retains only the
