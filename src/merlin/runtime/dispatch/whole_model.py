@@ -14,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from merlin.runtime.dispatch.executor import DispatchRuntimeError
+from merlin.runtime.dispatch.errors import DispatchRuntimeError
 from merlin.runtime.execution.model_inputs import _ModelInput, plan_forward_args
 
 # ---- dispatch_transform_audit ------------------------------------------------------------------
