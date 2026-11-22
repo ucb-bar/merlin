@@ -25,9 +25,17 @@ def _view_pair(source, alternative):
         return None
     computations = [node for node in source.nodes if node.effect == "pure"]
     node = computations[alternative.nodes[0]]
-    if node.op not in {"reshape", "copy"} or node.attrs or node.index_maps or len(node.inputs) != 1:
+    if node.attrs or len(node.inputs) != 1:
         return None
     parent = source.node(node.inputs[0])
+    if node.op in {"reshape", "copy"}:
+        if node.index_maps:
+            return None
+    else:
+        from merlin.compiler.lower.c.layout import dense_read_preserves_order
+
+        if not dense_read_preserves_order(parent, node):
+            return None
     if (
         parent.effect != "pure"
         or parent.id in source.outputs

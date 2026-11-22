@@ -81,6 +81,34 @@ def bounded_dense_read_map(source, view):
     return read
 
 
+def _dense_read_offset_strides(source, view):
+    mapping = bounded_dense_read_map(source, view)
+    if mapping is None:
+        return None
+    strides = tuple(prod(source.type.shape[i + 1:]) for i in range(len(source.type.shape)))
+    offset = sum(offset * stride for offset, stride in zip(mapping.offsets, strides, strict=True))
+    flat = tuple(sum(row[axis] * stride for row, stride in
+                     zip(mapping.coefficients, strides, strict=True)) for axis in range(len(view.type.shape)))
+    return offset, flat
+
+
+def dense_read_preserves_order(source, view):
+    """Prove that a bounded affine view reads each dense element in order.
+
+    A permutation of unit-extent axes or an identity gather can change shape
+    without changing its bytes. This proves indexing and element encoding only;
+    allocation, ownership and whether aliasing is allowed belong to the caller.
+    """
+    if not 0 < prod(source.type.shape) == prod(view.type.shape):
+        return False
+    flattened = _dense_read_offset_strides(source, view)
+    if flattened is None:
+        return False
+    offset, strides = flattened
+    return offset == 0 and all(extent == 1 or stride == prod(view.type.shape[axis + 1:])
+                              for axis, (extent, stride) in enumerate(zip(view.type.shape, strides, strict=True)))
+
+
 def repeated_dense_read_period(source, view):
     """Prove that a dense affine read repeats the complete physical sequence.
 
@@ -88,16 +116,14 @@ def repeated_dense_read_period(source, view):
     flattened address. Ownership, transport and whether caching is worthwhile
     remain separate caller obligations.
     """
-    mapping = bounded_dense_read_map(source, view)
+    flattened = _dense_read_offset_strides(source, view)
     period = prod(source.type.shape)
-    if mapping is None or prod(view.type.shape) <= period:
+    if flattened is None or prod(view.type.shape) <= period:
         return None
-    strides = tuple(prod(source.type.shape[i + 1:]) for i in range(len(source.type.shape)))
-    if sum(offset * stride for offset, stride in zip(mapping.offsets, strides, strict=True)):
+    offset, flat = flattened
+    if offset:
         return None
     rank = len(view.type.shape)
-    flat = tuple(sum(row[axis] * stride for row, stride in
-                     zip(mapping.coefficients, strides, strict=True)) for axis in range(rank))
     for first in range(rank + 1):
         if prod(view.type.shape[first:]) != period:
             continue
