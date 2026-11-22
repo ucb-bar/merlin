@@ -36,6 +36,13 @@ def _fp8_narrow(module):
         for op in tuple(_f8n_walk(module.operation)):
             if op.name != 'arith.truncf':
                 continue
+            parent = op.parent
+            while parent is not None and parent.name != 'memref.generic_atomic_rmw':
+                parent = parent.parent
+            if parent is not None:
+                # The closed atomic update owns its conversion and retry
+                # boundary. Its selected lowering validates the whole body.
+                continue
             if any(isinstance(value.type, (ir.RankedTensorType, ir.VectorType))
                    and str(value.type.element_type) in _F8N_FORMATS for value in op.results):
                 raise ValueError('FP8 narrowing requires scalar casts')

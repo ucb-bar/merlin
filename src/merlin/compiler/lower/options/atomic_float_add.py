@@ -1,15 +1,18 @@
-"""Closed IEEE f16/BF16/f32/f64 and FTZ f32 arithmetic with native CAS loops.
+"""Closed source-width floating arithmetic with native CAS loops.
 
 This support extends the existing atomic-word feature. It recognizes actual
 scalar bit arithmetic, not source names or provenance, and retains the typed
 borrowing boundary through ownership before restoring its complete native body.
 """
 
+from merlin.compiler.lower.options.fp8_atomic_add import SUPPORT as _FP8_SUPPORT
+
 SUPPORT = (
+    _FP8_SUPPORT +
     r"""
 def _float_add_match(op):
     if (op.name != 'memref.generic_atomic_rmw' or len(op.results) != 1
-            or str(op.results[0].type) not in ('f16', 'bf16', 'f32', 'f64') or len(op.operands) != 2
+            or str(op.results[0].type) not in ('f16', 'bf16', 'f32', 'f64', *_F8A_FORMATS) or len(op.operands) != 2
 """
     "            or str(op.operands[0].type) != 'memref<?x' + str(op.result"
     "s[0].type) + '>' or len(op.regions) != 1\n"
@@ -17,10 +20,13 @@ def _float_add_match(op):
         return None
     block = op.regions[0].blocks[0]
     floating_type = str(op.results[0].type)
-    width = 16 if floating_type == 'bf16' else int(floating_type[1:])
+    fp8 = floating_type in _F8A_FORMATS
+    width = 8 if fp8 else 16 if floating_type == 'bf16' else int(floating_type[1:])
+    wide = 'f64' if fp8 else 'f32'
     integer_type = 'i' + str(width)
     exponent_mask, fraction_bits = {'f16': (0x7c00, 10), 'bf16': (0x7f80, 7),
-        'f32': (0x7f800000, 23), 'f64': (0x7ff0000000000000, 52)}[floating_type]
+        'f32': (0x7f800000, 23), 'f64': (0x7ff0000000000000, 52),
+        **{name: (0x7c, 2) for name in _F8A_FORMATS}}[floating_type]
     if len(block.arguments) != 1 or str(block.arguments[0].type) != floating_type:
         return None
     used = set()
@@ -114,9 +120,16 @@ def _float_add_match(op):
         used.update(checkpoint)
         result_word = quieted
     updated = floating(result_word) if result_word is not None else None
-    if floating_type == 'bf16' and updated is not None:
+    if fp8 and floating_type != 'f8E5M2':
+        # These formats have only quiet NaNs; the exact body has no quieting
+        # mask. Inspect the actual yielded value, not a provenance claim.
+        used.clear()
+        updated = terminal.operands[0]
+        ftz = False
+        result_word = None
+    if (floating_type == 'bf16' or fp8) and updated is not None:
         narrowed = owner(updated, 'arith.truncf', 1)
-        if narrowed is not None and (str(narrowed.operands[0].type) != 'f32'
+        if narrowed is not None and (str(narrowed.operands[0].type) != wide
 """
     "                or 'roundingmode' in narrowed.attributes and ir.Intege"
     "rAttr(narrowed.attributes['roundingmode']).value != 0\n"
@@ -127,6 +140,10 @@ def _float_add_match(op):
         if narrowed is not None:
             updated = narrowed.operands[0]
     add = owner(updated, 'arith.addf', 2) if updated is not None else None
+    if (fp8 and add is None and updated == block.arguments[0]
+            and used | {terminal} == {item.operation for item in block.operations}):
+        op.verify()
+        return (*op.operands, None, width, 'fp8-identity:' + floating_type)
     if add is None and result_word is not None:
         original = result_word
         for _ in range(len(tuple(block.operations))):
@@ -135,7 +152,7 @@ def _float_add_match(op):
                 if used | {terminal} == {item.operation for item in block.operations}:
                     op.verify()
 """
-    "                    kind = 'ieee-quiet-identity-' + floating_type if w"
+    "                    kind = 'fp8-identity:' + floating_type if fp8 else 'ieee-quiet-identity-' + floating_type if w"
     "idth == 16 else 'ftz-identity' if ftz else 'ieee-quiet-identity'\n"
     r"""                    return (*op.operands, None, width, kind)
                 break
@@ -158,10 +175,15 @@ def _float_add_match(op):
     r"""        return None
     value = None
     def operand(value):
-        if floating_type != 'bf16':
+        if (fp8 and str(value.type) == wide and isinstance(value, ir.OpResult)
+                and value.owner.operation.name == 'arith.constant' and value.owner.operation.block != block):
+            # Canonicalization may fold an extended FP8 constant. Retain the
+            # actual wide constant; narrowing it before the add is unsound.
+            return value
+        if floating_type != 'bf16' and not fp8:
             return value
         extended = owner(value, 'arith.extf', 1)
-        if (extended is None or str(value.type) != 'f32' or str(extended.operands[0].type) != 'bf16'
+        if (extended is None or str(value.type) != wide or str(extended.operands[0].type) != floating_type
 """
     "                or 'fastmath' in extended.attributes and extended.attr"
     "ibutes['fastmath'] != ir.Attribute.parse('#arith.fastmath<none>', cont"
@@ -176,12 +198,16 @@ def _float_add_match(op):
             break
         used.clear()
         used.update(checkpoint)
-    if (value is None or str(value.type) != floating_type or value == block.arguments[0]
+    if (value is None or str(value.type) not in ((floating_type, wide) if fp8 else (floating_type,))
+            or value == block.arguments[0]
             or isinstance(value, ir.OpResult) and value.owner.operation.block == block
             or used | {terminal} != {item.operation for item in block.operations}):
         return None
     op.verify()
-    kind = 'fadd-ieee-' + floating_type if width == 16 else 'fadd-ftz' if ftz else 'fadd-ieee-quiet'
+    kind = ('fp8-add:' + floating_type if fp8 else 'fadd-ieee-' + floating_type if width == 16
+            else 'fadd-ftz' if ftz else 'fadd-ieee-quiet')
+    if fp8 and str(value.type) == wide:
+        kind = 'fp8-wide-add:' + floating_type
     return (*op.operands, value, width, kind)
 
 

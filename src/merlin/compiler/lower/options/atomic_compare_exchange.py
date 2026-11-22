@@ -127,7 +127,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
             memory, index, value, width, kind = match
             plans.append((op, memory, index, (value,), width, 'word', kind))
         elif (word_views and op.name == 'memref.generic_atomic_rmw' and op.results
-                and str(op.results[0].type) in ('f16', 'bf16', 'f32', 'f64')):
+                and str(op.results[0].type) in ('f16', 'bf16', 'f32', 'f64', *_F8A_FORMATS)):
             memory, index, value, width, kind = _word_match(op)
             values = value if kind == 'cas-word' else () if value is None else (value,)
             plans.append((op, memory, index, values, width, 'word', kind))
@@ -168,7 +168,8 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         "-ieee-f16', 'fadd-ieee-bf16', 'ieee-quiet-identity-f16', 'ieee-quiet-i"
         "dentity-bf16')\n"
         r"""        bits_exchange = family == 'word' and kind.startswith('exchange-bits:')
-        if half_add or bits_exchange:
+        fp8_add = family == 'word' and kind.startswith(('fp8-add:', 'fp8-wide-add:', 'fp8-identity:'))
+        if half_add or bits_exchange or fp8_add and not kind.startswith('fp8-wide-add:'):
             with ctx, ir.Location.unknown(), ir.InsertionPoint(op):
                 if bits_exchange:
                     dynamic = ir.MemRefType.get([ir.ShapedType.get_dynamic_size()], op.results[0].type)
@@ -215,8 +216,9 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
         "                source = _region_source(symbol, width, update_symbol, "
         "tuple(str(value.type) for value in values))\n"
         r"""            else:
+                with ctx:
 """
-        "                source = _cas_source(symbol, width) if family == 'cas'"
+        "                    source = _cas_source(symbol, width) if family == 'cas'"
         " else _word_source(symbol, width, kind)\n"
         r"""            helper = ir.Module.parse(source, context=ctx)
             function = tuple(helper.body.operations)[-1 if family in ('integer-region', 'small-rmw') else 0].operation
@@ -232,7 +234,7 @@ def _cas_rewrite(ctx, module, *, word_views=False, integer_regions=False):
                     attributes[name] = op.attributes[name]
 """
         "            integer_result = family == 'word' and (width == 16 "
-        "or kind == 'cas-word' or half_add or bits_exchange)\n"
+        "or kind == 'cas-word' or half_add or bits_exchange or fp8_add)\n"
         r"""            result_type = ir.IntegerType.get_signless(width) if integer_result else op.results[0].type
             call = ir.Operation.create('func.call', operands=[memory, index, *values],
                 results=[result_type], attributes={'callee': ir.FlatSymbolRefAttr.get(helpers[key]),

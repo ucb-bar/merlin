@@ -100,6 +100,7 @@ def implementation_paths() -> tuple[Path, ...]:
         "merlin.compiler.lower.options.atomic_compare_exchange",
         "merlin.compiler.lower.options.atomic_word_compare_exchange",
         "merlin.compiler.lower.options.atomic_float_add",
+        "merlin.compiler.lower.options.fp8_atomic_add",
         "merlin.compiler.lower.options.atomic_word_views",
         "merlin.compiler.lower.options.atomic_integer_regions",
         "merlin.compiler.lower.options.nonlinear",

@@ -185,6 +185,22 @@ does not authorize atomic effects; their separate source/body checks remain.
 Execution-owned input validation also distinguishes ordinary Boolean controls
 from integer dimensions and rejects noncanonical Boolean storage before entry.
 
+FP8 atomic addition uses the separate `lower/options/fp8_atomic_add.py`
+legalization. Portable generic atomic regions extend each operand exactly to
+f64, add and round to the original FP8 type at each event. FN/FNUZ have only
+quiet NaNs; E5M2 retains explicit result quieting. The existing atomic-word
+feature recognizes the complete closed update, then emits an integer i8
+load/CAS retry helper with exact cast expansions inside each retry. No FP8
+value crosses a native floating argument/result ABI. Full helper reconstruction
+checks address calculation, retry condition, old result and numeric operations
+before granting synchronous borrowing. Early FP8 cast legalization leaves
+atomic regions to this independently checked owner. This fallback preserves
+logical values/effects and source tiles, but can lose native atomic throughput;
+private invocation buffers supply no external publication or GPU order guarantee.
+Canonicalized outside f64 constants retain their actual wide value and native
+f64 argument, with the same per-update FP8 result rounding. The helper matcher
+does not assume that a folded constant still has an explicit FP8 extension.
+
 `merlin.compiler.lower.native.pipeline.lower_to_llvm_ir` retains
 `owned_result_allocations=` and its typed resource selection. Destination reuse
 and returned-loop ownership checks run at their existing bufferization and

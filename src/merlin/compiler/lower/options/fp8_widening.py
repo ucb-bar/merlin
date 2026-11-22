@@ -39,6 +39,13 @@ def _fp8_widen(module, *, _generalized=False):
             'scf.if', 'scf.for', 'scf.while', 'scf.yield', 'scf.condition', 'cf.br', 'cf.cond_br',
             'memref.atomic_rmw','memref.generic_atomic_rmw','memref.atomic_yield'}
         for op in tuple(_f8w_walk(module.operation)):
+            parent = op.parent
+            while parent is not None and parent.name != 'memref.generic_atomic_rmw':
+                parent = parent.parent
+            if parent is not None:
+                # Preserve closed atomic updates for independent whole-body
+                # legalization. This does not grant arbitrary atomic math.
+                continue
             values = tuple(op.operands)+tuple(op.results)
             if op.name == 'arith.extf' and any(
                     isinstance(value.type, (ir.RankedTensorType, ir.VectorType))

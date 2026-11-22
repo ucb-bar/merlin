@@ -217,6 +217,9 @@ def _word_match(op):
 def _word_source(symbol, width, kind):
     if kind.startswith('exchange-bits:'):
         return _bitwise_exchange_source(symbol, kind.removeprefix('exchange-bits:'))
+    if width == 8 and kind.startswith(('fp8-add:', 'fp8-wide-add:', 'fp8-identity:')):
+        return _fp8_add_source(symbol, kind.split(':',1)[1], identity=kind.startswith('fp8-identity:'),
+            wide=kind.startswith('fp8-wide-add:'))
 """
         "    if width == 16 and kind in ('fadd-ieee-f16', 'fadd-ieee-bf16', 'ie"
         "ee-quiet-identity-f16', 'ieee-quiet-identity-bf16'):\n"
@@ -282,6 +285,8 @@ def _word_helper_equal(op, symbol, module):
     if _word_cas_helper_equal(op, symbol, module):
         return True
     if _half_add_helper_equal(op, symbol, module):
+        return True
+    if _fp8_add_helper_equal(op, symbol, module):
         return True
     block = op.regions[0].blocks[0]
     signature = ir.FunctionType(ir.TypeAttr(op.attributes['function_type']).value)
@@ -369,8 +374,8 @@ def ensure_registered():
                 action_class="PASS",
                 edit_pipeline=edit_pipeline,
                 description=(
-                    "Lower exact word updates, IEEE f32/f64 and FTZ f32 addition, and integ"
-                    "er CAS to checked native atomics; default off."
+                    "Lower exact word updates, source-width floating addition and "
+                    "integer CAS to checked native atomics; default off."
                 ),
             )
         )

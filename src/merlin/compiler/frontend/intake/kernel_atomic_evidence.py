@@ -21,7 +21,8 @@ _FLOAT_CONTRACTS = {
     ("fadd", "f64"): ("ieee-f64-rne-add", "ieee-f64-rne-add-quiet-nans"),
     ("fadd", "f32"): ("ieee-f32-rne-add", "f32-rne-sign-preserving-ftz-add"),
 }
-_FLOAT_CONTRACTS.update({("fadd", dtype): (f"ieee-{dtype}-rne-add-quiet-nans",) for dtype in ("f16", "bf16")})
+_FLOAT_CONTRACTS.update({("fadd", dtype): (f"ieee-{dtype}-rne-add-quiet-nans",)
+    for dtype in ("f16", "bf16", "f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")})
 _FLOAT_WIDTHS = {"f16": 16, "bf16": 16, "f32": 32, "f64": 64,
                  "f8E4M3FN": 8, "f8E4M3FNUZ": 8, "f8E5M2": 8, "f8E5M2FNUZ": 8}
 _FLOAT_CONTRACTS.update({("exch", dtype): ("bitwise-exchange",) for dtype in _FLOAT_WIDTHS})
@@ -108,7 +109,8 @@ def checked_source_atomic(op, declared, selection):
 def _payload(info):
     if "byte_view" in info:
         return "standard-byte-backed-word-atomic-with-original-returned-old-value"
-    if info.get("numeric_contract") in ("ieee-f16-rne-add-quiet-nans", "ieee-bf16-rne-add-quiet-nans"):
+    if info.get("numeric_contract") in tuple(f"ieee-{dtype}-rne-add-quiet-nans"
+            for dtype in ("f16", "bf16", "f8E4M3FN", "f8E4M3FNUZ", "f8E5M2", "f8E5M2FNUZ")):
         return f"standard-memref-generic-{info['value_dtype']}-quiet-add-with-original-returned-old-value"
     if info.get("numeric_contract") == "ieee-f64-rne-add-quiet-nans":
         return "standard-memref-generic-f64-quiet-add-with-original-returned-old-value"
