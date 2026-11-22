@@ -46,6 +46,64 @@ class Split(NamedTuple):
     axes: dict
 
 
+class LoopBound(NamedTuple):
+    """A later-trip region that can bind the body of the earlier region at index; nodes maps its nodes to ours."""
+
+    index: int
+    nodes: dict
+
+
+def _alternative(item, nodes=None):
+    """A selected alternative without its region identity, buffers renamed through nodes, in buffer order.
+
+    Port order is not compared: a bound region binds every port by name through the node correspondence.
+    """
+    row = item.to_dict()
+    del row["id"], row["nodes"]
+    for side in ("inputs", "outputs"):
+        for port in row[side]:
+            name, dot, part = port["buffer"].partition(".")
+            port["buffer"] = (nodes or {}).get(name, name) + dot + part
+        row[side].sort(key=lambda port: port["buffer"])
+    return json.dumps(row, sort_keys=True)
+
+
+def loop_bindings(outlined, plan, parameter_attributes):
+    """Return the region loop and, for each later-trip region that can bind an earlier body, its LoopBound.
+
+    The loop is the longest tandem repeat of regions equal up to the target's
+    declared parameter attributes. A region in a later trip binds the first
+    earlier region at its body position whose request is exactly equal (no
+    attribute ignored) and whose selected alternative matches under the node
+    correspondence. Any other region, for example one with a different
+    calibrated value, compiles itself.
+    """
+    from merlin.compiler.schedule.region_loop import analyze_region_loop, correspondence, structural_signature
+    from merlin.compiler.transforms.dense_views import IMPLEMENTATION as VIEW
+
+    records = [region.record() for _, region in outlined.regions]
+    loop = analyze_region_loop(records, parameter_attributes=parameter_attributes)
+    if loop is None:
+        return None, {}
+    offset, period, trips = loop["offset"], loop["period"], loop["trip_count"]
+    selected = {item.id: item for item in plan.selected}
+    exact = [structural_signature(row) for row in records]
+    representatives, bound = [[offset + j] for j in range(period)], {}
+    for index in range(offset + period, offset + period * trips):
+        key = outlined.regions[index][0]
+        if selected[key].implementation == VIEW:
+            continue
+        for candidate in representatives[(index - offset) % period]:
+            if exact[candidate] == exact[index]:
+                nodes = correspondence(records[candidate], records[index])
+                if _alternative(selected[outlined.regions[candidate][0]], nodes) == _alternative(selected[key]):
+                    bound[index] = LoopBound(candidate, nodes)
+                    break
+        else:
+            representatives[(index - offset) % period].append(index)
+    return dict(region_offset=offset, region_period=period, trip_count=trips), bound
+
+
 def _bytes(node):
     return prod(node.type.shape) * DT_BYTES[node.type.dtype]
 

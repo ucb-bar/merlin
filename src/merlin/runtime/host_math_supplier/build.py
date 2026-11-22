@@ -29,7 +29,9 @@ def build(target, out, policy_path):
     out.mkdir(parents=True, exist_ok=True)
     prefix = os.environ.get('RISCV_PREFIX', 'riscv64-unknown-elf-') if target == 'rv64' else ''
     cc, ar, nm = (prefix+'gcc', prefix+'ar', prefix+'nm') if target == 'rv64' else ('cc', 'ar', 'nm')
-    flags = FLAGS + (['-march=rv64gc', '-mabi=lp64d'] if target == 'rv64' else ['-march=x86-64-v3', '-m64', '-fPIC'])
+    # RV64 host images may be linked above the signed medlow address range.
+    # PC-relative references keep the selected supplier usable at those VMAs.
+    flags = FLAGS + (['-march=rv64gc', '-mabi=lp64d', '-mcmodel=medany'] if target == 'rv64' else ['-march=x86-64-v3', '-m64', '-fPIC'])
     if target == 'rv64':
         cc = os.environ.get('RISCV_CC', cc)
     wrapper = out / 'wrapper.c'

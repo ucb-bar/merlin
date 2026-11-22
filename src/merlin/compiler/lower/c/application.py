@@ -45,6 +45,8 @@ def emit_application_c(
         parameter_keys = set(parameters.node_ids)
         if driver.get("read_only_inputs") != list(parameters.node_ids):
             raise ValueError("parameter inputs need explicit read-only dispatch bindings")
+        if driver.get("resident_only_inputs", []) != list(getattr(parameters, "resident_only", ())):
+            raise ValueError("resident-only parameter inputs differ from dispatch bindings")
         parameter_declarations, parameter_implementation, private_headers = parameters.emit_binding(name)
     inputs = tuple((key, storage) for key, storage in source.input_storages if key not in parameter_keys)
     if any(size > 2**63 - 1 for size in sizes.values()):
@@ -66,6 +68,11 @@ def emit_application_c(
     driver_name = driver["entry"].removesuffix("_run")
     if not driver_name or driver["entry"] != driver_name + "_run":
         raise ValueError("application C needs an existing serial dispatch driver")
+    loop = driver.get("loop")
+    if loop is not None and (
+        loop.get("schema") != "merlin.dispatch_loop.v1" or loop.get("entry") != driver_name + "_run_loop"
+    ):
+        raise ValueError("application C needs an authenticated dispatch loop")
     arena = driver["memory_plan"]["arena_bytes"]
     alignment = driver["memory_plan"]["stats"]["align"]
     minimum_alignment = max(DT_BYTES[node.type.dtype] for node in source.nodes)
@@ -80,8 +87,9 @@ def emit_application_c(
     for index, (key, _) in enumerate(inputs):
         pointers[key] = f"inputs[{index}]"
     if parameters is not None:
+        pointer_expression = getattr(parameters, "pointer_expression", None)
         pointers.update(
-            (key, f"parameters->data+{entry.offset}u")
+            (key, pointer_expression(key) if callable(pointer_expression) else f"parameters->data+{entry.offset}u")
             for key, entry in zip(parameters.node_ids, parameters.entries, strict=True)
         )
     fills = []
@@ -204,6 +212,15 @@ def emit_application_c(
     copy_outputs = "\n".join(
         f"  __builtin_memcpy(outputs[{i}],{pointers[key]},{sizes[key]}u);" for i, key in enumerate(source.outputs)
     )
+    admission, dispatch_entry, dispatch_extra = "", f"{driver_name}_run", ""
+    if loop is not None:
+        # The compiler authenticated the complete original call table. No
+        # target-specific program or dependency transformation is requested.
+        admission = f"""static int {name}_admit_loop(void *context,const {driver_name}_loop *schedule) {{
+  (void)context; (void)schedule; return 1;
+}}
+"""
+        dispatch_entry, dispatch_extra = loop["entry"], f",{name}_admit_loop,0"
     interface = f"""#include <stdint.h>
 #include <float.h>
 {'#include "parameter_sha256.h"' if parameters is not None else ""}
@@ -215,7 +232,7 @@ static int {name}_overlap(const void *p,size_t n,const void *q,size_t m) {{
   return (uintptr_t)p<(uintptr_t)q+m && (uintptr_t)q<(uintptr_t)p+n;
 }}
 {parameter_implementation}
-int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
+{admission}int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
                  {f"const {name}_parameters *parameters," if parameters is not None else ""}
                  {input_type}inputs, {output_type}outputs, void *contexts) {{
   (void)inputs;
@@ -228,7 +245,7 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
   if ({name}_overlap(state,sizeof(*state),workspace,{offset}u)) return {driver_name.upper()}_INVALID;
   if ({" || ".join(input_checks + output_checks + parameter_checks) or "0"}) return {driver_name.upper()}_INVALID;
 {"".join(line + chr(10) for line in fill_code)}  {driver_name}_buffer buffers[{len(driver["buffers"])}]={{{bindings}}};
-  int status={driver_name}_run(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts);
+  int status={dispatch_entry}(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts{dispatch_extra});
   if (status) return status;
 {copy_outputs}
   return 0;
@@ -259,6 +276,11 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
         ],
         "private_region_scratch_included": False,
     }
+    if loop is not None:
+        description["dispatch_loop"] = dict(
+            entry=loop["entry"], offset=loop["offset"], period=loop["period"], trip_count=loop["trip_count"],
+            semantics="original_ordered_call_table",
+        )
     if parameters is not None:
         description["model_parameters"] = parameters.record()
     if mixed:
