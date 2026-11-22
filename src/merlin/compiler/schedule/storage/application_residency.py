@@ -1,5 +1,5 @@
 """Invocation-owned immutable device layouts for semantic applications."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from contextvars import ContextVar
 from dataclasses import replace
 from hashlib import sha256
@@ -13,10 +13,20 @@ from merlin.compiler.partition.semantic_regions import outline_semantic_regions
 from merlin.compiler.schedule.storage.residency import ResidencyRequest, ReservedInterval, plan_residency
 
 _PUBLICATION = ContextVar("application_residency_publication", default=None)
+_DECLINED = ContextVar("application_residency_declined", default=None)
 
 
 def publication():
     return _PUBLICATION.get()
+
+
+def declined():
+    """Why selected residency does not apply to the application being compiled, or None."""
+    return _DECLINED.get()
+
+
+class Ineligible(ValueError):
+    """The application has nothing residency applies to; it compiles exactly as without residency."""
 
 
 def validate_region_bindings(regions, compiled):
@@ -86,22 +96,61 @@ def compact_runtime_parameters(source, regions, compiled, parameters):
     return compact_parameters(original, source, resident_only=removed)
 
 
+def _staging_before_arena(requests, base, capacity, alignment, geometry):
+    """Staging bytes when one undivided region holds both: the resident arena takes its end, staging the rest.
+
+    The arena is packed once at an aligned base, so the same packing at the end of the region has the same size,
+    and the measuring and bound compiles of one region end place every resident entry at the same address.
+    """
+    step = max(alignment, *(request.alignment for request in requests))
+    start = -(-base // step) * step
+    packed = plan_residency(requests, base=start, capacity=base + capacity - start,
+                            dma_base=geometry["dma_base"], dma_capacity=geometry["dma_capacity"])
+    arena = (base + capacity - packed.required_bytes) // step * step
+    if arena <= base:
+        raise ValueError(f"resident arena of {packed.required_bytes} bytes leaves no staging window")
+    return arena - base
+
+
 @contextmanager
 def residency_scope(source, adapter, parameters, state):
+    """Publish the resident table of an eligible application while it compiles.
+
+    Residency is an optimization: an application it cannot apply to (an Ineligible reason) compiles with residency
+    off, exactly as when it is not selected, and declined() gives the reason for its manifest.
+    """
     options = current_codegen_options()
-    if not options.application_residency:
-        token = _PUBLICATION.set(None)
+    reason, prepared = None, None
+    if options.application_residency:
         try:
-            yield
+            prepared = _resident_layouts(source, adapter, parameters, state, options)
+        except Ineligible as error:
+            reason = str(error)
+    if prepared is None:
+        tokens = _PUBLICATION.set(None), _DECLINED.set(reason)
+        try:
+            with codegen_options(replace(options, application_residency=False)) if reason else nullcontext():
+                yield
         finally:
-            _PUBLICATION.reset(token)
+            _DECLINED.reset(tokens[1])
+            _PUBLICATION.reset(tokens[0])
         return
+    token = _DECLINED.set(None)
+    try:
+        with _resident_publication(source, parameters, options, *prepared):
+            yield
+    finally:
+        _DECLINED.reset(token)
+
+
+def _resident_layouts(source, adapter, parameters, state, options):
+    """Every resident request and use of the application; Ineligible when residency cannot apply to it."""
     if parameters is None:
-        raise ValueError("application residency requires external, authenticated parameters")
+        raise Ineligible("the application has no external parameters to keep resident")
     # Mutable state remains an explicit host interface until a device-state ABI
     # can prove successful update publication and recovery ownership.
     if state is not None:
-        raise ValueError("persistent device state requires a device-state publication ABI")
+        raise Ineligible("the application has persistent state inputs, which stay a host interface")
     parameters.check(source)
     # Internal fresh verification may receive the compact runtime descriptor.
     # Immutable packing always reads the independently authenticated intake.
@@ -135,7 +184,7 @@ def residency_scope(source, adapter, parameters, state):
         parameter_inputs = set(dict(region.input_storages)) & set(entries)
         supported = {item["node_id"] for item in inventory or ()}
         if parameter_inputs - supported:
-            raise ValueError("immutable device consumer lacks a resident ABI: "
+            raise Ineligible("a device region reads parameters through an operation with no resident layout: "
                              + ", ".join(sorted(parameter_inputs - supported)))
         if inventory is None:
             continue  # The provider explicitly declines this operation's ABI.
@@ -156,10 +205,23 @@ def residency_scope(source, adapter, parameters, state):
                 raise ValueError("repeated resident layout has inconsistent inventory")
             uses.append((region.digest(), node_id, name))
     if not requests:
-        raise ValueError("application has no supported immutable resident device operands")
+        raise Ineligible("no device operand of the application has a resident layout")
+    return geometry, requests, uses, layouts, pack_resident_input
+
+
+@contextmanager
+def _resident_publication(source, parameters, options, geometry, requests, uses, layouts, pack_resident_input):
+    """Pack the resident table once and publish it, with each region's bindings, for the compile."""
+    parameters = getattr(parameters, "original", parameters)
+    base, size = options.io_memory_base, options.io_memory_bytes
+    capacity_base, capacity_bytes = options.io_memory_capacity_base, options.io_memory_capacity_bytes
+    staging_alignment = options.io_memory_alignment or geometry["alignment"]
+    if (base, size) == (capacity_base, capacity_bytes):
+        size = _staging_before_arena(requests, base, size, staging_alignment, geometry)
+        options = replace(options, io_memory_bytes=size)
     table = plan_residency(requests, base=capacity_base,
         capacity=capacity_bytes, dma_base=geometry["dma_base"], dma_capacity=geometry["dma_capacity"],
-        reserved=[ReservedInterval("regional_io", base, size, options.io_memory_alignment or geometry["alignment"],
+        reserved=[ReservedInterval("regional_io", base, size, staging_alignment,
             "staging", "region invocation", "per_call")])
     allocations = {row.name: row for row in table.entries}
     bindings = {}

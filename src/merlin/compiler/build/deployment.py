@@ -42,8 +42,6 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
     """Choose bindings within the provider-published on-chip map."""
     if not selected():
         return None
-    if current_codegen_options().application_residency:
-        _refuse("deployment_unsupported_residency", "on-chip deployment requires disjoint nonresident storage")
     factory = getattr(adapter, "deployment_requirements", None)
     if factory is None or native_root is None:
         _refuse("deployment_provider_contract", "on-chip deployment requires provider requirements")
@@ -54,6 +52,9 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
     if not isinstance(provider, dict) or provider.get("schema") != "merlin.provider_deployment.v1":
         _refuse("deployment_provider_contract", "unsupported provider deployment schema")
     _provider_sections(provider)
+    resident_section = provider.get("resident_section")
+    if current_codegen_options().application_residency and resident_section is None:
+        _refuse("deployment_unsupported_residency", "on-chip deployment requires disjoint nonresident storage")
     transport_timeout = provider.pop("transport_timeout_seconds", None)
     transport_clock = provider.pop("transport_clock_hz_bound", None)
     window = provider.get("window")
@@ -62,9 +63,14 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
     window_address = _integer(window.get("address"), "window address")
     window_bytes = _integer(window.get("bytes"), "window bytes", positive=True)
     options = current_codegen_options()
+    # A resident deployment stages in a prefix of its capacity; every other deployment's capacity is its window.
+    capacity_end = window_address + (options.io_memory_capacity_bytes if options.application_residency else window_bytes)
     if (options.io_memory_base != window_address or options.io_memory_bytes != window_bytes
-            or options.io_memory_capacity_base != window_address or options.io_memory_capacity_bytes != window_bytes):
+            or options.io_memory_capacity_base != window_address
+            or options.io_memory_capacity_base + options.io_memory_capacity_bytes != capacity_end
+            or capacity_end < window_address + window_bytes):
         _refuse("deployment_geometry_mismatch", "provider deployment window differs from selected geometry")
+    resident = _resident_arena(window_address + window_bytes, capacity_end) if options.application_residency else None
     host_map = provider.get("host_map")
     if not isinstance(host_map, dict):
         _refuse("deployment_provider_contract", "provider host map must be explicit")
@@ -252,6 +258,7 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
         "target_identity": source.target_identity, "window": provider["window"], "provider": provider,
         "allocations": allocations, "inputs": inputs, "outputs": outputs, "parameters": parameter,
         **({"state_inputs": state_rows} if state_rows else {}),
+        **({"resident": resident} if resident else {}),
         "calls": calls,
         "window_required_bytes": required, "window_remaining_bytes": data_limit - required,
         **({"window_image_reserve_bytes": image_bytes} if image_bytes else {}),
@@ -268,6 +275,40 @@ def place(source, adapter, regions, interface, native_root, parameters_object=No
                                            clock_assumption=f"host cycle counter, core frequency at most {clock / 1_000_000_000:g} GHz; conservative {timeout}-second minimum"))
     interface["deployment"] = deployment
     return deployment
+
+
+def _resident_arena(window_end, capacity_end):
+    """One read-only load covering every resident entry, which lie after the window and inside the capacity."""
+    from merlin.compiler.schedule.storage.application_residency import publication
+
+    files = publication()
+    if files is None:
+        _refuse("deployment_unsupported_residency", "resident deployment requires the active residency publication")
+    record = json.loads(files["residency.json"])
+    entries = {row["name"]: row for row in record["entries"]}
+    loads = [dict(name=row["name"], path=row["path"], sha256=row["sha256"], address=entries[row["name"]]["address"],
+                  bytes=entries[row["name"]]["bytes"]) for row in record["loads"]]
+    if not loads:
+        _refuse("deployment_unsupported_residency", "resident deployment has no resident loads")
+    start = min(row["address"] for row in loads)
+    end = max(row["address"] + row["bytes"] for row in loads)
+    if start < window_end or end > capacity_end:
+        _refuse("deployment_geometry_mismatch", "resident loads leave the capacity after the deployment window")
+    return dict(name="resident", address=start, bytes=end - start, path="handoff/resident.bin",
+                sha256=sha256(_resident_bytes(dict(address=start, bytes=end - start, loads=loads), files)).hexdigest(),
+                role="immutable_resident_parameters", loads=loads)
+
+
+def _resident_bytes(resident, files):
+    """The arena image: each packed load at its planned offset, and zero bytes between loads."""
+    payload = bytearray(resident["bytes"])
+    for row in resident["loads"]:
+        data = files[row["path"]]
+        if len(data) != row["bytes"] or sha256(data).hexdigest() != row["sha256"]:
+            _refuse("deployment_payload_contract", "resident load bytes differ from the residency publication")
+        offset = row["address"] - resident["address"]
+        payload[offset:offset + row["bytes"]] = data
+    return bytes(payload)
 
 
 def adapter_c(name, deployment):
@@ -398,6 +439,10 @@ def publish(deployment, interface, files, native_root):
     record = {**deployment, "steps": steps, "hash_ranges": deployment["outputs"],
               "image_library": list(image_library.values()), "reload_policy": deployment["provider"]["runtime"]["reload_policy"],
               "adapter_header": "handoff/deployment_adapter.h", "timeout": "max_polls per synchronous device wait"}
+    if deployment.get("resident"):
+        from merlin.compiler.schedule.storage.application_residency import publication
+
+        files[deployment["resident"]["path"]] = _resident_bytes(deployment["resident"], publication())
     if deployment.get("paging"):
         files["handoff/refill-mailbox.bin"] = bytes(deployment["paging"]["mailbox"]["bytes"])
         record = _paged_record(record)
@@ -645,7 +690,7 @@ def _host_abi(provider):
 
 
 def _platform_linker(base, window, host_bytes, window_bytes, sizes, host_end, section, image_section,
-                     parameter_section=None, *, symbolic=False):
+                     parameter_section=None, *, symbolic=False, resident=None):
     # Measured sections have no fixed code or data ceiling; the aggregate host
     # budget below bounds them together with the declared stack and heap.
     code_ceiling = (f" ASSERT(. - ORIGIN(HOST) <= {sizes['code']}, \"deployment code reservation exceeded\")\n"
@@ -709,6 +754,12 @@ SECTIONS {{
             f" .window : {{ KEEP(*({section})) }} >WINDOW :window\n"
             + (f" {parameter_section} : {{ KEEP(*({parameter_section})) }} >WINDOW :parameters\n" if parameter_section else "")
             + f" {image_section} : ALIGN(16) {{ __{image_section[1:]}_start=.; *({image_section}) __{image_section[1:]}_end=.; }} >WINDOW :{images_load}\n")
+    if resident is not None:
+        # The resident arena is a read-only load of its own after the window, in the resident capacity.
+        resident_section, address, size = resident
+        text = (text.replace("window PT_LOAD FLAGS(6);", "window PT_LOAD FLAGS(6); resident PT_LOAD FLAGS(4);")
+                .replace(f"LENGTH = {window_bytes} }}", f"LENGTH = {window_bytes}\n RESIDENT (r) : ORIGIN = {address}, LENGTH = {size} }}")
+                .replace(" /DISCARD/ :", f" {resident_section} : {{ KEEP(*({resident_section})) }} >RESIDENT :resident\n /DISCARD/ :"))
     linker = re.sub(r'(?<![<>=!+])=(?!=)', ' = ', text)
     return linker.encode()
 
@@ -722,6 +773,17 @@ def _window_source(section, parameter_section=None, parameters=None):
     return (f'.section {section},"aw",@progbits\n.global {label}_start,{label}_end\n'
             f'{label}_start:\n.incbin "window.bin",0,{offset}\n'
             f'.section {parameter_section},"a",@progbits\n.incbin "window.bin",{offset},{size}\n{label}_end:\n').encode()
+
+
+def _resident_load(deployment):
+    """The provider's resident section, address, and size when the deployment loads a resident arena, else None."""
+    row = deployment.get("resident")
+    if not row:
+        return None
+    section = _section(deployment["provider"].get("resident_section"), "resident")
+    if section in _provider_sections(deployment["provider"]) or deployment.get("paging"):
+        _refuse("deployment_provider_contract", "the resident section must differ from the other sections")
+    return section, row["address"], row["bytes"]
 
 
 def _read_only_parameters(deployment, parameter_section):
@@ -764,14 +826,17 @@ def platform_files(deployment, payloads=None, vcs_linker_map=None):
         _refuse("deployment_provider_contract", "new deployments use the provider window section")
     parameters = _read_only_parameters(deployment, parameter_section)
     loaded = parameter_section if parameters else None
+    resident = _resident_load(deployment)
     linker = _platform_linker(base, window, host_bytes, deployment["window"]["bytes"],
-                              sizes, f"{base + host_bytes:#010x}", section, image_section, loaded, symbolic=symbolic)
+                              sizes, f"{base + host_bytes:#010x}", section, image_section, loaded, symbolic=symbolic,
+                              resident=resident)
     if not symbolic:
         # Reproduce the whitespace of the historical build_kits.py patch.
         linker = linker.replace(f"LENGTH  =  {usable}\n".encode(), f"LENGTH = {usable}\n".encode())
     output = {
         "handoff/chip.ld": linker,
-        "handoff/window.S": _window_source(section, loaded, parameters),
+        "handoff/window.S": _window_source(section, loaded, parameters) + (
+            f'.section {resident[0]},"a",@progbits\n.incbin "resident.bin"\n'.encode() if resident else b""),
         "handoff/platform-cflags.txt": f"-DSYS_CLK_FREQ={clock}\n".encode(),
     }
     from merlin.common.paths import data_path
@@ -782,7 +847,7 @@ def platform_files(deployment, payloads=None, vcs_linker_map=None):
         vcs_window = _integer(vcs.get("window_address"), "VCS window address")
         output["handoff/vcs.ld"] = _platform_linker(
             vcs_base, vcs_window, host["bytes"], deployment["window"]["bytes"],
-            sizes, "ORIGIN(HOST)+LENGTH(HOST)", section, image_section, loaded, symbolic=symbolic)
+            sizes, "ORIGIN(HOST)+LENGTH(HOST)", section, image_section, loaded, symbolic=symbolic, resident=resident)
     requirements = {
         "SYS_CLK_FREQ": {"value": clock, "owner": "compiler-required",
                          "source": "deployment.json:provider.sys_clk_freq_hz",
@@ -836,4 +901,10 @@ def platform_files(deployment, payloads=None, vcs_linker_map=None):
     for row in deployment["outputs"]:
         write(row, b"\xa5" * row["bytes"])
     output["handoff/window.bin"] = bytes(payload)
+    if resident:
+        row = deployment["resident"]
+        data = payloads.get(row["path"])
+        if not isinstance(data, bytes) or len(data) != row["bytes"] or sha256(data).hexdigest() != row["sha256"]:
+            _refuse("deployment_payload_contract", "resident arena bytes differ from the deployment")
+        output["handoff/resident.bin"] = data
     return output

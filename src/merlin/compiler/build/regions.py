@@ -41,6 +41,7 @@ from merlin.compiler.partition.semantic_regions import outline_semantic_regions
 from merlin.compiler.planning.cover_selection import application_plan
 from merlin.compiler.schedule.storage.application_residency import (
     compact_runtime_parameters,
+    declined as residency_declined,
     publication as residency_publication,
     residency_scope,
     validate_region_bindings,
@@ -435,6 +436,7 @@ def _render(
     native_root=None,
     measured_host=None,
     emit_region_loop=False,
+    target_source=None,
 ):
     # Materialization consumes the choice already used to compile/export each
     # region. Re-running provider enumeration here could silently select a
@@ -607,6 +609,7 @@ def _render(
     combined_name = name + "_combined"
     from merlin.compiler.build.deployment import place, adapter_c, handoff_interface, publish
     deployment = place(source, adapter, summaries, interface, native_root, parameters, measured_host)
+    _admit_resident_deployment(deployment, adapter, summaries, outlined.regions, native_root, target_source, source)
     if deployment is not None and deployment.get("paging"):
         raise NativeCompilationError("unsupported_semantics", "paged deployment requires selected region replanning")
     binding_factory = getattr(adapter, "application_binding", None)
@@ -774,6 +777,16 @@ def _finalize_loop_regions(adapter, compiled, target_source):
     return list(finalized)
 
 
+def _admit_resident_deployment(deployment, adapter, summaries, regions, native_root, target_source, source):
+    """The provider admits every region that reads a resident load before a resident deployment is published."""
+    if deployment is None or not deployment.get("resident"):
+        return
+    admit = getattr(adapter, "admit_resident_deployment", None)
+    if admit is None or target_source is None:
+        raise NativeCompilationError("unsupported_semantics", "resident deployment requires provider admission")
+    admit(summaries, regions, native_root, target_source, source_request_digest=source.digest())
+
+
 def _check_resident_regions(regions, compiled):
     """Require every region of a resident application to consume its bindings."""
     if residency_publication() is None:
@@ -825,7 +838,8 @@ def _compile_semantic_application(
     from .views import compile_view
     from .deployment import selected as onchip_selected
     from .region_fit import staging_reason
-    staging = staging_reason(outlined, plan, current_codegen_options().io_memory_capacity_bytes, parameters) if onchip_selected() else None
+    # Regions stage in the window; a resident deployment's capacity also holds its arena.
+    staging = staging_reason(outlined, plan, current_codegen_options().io_memory_bytes, parameters) if onchip_selected() else None
     normal_loop, normal_bound = _normal_loop(outlined, plan, adapter) if staging is None else (None, {})
     def compile_own(i, key, region):
         return (compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
@@ -858,7 +872,7 @@ def _compile_semantic_application(
             _, summaries, interface, links, files = _render(
                 source, adapter, name, capacity, lowered, plan=plan, state=state, parameters=runtime_parameters,
                 native_root=destination, emit_region_loop=normal_loop is not None,
-                measured_host=current_codegen_options().measured_host_bytes,
+                measured_host=current_codegen_options().measured_host_bytes, target_source=target_source,
             )
         except NativeCompilationError as error:
             if not onchip_selected() or error.status != "resource_limit":
@@ -938,6 +952,7 @@ def _compile_semantic_application(
         "regions": summaries,
         **({"staged_deployment": True} if staging is not None else {}),
         **({"application_residency": True} if current_codegen_options().application_residency else {}),
+        **({"application_residency_declined": residency_declined()} if residency_declined() else {}),
         **({"dispatch_loop": True} if normal_loop is not None else {}),
         "stage_artifacts": {
             path.relative_to(destination).as_posix(): digest_file(path)[0]
@@ -977,7 +992,8 @@ def _verify_semantic_application(
     parameters=None,
 ):
     manifest = json.loads((artifact / "manifest.json").read_bytes())
-    if manifest.get("application_residency", False) is not current_codegen_options().application_residency:
+    if (manifest.get("application_residency", False) is not current_codegen_options().application_residency
+            or manifest.get("application_residency_declined") != residency_declined()):
         raise ValueError("application residency differs from compilation")
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
@@ -1079,6 +1095,7 @@ def _verify_semantic_application(
             parameters=parameters,
             native_root=artifact,
             emit_region_loop=normal_loop is not None,
+            target_source=target_source,
         )
     if residency_publication() is not None:
         files.update(residency_publication())

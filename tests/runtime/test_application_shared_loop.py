@@ -6,6 +6,7 @@ the loop bodies are host C that executes here.
 
 import json
 import shutil
+from contextlib import nullcontext
 import subprocess
 from dataclasses import replace
 from hashlib import sha256
@@ -157,14 +158,15 @@ def _snapshot(root):
     return SimpleNamespace(root=root)
 
 
-def _onchip():
+def _onchip(**options):
     from merlin.compiler.semantic.codegen import CodegenOptions, codegen_options
 
     class Onchip(CodegenOptions):
         application_deployment = "onchip"
 
     return codegen_options(Onchip(io_memory_base=WINDOW_BASE, io_memory_bytes=WINDOW_BYTES,
-                                  io_memory_capacity_base=WINDOW_BASE, io_memory_capacity_bytes=WINDOW_BYTES))
+                                  io_memory_capacity_base=WINDOW_BASE, io_memory_capacity_bytes=WINDOW_BYTES,
+                                  **options))
 
 
 def compile_fixture(tmp_path, trips, **options):
@@ -385,3 +387,98 @@ def test_staging_known_before_compilation_keeps_its_reason(tmp_path, monkeypatch
         adapter, manifest, checked, tree = _staged(tmp_path / str(bind), bind=bind, trigger="region", trips=2)
         assert adapter.binds == 0 and manifest["staged_deployment"] is True and checked["status"] == "checked"
         assert json.loads(tree["deployment.json"])["staging_reason"] == "pre-compile bound"
+
+
+# ---- Residency on a deployment: declined applications, the place() refusal, and provider admission ----
+
+class DeployedProvider(OnchipProvider):
+    """The on-chip provider for a whole application of several regions, without sharing."""
+
+    supports_deployment_loop_sharing = False
+
+    def deployment_requirements(self, regions, native_root):
+        rows = [OnchipProvider.deployment_requirements(self, [region], native_root) for region in regions]
+        return {**rows[0], "images": [image for row in rows for image in row["images"]],
+                "reservations": [dict(row, lifetime=dict(scope="region_call", context_index=index))
+                                 for index, item in enumerate(rows) for row in item["reservations"]],
+                "regions": [dict(row, context_index=index) for index, item in enumerate(rows) for row in item["regions"]]}
+
+
+def _deployed(root, adapter=None, **options):
+    """Compile and replay the two-trip fixture as an on-chip deployment; return its manifest and published tree."""
+    source, plan = _source(2)
+    adapter = adapter or DeployedProvider(plan)
+    destination = root / "application"
+    with _onchip(**options):
+        manifest = compile_semantic_application(
+            source, adapter=adapter, snapshot=_snapshot(root / "snapshot"), target_source=root,
+            destination=destination, limits=None, name="model", capacity=4096)
+        checked = verify_semantic_application(source, adapter=adapter, snapshot=_snapshot(root / "snapshot"),
+                                              target_source=root, artifact=destination)
+    assert checked["status"] == "checked"
+    return manifest, {path.relative_to(destination).as_posix(): path.read_bytes()
+                      for path in sorted(destination.rglob("*")) if path.is_file()}
+
+
+def test_selected_residency_that_cannot_apply_deploys_exactly_as_without_it(tmp_path):
+    """This fixture has no external parameters, so selected residency declines and publishes the residency-off tree."""
+    manifest, tree = _deployed(tmp_path / "selected", application_residency=True)
+    expected_manifest, expected = _deployed(tmp_path / "off")
+    reason = manifest.pop("application_residency_declined")
+    assert reason == "the application has no external parameters to keep resident"
+    assert "application_residency" not in manifest and manifest == expected_manifest
+    assert sorted(tree) == sorted(expected) and "resident" not in json.loads(tree["deployment.json"])
+    assert {name for name in tree if tree[name] != expected[name]} == {"manifest.json"}
+    # Replay recomputes the decision, so a manifest that drops the reason is refused.
+    source, plan = _source(2)
+    (tmp_path / "selected/application/manifest.json").write_text(json.dumps(manifest))
+    with _onchip(application_residency=True), pytest.raises(ValueError, match="residency differs from compilation"):
+        verify_semantic_application(source, adapter=DeployedProvider(plan), snapshot=_snapshot(tmp_path / "selected/snapshot"),
+                                    target_source=tmp_path / "selected", artifact=tmp_path / "selected/application")
+
+
+def test_residency_needs_a_provider_resident_section(tmp_path, monkeypatch):
+    from merlin.compiler.schedule.storage import application_residency
+
+    # Make the fixture's residency apply, so place() sees it selected; this provider names no resident section.
+    monkeypatch.setattr(application_residency, "_resident_layouts", lambda *args: ())
+    monkeypatch.setattr(application_residency, "_resident_publication", lambda *args: nullcontext())
+    with pytest.raises(NativeCompilationError, match="deployment_unsupported_residency: .* disjoint nonresident"):
+        _deployed(tmp_path / "unnamed", application_residency=True)
+    named = DeployedProvider(_source(2)[1])
+    named.deployment_requirements = lambda *args: {**DeployedProvider.deployment_requirements(named, *args),
+                                                   "resident_section": ".device_resident"}
+    with pytest.raises(Exception) as other:
+        _deployed(tmp_path / "named", named, application_residency=True)
+    assert "disjoint nonresident storage" not in str(other.value)
+
+
+@pytest.mark.parametrize("admit", [None, "refuses", "admits"])
+def test_a_resident_deployment_is_published_only_after_the_provider_admits_it_in_compile(tmp_path, monkeypatch, admit):
+    from merlin.compiler.build import deployment
+
+    place, calls = deployment.place, []
+
+    def resident(*args, **kwargs):
+        published = place(*args, **kwargs)
+        return {**published, "resident": dict(address=WINDOW_BASE + WINDOW_BYTES, bytes=64)}
+
+    monkeypatch.setattr(deployment, "place", resident)
+    adapter = DeployedProvider(_source(2)[1])
+    if admit:
+        def admit_resident_deployment(summaries, regions, native_root, target_source, *, source_request_digest):
+            calls.append(source_request_digest)
+            if admit == "refuses":
+                raise NativeCompilationError("unsupported_semantics", "provider refuses this resident deployment")
+        adapter.admit_resident_deployment = admit_resident_deployment
+    message = {None: "resident deployment requires provider admission",
+               "refuses": "provider refuses this resident deployment"}.get(admit)
+    if message:
+        with pytest.raises(NativeCompilationError, match=message):
+            _deployed(tmp_path, adapter)
+        assert len(calls) == (admit == "refuses")
+        return
+    # Admitted, publication goes on and stops later at this fixture's arena, which has no packed bytes.
+    with pytest.raises(Exception) as later:
+        _deployed(tmp_path, adapter)
+    assert "admission" not in str(later.value) and "refuses" not in str(later.value) and calls, later.value

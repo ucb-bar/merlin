@@ -11,6 +11,7 @@ import pytest
 from merlin.compiler.schedule.storage import application_residency as residency
 from merlin.compiler.schedule.storage.residency import ResidencyOverflow
 from merlin.compiler.semantic.codegen import CodegenOptions, codegen_options, current_codegen_options
+from merlin.compiler.semantic.target_binding import NativeCompilationError
 
 
 @pytest.fixture
@@ -63,6 +64,22 @@ def _scope(inputs, **option_changes):
     with codegen_options(replace(inputs.options, **option_changes)):
         with residency.residency_scope(inputs.source, inputs.adapter, inputs.parameters, None):
             yield
+
+
+def _declined(inputs, parameters=True, state=None):
+    """The reason, and the options and publication inside the scope, of an application residency declines."""
+    selected = inputs.options
+    with codegen_options(selected):
+        with residency.residency_scope(inputs.source, inputs.adapter,
+                                       inputs.parameters if parameters else None, state):
+            inside = current_codegen_options(), residency.publication(), residency.declined()
+        assert current_codegen_options() is selected
+    assert residency.declined() is None and residency.publication() is None
+    options, published, reason = inside
+    # Inside, the application compiles exactly as with residency off: the same options and no table.
+    assert options == replace(selected, application_residency=False) and published is None
+    assert not inputs.packed_sources
+    return reason
 
 
 def test_publication_binds_exact_packed_bytes_and_restores_options(inputs):
@@ -154,15 +171,18 @@ def test_authenticated_snapshot_identity_and_size_must_match_parameters(inputs, 
         assert not inputs.packed_sources
 
 
-def test_provider_explicit_unsupported_inventory_has_precise_refusal(inputs):
+def test_an_application_without_a_resident_layout_compiles_without_residency(inputs):
     inputs.region.input_storages = (("runtime_input", "external"),)
     inputs.adapter.inventory_resident_inputs = lambda region, alternative: None
-    with pytest.raises(ValueError, match="no supported immutable resident"):
-        with _scope(inputs):
-            pass
+    assert _declined(inputs) == "no device operand of the application has a resident layout"
 
 
-def test_unsupported_immutable_consumer_refuses_partial_residency(inputs, monkeypatch):
+def test_an_application_without_external_parameters_compiles_without_residency(inputs):
+    assert _declined(inputs, parameters=False) == "the application has no external parameters to keep resident"
+    assert not inputs.checked_sources
+
+
+def test_an_unsupported_immutable_consumer_compiles_without_any_residency(inputs, monkeypatch):
     second = SimpleNamespace(digest=lambda: "unsupported-region",
                              input_storages=(("arg0", "external"),))
     plan = SimpleNamespace(selected=(SimpleNamespace(id="first", placement="accelerator"),
@@ -174,11 +194,7 @@ def test_unsupported_immutable_consumer_refuses_partial_residency(inputs, monkey
         inputs.adapter.inventory_resident_inputs = lambda region, alternative, unsupported=unsupported: (
             inputs.inventory if region is inputs.region else unsupported
         )
-        with pytest.raises(ValueError, match="immutable device consumer lacks a resident ABI: arg0"):
-            with _scope(inputs):
-                pass
-        assert not inputs.packed_sources
-        assert residency.publication() is None
+        assert _declined(inputs) == "a device region reads parameters through an operation with no resident layout: arg0"
 
 
 def test_staging_must_fit_capacity_even_when_it_is_entirely_outside(inputs):
@@ -191,10 +207,23 @@ def test_staging_must_fit_capacity_even_when_it_is_entirely_outside(inputs):
 
 def test_staging_and_parameter_capacity_overflow_precedes_packing(inputs):
     with pytest.raises(ResidencyOverflow) as error:
-        with _scope(inputs, io_memory_capacity_bytes=16):
+        with _scope(inputs, io_memory_bytes=12, io_memory_capacity_bytes=16):
             pass
     assert error.value.overflow_bytes == 8
     assert not inputs.packed_sources
+
+
+def test_one_undivided_region_puts_the_arena_at_its_end_and_stages_in_the_rest(inputs):
+    with _scope(inputs, io_memory_bytes=64):
+        binding = current_codegen_options().resident_bindings["region-digest"]["arg0"]
+        assert binding == {"address": 88, "bytes": 8, "immutable": True}
+        assert (current_codegen_options().io_memory_base, current_codegen_options().io_memory_bytes) == (32, 56)
+        rows = {row["name"]: row for row in json.loads(residency.publication()["residency.json"])["entries"]}
+        assert (rows["regional_io"]["address"], rows["regional_io"]["bytes"]) == (32, 56)
+    with pytest.raises(ValueError, match="leaves no staging window"):
+        with _scope(inputs, io_memory_bytes=8, io_memory_capacity_bytes=8):
+            pass
+    assert inputs.packed_sources == [(inputs.region, "arg0", b"dense")]
 
 
 def test_conflicting_inventory_for_one_parameter_is_rejected(inputs):
@@ -243,13 +272,11 @@ def test_default_codegen_identity_is_unchanged_by_disabled_residency():
     assert active["application_residency"] is True
 
 
-def test_mutable_state_is_refused_before_inventory_or_packing(inputs):
-    with codegen_options(inputs.options):
-        with pytest.raises(ValueError, match="device-state publication ABI"):
-            with residency.residency_scope(inputs.source, inputs.adapter, inputs.parameters, object()):
-                pass
+def test_persistent_state_compiles_without_residency_before_inventory_or_packing(inputs):
+    inputs.adapter.inventory_resident_inputs = None  # never reached
+    reason = _declined(inputs, state=object())
+    assert reason == "the application has persistent state inputs, which stay a host interface"
     assert not inputs.checked_sources
-    assert not inputs.packed_sources
 
 
 def test_inventory_and_packing_receive_selected_alternative(inputs):
@@ -339,3 +366,70 @@ def test_resident_region_check_refuses_a_package_that_ignores_its_binding(inputs
     package = SimpleNamespace(description={})
     with _scope(inputs), pytest.raises(ValueError, match="did not consume"):
         _check_resident_regions((("device", inputs.region),), (package,))
+
+
+def _published(loads):
+    """An active publication whose entries sit at the given (address, payload) pairs."""
+    files, entries, rows = {}, [], []
+    for i, (address, data) in enumerate(loads):
+        name, path = f"parameter_{i}", f"residency/parameter_{i}.bin"
+        files[path] = data
+        entries.append(dict(name=name, address=address, bytes=len(data)))
+        rows.append(dict(name=name, path=path, sha256=sha256(data).hexdigest()))
+    files["residency.json"] = json.dumps(dict(entries=entries, loads=rows)).encode()
+    return residency._PUBLICATION.set(files)
+
+
+def test_resident_deployment_loads_one_arena_after_the_window_and_inside_the_capacity():
+    from merlin.compiler.build import deployment
+
+    token = _published([(4096, b"ab"), (4100, b"cd")])
+    try:
+        arena = deployment._resident_arena(4096, 8192)
+        assert (arena["address"], arena["bytes"]) == (4096, 6)
+        assert deployment._resident_bytes(arena, residency.publication()) == b"ab\0\0cd"
+        for window_end, capacity_end in ((4097, 8192), (4096, 4101)):
+            with pytest.raises(NativeCompilationError, match="resident loads leave the capacity"):
+                deployment._resident_arena(window_end, capacity_end)
+    finally:
+        residency._PUBLICATION.reset(token)
+
+
+def test_resident_arena_is_its_own_read_only_load_with_checked_bytes():
+    from merlin.compiler.build import deployment
+
+    host = dict(address=0, bytes=4096, usable_bytes=4096, measurement="measured_sections", reserved_bytes=64,
+                declared_reservations=[dict(name="stack", bytes=64), dict(name="heap", bytes=0)])
+    record = dict(
+        provider=dict(host_allocation=host, sys_clk_freq_hz=1, window_section=".w", image_section=".i",
+                      resident_section=".r"),
+        host_allocation=host, host_linker_abi="symbolic_reservations_v1", window=dict(address=4096, bytes=64),
+        parameters=None, inputs=[], outputs=[], window_required_bytes=0,
+        resident=dict(address=8192, bytes=2, path="handoff/resident.bin", sha256=sha256(b"ab").hexdigest()))
+    files = deployment.platform_files(record, {"handoff/resident.bin": b"ab"})
+    linker = files["handoff/chip.ld"].decode()
+    assert "resident PT_LOAD FLAGS(4);" in linker and "RESIDENT (r) : ORIGIN  =  8192, LENGTH  =  2" in linker
+    assert " .r : { KEEP(*(.r)) } >RESIDENT :resident" in linker
+    assert files["handoff/window.S"].endswith(b'.section .r,"a",@progbits\n.incbin "resident.bin"\n')
+    assert files["handoff/resident.bin"] == b"ab"
+    with pytest.raises(NativeCompilationError, match="resident arena bytes differ"):
+        deployment.platform_files(record, {"handoff/resident.bin": b"ac"})
+    record["provider"]["resident_section"] = ".w"
+    with pytest.raises(NativeCompilationError, match="resident section must differ"):
+        deployment.platform_files(record)
+
+
+def test_a_resident_deployment_is_published_only_after_the_provider_admits_it(inputs):
+    from merlin.compiler.build.regions import _admit_resident_deployment
+
+    calls = []
+    admitting = SimpleNamespace(admit_resident_deployment=lambda *args, **kwargs: calls.append((args, kwargs)))
+    resident = dict(resident=dict(address=8192, bytes=2))
+    for deployment in (None, dict(resident=None)):
+        _admit_resident_deployment(deployment, SimpleNamespace(), "summaries", "regions", "root", None, inputs.source)
+    for adapter, target_source in ((SimpleNamespace(), "target"), (admitting, None)):
+        with pytest.raises(NativeCompilationError, match="resident deployment requires provider admission"):
+            _admit_resident_deployment(resident, adapter, "summaries", "regions", "root", target_source, inputs.source)
+    assert calls == []
+    _admit_resident_deployment(resident, admitting, "summaries", "regions", "root", "target", inputs.source)
+    assert calls == [(("summaries", "regions", "root", "target"), dict(source_request_digest="source-digest"))]
