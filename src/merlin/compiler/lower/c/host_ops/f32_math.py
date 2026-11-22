@@ -1,17 +1,20 @@
-"""Checked binary32 SiLU, last-axis sum, and reciprocal square root in torch's CPU arithmetic.
+"""Checked binary32 SiLU, last-axis sum, and reciprocal square root.
 
-Each emitter reproduces the arithmetic the pinned torch 2.11.0+cpu wheel runs for
+SiLU and rsqrt reproduce the arithmetic the pinned torch 2.11.0+cpu wheel runs for
 the source operation; the sequences are fixed binary32 operations, so results do
 not depend on the CPU that builds or runs them. SiLU is x / RN(1 + e) with e from
-the wheel's vector exponential (SLEEF expf, 1.0 ULP, fused steps). The sum is an
-eight-lane cascade over the last axis. rsqrt is RN(1 / RN(sqrt(x))).
+the wheel's vector exponential (SLEEF expf, 1.0 ULP, fused steps). rsqrt is
+RN(1 / RN(sqrt(x))). The sum is the declared order torch-2.11-cpu-f32-sum-v1, an
+eight-lane cascade over the last axis, exact only against that order: torch eager
+equals it when its operand is contiguous along the reduced axis and is not one row
+of 32,768 or more elements, because eager's order depends on layout and threads.
 Inputs or results outside the declared domain refuse before any store.
 """
 
 from math import prod
 from struct import pack, unpack
 
-from merlin.compiler.semantic.linalg.source_compositions import FINITE_F32, SILU_SEMANTICS
+from merlin.compiler.semantic.linalg.source_compositions import FINITE_F32, SILU_SEMANTICS, f32_sum_shape_admitted
 from merlin.compiler.semantic.linalg.linalg_recognition import _f32_reduce_maps
 from merlin.compiler.semantic.model import TensorType, pointwise_identity_maps
 
@@ -195,13 +198,14 @@ def emit_f32_row_sum_c(source, name):
     if (operand.effect != "input" or operand.attrs or operand.index_maps or len(source.nodes) != 3
             or operand.type != TensorType(shape, "f32", "raw-bit-pattern") or rank < 2
             or node.type != TensorType(shape[:-1], "f32", "raw-bit-pattern") or not 1 <= shape[-1] <= _MAX_ROW
+            or not f32_sum_shape_admitted(shape)
             or seed.type != node.type or seed.effect != "constant" or binding is None
             or binding.encoding != "f32-le-raw" or any(bytes.fromhex(binding.data_hex))
             or node.index_maps != _f32_reduce_maps(rank, (rank - 1,))
             or dict(node.attrs) != {"axis": rank - 1, "reduction_order": "unresolved",
                                     "numeric_semantics": SUM_SEMANTICS, "scalar_add_order": "input-accumulator",
                                     "source_operation": "aten.mean.dim"}):
-        raise ValueError("f32 sum needs a +0 seed over the last axis of a dense tensor")
+        raise ValueError("f32 sum needs a +0 seed over the last axis of a dense tensor, not one row of 32,768 or more")
     rows, length = prod(shape[:-1]), shape[-1]
     code = _prelude("f32 sum", rows * length * 4) + _load(name) + f"""static void {name}_partials(const unsigned char *p,size_t stride,size_t size,float out[4]) {{
   unsigned log=0; while (((size_t)1<<log)<size) ++log;

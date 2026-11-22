@@ -38,6 +38,8 @@ _SOFTMAX_SOURCES = {"aten._softmax.default", "aten.softmax.int"}
 FINITE_BF16 = "finite-bf16"
 FINITE_F32 = "finite-f32"
 _NAMED_SOURCES = {"source_f32_reduce_add_unqualified": "aten.mean.dim", "source_f32_rsqrt_unqualified": "aten.rsqrt.default"}
+# Torch eager splits one long row across threads at this length, so the declared sum order stops short of it.
+F32_SUM_ONE_ROW_LIMIT = 1 << 15
 _GELU_FORMS = {
     "tanh_gelu_f32": ("tanh", "0x3f000000,0x3f800000,0x3d372713,0x3f4c422a"),
     "erf_gelu_f32": ("none", "0x3f000000,0x3f800000,0x3f3504f3"),
@@ -358,10 +360,17 @@ def _silu(graph, product, origins):
                          index_maps=pointwise_identity_maps(len(shape), 1)), {sigmoid.id})
 
 
-def _named_source(node, sources):
+def f32_sum_shape_admitted(shape):
+    """Whether the declared f32 sum order covers this operand: not one row at or past the thread-split length."""
+    return prod(shape[:-1]) != 1 or shape[-1] < F32_SUM_ONE_ROW_LIMIT
+
+
+def _named_source(graph, node, sources):
     """Name the source operation on a reduction or rsqrt that is that operation, not a piece of a larger one."""
     expected = _NAMED_SOURCES.get(node.op)
     if expected is None or sources.get(node.id) != expected:
+        return node
+    if node.op == "source_f32_reduce_add_unqualified" and not f32_sum_shape_admitted(graph.node(node.inputs[0]).type.shape):
         return node
     return replace(node, attrs=(*node.attrs, ("source_operation", expected)))
 
@@ -393,8 +402,8 @@ def collapse_source_compositions(nodes, outputs, constants, origins=None, source
             replaced[node.id] = found[0]
             removed |= found[1]
     if not replaced:
-        return tuple(_named_source(node, sources) for node in nodes), tuple(constants)
-    kept = [_named_source(replaced.get(node.id, node), sources) for node in nodes if node.id not in removed]
+        return tuple(_named_source(graph, node, sources) for node in nodes), tuple(constants)
+    kept = [_named_source(graph, replaced.get(node.id, node), sources) for node in nodes if node.id not in removed]
     used = {key for node in kept for key in node.inputs} | set(outputs)
     dropped = {node.id for node in kept if node.effect == "constant" and node.id not in used
                and any(node.id in graph.node(key).inputs for key in removed)}
