@@ -35,6 +35,7 @@ def test_complete_profile_retains_scope_and_independent_numerical_status():
     assert result["all_declared_outputs_verified"] is False
     assert result["model_quality"] == "not_established_by_this_report"
     assert result["physical_timing_qualified"] is False
+    assert feedback(result)["call_counts"] == {"recorded": 2, "dropped": 0, "detailed": 0}
 
 
 def test_ordinary_full_execute_counter_field_is_consumed_without_relabeling():
@@ -65,6 +66,7 @@ def test_dropped_calls_do_not_turn_unrecorded_device_time_into_host_overhead():
     assert "between_calls" not in {row["region"] for row in result["breakdown"]}
     assert next(row for row in result["breakdown"] if row["region"] == "unattributed")["ticks"] == 40
     assert "dropped routed calls" in json.dumps(feedback(result))
+    assert feedback(result)["call_counts"]["dropped"] == 1
 
 
 @pytest.mark.parametrize("change", [

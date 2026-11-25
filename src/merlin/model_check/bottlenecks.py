@@ -123,6 +123,8 @@ def analyze(document, *, expected_steps, input_id, counter_kind):
     calls = sum(row["call_ticks"] for row in intervals)
     gaps = sum(row["gap_ticks"] for row in intervals)
     dropped = sum(row["dropped"] for row in intervals)
+    call_counts = {"recorded": sum(row["calls"] for row in intervals), "dropped": dropped,
+                   "detailed": sum(len(row["groups"]) for row in intervals)}
     breakdown = sorted([
         {"region": "routed_calls", "ticks": calls,
          "meaning": ("Recorded routed calls only, a lower bound because calls were dropped" if dropped else
@@ -158,7 +160,7 @@ def analyze(document, *, expected_steps, input_id, counter_kind):
         "missing_execution_steps": [{"program": p, "step": s} for p, s in sorted(expected - executed)],
         "missing_profile_steps": [{"program": p, "step": s} for p, s in sorted(expected - {
             (row["program"], row["step"]) for row in intervals})],
-        "profile_complete": complete, "intervals": intervals,
+        "profile_complete": complete, "intervals": intervals, "call_counts": call_counts,
         "forward_sum_ticks": forward if intervals else None, "breakdown": breakdown,
         "ranked_calls": sorted([{"program": row["program"], "step": row["step"], **group}
                                 for row in intervals for group in row["groups"]],
@@ -177,6 +179,7 @@ def feedback(report):
             "counter_kind": report["counter_kind"], "physical_timing_qualified": False,
             "profile_complete": report["profile_complete"],
             "steps": {key: report[key] for key in ("expected_steps", "recorded_steps", "profiled_steps")},
+            "call_counts": report["call_counts"],
             "breakdown": report["breakdown"], "next_actions": report["next_actions"],
             "limits": report["limits"]}
 
