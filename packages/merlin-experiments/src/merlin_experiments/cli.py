@@ -195,12 +195,17 @@ def main(argv: list[str] | None = None) -> int:
         from .chain_observation import main as observe_chain
 
         return observe_chain(raw[1:])
+    if raw[:1] == ["model-bottlenecks"]:
+        from merlin.model_check.bottlenecks import main as model_bottlenecks
+
+        return model_bottlenecks(raw[1:])
     parser = argparse.ArgumentParser(prog="merlin experiment", description=__doc__)
     parser.add_argument("--catalog", type=Path, help="catalog YAML; paths inside it are relative to that file")
     commands = parser.add_subparsers(dest="verb", required=True)
     commands.add_parser("list", help="list the versioned experiment catalog")
     commands.add_parser("model-observe", help="observe every built-model output against an explicit reference")
     commands.add_parser("chain-observe", help="observe every recurrent output against an explicit reference collection")
+    commands.add_parser("model-bottlenecks", help="explain existing complete-model check profiles")
     commands.add_parser(
         "instruction-admission", help="check or explicitly prepare original linked-instruction admission"
     )
