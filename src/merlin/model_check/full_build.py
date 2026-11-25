@@ -23,7 +23,7 @@ import shutil
 import struct
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -403,8 +403,22 @@ def _verify_relink(record: dict, stage: Path, *, inputs_current: bool = True) ->
         raise FullBuildError(f"relink origin or recipe changed; rebuild the image: {error}") from error
 
 
+def _source_route_record(source_route, *, offload):
+    """Bind an explicit existing source route without inferring device effects."""
+    if source_route is None:
+        return None
+    from merlin.llvmlower.head_source_route import HeadBatchSourceRoute
+    from merlin.llvmlower.sibling_source_route import SiblingSourceRoute
+
+    if not offload or type(source_route) not in (SiblingSourceRoute, HeadBatchSourceRoute):
+        raise FullBuildError("source composition requires an explicit typed route and device offload")
+    return source_route.record()
+
+
 @I.timed_event("phase", "device routing")
-def _routing(target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission):
+def _routing(
+    target: str, stage: Path, submission: Path, model: str, settings: BuildSettings, admission, *, source_route=None
+):
     """The submission's device routing over every source-admitted group, or ``None`` (host only)."""
     from merlin.compile.route_before_build import plan_before_build
 
@@ -427,7 +441,69 @@ def _routing(target: str, stage: Path, submission: Path, model: str, settings: B
     routing = plan.get("device_routing")
     if routing is None:
         raise FullBuildError(f"{model}: no device routing: {plan.get('device_routing_why')}")
+    if source_route is not None:
+        from merlin.common import mlir_query as mq
+        from merlin.llvmlower.sibling_source_route import _sha, _text
+
+        _source_route_record(source_route, offload=True)
+        if _sha(_text(mq.parse((stage / "model.mlir").read_text()))) != source_route.source_ir_sha256:
+            raise FullBuildError("source composition differs from the current captured source")
+        if routing.sibling_source is not None:
+            raise FullBuildError("ordinary routing already selects a distinct source composition")
+        routing = replace(routing, sibling_source=source_route)
     return routing
+
+
+def _host_chain_record(chain):
+    """Bind explicitly selected ordered stage/source/proof identities for reuse."""
+    if chain is None:
+        return None
+    from merlin.llvmlower.host_transform_chain import HostLLVMTransformChain
+
+    if type(chain) is not HostLLVMTransformChain:
+        raise FullBuildError("exact typed host transform chain required")
+    chain.validate()
+    return {
+        "schema": "merlin.full_build.host_transform_chain.v1",
+        "promised_order": [stage.to_dict() for stage in chain.promised_stages],
+        "callbacks": [
+            {
+                "transform": stage.transform.__module__ + ":" + stage.transform.__qualname__,
+                "verify_emission": stage.verify_emission.__module__ + ":" + stage.verify_emission.__qualname__,
+            }
+            for stage in chain.stages
+        ],
+    }
+
+
+def _host_qualification_record(chain, qualification):
+    if chain is None and qualification is None:
+        return None
+    from merlin.llvmlower.post_round_clamp_stage import qualification_record
+
+    return qualification_record(chain, qualification)
+
+
+def _qualify_host_chain(record, chain, qualification, expected_selection, directory):
+    if _host_qualification_record(chain, qualification) != expected_selection:
+        raise FullBuildError("current host provider qualification changed")
+    if expected_selection is None:
+        return None
+    import uuid
+
+    recipe = record.get("compilation_recipe")
+    if type(recipe) is not dict or set(recipe) != {"path", "sha256"}:
+        raise FullBuildError("qualified host transform requires actual completed recipe")
+    audit = qualification.audit(
+        recipe_path=recipe["path"],
+        recipe_sha256=recipe["sha256"],
+        executable=record["elf"],
+        executable_sha256=record["elf_sha256"],
+        destination=Path(directory) / ("host-provider-audit-" + uuid.uuid4().hex),
+    )
+    if _host_qualification_record(chain, qualification) != expected_selection:
+        raise FullBuildError("current host provider qualification changed during audit")
+    return audit
 
 
 def build(
@@ -442,16 +518,26 @@ def build(
     admission=None,
     offload: bool = True,
     weights_source: Path | None = None,
+    source_route=None,
+    host_llvm_transform_chain=None,
+    host_llvm_link_qualification=None,
 ) -> dict[str, Any]:
     """Build ``stage``'s image under ``directory`` (reused when its record matches) and return its record.
 
     ``offload=False`` builds the host twin: the same recipe and host code with every group on the host
     and no device object of the submission (the differential's reference image).
 
+    ``source_route`` explicitly selects an existing checked head or shared-input
+    route. Its complete record separates this build from the unchanged baseline.
+    The caller must qualify the route's borrowed-call effects independently.
+
     Two checks of one submission share the directory: the first builds while holding its lock, the
     second waits and reuses the record."""
     import fcntl
 
+    _source_route_record(source_route, offload=offload)
+    _host_chain_record(host_llvm_transform_chain)
+    _host_qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("w") as lock:
@@ -470,6 +556,17 @@ def build(
                     admission,
                     offload,
                     weights_source,
+                    **({"source_route": source_route} if source_route is not None else {}),
+                    **(
+                        {"host_llvm_transform_chain": host_llvm_transform_chain}
+                        if host_llvm_transform_chain is not None
+                        else {}
+                    ),
+                    **(
+                        {"host_llvm_link_qualification": host_llvm_link_qualification}
+                        if host_llvm_link_qualification is not None
+                        else {}
+                    ),
                 )
         result["timing"] = _write_timings(directory, events)
         return result
@@ -496,11 +593,18 @@ def _build(
     admission,
     offload,
     weights_source=None,
+    *,
+    source_route=None,
+    host_llvm_transform_chain=None,
+    host_llvm_link_qualification=None,
 ):
     from merlin.compile.baremetal_model import compile_saved_model
     from merlin.model_check.full_build_identity import build_material, verified_recipe
 
     lookup_started = time.monotonic()
+    source_record = _source_route_record(source_route, offload=offload)
+    host_chain_record = _host_chain_record(host_llvm_transform_chain)
+    host_qualification_record = _host_qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
     try:
         producer_material = build_material(stage, target, label, submission, submission_sha256, settings, offload)
     except (OSError, ValueError) as error:
@@ -524,6 +628,11 @@ def _build(
         "host_admission_selected": not offload and admission is not None,
         "lowering": _lowering_identity(),
         "inputs": _build_inputs(stage, submission, settings, directory, offload, weights_source, target),
+        **({"source_route": source_record} if source_route is not None else {}),
+        **({"host_llvm_transform_chain": host_chain_record} if host_chain_record is not None else {}),
+        **(
+            {"host_llvm_link_qualification": host_qualification_record} if host_qualification_record is not None else {}
+        ),
     }
     record_path = directory / "build.json"
     if record_path.is_file():
@@ -557,10 +666,18 @@ def _build(
                 != producer_material
             ):
                 raise FullBuildError("whole-model producer inputs changed during cache lookup")
+            if _source_route_record(source_route, offload=offload) != source_record:
+                raise FullBuildError("source composition selection changed during cache lookup")
+            if _host_chain_record(host_llvm_transform_chain) != host_chain_record:
+                raise FullBuildError("host transform chain changed during cache lookup")
             if current_admission is not None:
                 current_admission.revalidate(elf=elf, result=admission_result, target=target)
+            provider_audit = _qualify_host_chain(
+                record, host_llvm_transform_chain, host_llvm_link_qualification, host_qualification_record, directory
+            )
             return {
                 **record,
+                **({"host_provider_qualification": provider_audit} if provider_audit is not None else {}),
                 "reused": True,
                 "cache_admission": admission_result,
                 "cache_lookup_seconds": time.monotonic() - lookup_started,
@@ -572,7 +689,21 @@ def _build(
         from merlin.model_check.admission import service
 
         admission = service(target)
-    device = _routing(target, Path(stage), Path(submission), label, settings, admission) if offload else None
+    device = (
+        _routing(
+            target,
+            Path(stage),
+            Path(submission),
+            label,
+            settings,
+            admission,
+            **({"source_route": source_route} if source_route is not None else {}),
+        )
+        if offload
+        else None
+    )
+    if source_route is not None and device is None:
+        raise FullBuildError("source composition requested but no accelerator groups were admitted")
     receipt = compile_saved_model(
         capture=stage,
         package=settings.host_package,
@@ -593,7 +724,17 @@ def _build(
         **({"weights_source": weights_source} if weights_source is not None else {}),
         **({"host_math_policy": settings.host_math_policy} if settings.host_math_policy != "native" else {}),
         **({"host_elementwise_fusion": True} if settings.host_elementwise_fusion else {}),
+        **({"host_llvm_transform_chain": host_llvm_transform_chain} if host_llvm_transform_chain is not None else {}),
+        **(
+            {"host_llvm_link_qualification": host_llvm_link_qualification}
+            if host_llvm_link_qualification is not None
+            else {}
+        ),
     )
+    if _source_route_record(source_route, offload=offload) != source_record:
+        raise FullBuildError("source composition selection changed during compilation")
+    if _host_chain_record(host_llvm_transform_chain) != host_chain_record:
+        raise FullBuildError("host transform chain changed during compilation")
     elf = Path(receipt["output"]["elf"])
     build_dir = elf.parent
     record = {
@@ -647,6 +788,11 @@ def _build(
         verified_recipe(record)
     if build_material(stage, target, label, submission, submission_sha256, settings, offload) != producer_material:
         raise FullBuildError("whole-model producer inputs changed during compilation; refusing to cache")
+    provider_audit = _qualify_host_chain(
+        record, host_llvm_transform_chain, host_llvm_link_qualification, host_qualification_record, directory
+    )
+    if provider_audit is not None:
+        record["host_provider_qualification"] = provider_audit
     record["seconds"] = round(time.monotonic() - lookup_started, 1)
     pending = record_path.with_suffix(".pending")
     pending.write_text(json.dumps(record, indent=1) + "\n")
@@ -972,9 +1118,17 @@ def read(console: bytes, stage: Path, build_hash: str) -> tuple[list[np.ndarray]
 
     values, metrics = read_full_outputs(console, Path(stage), build_hash)
     specs = _out_specs(Path(stage) / "model.mlir")
-    values = [
-        np.asarray(v).astype(bool) if dt == "i1" else np.asarray(v) for v, (_s, dt) in zip(values, specs, strict=True)
-    ]
+    decoded = []
+    for value, (_shape, dtype) in zip(values, specs, strict=True):
+        value = np.asarray(value)
+        if dtype == "i1":
+            # The raw decoder returns one unsigned byte for every wire value.
+            # Boolean conversion would otherwise hide bytes such as 2 or 255.
+            if value.dtype != np.dtype("uint8") or not np.all((value == 0) | (value == 1)):
+                raise FullBuildError("whole-model Boolean output contains noncanonical storage bytes")
+            value = value.astype(bool)
+        decoded.append(value)
+    values = decoded
     profile = parse_group_profile(binary_console_diagnostics(console).decode("utf-8", errors="replace"))
     out = {"metrics": metrics}
     if profile is not None:

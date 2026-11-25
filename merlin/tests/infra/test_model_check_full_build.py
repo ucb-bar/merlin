@@ -168,9 +168,14 @@ def built(tmp_path, monkeypatch):
             selected_ir = merlin_host_llvm_transform(
                 Path(clang()).resolve().parent, host_isa="rv64gc", combine_clamp=True
             )(original, directory / "host_llvm")
-            bind_preparation(recipe, directory / "host_llvm", {
-                "source_sha256": FB.sha256(original), "selected_sha256": FB.sha256(selected_ir),
-            })
+            bind_preparation(
+                recipe,
+                directory / "host_llvm",
+                {
+                    "source_sha256": FB.sha256(original),
+                    "selected_sha256": FB.sha256(selected_ir),
+                },
+            )
 
         def run(argv, **kwargs):
             return subprocess.run(argv, capture_output=True, text=True, check=True, **kwargs)
@@ -213,7 +218,7 @@ def built(tmp_path, monkeypatch):
         (tmp_path / name / "manifest.yaml").write_text("neutral fixture package\n")
     settings = FB.BuildSettings("board", tmp_path / "boards", tmp_path / "host.dts", "scalar", 1, tmp_path / "host")
 
-    def build(*, host_math_policy="native"):
+    def build(*, host_math_policy="native", host_llvm_transform_chain=None, host_llvm_link_qualification=None):
         return FB.build(
             stage,
             target="t",
@@ -224,6 +229,16 @@ def built(tmp_path, monkeypatch):
             directory=directory,
             admission=_admission_service(),
             offload=False,
+            **(
+                {"host_llvm_transform_chain": host_llvm_transform_chain}
+                if host_llvm_transform_chain is not None
+                else {}
+            ),
+            **(
+                {"host_llvm_link_qualification": host_llvm_link_qualification}
+                if host_llvm_link_qualification is not None
+                else {}
+            ),
         )
 
     return build, stage, directory, source, calls
@@ -607,8 +622,11 @@ def test_fresh_native_adoptions_share_products_without_aliasing_runtime_template
         directory = tmp_path / f"owner-step{index}"
         elf = FB.relink(record, stage, {"in0": np.array(expected, np.float32)}, directory)
         assert subprocess.check_output([elf], text=True).strip() == f"{expected[0]} {expected[1]} 5"
-        verify_completed_recipe(directory / "compilation_recipe.json", executable=elf,
-                                expected_recipe_sha256=FB.sha256(directory / "compilation_recipe.json"))
+        verify_completed_recipe(
+            directory / "compilation_recipe.json",
+            executable=elf,
+            expected_recipe_sha256=FB.sha256(directory / "compilation_recipe.json"),
+        )
     assert len(calls) == 2, "each exact adoption stamp generates once; returning to the first reuses only its template"
     assert marker.read_bytes() == original_marker
     templates = list(Path(first["build_dir"]).glob("model_check_single_forward_*/template.json"))
@@ -767,3 +785,164 @@ def test_build_material_binds_direct_tools_sources_settings_and_input_bytes(tmp_
         ),
     )
     assert material() != changed, "selected runtime compile flags are part of build correspondence too"
+
+
+def _selected_host_chain(tmp_path, *, isa="rv64gc"):
+    from dataclasses import asdict, replace
+
+    from _post_round_clamp_fixture import ASSEMBLER, BASE, ROOT
+
+    from merlin.llvmlower import post_round_clamp_stage as S
+    from merlin.llvmlower.host_transform_chain import HostLLVMTransformChain
+
+    contract = replace(BASE, host_isa=isa)
+    document = tmp_path / ("selected-" + isa + ".json")
+    document.write_text(json.dumps(asdict(contract)))
+    stage = S.make_stage(
+        enabled=True,
+        contract=contract,
+        contract_document=document,
+        assembler=ASSEMBLER,
+        semantic_proofs=(ROOT / "proof.json",),
+    )
+    return HostLLVMTransformChain((stage.contract,), (stage,)), document
+
+
+def _selected_host_qualification(chain, document, tmp_path, monkeypatch, observations):
+    from _post_round_clamp_fixture import SUPPLIER, pin
+
+    from merlin.llvmlower import post_round_clamp_stage as S
+    from merlin.llvmlower.host_transform_chain import HostLLVMArtifact as A
+
+    controls = tmp_path / (document.stem + ".ld")
+    controls.write_text("unit link-control custody only")
+    review = tmp_path / (document.stem + "-review.json")
+    review.write_text('{"scope":"unit context custody only"}')
+    support = tmp_path / (document.stem + "-support.json")
+    support.write_text(
+        json.dumps(
+            {
+                "schema": "merlin.host_closed_support_object_policy.v1",
+                "objects": [pin(SUPPLIER)],
+                "link_control_inputs": [pin(controls)],
+                "source_effect_review": pin(review),
+            }
+        )
+    )
+    qualification = S.ClosedCalleeQualification(
+        chain.stages[0].transform.__self__.contract, A.capture(document), A.capture(support), A.capture(review)
+    )
+
+    def audit(self, **kw):
+        self.record()
+        observations.append(kw)
+        return {"unit_gate_observation": len(observations)}
+
+    monkeypatch.setattr(S.ClosedCalleeQualification, "audit", audit)
+    return qualification
+
+
+def test_selected_host_selection_separates_real_cache_and_forwards_chain(built, tmp_path, monkeypatch):
+    build, _stage, _directory, _source, calls = built
+    baseline = build()
+    observations = []
+    chain, doc = _selected_host_chain(tmp_path)
+    qualification = _selected_host_qualification(chain, doc, tmp_path, monkeypatch, observations)
+    selected = build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert not selected["reused"] and "host_llvm_transform_chain" not in baseline["key"]
+    assert calls[-1]["host_llvm_transform_chain"] is chain
+    assert calls[-1]["host_llvm_link_qualification"] is qualification
+    cached = build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert cached["reused"] and len(observations) == 2
+    assert cached["host_provider_qualification"] != selected["host_provider_qualification"]
+    portable, otherdoc = _selected_host_chain(tmp_path, isa="portable")
+    otherqual = _selected_host_qualification(portable, otherdoc, tmp_path, monkeypatch, observations)
+    other = build(host_llvm_transform_chain=portable, host_llvm_link_qualification=otherqual)
+    assert not other["reused"] and other["key"] != selected["key"] and len(calls) == 3 and len(observations) == 3
+
+
+def test_selected_host_contract_mutation_refuses_before_compile(built, tmp_path, monkeypatch):
+    build, _stage, _directory, _source, calls = built
+    chain, document = _selected_host_chain(tmp_path)
+    qualification = _selected_host_qualification(chain, document, tmp_path, monkeypatch, [])
+    build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    document.write_text(document.read_text() + " ")
+    with pytest.raises(ValueError):
+        build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert len(calls) == 1
+
+
+def test_selected_host_unknown_chain_refuses_before_any_build_io(built):
+    build, _stage, directory, _source, calls = built
+    with pytest.raises(FB.FullBuildError):
+        build(host_llvm_transform_chain=SimpleNamespace())
+    assert calls == [] and not directory.exists()
+
+
+def test_selected_host_missing_qualification_refuses_before_any_build_io(built, tmp_path):
+    build, _stage, directory, _source, calls = built
+    chain, _ = _selected_host_chain(tmp_path)
+    with pytest.raises(TypeError):
+        build(host_llvm_transform_chain=chain)
+    assert calls == [] and not directory.exists()
+
+
+def test_selected_host_changed_context_refuses_before_any_build_io(built, tmp_path, monkeypatch):
+    build, _stage, directory, _source, calls = built
+    chain, doc = _selected_host_chain(tmp_path)
+    qualification = _selected_host_qualification(chain, doc, tmp_path, monkeypatch, [])
+    qualification.context_review.path.write_text("changed")
+    with pytest.raises(ValueError):
+        build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert calls == [] and not directory.exists()
+
+
+def test_selected_host_failed_fresh_provider_audit_refuses_cache_publication(built, tmp_path, monkeypatch):
+    from merlin.llvmlower import post_round_clamp_stage as S
+
+    build, _stage, directory, _source, calls = built
+    chain, doc = _selected_host_chain(tmp_path)
+    qualification = _selected_host_qualification(chain, doc, tmp_path, monkeypatch, [])
+
+    def refused(self, **kw):
+        raise ValueError("actual non-round provider changed")
+
+    monkeypatch.setattr(S.ClosedCalleeQualification, "audit", refused)
+    with pytest.raises(ValueError, match="non-round provider changed"):
+        build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert len(calls) == 1 and not (directory / "build.json").exists()
+
+
+def test_selected_host_cached_pass_never_substitutes_current_provider_audit(built, tmp_path, monkeypatch):
+    from merlin.llvmlower import post_round_clamp_stage as S
+
+    build, _stage, directory, _source, calls = built
+    chain, doc = _selected_host_chain(tmp_path)
+    qualification = _selected_host_qualification(chain, doc, tmp_path, monkeypatch, [])
+    first = build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert first["host_provider_qualification"]
+
+    def refused(self, **kw):
+        raise ValueError("current actual supplier missing")
+
+    monkeypatch.setattr(S.ClosedCalleeQualification, "audit", refused)
+    with pytest.raises(ValueError, match="actual supplier missing"):
+        build(host_llvm_transform_chain=chain, host_llvm_link_qualification=qualification)
+    assert len(calls) == 1
+
+
+def test_selected_host_baremetal_missing_qualification_refuses_before_capture_io(tmp_path):
+    from merlin.compile import baremetal_model as module
+
+    chain, _ = _selected_host_chain(tmp_path)
+    with pytest.raises(TypeError):
+        module.compile_saved_model(
+            capture=tmp_path / "absent",
+            package=tmp_path / "absent",
+            board_catalog=tmp_path / "absent",
+            board="none",
+            dts=tmp_path / "absent",
+            output=tmp_path / "must-not-create",
+            host_llvm_transform_chain=chain,
+        )
+    assert not (tmp_path / "must-not-create").exists()

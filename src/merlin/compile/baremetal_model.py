@@ -162,14 +162,14 @@ def _full_references(
         if metadata.get("output_abi") != actual_abi:
             raise BaremetalModelError("complete reference ABI differs from the actual forward results")
         try:
-            outputs = complete_outputs(
-                metadata, present(reference_file, receipt_bound=True).read_bytes()
-            )
+            outputs = complete_outputs(metadata, present(reference_file, receipt_bound=True).read_bytes())
         except ValueError as exc:
             raise BaremetalModelError(f"invalid complete quantized-program reference: {exc}") from exc
         integers = {"i1": np.bool_, "i8": np.int8, "i16": np.int16, "i32": np.int32, "i64": np.int64}
-        return [(f"out{i}", np.asarray(value, dtype=integers.get(row["dtype"], np.float32)))
-                for i, (value, row) in enumerate(zip(outputs, actual_abi, strict=True))]
+        return [
+            (f"out{i}", np.asarray(value, dtype=integers.get(row["dtype"], np.float32)))
+            for i, (value, row) in enumerate(zip(outputs, actual_abi, strict=True))
+        ]
     if reference_file is None or Path(reference_file).name != reference_file or not reference_file.endswith(".npy"):
         raise BaremetalModelError("execution needs one explicit in-bundle .npy reference_file for result zero")
     first = np.load(present(reference_file, receipt_bound=True), allow_pickle=False)
@@ -369,6 +369,8 @@ def compile_saved_model(
     host_elementwise_fusion: bool = False,
     host_bounded_rne: bool = False,
     host_roundeven: bool = False,
+    host_llvm_transform_chain=None,
+    host_llvm_link_qualification=None,
 ) -> dict[str, Any]:
     """Compile one saved model; ``none`` makes no execution or numerical claim.
 
@@ -439,6 +441,11 @@ def compile_saved_model(
     RV64GC/lp64d binary32 runtime helper. The generic C binary64 helper remains;
     neither the floating environment nor the captured math policy changes.
     """
+    host_qualification_selection = None
+    if host_llvm_transform_chain is not None or host_llvm_link_qualification is not None:
+        from merlin.llvmlower.post_round_clamp_stage import qualification_record
+
+        host_qualification_selection = qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
     recomputation_check = None
     if source_recomputation is not None:
         from merlin.runtime.source_recomputation_build import freeze_source_recomputation
@@ -737,6 +744,16 @@ def compile_saved_model(
 
             receipt["inputs"]["host_elementwise_fusion"] = True
             build_options["features"] = frozenset((*build_options.get("features", ()), FUSE_AFTER_GENERALIZE_NAME))
+        if host_llvm_transform_chain is not None:
+            from merlin.llvmlower.host_transform_chain import HostLLVMTransformChain
+
+            if type(host_llvm_transform_chain) is not HostLLVMTransformChain:
+                raise TypeError("exact typed host transform chain required")
+            host_llvm_transform_chain.validate()
+            receipt["inputs"]["host_llvm_transform_chain"] = {
+                "promised_order": [stage.to_dict() for stage in host_llvm_transform_chain.promised_stages]
+            }
+            build_options["host_llvm_transform_chain"] = host_llvm_transform_chain
         if host_bounded_rne:
             from merlin.llvmlower.late_quant_rne import merlin_host_llvm_transform
             from merlin.llvmlower.toolchain import clang
@@ -847,15 +864,18 @@ def compile_saved_model(
             from merlin.llvmlower.graph_optimizations import recheck_host_graph_artifacts
 
             early_layout_artifacts = recheck_host_graph_artifacts(
-                output_path / "build" / "pre_group_layout", early_layout_policy)
+                output_path / "build" / "pre_group_layout", early_layout_policy
+            )
             receipt["output"]["pre_group_layout"] = early_layout_artifacts
         if storage_policy is not None:
             from merlin.llvmlower.borrowed_arena import receipt_borrowed_lifetime
             from merlin.llvmlower.host_storage_policy import recheck as recheck_storage
 
             storage_artifacts = recheck_storage(
-                output_path / "build" / "intermediate_storage", storage_policy,
-                borrowed_lifetime=receipt_borrowed_lifetime(built))
+                output_path / "build" / "intermediate_storage",
+                storage_policy,
+                borrowed_lifetime=receipt_borrowed_lifetime(built),
+            )
             receipt["output"]["intermediate_storage"] = storage_artifacts
         if shared_source_lowerings:
             from merlin.llvmlower.prepared_model_transform import RECEIPT as PREPARATION_RECEIPT
@@ -928,6 +948,32 @@ def compile_saved_model(
                 raise BaremetalModelError("operation profiling selected but no safe operation table was emitted")
             profile_table_sha = _sha(profile_table)
             receipt["output"]["op_profile_table"] = {"path": str(profile_table), "sha256": profile_table_sha}
+        if host_qualification_selection is not None:
+            receipt["inputs"]["host_llvm_link_qualification"] = host_qualification_selection
+            import uuid
+
+            from merlin.llvmlower.post_round_clamp_stage import qualification_record
+
+            if (
+                qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
+                != host_qualification_selection
+            ):
+                raise BaremetalModelError("host provider qualification changed during compilation")
+            selected_recipe = receipt["output"].get("compilation_recipe")
+            if not isinstance(selected_recipe, dict):
+                raise BaremetalModelError("qualified host transform returned no actual completed recipe")
+            receipt["output"]["host_provider_qualification"] = host_llvm_link_qualification.audit(
+                recipe_path=selected_recipe["path"],
+                recipe_sha256=selected_recipe["sha256"],
+                executable=elf,
+                executable_sha256=elf_sha,
+                destination=output_path / ("host-provider-audit-" + uuid.uuid4().hex),
+            )
+            if (
+                qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
+                != host_qualification_selection
+            ):
+                raise BaremetalModelError("host provider qualification changed during final-link audit")
         if run != "none":
             extension = _spike_extension_backend(target) if run == "spike" else None
             if backend is None and extension is not None:
@@ -1061,6 +1107,12 @@ def compile_saved_model(
             or _sha(elf) != elf_sha
         ):
             raise BaremetalModelError("an input or linked ELF changed during compilation/execution")
+        if (
+            host_qualification_selection is not None
+            and qualification_record(host_llvm_transform_chain, host_llvm_link_qualification)
+            != host_qualification_selection
+        ):
+            raise BaremetalModelError("host provider qualification changed during compilation/execution")
         if device is not None and MI.strict_tree_sha256(device_path) != device_tree:
             raise BaremetalModelError("selected device package changed during compilation/execution")
         if sidecar.is_file() and _sha(sidecar) != receipt["output"]["device_sidecar"]["sha256"]:
@@ -1083,15 +1135,22 @@ def compile_saved_model(
             if recheck_host_graph_artifacts(output_path / "build" / "lower", graph_optimizations) != graph_artifacts:
                 raise BaremetalModelError("host graph optimization artifacts changed during execution")
         if early_layout_policy is not None:
-            if (getattr(device, "pre_group_layout", None) is not early_layout_policy
-                    or recheck_host_graph_artifacts(output_path / "build" / "pre_group_layout",
-                                                    early_layout_policy) != early_layout_artifacts):
+            if (
+                getattr(device, "pre_group_layout", None) is not early_layout_policy
+                or recheck_host_graph_artifacts(output_path / "build" / "pre_group_layout", early_layout_policy)
+                != early_layout_artifacts
+            ):
                 raise BaremetalModelError("pre-group layout selection or artifacts changed during execution")
         if storage_policy is not None:
-            if (getattr(device, "intermediate_storage", None) is not storage_policy
-                    or recheck_storage(output_path / "build" / "intermediate_storage",
-                                       storage_policy,
-                                       borrowed_lifetime=receipt_borrowed_lifetime(built)) != storage_artifacts):
+            if (
+                getattr(device, "intermediate_storage", None) is not storage_policy
+                or recheck_storage(
+                    output_path / "build" / "intermediate_storage",
+                    storage_policy,
+                    borrowed_lifetime=receipt_borrowed_lifetime(built),
+                )
+                != storage_artifacts
+            ):
                 raise BaremetalModelError("intermediate storage selection or artifacts changed during execution")
         if shared_source_lowerings:
             for value in shared_source_lowerings:

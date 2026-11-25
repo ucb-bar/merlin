@@ -4,6 +4,7 @@ This is a structural transform, not a physical alias/residency permission or a
 numerical qualification. Ordinary pipeline verification remains caller-owned.
 No arithmetic, quantization, operation order or tensor payload is changed.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -30,13 +31,21 @@ def _key(op):
         tensor.ExpandShapeOp: {"reassociation", "static_output_shape"},
         tensor.CastOp: set(),
     }
-    if (type(op) not in allowed or len(op.operands) != 1 or len(op.results) != 1
-            or op.regions or op.successors or set(op.properties) != allowed[type(op)]
-            or any(not name.startswith("prov.") for name in op.attributes)):
+    if (
+        type(op) not in allowed
+        or len(op.operands) != 1
+        or len(op.results) != 1
+        or op.regions
+        or op.successors
+        or set(op.properties) != allowed[type(op)]
+        or any(not name.startswith("prov.") for name in op.attributes)
+    ):
         return None
     source, result = op.operands[0].type, op.results[0].type
-    if any(not isinstance(t, builtin.TensorType) or t.encoding != builtin.NoneAttr()
-           or any(d <= 0 for d in t.get_shape()) for t in (source, result)):
+    if any(
+        not isinstance(t, builtin.TensorType) or t.encoding != builtin.NoneAttr() or any(d <= 0 for d in t.get_shape())
+        for t in (source, result)
+    ):
         return None
     if source.element_type != result.element_type or prod(source.get_shape()) != prod(result.get_shape()):
         return None
@@ -44,15 +53,15 @@ def _key(op):
     # tensor semantics. An encoded/dynamic/layout-dependent view is excluded.
     if type(op) is tensor.CastOp and source != result:
         return None
-    return (type(op), tuple(op.operands), tuple(op.result_types),
-            tuple(sorted(op.properties.items())))
+    return (type(op), tuple(op.operands), tuple(op.result_types), tuple(sorted(op.properties.items())))
 
 
 def _lineage(op):
     previous = op.attributes.get("prov.view_cse_sources")
     if previous is not None:
         if not isinstance(previous, builtin.ArrayAttr) or any(
-                not isinstance(item, builtin.DictionaryAttr) for item in previous):
+            not isinstance(item, builtin.DictionaryAttr) for item in previous
+        ):
             raise ValueError("tensor view CSE lineage must contain exact attribute dictionaries")
         return tuple(previous)
     return (builtin.DictionaryAttr(dict(op.attributes)),)
@@ -82,8 +91,7 @@ def canonicalize_tensor_views(module: builtin.ModuleOp) -> tuple[TensorViewWitne
             if previous is None:
                 known[key] = op
                 continue
-            witness = TensorViewWitness(indices[op], indices[previous], op.name,
-                                        ir_digest(op), str(op.results[0].type))
+            witness = TensorViewWitness(indices[op], indices[previous], op.name, ir_digest(op), str(op.results[0].type))
             lineage = (*_lineage(previous), *_lineage(op))
             # Metadata is preserved, not used to justify view equivalence.
             previous.attributes["prov.view_cse_sources"] = builtin.ArrayAttr(lineage)
@@ -99,7 +107,7 @@ def canonicalize_tensor_views(module: builtin.ModuleOp) -> tuple[TensorViewWitne
     return tuple(witnesses)
 
 
-def fold_complete_matrix_slice_concats(module: builtin.ModuleOp) -> int:
+def _fold_complete_matrix_slice_concats_legacy(module: builtin.ModuleOp) -> int:
     """View a complete ordered matrix-slice concat through its original aggregate.
 
     A rank-three tensor ``[h,m,n]`` sliced at every ``h`` coordinate,
@@ -111,49 +119,243 @@ def fold_complete_matrix_slice_concats(module: builtin.ModuleOp) -> int:
     module.verify()
     count = 0
     for concat in tuple(module.walk()):
-        if (type(concat) is not tensor.ConcatOp or concat.dim.value.data != 0
-                or set(concat.properties) != {"dim"}
-                or any(not key.startswith("prov.") for key in concat.attributes)):
+        if (
+            type(concat) is not tensor.ConcatOp
+            or concat.dim.value.data != 0
+            or set(concat.properties) != {"dim"}
+            or any(not key.startswith("prov.") for key in concat.attributes)
+        ):
             continue
         aggregate = None
         for index, value in enumerate(concat.inputs):
             collapse = value.owner
-            if (type(collapse) is not tensor.CollapseShapeOp or len(collapse.operands) != 1
-                    or set(collapse.properties) != {"reassociation"}
-                    or any(not key.startswith("prov.") for key in collapse.attributes)
-                    or tuple(tuple(i.value.data for i in group) for group in collapse.reassociation)
-                       != ((0, 1), (2,))):
+            if (
+                type(collapse) is not tensor.CollapseShapeOp
+                or len(collapse.operands) != 1
+                or set(collapse.properties) != {"reassociation"}
+                or any(not key.startswith("prov.") for key in collapse.attributes)
+                or tuple(tuple(i.value.data for i in group) for group in collapse.reassociation) != ((0, 1), (2,))
+            ):
                 break
             view = collapse.operands[0].owner
-            if (type(view) is not tensor.ExtractSliceOp or len(view.operands) != 1
-                    or set(view.properties) != {
-                        "static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"}
-                    or any(not key.startswith("prov.") for key in view.attributes)):
+            if (
+                type(view) is not tensor.ExtractSliceOp
+                or len(view.operands) != 1
+                or set(view.properties) != {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"}
+                or any(not key.startswith("prov.") for key in view.attributes)
+            ):
                 break
             typ = view.source.type
-            if (not isinstance(typ, builtin.TensorType) or typ.encoding != builtin.NoneAttr()
-                    or len(typ.get_shape()) != 3 or any(d <= 0 for d in typ.get_shape())):
+            if (
+                not isinstance(typ, builtin.TensorType)
+                or typ.encoding != builtin.NoneAttr()
+                or len(typ.get_shape()) != 3
+                or any(d <= 0 for d in typ.get_shape())
+            ):
                 break
             h, m, n = typ.get_shape()
-            if (h != len(concat.inputs)
-                    or (aggregate is not None and view.source is not aggregate)
-                    or tuple(view.static_offsets.get_values()) != (index, 0, 0)
-                    or tuple(view.static_sizes.get_values()) != (1, m, n)
-                    or tuple(view.static_strides.get_values()) != (1, 1, 1)
-                    or view.result.type != builtin.TensorType(typ.element_type, (1, m, n))
-                    or value.type != builtin.TensorType(typ.element_type, (m, n))
-                    or concat.result.type != builtin.TensorType(typ.element_type, (h*m, n))):
+            if (
+                h != len(concat.inputs)
+                or (aggregate is not None and view.source is not aggregate)
+                or tuple(view.static_offsets.get_values()) != (index, 0, 0)
+                or tuple(view.static_sizes.get_values()) != (1, m, n)
+                or tuple(view.static_strides.get_values()) != (1, 1, 1)
+                or view.result.type != builtin.TensorType(typ.element_type, (1, m, n))
+                or value.type != builtin.TensorType(typ.element_type, (m, n))
+                or concat.result.type != builtin.TensorType(typ.element_type, (h * m, n))
+            ):
                 break
             aggregate = view.source
         else:
             if aggregate is None:
                 continue
             replacement = tensor.CollapseShapeOp.create(
-                operands=[aggregate], result_types=[concat.result.type],
+                operands=[aggregate],
+                result_types=[concat.result.type],
                 properties={"reassociation": collapse.reassociation},
                 attributes=dict(concat.attributes),
             )
             Rewriter.replace_op(concat, replacement)
             count += 1
+    module.verify()
+    return count
+
+
+def fold_complete_matrix_slice_concats(
+    module: builtin.ModuleOp, *, compose_contiguous_views=False, max_view_operations=65536
+) -> int:
+    """Optionally compose complete ordered immutable tensor-view reassembly.
+
+    The existing simple head-slice fold remains the default. Explicit composition
+    follows only static unencoded unit-stride contiguous slices and reassociation
+    views. It replaces a concat only when its operands enumerate one complete root
+    tensor in order. No producer, observer, arithmetic or call ABI is changed.
+    Physical alias/ownership decisions remain with ordinary bufferization.
+    """
+    if type(compose_contiguous_views) is not bool:
+        raise ValueError("contiguous view composition requires explicit Boolean selection")
+    if type(max_view_operations) is not int or max_view_operations < 0:
+        raise ValueError("tensor-view composition requires a nonnegative operation budget")
+    count = _fold_complete_matrix_slice_concats_legacy(module)
+    if not compose_contiguous_views:
+        return count
+    visits = 0
+    memo = {}
+
+    def shape(value):
+        typ = value.type
+        if (
+            not isinstance(typ, builtin.TensorType)
+            or typ.encoding != builtin.NoneAttr()
+            or not typ.get_shape()
+            or any(d <= 0 for d in typ.get_shape())
+        ):
+            return None
+        return typ.get_shape()
+
+    def span(value, depth=0):
+        nonlocal visits
+        if value in memo:
+            return memo[value]
+        if visits >= max_view_operations or depth >= 64:
+            return None
+        visits += 1
+        result_shape = shape(value)
+        if result_shape is None:
+            return None
+        owner = value.owner
+        if type(owner) in (tensor.CollapseShapeOp, tensor.ExpandShapeOp, tensor.CastOp):
+            if _key(owner) is None:
+                return None
+            parent = span(owner.operands[0], depth + 1)
+            if parent is None:
+                return None
+            result = (*parent[:3], result_shape)
+        elif type(owner) is tensor.ExtractSliceOp:
+            if (
+                len(owner.operands) != 1
+                or len(owner.results) != 1
+                or owner.regions
+                or owner.successors
+                or set(owner.properties) != {"static_offsets", "static_sizes", "static_strides", "operandSegmentSizes"}
+                or tuple(owner.properties["operandSegmentSizes"].get_values()) != (1, 0, 0, 0)
+                or any(not key.startswith("prov.") for key in owner.attributes)
+            ):
+                return None
+            source_shape = shape(owner.source)
+            if source_shape is None or owner.source.type.element_type != value.type.element_type:
+                return None
+            offsets, sizes, strides = (
+                tuple(owner.properties[key].get_values())
+                for key in ("static_offsets", "static_sizes", "static_strides")
+            )
+            if (
+                len(source_shape) != len(offsets)
+                or sizes != result_shape
+                or len(sizes) != len(source_shape)
+                or strides != (1,) * len(source_shape)
+                or any(o < 0 or o + n > d for o, n, d in zip(offsets, sizes, source_shape))
+            ):
+                return None
+            first = next((i for i, n in enumerate(sizes) if n > 1), len(sizes))
+            if any(sizes[i] != source_shape[i] or offsets[i] != 0 for i in range(first + 1, len(sizes))):
+                return None
+            parent = span(owner.source, depth + 1)
+            if parent is None:
+                return None
+            start = sum(o * prod(source_shape[i + 1 :]) for i, o in enumerate(offsets))
+            result = (parent[0], parent[1] + start, prod(sizes), result_shape)
+        else:
+            # Opaque producers are retained exactly, including calls/effects.
+            # Only their immutable tensor result is observed through views.
+            result = (value, 0, prod(result_shape), result_shape)
+        memo[value] = result
+        return result
+
+    for concat in tuple(module.walk()):
+        if (
+            type(concat) is not tensor.ConcatOp
+            or concat.dim.value.data != 0
+            or set(concat.properties) != {"dim"}
+            or any(not key.startswith("prov.") for key in concat.attributes)
+            or len(concat.results) != 1
+            or not concat.inputs
+        ):
+            continue
+        result_shape = shape(concat.result)
+        if result_shape is None or len(result_shape) != 2:
+            continue
+        root = None
+        cursor = 0
+        for value in concat.inputs:
+            part = span(value)
+            if (
+                part is None
+                or (root is not None and part[0] is not root)
+                or part[1] != cursor
+                or value.type.element_type != concat.result.type.element_type
+            ):
+                break
+            root = part[0]
+            cursor += part[2]
+        else:
+            root_shape = shape(root)
+            if cursor != prod(root_shape) or cursor != prod(result_shape):
+                continue
+            attributes = dict(concat.attributes)
+            if root_shape == result_shape:
+                replacement = tensor.CastOp.create(
+                    operands=[root], result_types=[concat.result.type], attributes=attributes
+                )
+                Rewriter.replace_op(concat, replacement)
+            elif len(root_shape) >= 3 and root_shape[-1] == result_shape[-1]:
+                groups = (tuple(range(len(root_shape) - 1)), (len(root_shape) - 1,))
+                replacement = tensor.CollapseShapeOp.create(
+                    operands=[root],
+                    result_types=[concat.result.type],
+                    attributes=attributes,
+                    properties={
+                        "reassociation": builtin.ArrayAttr(
+                            builtin.ArrayAttr(builtin.IntegerAttr(i, builtin.i64) for i in group) for group in groups
+                        )
+                    },
+                )
+                Rewriter.replace_op(concat, replacement)
+            else:
+                # A flat view avoids imposing a particular source rank/geometry.
+                flat_type = builtin.TensorType(root.type.element_type, (cursor,))
+                if len(root_shape) == 1:
+                    flat = root
+                    operations = []
+                else:
+                    collapse = tensor.CollapseShapeOp.create(
+                        operands=[root],
+                        result_types=[flat_type],
+                        properties={
+                            "reassociation": builtin.ArrayAttr(
+                                [builtin.ArrayAttr(builtin.IntegerAttr(i, builtin.i64) for i in range(len(root_shape)))]
+                            )
+                        },
+                    )
+                    flat = collapse.result
+                    operations = [collapse]
+                expand = tensor.ExpandShapeOp.create(
+                    operands=[flat],
+                    result_types=[concat.result.type],
+                    attributes=attributes,
+                    properties={
+                        "reassociation": builtin.ArrayAttr(
+                            [
+                                builtin.ArrayAttr(
+                                    [builtin.IntegerAttr(0, builtin.i64), builtin.IntegerAttr(1, builtin.i64)]
+                                )
+                            ]
+                        ),
+                        "static_output_shape": builtin.DenseArrayBase.from_list(builtin.i64, result_shape),
+                    },
+                )
+                Rewriter.replace_op(concat, [*operations, expand])
+            count += 1
+            memo.clear()
     module.verify()
     return count
