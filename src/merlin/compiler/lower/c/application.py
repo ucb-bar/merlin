@@ -45,6 +45,8 @@ def emit_application_c(
         parameter_keys = set(parameters.node_ids)
         if driver.get("read_only_inputs") != list(parameters.node_ids):
             raise ValueError("parameter inputs need explicit read-only dispatch bindings")
+        if driver.get("resident_only_inputs", []) != list(getattr(parameters, "resident_only", ())):
+            raise ValueError("resident-only parameter inputs differ from dispatch bindings")
         parameter_declarations, parameter_implementation, private_headers = parameters.emit_binding(name)
     inputs = tuple((key, storage) for key, storage in source.input_storages if key not in parameter_keys)
     if any(size > 2**63 - 1 for size in sizes.values()):
@@ -66,6 +68,11 @@ def emit_application_c(
     driver_name = driver["entry"].removesuffix("_run")
     if not driver_name or driver["entry"] != driver_name + "_run":
         raise ValueError("application C needs an existing serial dispatch driver")
+    loop = driver.get("loop")
+    if loop is not None and (
+        loop.get("schema") != "merlin.dispatch_loop.v1" or loop.get("entry") != driver_name + "_run_loop"
+    ):
+        raise ValueError("application C needs an authenticated dispatch loop")
     arena = driver["memory_plan"]["arena_bytes"]
     alignment = driver["memory_plan"]["stats"]["align"]
     minimum_alignment = max(DT_BYTES[node.type.dtype] for node in source.nodes)
@@ -80,12 +87,21 @@ def emit_application_c(
     for index, (key, _) in enumerate(inputs):
         pointers[key] = f"inputs[{index}]"
     if parameters is not None:
+        pointer_expression = getattr(parameters, "pointer_expression", None)
         pointers.update(
-            (key, f"parameters->data+{entry.offset}u")
+            (key, pointer_expression(key) if callable(pointer_expression) else f"parameters->data+{entry.offset}u")
             for key, entry in zip(parameters.node_ids, parameters.entries, strict=True)
         )
+    fills = []
     for index, binding in enumerate(sorted(source.constants, key=lambda item: item.node_id)):
         symbol = f"{name}_constant_{index}"
+        width = DT_BYTES[source.node(binding.node_id).type.dtype]
+        words = np.frombuffer(bytes.fromhex(binding.data_hex), dtype=f"<u{width}")
+        if words.size > 1 and not np.any(words != words[0]):
+            # Preserve the exact repeated element bits in bounded workspace,
+            # avoiding a full tensor literal in the linked host image.
+            fills.append((binding.node_id, width, words.size, int(words[0])))
+            continue
         if binding.encoding == "f32-le-raw":
             values = np.frombuffer(bytes.fromhex(binding.data_hex), dtype="<f4")
             constants.append(
@@ -113,6 +129,12 @@ def emit_application_c(
                 f"_Alignas({alignment}) static const uint{width * 8}_t {symbol}[{values.size}]={{{initializer}}};"
             )
         pointers[binding.node_id] = symbol
+    fill_code = []
+    for key, width, count, word in fills:
+        pointers[key] = f"workspace+{offset}u"
+        fill_code.append(f"  for (size_t i=0;i<{count}u;i++) ((uint{width * 8}_t *)(workspace+{offset}u))[i]="
+                         f"UINT{width * 8}_C({word});")
+        offset = align(offset + width * count)
     for key in source.outputs:
         if key not in pointers:
             size = sizes[key]
@@ -125,7 +147,21 @@ def emit_application_c(
         raise NativeCompilationError(
             "resource_limit", "application tensor arena and output staging exceed the byte budget"
         )
-    bindings = ",".join(f"{{(void *)({pointers[item['id']]}),{item['bytes']}u}}" for item in driver["buffers"])
+    # Each invocation's call table lives in its caller's workspace, after the arena and output staging: not on the
+    # stack, where it grows with the buffer count, and not in storage shared by nested or concurrent invocations.
+    # The workspace bounds and overlap checks below cover it, and the driver refuses a table that overlaps its
+    # state, arena, or buffers. Each entry reserves two 64-bit words; the C asserts the entry fits.
+    count, entry_bytes = len(driver["buffers"]), 16
+    table_offset = offset
+    if count:
+        offset = align(offset + count * entry_bytes)
+    table = (f"  _Static_assert(sizeof({driver_name}_buffer)<={entry_bytes}u && {alignment}u%_Alignof({driver_name}_buffer)==0,\n"
+             f"                 \"call table entries fit the reserved workspace slots\");\n"
+             f"  {driver_name}_buffer *buffers=({driver_name}_buffer *)(void *)(workspace+{table_offset}u);\n"
+             if count else f"  {driver_name}_buffer *buffers=0;\n")
+    bindings = table + "".join(
+        f"  buffers[{index}]=({driver_name}_buffer){{(void *)({pointers[item['id']]}),{item['bytes']}u}};\n"
+        for index, item in enumerate(driver["buffers"]))
     input_checks = [
         f"!{name}_valid(inputs[{i}],{sizes[key]}u) || {name}_overlap(inputs[{i}],{sizes[key]}u,workspace,{offset}u) || "
         f"{name}_overlap(inputs[{i}],{sizes[key]}u,state,sizeof(*state))"
@@ -190,6 +226,15 @@ def emit_application_c(
     copy_outputs = "\n".join(
         f"  __builtin_memcpy(outputs[{i}],{pointers[key]},{sizes[key]}u);" for i, key in enumerate(source.outputs)
     )
+    admission, dispatch_entry, dispatch_extra = "", f"{driver_name}_run", ""
+    if loop is not None:
+        # The compiler authenticated the complete original call table. No
+        # target-specific program or dependency transformation is requested.
+        admission = f"""static int {name}_admit_loop(void *context,const {driver_name}_loop *schedule) {{
+  (void)context; (void)schedule; return 1;
+}}
+"""
+        dispatch_entry, dispatch_extra = loop["entry"], f",{name}_admit_loop,0"
     interface = f"""#include <stdint.h>
 #include <float.h>
 {'#include "parameter_sha256.h"' if parameters is not None else ""}
@@ -201,7 +246,7 @@ static int {name}_overlap(const void *p,size_t n,const void *q,size_t m) {{
   return (uintptr_t)p<(uintptr_t)q+m && (uintptr_t)q<(uintptr_t)p+n;
 }}
 {parameter_implementation}
-int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
+{admission}int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
                  {f"const {name}_parameters *parameters," if parameters is not None else ""}
                  {input_type}inputs, {output_type}outputs, void *contexts) {{
   (void)inputs;
@@ -213,8 +258,7 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
   unsigned char *workspace=memory;
   if ({name}_overlap(state,sizeof(*state),workspace,{offset}u)) return {driver_name.upper()}_INVALID;
   if ({" || ".join(input_checks + output_checks + parameter_checks) or "0"}) return {driver_name.upper()}_INVALID;
-  {driver_name}_buffer buffers[{len(driver["buffers"])}]={{{bindings}}};
-  int status={driver_name}_run(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts);
+{"".join(line + chr(10) for line in fill_code)}{bindings}  int status={dispatch_entry}(state,workspace,{arena}u,buffers,{len(driver["buffers"])}u,contexts{dispatch_extra});
   if (status) return status;
 {copy_outputs}
   return 0;
@@ -245,6 +289,11 @@ int {name}_invoke({driver_name}_state *state, void *memory, size_t bytes,
         ],
         "private_region_scratch_included": False,
     }
+    if loop is not None:
+        description["dispatch_loop"] = dict(
+            entry=loop["entry"], offset=loop["offset"], period=loop["period"], trip_count=loop["trip_count"],
+            semantics="original_ordered_call_table",
+        )
     if parameters is not None:
         description["model_parameters"] = parameters.record()
     if mixed:

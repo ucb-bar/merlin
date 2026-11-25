@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from merlin.compiler.dialects.lowering.pipeline import (
+from merlin.compiler.dialects.lowering.queries import (
     elementwise_operands,
     find_elementwise,
     find_matmuls,

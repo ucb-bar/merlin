@@ -6,6 +6,7 @@ selected-source admission, target facts or independent verification authority.
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 from pathlib import PurePosixPath
 
@@ -292,3 +293,66 @@ class CRegionABI:
             if products[path].kind not in {"c-source", "object", "archive"}:
                 raise ValueError("C call link input needs C source or an admitted object/archive; lower IR first")
         return result
+
+
+# Application capabilities a target declares by subclassing; Merlin never probes for these hooks by name.
+
+
+class LoopBodyBinding(ABC):
+    """Bind one compiled region body to every trip of a counted loop.
+
+    ``bind_loop_region`` returns the shared body for one trip, or None to compile that trip flat.
+    ``region_loop_parameters`` names the attributes that may differ between trips.
+    On-chip deployment shares bodies only when ``supports_deployment_loop_sharing`` is True.
+    """
+
+    region_loop_parameters: tuple[str, ...] = ()
+    supports_deployment_loop_sharing: bool = False
+
+    @abstractmethod
+    def bind_loop_region(self, representative, region, alternative, nodes, segments, target_source): ...
+
+    def finalize_loop_regions(self, compiled, *, target_source):
+        """Complete body tables after every trip is bound; the default changes nothing."""
+        return tuple(compiled)
+
+
+class ResidentParameters(ABC):
+    """Keep immutable parameters resident in device memory for the whole application."""
+
+    @abstractmethod
+    def resident_memory_geometry(self):
+        """Return ``{"dma_base", "dma_capacity", "alignment"}`` as integers."""
+
+    @abstractmethod
+    def inventory_resident_inputs(self, region, alternative):
+        """Resident layouts of the region's parameter inputs, or None to decline the region."""
+
+    @abstractmethod
+    def pack_resident_input(self, region, node_id, dense_bytes, alternative):
+        """Packed bytes of one parameter in its resident layout."""
+
+    @abstractmethod
+    def admit_resident_deployment(self, regions, source_regions, native_root, target_source, *,
+                                  source_request_digest):
+        """Admit or refuse a resident on-chip deployment before it is published."""
+
+
+class PlatformDeployment(ABC):
+    """Bind the application to a platform C ABI and publish an on-chip deployment."""
+
+    @abstractmethod
+    def application_binding(self, name, regions, interface):
+        """An ``ApplicationCBinding``, or None when no platform binding is needed."""
+
+    @abstractmethod
+    def deployment_requirements(self, regions, native_root):
+        """The ``merlin.provider_deployment.v1`` record, or None for an unsupported geometry."""
+
+    def deployment_required(self):
+        """True when this compile must publish a bounded on-chip deployment; the default publishes none."""
+        return False
+
+    def deployment_platform_files(self, deployment):
+        """Platform members for a placed deployment, such as its linker script; the default adds none."""
+        return {}

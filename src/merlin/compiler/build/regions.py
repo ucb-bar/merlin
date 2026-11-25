@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
+import time
+from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Protocol
 
 from merlin.common.storage.content_store import digest_file
+from merlin.compiler.backend.protocol import LoopBodyBinding, PlatformDeployment, ResidentParameters
 from merlin.compiler.backend.c_abi import (
     CRegionABI2,
     CWorkspaceABI,
@@ -24,14 +28,28 @@ from merlin.compiler.backend.c_abi import (
 from merlin.compiler.compilation import Compilation
 from merlin.compiler.build.completion import admit_call
 from merlin.compiler.lower.c.application import emit_application_c
-from merlin.compiler.lower.c.dispatch import DispatchCall, build_program, c_source_pair, emit_program_c
+from merlin.compiler.lower.c.dispatch import (
+    DispatchCall,
+    build_program,
+    c_source_pair,
+    emit_program_c,
+    prepare_dispatch_loop_from_plan,
+)
 from merlin.compiler.partition.global_plan import GlobalPlan
 from merlin.compiler.partition.global_plan_emission import dispatch_digest
 from merlin.compiler.partition.memory_plan import ArenaPlanError, MemoryPlan, _buf_bytes
 from merlin.compiler.partition.semantic_regions import outline_semantic_regions
-from merlin.compiler.planning.cover_selection import application_plan
-from merlin.compiler.schedule.storage.arena import ArenaRequirements
+from merlin.compiler.planning.cover_selection import REGION_BUFFER_ALIGNMENT, application_plan
+from merlin.compiler.schedule.storage.application_residency import (
+    compact_runtime_parameters,
+    declined as residency_declined,
+    publication as residency_publication,
+    residency_scope,
+    validate_region_bindings,
+)
+from merlin.compiler.schedule.storage.arena import ArenaRequirements, arena_solver_work
 from merlin.compiler.semantic.model import KernelRequest
+from merlin.compiler.semantic.codegen import current_codegen_options
 from merlin.compiler.semantic.source_preparation import preparation_filename, verify_source_preparation
 from merlin.compiler.semantic.target_binding import NativeCompilationError, verify_native_publication
 from merlin.development.targetgen.execution.host.admission import validate_linkage_contract
@@ -354,6 +372,7 @@ class CompiledCRegion:
     shared_files: tuple[str, ...]
     programs: tuple[str, ...]
     description: dict
+    body_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -379,6 +398,31 @@ def _sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+REPLAY_PROGRESS_SECONDS = 60.0
+
+
+class _ReplayProgress:
+    """Report verification replay progress on stderr at most once per interval.
+
+    Verification re-exports every region in memory and writes nothing until it
+    returns, so a caller that judges liveness by output needs this line. A single
+    replay that stalls still prints nothing.
+    """
+
+    def __init__(self, regions, *, interval=None, clock=time.monotonic, stream=None):
+        self.regions, self.clock, self.stream = regions, clock, stream
+        self.interval = REPLAY_PROGRESS_SECONDS if interval is None else interval
+        self.last, self.replays = clock(), 0
+
+    def __call__(self):
+        self.replays += 1
+        now = self.clock()
+        if now - self.last >= self.interval:
+            print(f"merlin verify: {self.replays} region exports replayed over {self.regions} source regions",
+                  file=self.stream or sys.stderr, flush=True)
+            self.last = now
+
+
 def _render(
     source,
     adapter,
@@ -391,11 +435,16 @@ def _render(
     state=None,
     parameters=None,
     native_root=None,
+    measured_host=None,
+    emit_region_loop=False,
+    target_source=None,
 ):
     # Materialization consumes the choice already used to compile/export each
     # region. Re-running provider enumeration here could silently select a
     # different implementation with the same source boundary.
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
+    from merlin.compiler.transforms.dense_views import checked_view_aliases
+    aliases = checked_view_aliases(source, plan)
     try:
         program = build_program(
             outlined.logical,
@@ -406,7 +455,9 @@ def _render(
                 capacity,
                 tuple(2 * i for i in range(len(graph.nodes))),
                 tuple(2 * i + 1 for i in range(len(graph.nodes))),
+                aliases=aliases,
                 dispatch_digest=dispatch_digest(graph),
+                first_fit=True,
             ),
         )
     except ArenaPlanError as error:
@@ -424,8 +475,18 @@ def _render(
             or any(region.node(value).effect != "constant" for value in set(node.inputs) - set(lowered.inputs))
         ):
             raise ValueError("compiled C ports omit a runtime source value or a required result")
-        label = f"region_{index:03d}"
-        for member, data in lowered.files.items():
+        body_index = lowered.body_index if lowered.body_index is not None else index
+        if body_index != index:
+            if not 0 <= body_index < index or compiled[body_index].body_index is not None:
+                raise ValueError("shared C body must name an earlier compiled region")
+            representative = compiled[body_index]
+            if any(
+                getattr(lowered, field) != getattr(representative, field)
+                for field in ("symbol", "header", "files", "shared_files", "programs")
+            ):
+                raise ValueError("shared C body differs from its representative")
+        label = f"region_{body_index:03d}"
+        for member, data in lowered.files.items() if body_index == index else ():
             relative = Path(member)
             if relative.is_absolute() or relative.as_posix() != member or ".." in relative.parts:
                 raise ValueError("region C export contains an unsafe path")
@@ -444,14 +505,19 @@ def _render(
         inputs = ",".join(f"inputs[{node.inputs.index(value)}]" for value in lowered.inputs) or "0"
         outputs = ",".join(f"outputs[{node.outputs.index(value)}]" for value in lowered.outputs) or "0"
         symbol = f"{name}_call_{index}"
-        wrappers.append(f"""int {symbol}(void *context,const void *const *inputs,void *const *outputs) {{
+        if tuple(lowered.inputs) == tuple(node.inputs) and tuple(lowered.outputs) == tuple(node.outputs):
+            # Ports already in dispatch order: the driver calls the region directly.
+            symbol = lowered.symbol
+        else:
+            wrappers.append(f"""int {symbol}(void *context,const void *const *inputs,void *const *outputs) {{
   (void)inputs;
   const void *ordered_inputs[{max(1, len(lowered.inputs))}]={{{inputs}}};
   void *ordered_outputs[{max(1, len(lowered.outputs))}]={{{outputs}}};
   return {lowered.symbol}(context,ordered_inputs,ordered_outputs);
 }}
 """)
-        calls[index] = DispatchCall(symbol, placements[key], context_index=index)
+        calls[index] = DispatchCall(symbol, placements[key], buffer_alignment=REGION_BUFFER_ALIGNMENT,
+                                    context_index=index, alias_safe=node.kind == "view")
         summaries.append(
             {
                 "id": key,
@@ -464,13 +530,34 @@ def _render(
                 "outputs": list(lowered.outputs),
             }
         )
+        if body_index != index:
+            summaries[-1]["compiled_body_index"] = body_index
     if parameters is not None:
         parameters.check(source)
+    dispatch_loop, loop_plan = None, None
+    if emit_region_loop:
+        from merlin.compiler.schedule.region_loop import analyze_region_loop
+
+        requests = [region.record() for _, region in outlined.regions]
+        loop_plan = {
+            "schema": "merlin.application_loop_plan.v1",
+            "source_request_digest": source.digest(),
+            "region_loop": analyze_region_loop(
+                requests,
+                parameter_attributes=adapter.region_loop_parameters if isinstance(adapter, LoopBodyBinding) else (),
+            ),
+        }
+        files["application-loop-plan.json"] = _json(loop_plan)
+        dispatch_loop = prepare_dispatch_loop_from_plan(
+            program, calls, loop_plan, requests=requests, source_request_digest=source.digest()
+        )
     driver, driver_files = emit_program_c(
         program,
         name + "_driver",
         calls,
         read_only_inputs=parameters.node_ids if parameters is not None else (),
+        resident_only_inputs=getattr(parameters, "resident_only", ()),
+        loop=dispatch_loop,
     )
     interface, interface_files = emit_application_c(
         source,
@@ -497,7 +584,14 @@ def _render(
     # copy of shared declarations; only the selected runtime source is linked.
     if state is not None:
         state.check(source)
-        initialization, state_files = state.emit_initializers(name, input_order=interface["inputs"])
+        from merlin.compiler.build.deployment import selected as deployment_selected
+        initialization, state_files = state.emit_initializers(
+            name, input_order=interface["inputs"], embed_captured=not deployment_selected(adapter))
+        if deployment_selected(adapter):
+            for port in state.ports:
+                if port.initial is None:
+                    raise ValueError("deployment state needs authenticated captured initialization")
+                files[f"handoff/state/{port.node_id}.bin"] = port.initial
         state_record = {**state.record(), **initialization}
         if parameters is not None:
             state_record["ports"] = [
@@ -516,10 +610,22 @@ def _render(
                 link_sources.append(filename)
     region_link_sources = tuple(link_sources)
     combined_name = name + "_combined"
-    binding_factory = getattr(adapter, "application_binding", None)
-    binding = binding_factory(name, summaries, interface) if binding_factory else None
+    from merlin.compiler.build.deployment import place, adapter_c, handoff_interface, publish
+    deployment = place(source, adapter, summaries, interface, native_root, parameters, measured_host)
+    _admit_resident_deployment(deployment, adapter, summaries, outlined.regions, native_root, target_source, source)
+    if deployment is not None and deployment.get("paging"):
+        raise NativeCompilationError("unsupported_semantics", "paged deployment requires selected region replanning")
+    binding = None
+    if isinstance(adapter, PlatformDeployment):
+        binding = adapter.application_binding(name, summaries, interface)
     if binding is not None and not isinstance(binding, ApplicationCBinding):
         raise TypeError("application binding must contain C declarations, implementation and interface")
+    if deployment is not None:
+        if binding is None:
+            raise NativeCompilationError("unsupported_semantics", "deployment requires a provider C binding")
+        declarations, implementation = adapter_c(name, deployment)
+        binding = ApplicationCBinding(binding.declarations + declarations,
+                                      binding.implementation + implementation, binding.interface)
     combined = c_source_pair(
         combined_name,
         public_headers={
@@ -577,6 +683,13 @@ original-model accuracy or execution on an integrated SoC or FPGA.
             b"Bind that file once with the generated parameter binding, and keep its bytes immutable. "
             b"Parameter ports are excluded from the invocation input array.",
         )
+    if emit_region_loop:
+        files["c-package/README.md"] += (
+            b"\nThe invocation uses the authenticated counted dispatch window in application-loop-plan.json "
+            b"for every recorded trip. compiled_body_index identifies provider-checked shared C bodies; "
+            b"each call retains its own operand pointers and context. "
+            b"The low-level driver _run entry remains available for flat dispatch.\n"
+        )
     if host_linkage:
         files["c-package/README.md"] += (
             b"\nSelected CPU math requires the archives in application-c.json's host_linkage list. "
@@ -587,11 +700,114 @@ original-model accuracy or execution on an integrated SoC or FPGA.
     if native_root is not None:
         from merlin.compiler.lower.c.application import application_handoff
 
-        files.update(application_handoff(source, interface, summaries, files, native_root))
+        files.update(application_handoff(source, handoff_interface(interface), summaries, files, native_root))
+    if deployment is not None:
+        publish(deployment, interface, files, native_root, adapter)
     return outlined, summaries, interface, link_sources, files
 
 
-def compile_semantic_application(
+def _render_staged(source, adapter, outlined, plan, compiled, reason, native_root, compile_slice,
+                   *, state, parameters, **selection):
+    from .staging import render
+
+    payload = (Path(native_root) / "handoff/parameters.bin").open("rb") if parameters is not None else nullcontext()
+    with payload as blob:
+        return render(source, adapter, outlined, plan, compiled,
+                      capacity=current_codegen_options().io_memory_capacity_bytes,
+                      native_root=native_root, compile_slice=compile_slice, reason=reason,
+                      state=state, parameters=parameters, payload=blob, **selection)
+
+
+def _normal_loop(outlined, plan, adapter):
+    """Discover a counted loop for a provider with a checked body-binding ABI.
+
+    Exact signatures and alternatives identify candidates. The provider must
+    separately prove that the compiled body accepts each iteration's bindings;
+    a baked resident address is never renamed here. On-chip deployment needs
+    the provider's explicit capability.
+    """
+    from .deployment import selected as onchip_selected
+    from .staging import loop_bindings
+
+    if not isinstance(adapter, LoopBodyBinding) or (
+        onchip_selected(adapter) and adapter.supports_deployment_loop_sharing is not True
+    ):
+        return None, {}
+    return loop_bindings(outlined, plan, adapter.region_loop_parameters)
+
+
+def _bind_normal_region(adapter, candidate, compiled, region, alternative, segments, target_source):
+    from .deployment import selected as onchip_selected
+
+    representative = compiled[candidate.index]
+    if isinstance(representative, NativeCompilationError):
+        return None
+    try:
+        package = adapter.bind_loop_region(representative, region, alternative, candidate.nodes, segments,
+                                           target_source)
+    except NativeCompilationError as error:
+        # On-chip, a binding refused for resource_limit is a decline: the region compiles itself, as unbound.
+        if not onchip_selected(adapter) or error.status != "resource_limit":
+            raise
+        return None
+    if package is None:
+        return None
+    if (
+        tuple(candidate.nodes[key] for key in representative.inputs) != package.inputs
+        or tuple(candidate.nodes[key] for key in representative.outputs) != package.outputs
+    ):
+        raise ValueError("shared C body ports differ from structural correspondence")
+    return replace(package, body_index=candidate.index)
+
+
+def _finalize_loop_regions(adapter, compiled, target_source):
+    """Freeze provider body tables after every iteration has been bound.
+
+    Replay calls the same hook. Providers may complete files and descriptions,
+    but cannot change the selected bodies, native programs, or ordered ports.
+    """
+    if not isinstance(adapter, LoopBodyBinding) or not all(isinstance(row, CompiledCRegion) for row in compiled):
+        return compiled
+    finalized = tuple(adapter.finalize_loop_regions(tuple(compiled), target_source=target_source))
+    if len(finalized) != len(compiled):
+        raise ValueError("provider loop finalization changed region count")
+    for before, after in zip(compiled, finalized, strict=True):
+        if not isinstance(after, CompiledCRegion) or any(
+            getattr(before, field) != getattr(after, field)
+            for field in ("symbol", "header", "inputs", "outputs", "shared_files", "programs", "body_index")
+        ):
+            raise ValueError("provider loop finalization changed region binding")
+    return list(finalized)
+
+
+def _admit_resident_deployment(deployment, adapter, summaries, regions, native_root, target_source, source):
+    """The provider admits every region that reads a resident load before a resident deployment is published."""
+    if deployment is None or not deployment.get("resident"):
+        return
+    if not isinstance(adapter, ResidentParameters) or target_source is None:
+        raise NativeCompilationError("unsupported_semantics", "resident deployment requires provider admission")
+    adapter.admit_resident_deployment(summaries, regions, native_root, target_source,
+                                      source_request_digest=source.digest())
+
+
+def _check_resident_regions(regions, compiled):
+    """Require every region of a resident application to consume its bindings."""
+    if residency_publication() is None:
+        return
+    for item in compiled:
+        if isinstance(item, NativeCompilationError):
+            raise item
+    validate_region_bindings(regions, compiled)
+
+
+def compile_semantic_application(source, *, adapter, state=None, parameters=None, **selection):
+    """Compile every selected region; fail without substituting a different route."""
+    # One counted solver budget covers every arena that this compile places, including staged steps.
+    with arena_solver_work(), residency_scope(source, adapter, parameters, state):
+        return _compile_semantic_application(source, adapter=adapter, state=state, parameters=parameters, **selection)
+
+
+def _compile_semantic_application(
     source,
     *,
     adapter,
@@ -604,8 +820,8 @@ def compile_semantic_application(
     state=None,
     source_folding=None,
     parameters=None,
+    deterministic_receipts=False,
 ):
-    """Compile every selected region; fail without substituting a different route."""
     if state is not None:
         state.check(source)
     if parameters is not None:
@@ -617,27 +833,97 @@ def compile_semantic_application(
     if source_folding is not None:
         verify_source_preparation(source, source_folding)
         (destination / preparation_filename(source_folding)).write_bytes(_json(source_folding))
-    plan = application_plan(source, adapter)
+    plan = application_plan(source, adapter, parameters)
     outlined = outline_semantic_regions(source, entry=name, plan=plan)
     (destination / "selected-plan.json").write_bytes(_json(plan.to_dict()))
     selected = {item.id: item for item in plan.selected}
-    lowered = [
-        adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
-    _, summaries, interface, links, files = _render(
-        source, adapter, name, capacity, lowered, plan=plan, state=state, parameters=parameters, native_root=destination
-    )
+    from merlin.compiler.transforms.dense_views import IMPLEMENTATION
+    from .views import compile_view
+    from .deployment import selected as onchip_selected
+    from .region_fit import staging_reason
+    # Regions stage in the window; a resident deployment's capacity also holds its arena.
+    staging = staging_reason(outlined, plan, current_codegen_options().io_memory_bytes, parameters) if onchip_selected(adapter) else None
+    normal_loop, normal_bound = _normal_loop(outlined, plan, adapter) if staging is None else (None, {})
+    def compile_own(i, key, region):
+        return (compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
+                adapter.compile_region(snapshot, region, selected[key], f"region_{i:03d}", segments, target_source, limits))
+
+    lowered = []
+    for i, (key, region) in enumerate(outlined.regions):
+        try:
+            # Once staging is known the loop is discarded, so later regions compile themselves.
+            if i in normal_bound and staging is None:
+                package = _bind_normal_region(adapter, normal_bound[i], lowered, region, selected[key],
+                                              segments, target_source)
+                if package is not None:
+                    lowered.append(package)
+                    continue
+            lowered.append(compile_own(i, key, region))
+        except NativeCompilationError as error:
+            if not onchip_selected(adapter) or error.status != "resource_limit":
+                raise
+            lowered.append(error)
+            staging = staging or error.reason
+    unshared = lowered
+    if staging is None:
+        lowered = _finalize_loop_regions(adapter, lowered, target_source)
+    _check_resident_regions(outlined.regions, lowered)
+    if staging is None:
+        runtime_parameters = compact_runtime_parameters(source, outlined.regions, lowered, parameters)
+        try:
+            # The caller's measured link of this application's host, when it has one, bounds on-chip admission.
+            _, summaries, interface, links, files = _render(
+                source, adapter, name, capacity, lowered, plan=plan, state=state, parameters=runtime_parameters,
+                native_root=destination, emit_region_loop=normal_loop is not None,
+                measured_host=current_codegen_options().measured_host_bytes, target_source=target_source,
+            )
+        except NativeCompilationError as error:
+            if not onchip_selected(adapter) or error.status != "resource_limit":
+                raise
+            staging = error.reason
+        else:
+            parameters = runtime_parameters
     if parameters is not None:
         (destination / "handoff").mkdir(exist_ok=True)
         parameters.write_payload(destination / "handoff/parameters.bin")
+    if staging is not None:
+        def compile_slice(index, key, region, request, label, root):
+            return adapter.compile_region(snapshot, request, selected[key], label, root / "segments", target_source, limits)
+        # Staged publication has no shared bodies: each bound region compiles itself, as an unbound compile does.
+        normal_loop, lowered = None, list(unshared)
+        for i, item in enumerate(unshared):
+            if getattr(item, "body_index", None) is None:
+                continue
+            if (segments / f"region_{i:03d}").exists():
+                raise ValueError(f"provider wrote region_{i:03d} while binding a shared body")
+            key, region = outlined.regions[i]
+            try:
+                lowered[i] = compile_own(i, key, region)
+            except NativeCompilationError as error:
+                if error.status != "resource_limit":
+                    raise
+                lowered[i] = error
+        # Binding runs only when no reason was found before compilation; an unbound compile then stages for its
+        # first refused region, else for the render.
+        if normal_bound:
+            staging = next((row.reason for row in lowered if isinstance(row, NativeCompilationError)), staging)
+        summaries, interface, links, files = _render_staged(
+            source, adapter, outlined, plan, lowered, staging, destination, compile_slice,
+            state=state, parameters=parameters)
+    if residency_publication() is not None:
+        files.update(residency_publication())
     for filename, data in files.items():
         path = destination / filename
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    rows = []
+    rows, published_programs = [], set()
     for region in summaries:
         for filename in region["native_programs"]:
+            if filename in published_programs:
+                if region.get("compiled_body_index") is None:
+                    raise ValueError("native program reused without a checked shared body")
+                continue
+            published_programs.add(filename)
             path = destination / filename
             manifest_bytes = (path / "manifest.json").read_bytes()
             manifest = json.loads(manifest_bytes)
@@ -667,6 +953,10 @@ def compile_semantic_application(
         "application_interface": interface,
         "link_sources": links,
         "regions": summaries,
+        **({"staged_deployment": True} if staging is not None else {}),
+        **({"application_residency": True} if current_codegen_options().application_residency else {}),
+        **({"application_residency_declined": residency_declined()} if residency_declined() else {}),
+        **({"dispatch_loop": True} if normal_loop is not None else {}),
         "stage_artifacts": {
             path.relative_to(destination).as_posix(): digest_file(path)[0]
             for path in sorted(destination.rglob("*"))
@@ -674,7 +964,7 @@ def compile_semantic_application(
         },
     }
     (destination / "manifest.json").write_bytes(_json(manifest))
-    verify_semantic_application(
+    _verify_semantic_application(
         source,
         adapter=adapter,
         snapshot=snapshot,
@@ -687,7 +977,13 @@ def compile_semantic_application(
     return manifest
 
 
-def verify_semantic_application(
+def verify_semantic_application(source, *, adapter, state=None, parameters=None, **selection):
+    """Replay source partitioning, region exports, buffer planning and C generation."""
+    with residency_scope(source, adapter, parameters, state):
+        return _verify_semantic_application(source, adapter=adapter, state=state, parameters=parameters, **selection)
+
+
+def _verify_semantic_application(
     source,
     *,
     adapter,
@@ -698,8 +994,10 @@ def verify_semantic_application(
     source_folding=None,
     parameters=None,
 ):
-    """Replay source partitioning, region exports, buffer planning and C generation."""
     manifest = json.loads((artifact / "manifest.json").read_bytes())
+    if (manifest.get("application_residency", False) is not current_codegen_options().application_residency
+            or manifest.get("application_residency_declined") != residency_declined()):
+        raise ValueError("application residency differs from compilation")
     if manifest.get("diagnostics_only"):
         raise NativeCompilationError(manifest["status"], manifest["reason"])
     if source_folding is not None:
@@ -725,29 +1023,85 @@ def verify_semantic_application(
         request_digest=source.digest(),
         target_identity=source.target_identity,
     )
-    if parameters is not None and digest_file(artifact / "handoff/parameters.bin")[0] != parameters.payload_sha256:
-        raise ValueError("model parameter blob differs from the staged weights")
-    plan = application_plan(source, adapter)
+    plan = application_plan(source, adapter, parameters)
     if (artifact / "selected-plan.json").read_bytes() != _json(plan.to_dict()):
         raise ValueError("application selected plan differs from source replay")
     outlined = outline_semantic_regions(source, entry=manifest["application_name"], plan=plan)
     selected = {item.id: item for item in plan.selected}
-    compiled = [
-        adapter.export_region(region, selected[key], f"region_{i:03d}", artifact / "segments", target_source)
-        for i, (key, region) in enumerate(outlined.regions)
-    ]
-    _, summaries, interface, links, files = _render(
-        source,
-        adapter,
-        manifest["application_name"],
-        manifest["application_memory_bytes"],
-        compiled,
-        plan=plan,
-        memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
-        state=state,
-        parameters=parameters,
-        native_root=artifact,
-    )
+    from merlin.compiler.transforms.dense_views import IMPLEMENTATION
+    from .views import compile_view
+    staged = manifest.get("staged_deployment", False)
+    if type(staged) is not bool:
+        raise ValueError("application staged deployment option must be Boolean")
+    published = json.loads((artifact / "deployment.json").read_bytes()) if staged else {"regions": []}
+    unsplit = {row["context_index"]: row["unsplit_refusal"] for row in published["regions"] if "unsplit_refusal" in row}
+    packages = {row["package"] for row in manifest["regions"]} if staged else set()
+    progress = _ReplayProgress(len(outlined.regions))
+    normal_loop, normal_bound = _normal_loop(outlined, plan, adapter) if not staged else (None, {})
+    if manifest.get("dispatch_loop", False) is not (normal_loop is not None):
+        raise ValueError("application loop differs from replayed source")
+    compiled = []
+    for i, (key, region) in enumerate(outlined.regions):
+        if selected[key].implementation != IMPLEMENTATION and i in unsplit and f"region_{i:03d}" not in packages:
+            # A whole compile that was refused published only its slices; those
+            # replay below, and the recorded refusal is carried.
+            compiled.append(NativeCompilationError("resource_limit", unsplit[i]))
+            continue
+        try:
+            if i in normal_bound:
+                package = _bind_normal_region(adapter, normal_bound[i], compiled, region, selected[key],
+                                              artifact / "segments", target_source)
+                if package is not None:
+                    compiled.append(package)
+                    progress()
+                    continue
+            compiled.append(compile_view(region, f"region_{i:03d}") if selected[key].implementation == IMPLEMENTATION else
+                            adapter.export_region(region, selected[key], f"region_{i:03d}", artifact / "segments", target_source))
+        except NativeCompilationError as error:
+            if not staged or error.status != "resource_limit":
+                raise
+            compiled.append(error)
+        progress()
+    if not staged:
+        compiled = _finalize_loop_regions(adapter, compiled, target_source)
+    _check_resident_regions(outlined.regions, compiled)
+    if not staged:
+        parameters = compact_runtime_parameters(source, outlined.regions, compiled, parameters)
+    if parameters is not None and digest_file(artifact / "handoff/parameters.bin")[0] != parameters.payload_sha256:
+        raise ValueError("model parameter blob differs from the staged weights")
+    if staged:
+
+        def export_slice(index, key, region, request, label, root):
+            exported = adapter.export_region(request, selected[key], label, root / "segments", target_source)
+            progress()
+            return exported
+
+        summaries, interface, links, files = _render_staged(
+            source, adapter, outlined, plan, compiled, published["staging_reason"], artifact, export_slice,
+            state=state, parameters=parameters,
+            widths={row["id"]: row["width"] for row in published["regions"] if "width" in row and "axis" not in row},
+            counts={row["id"]: row["slices"] for row in published["regions"] if row["staging"] == "leading_rows"},
+            bands={row["id"]: (row["staging"], row["axis"], row["width"])
+                   for row in published["regions"] if "axis" in row},
+            tiles={row["id"]: (row["columns"], row["row_axis"], row["rows"])
+                   for row in published["regions"] if row["staging"] == "tiles"})
+    else:
+        _, summaries, interface, links, files = _render(
+            source,
+            adapter,
+            manifest["application_name"],
+            manifest["application_memory_bytes"],
+            compiled,
+            plan=plan,
+            memory_plan=MemoryPlan(**json.loads((artifact / "program.json").read_bytes())["memory_plan"]),
+            state=state,
+            parameters=parameters,
+            native_root=artifact,
+            emit_region_loop=normal_loop is not None,
+            target_source=target_source,
+        )
+    if residency_publication() is not None:
+        files.update(residency_publication())
     if (
         manifest["regions"] != summaries
         or manifest["application_interface"] != interface

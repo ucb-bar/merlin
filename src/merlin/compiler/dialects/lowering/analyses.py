@@ -13,7 +13,9 @@ from typing import Any
 from xdsl.dialects.builtin import IntegerAttr, IntegerType
 from xdsl.ir import Operation, SSAValue
 
-from merlin.compiler.dialects.lowering.pipeline import find_matmuls, matmul_lhs_rhs
+from merlin.compiler.dialects.lowering.queries import (
+    ELEMENTWISE_COMBINES, elementwise_operands, find_elementwise, find_matmuls, matmul_lhs_rhs,
+)
 from merlin.compiler.dialects.xdsl_context import HAS_XDSL
 
 # ---- analyses ----------------------------------------------------------------------------------
