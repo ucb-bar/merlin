@@ -30,6 +30,7 @@ For a hands-on introduction, open the [five interactive tutorials](../examples/t
 
 - [Architecture and component boundaries](reference/architecture.md)
 - [Repository and implementation map](reference/repo_structure.md)
+- [ReLU numerical contract](reference/relu-numerical-contract.md)
 
 The chapters explain the current source tree. Earlier design notes and study-specific instructions remain available through Git history; read them at the source revision of the result you are reproducing.
 

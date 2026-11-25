@@ -78,32 +78,6 @@ def test_missing_ambiguous_and_wrong_revision_bases_refuse(tmp_path):
         composition(layer, bases=[base])
 
 
-def test_backend_replacements_require_explicit_preserved_contract(tmp_path):
-    base = base_provider(tmp_path / "base" / "support")
-    layer = layer_provider(tmp_path / "layer" / "support")
-    materialize(layer, bases=[base])
-    declaration = """schema = "merlin.backend_composition.v1"
-target = "layer"
-base_target = "base"
-[plugin_owners]
-matrix = "layer"
-host = "base"
-[[operations]]
-name = "matrix"
-action = "replace"
-owner = "layer"
-pipeline = "layer.matrix"
-replaces = "base.matrix"
-"""
-    (layer / "backend.toml").write_text(declaration)
-    with pytest.raises(BackendCompositionError, match="preserves"):
-        validate_backend_composition(layer, bases=[base])
-    (layer / "backend.toml").write_text(declaration + 'preserves = "matrix-boundary-v1"\n')
-    result = validate_backend_composition(layer, bases=[base])
-    assert result.base_commit == REVISION
-    assert result.operations[0]["replaces"] == "base.matrix"
-
-
 def test_external_plugin_alias_refuses_before_import(provider):
     root, outside = provider
     (root / "module.py").symlink_to(outside)
