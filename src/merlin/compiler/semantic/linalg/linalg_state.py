@@ -28,6 +28,7 @@ class TranslationState:
     f32_scalars: Any
     f64_scalars: Any
     boolean_scalars: Any
+    bf16_scalars: Any
     bf16_zeros: Any
     zero_fills: Any
     constants: Any

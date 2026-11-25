@@ -80,7 +80,9 @@ class ApplicationParameters:
                 or tuple(entry.shape) != node.type.shape
                 or width is None
                 or entry.dtype not in DTYPE_BYTES
-                or not any(dtype[0] == node.type.dtype and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
+                # Raw uint8 code storage binds an i8 byte port without reinterpreting its bits.
+                or not any((dtype[0] == node.type.dtype or node.type.dtype == "i8" and dtype[1] == "U8")
+                           and dtype[1] == entry.dtype for dtype in _WEIGHT_DTYPES.values())
                 or type(entry.offset) is not int
                 or entry.offset < 0
                 or entry.offset % width
@@ -370,6 +372,10 @@ class StateDeclaration:
                     ("f64", "raw-bit-pattern"),
                     ("bf16", "raw-bit-pattern"),
                     ("fp8_e4m3", "raw-bit-pattern"),
+                    ("i8", "signed-i8"),
+                    ("i8", "raw-bit-pattern"),
+                    ("i32", "i32-wrap-k-ascending"),
+                    ("i32", "raw-bit-pattern"),
                     ("i64", "signed-i64"),
                 }
             ):
@@ -438,7 +444,7 @@ class ApplicationState:
             ],
         }
 
-    def emit_initializers(self, name, *, max_bytes=64 * 1024 * 1024, input_order=None):
+    def emit_initializers(self, name, *, max_bytes=64 * 1024 * 1024, input_order=None, embed_captured=True):
         """Copy exact captured initial values; never infer zeros for caller state."""
         initialized = [item for item in self.ports if item.initial is not None]
 
@@ -466,6 +472,13 @@ class ApplicationState:
             )
             if item.port.mode == "updated":
                 port_declarations.append(f"#define {prefix}_OUTPUT_INDEX {item.port.output_index}u")
+        if not embed_captured:
+            if any(item.port.mode != "read_only" or item.initial is None for item in self.ports):
+                raise ValueError("external deployment state must be captured and read-only")
+            return {"captured_initializers": [], "initialization": "authenticated_external_payloads"}, c_source_pair(
+                name + "_state", public_headers={}, private_headers={},
+                sources={"state.c": "/* Captured read-only state is bound by deployment payloads. */"},
+                declarations="\n".join(port_declarations) + "\n")
         if not initialized:
             return {"captured_initializers": []}, c_source_pair(
                 name + "_state",

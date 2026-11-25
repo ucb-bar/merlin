@@ -425,7 +425,7 @@ def _static_f32_square_maps(op, source_type: TensorType, result_type: TensorType
 
 
 def _embedding_lookup_operands(op) -> tuple[object, object, object]:
-    """Recognize a checked tensor-table read indexed by one signed i64 tensor."""
+    """Recognize a bit-preserving tensor-table read of any admitted element type, indexed by signed i64."""
     from xdsl.dialects.builtin import NoneAttr
     from xdsl.dialects.linalg.attrs import IteratorType
     from xdsl.ir.affine import AffineDimExpr, AffineMap
@@ -481,11 +481,10 @@ def _embedding_lookup_operands(op) -> tuple[object, object, object]:
     if (
         indices_type.dtype != "i64"
         or indices_type.numerical_policy != "signed-i64"
-        or table_type.dtype not in {"f32", "f64", "bf16", "fp8_e4m3"}
-        or table_type.numerical_policy != "raw-bit-pattern"
         or len(table_type.shape) != 2
         or result_type != destination_type
-        or result_type != TensorType((*indices_type.shape, table_type.shape[1]), table_type.dtype, "raw-bit-pattern")
+        or result_type
+        != TensorType((*indices_type.shape, table_type.shape[1]), table_type.dtype, table_type.numerical_policy)
         or any(not isinstance(value.type.encoding, NoneAttr) for value in (indices, table, destination, op.results[0]))
         or getattr(getattr(channel.properties["dim"], "value", None), "data", None) != output_rank - 1
         or len(op.get_iterator_types()) != output_rank

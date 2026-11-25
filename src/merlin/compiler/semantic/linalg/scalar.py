@@ -16,6 +16,7 @@ from merlin.compiler.frontend.patterns.linalg_composite_math import recognize_st
 from merlin.compiler.frontend.patterns.linalg_patterns import InvalidLinalgPattern, _checked_static_linalg_shell
 from merlin.compiler.semantic.linalg.linalg_recognition import (
     LinalgBridgeError,
+    _embedding_lookup_operands,
     _linear_affine_expression,
     _static_index_copy_map,
     _type,
@@ -373,7 +374,7 @@ def _constant_indices(roots, nodes, constants, budget):
 
 
 def translate_constant_index_read(op, env, nodes, constants, *, node_id, max_work=1 << 20):
-    """Recognize index casts followed by one immutable captured tensor read.
+    """Recognize loop indices and constant index casts feeding a captured read.
 
     Return None for other scalar bodies. A recognized read must satisfy every
     check; it cannot fall through to a matcher with weaker index requirements.
@@ -383,9 +384,21 @@ def translate_constant_index_read(op, env, nodes, constants, *, node_id, max_wor
     body = tuple(op.regions[0].block.ops)
     if not any(item.name == "tensor.extract" for item in body):
         return None
-    if tuple(item.name for item in body) != ("arith.index_cast",) * len(op.inputs) + (
-        "tensor.extract",
-        "linalg.yield",
+    if not op.inputs:
+        return None
+    # Preserve the existing runtime embedding path only after its complete
+    # semantic proof succeeds; a similar-looking body gets no exemption.
+    if any(item.name == "linalg.index" for item in body):
+        try:
+            _embedding_lookup_operands(op)
+        except LinalgBridgeError:
+            pass
+        else:
+            return None
+    if (
+        len(body) < 3
+        or tuple(item.name for item in body[-2:]) != ("tensor.extract", "linalg.yield")
+        or any(item.name not in {"linalg.index", "arith.index_cast"} for item in body[:-2])
     ):
         return None
     try:
@@ -394,36 +407,51 @@ def translate_constant_index_read(op, env, nodes, constants, *, node_id, max_wor
     except Exception as error:  # noqa: BLE001 - fail closed at the parsed source boundary
         raise LinalgBridgeError(f"constant indexed read has an invalid Linalg shell: {error}") from error
     rank = len(shell.shape)
-    if prod(shell.shape) * max(1, len(op.inputs)) > max_work:
+    if prod(shell.shape) * max(1, len(body) - 2) > max_work:
         from merlin.compiler.semantic.target_binding import NativeCompilationError
 
         raise NativeCompilationError("resource_limit", "constant indexing exceeds its finite-domain work budget")
     if (
-        not op.inputs
-        or len(body) != len(op.inputs) + 2
-        or tuple(item.name for item in body)
-        != ("arith.index_cast",) * len(op.inputs) + ("tensor.extract", "linalg.yield")
-        or any(item.properties or any(not k.startswith("prov.") for k in item.attributes) for item in body)
+        any(
+            set(item.properties) != ({"dim"} if item.name == "linalg.index" else set())
+            or any(not k.startswith("prov.") for k in item.attributes)
+            for item in body
+        )
         or any(item.regions or item.successors for item in body)
         or any(str(arg.type) != "i64" for arg in shell.args[:-1])
         or env.get(op.outputs[0], "undefined") is not None
     ):
-        raise LinalgBridgeError("constant indexed read needs only i64 casts, a tensor read, and an empty output")
-    casts, read, yielded = body[:-2], body[-2], body[-1]
+        raise LinalgBridgeError(
+            "constant indexed read needs only i64 casts, loop indices, a tensor read, and an empty output"
+        )
+    indices, read, yielded = body[:-2], body[-2], body[-1]
+    casts = tuple(item for item in indices if item.name == "arith.index_cast")
+    loops = tuple(item for item in indices if item.name == "linalg.index")
+    from xdsl.dialects.builtin import IntegerAttr
+
     if (
-        any(
+        len(casts) != len(op.inputs)
+        or any(
             tuple(cast.operands) != (arg,) or len(cast.results) != 1 or str(cast.results[0].type) != "index"
             for cast, arg in zip(casts, shell.args[:-1])
         )
+        or any(
+            loop.operands
+            or len(loop.results) != 1
+            or str(loop.results[0].type) != "index"
+            or not isinstance(dim := loop.properties.get("dim"), IntegerAttr)
+            or not 0 <= dim.value.data < rank
+            for loop in loops
+        )
         or len(read.results) != 1
-        or tuple(read.operands[1:]) != tuple(cast.results[0] for cast in casts)
+        or tuple(read.operands[1:]) != tuple(index.results[0] for index in indices)
         or tuple(yielded.operands) != (read.results[0],)
         or read.operands[0] not in env
         or env[read.operands[0]] is None
     ):
         raise LinalgBridgeError("constant indexed read has an unknown table, index, or yielded value")
     table_type, result_type = _type(read.operands[0].type), _type(op.results[0].type)
-    if len(table_type.shape) != len(casts) or (table_type.dtype, table_type.numerical_policy) != (
+    if len(table_type.shape) != len(indices) or (table_type.dtype, table_type.numerical_policy) != (
         result_type.dtype,
         result_type.numerical_policy,
     ):
@@ -438,9 +466,12 @@ def translate_constant_index_read(op, env, nodes, constants, *, node_id, max_wor
         maps.append(IndexMap(rank, tuple(row for row, _ in rows), tuple(offset for _, offset in rows)))
 
     def coordinate(point):
-        return tuple(
-            values[key][_flat(mapping.apply(point), by_id[key].type.shape)] for key, mapping in zip(roots, maps)
-        )
+        cast_values = {
+            cast.results[0]: values[key][_flat(mapping.apply(point), by_id[key].type.shape)]
+            for cast, key, mapping in zip(casts, roots, maps, strict=True)
+        }
+        cast_values.update((loop.results[0], point[loop.properties["dim"].value.data]) for loop in loops)
+        return tuple(cast_values[index.results[0]] for index in indices)
 
     origin = coordinate((0,) * rank)
     differences = []

@@ -5,7 +5,7 @@ status: current
 owner: compiler
 last_verified: 2026-11-16
 related: [03-preparation, 05-transformations]
-code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/planning, src/merlin/compiler/partition/regions.py, src/merlin/compiler/ir/boundary.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/quant/readout_match.py, src/merlin/compiler/ir/readout.py]
+code_refs: [src/merlin/compiler/system.py, src/merlin/compiler/backend/interface.py, src/merlin/compiler/lower/c/host_target.py, src/merlin/compiler/quantization/policy_generation.py, src/merlin/compiler/planning, src/merlin/compiler/partition/regions.py, src/merlin/compiler/ir/boundary.py, src/merlin/compiler/backend/source_proposals.py, src/merlin/compiler/lower/interface.py, src/merlin/compiler/lower/interface_readout.py, src/merlin/compiler/lower/quant/readout_match.py, src/merlin/compiler/ir/readout.py]
 ---
 
 # 4. Choose regions, fusion and placement
@@ -23,6 +23,12 @@ conditions. `ImplementationFamily` names related source patterns and their
 fusion preconditions. `TargetPipeline` connects those patterns to actual target
 IR, ordered passes, ABI and artifact kinds. The description is an implementation
 claim; it does not change the required domain or establish correctness.
+
+Merlin's host CPU is described the same way, by `compiler/lower/c/host_target.py`:
+its families are the checked host C emitters, with their numerical contracts and
+a source pin of the emitters and host math supplier. Policy generation takes the
+descriptions of every selected target, such as a device and the host, and still
+requires exactly one matching family for each source operation.
 
 Both discovery routes consume this interface. They check that its source patterns
 agree with `describe()` and its pipeline declarations agree with offered lowering

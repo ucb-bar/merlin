@@ -1,0 +1,89 @@
+{
+  "schema": "merlin.host_math.v1",
+  "interface": "merlin-host-math-v1",
+  "library": "core-math",
+  "revision": "a055b9b9a86b857e49573e339cf68306ad92c831",
+  "rounding": "rne",
+  "subnormals": "preserve",
+  "nan": "canonical-qnan-f32-0x7fc00000-f64-0x7ff8000000000000",
+  "effects": "errno-and-fp-flags-unobserved",
+  "required_functions": [
+    "expf",
+    "sinf",
+    "cosf",
+    "sqrtf",
+    "tanhf",
+    "erff",
+    "sin",
+    "cos",
+    "powf",
+    "pow"
+  ],
+  "functions": {
+    "expf": {
+      "symbol": "merlin_host_expf",
+      "implementation": "cr_expf",
+      "source": "expf.c",
+      "sha256": "598f2e509a1296fa0e4a239e2499e7bb1753fee29a056ce92d7a930b96279e90"
+    },
+    "sinf": {
+      "symbol": "merlin_host_sinf",
+      "implementation": "cr_sinf",
+      "source": "sinf.c",
+      "sha256": "f27c4baa849b1d9982153c69719c912a3058bc9d86d7d01e7385e2aee56c4278"
+    },
+    "cosf": {
+      "symbol": "merlin_host_cosf",
+      "implementation": "cr_cosf",
+      "source": "cosf.c",
+      "sha256": "3ea4c6d03d32e225a8fd31ee37eb785cefda0f8940c4e826352fc9103a275dcf"
+    },
+    "sqrtf": {
+      "symbol": "merlin_host_sqrtf",
+      "implementation": "merlin_ieee_sqrtf",
+      "source": "hardware_sqrt.c",
+      "sha256": "74873f146fa1b174a21245a84680519d47a66f16ba1102bf8d9c05caa0af45a5"
+    },
+    "tanhf": {
+      "symbol": "merlin_host_tanhf",
+      "implementation": "cr_tanhf",
+      "source": "tanhf.c",
+      "sha256": "a60f385ebc85ce3e59d0b7a13e991a3724030c40b67e2ef68b59ce3e299aac71"
+    },
+    "erff": {
+      "symbol": "merlin_host_erff",
+      "implementation": "cr_erff",
+      "source": "erff.c",
+      "sha256": "9484d4cb785230e86652597b948c0ee82a9924eca93751915738dda9239c7c5b"
+    },
+    "sin": {
+      "symbol": "merlin_host_sin",
+      "implementation": "cr_sin",
+      "source": "sin.c",
+      "sha256": "c8a94aff114e7c2fa314b4f74575a0c2dfcdb8fb116c48a6244ab914304fb905"
+    },
+    "cos": {
+      "symbol": "merlin_host_cos",
+      "implementation": "cr_cos",
+      "source": "cos.c",
+      "sha256": "a64b819dc4e1b7da24dbe0f3076b389bd6f67d671f9c0708a13d89d6f888f259"
+    },
+    "powf": {
+      "symbol": "merlin_host_powf",
+      "implementation": "cr_powf",
+      "source": "powf.c",
+      "sha256": "d70733d72a94ff9809f6e03bb512acf957f2d8773de170b85dce58889e160caa"
+    },
+    "pow": {
+      "symbol": "merlin_host_pow",
+      "implementation": "cr_pow",
+      "source": "pow/pow.c",
+      "sha256": "b14c65a1d1367f49a0d3e00e65370c3e9dd0fd004fe00e30cdad2a9887954562"
+    }
+  },
+  "support_sources": {
+    "pow/pow.h": "8e28930b514f1f439011cb201c738c6b8940f321f03f4679362e7f6b7893fd6a",
+    "pow/dint.h": "c62a9788d872c314c743a821602d6819e5c13113b70f6d4a5d0076695dc413ef",
+    "pow/qint.h": "32de9c10388056e2294339e3302c3695cdf4abc87ca790ad48917d9794bfb6e4"
+  }
+}

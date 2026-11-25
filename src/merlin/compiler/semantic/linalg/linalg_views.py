@@ -20,6 +20,7 @@ def translate(state: TranslationState, op, ordinal):
     scalars = state.scalars
     i64_scalars = state.i64_scalars
     f32_scalars = state.f32_scalars
+    bf16_scalars = state.bf16_scalars
     bf16_zeros = state.bf16_zeros
     zero_fills = state.zero_fills
     source = state.source
@@ -291,7 +292,10 @@ def translate(state: TranslationState, op, ordinal):
             zero_fills.add(op.results[0])
             env[op.results[0]] = None
             return True
-        if type_.dtype == "f32" and scalar in f32_scalars:
+        if type_.dtype == "bf16" and scalar in bf16_scalars:
+            value = bf16_scalars[scalar]
+            encoding, data = "bf16-le-raw", value.to_bytes(2, "little")
+        elif type_.dtype == "f32" and scalar in f32_scalars:
             value = f32_scalars[scalar]
             encoding, data = "f32-le-raw", value.to_bytes(4, "little")
         elif type_.dtype == "i64" and scalar in i64_scalars:
