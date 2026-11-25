@@ -113,3 +113,6 @@ include merlin/schemas/temporal_workload_metadata.schema.yaml
 include merlin/schemas/trace.schema.yaml
 include merlin/schemas/workload_region.schema.yaml
 include merlin/schemas/zephyr_plan.schema.yaml
+
+include merlin/runtime/c/chain_guest.c
+include merlin/runtime/c/chain_guest_verified.c

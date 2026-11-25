@@ -84,6 +84,8 @@
     "merlin/runtime/c/benchmark_buffer.h",
     "merlin/runtime/c/bf16_quant_frontier.h",
     "merlin/runtime/c/bf16_radix_pack.h",
+    "merlin/runtime/c/chain_guest.c",
+    "merlin/runtime/c/chain_guest_verified.c",
     "merlin/runtime/c/dot_norm_requirements.h",
     "merlin/runtime/c/encoded_row_equality.h",
     "merlin/runtime/c/f32_floor_bits.h",
