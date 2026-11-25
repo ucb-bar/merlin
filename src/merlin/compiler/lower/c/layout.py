@@ -12,6 +12,171 @@ from merlin.compiler.semantic.model import IndexMap, KernelRequest, pointwise_id
 # ---- layout ------------------------------------------------------------------------------------
 
 
+def permutation_axes(source, view):
+    """Return the result axis read by each source axis for a pure permutation.
+
+    ``view`` must be a complete, offset-free dimension permutation of
+    ``source`` with an identity write map and unchanged element type: every
+    source element is read exactly once and no value is converted. Anything
+    else, including broadcasts, slices and reversals, returns ``None``.
+    """
+    rank = len(source.type.shape)
+    if (view.op not in {"gather", "transpose"} or view.effect != "pure" or view.inputs != (source.id,)
+            or view.attrs or rank == 0 or len(view.type.shape) != rank or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)):
+        return None
+    read, write = view.index_maps
+    if (write != pointwise_identity_maps(rank, 1)[-1] or read.loop_rank != rank
+            or len(read.coefficients) != rank or any(read.offsets)):
+        return None
+    axes = []
+    for row, extent in zip(read.coefficients, source.type.shape, strict=True):
+        if len(row) != rank or set(row) - {0, 1} or sum(row) != 1:
+            return None
+        axis = row.index(1)
+        if view.type.shape[axis] != extent or axis in axes:
+            return None
+        axes.append(axis)
+    return tuple(axes)
+
+
+def render_permutation_slice_copy(source, view, name):
+    """Render checked byte packing for a contiguous slice of a permutation.
+
+    The slice uses the logical result's flat element order; the input remains
+    the complete original dense tensor. This lets a consumer preserve its own
+    chunk or reduction-group boundaries without materializing the whole view.
+    The generated helper returns -1 before any write on invalid spans or aliasing.
+    """
+    axes = permutation_axes(source, view)
+    if axes is None:
+        raise ValueError("slice packing requires a complete unchanged permutation")
+    terms = []
+    for dimension, axis in enumerate(axes):
+        logical_stride = prod(view.type.shape[axis + 1:])
+        source_stride = prod(source.type.shape[dimension + 1:])
+        terms.append(f"((linear/{logical_stride}u)%{view.type.shape[axis]}u)*{source_stride}u")
+    index = " + ".join(terms)
+    return _render_slice_copy(source, view, name, "", index)
+
+
+def bounded_dense_read_map(source, view):
+    """Recognize a byte-preserving affine read into an identity-written result.
+
+    Broadcasts, slices and reversals are allowed only when every read is
+    statically in bounds. This proves indexing, not ownership or placement.
+    """
+    rank = len(view.type.shape)
+    if (rank == 0 or view.op not in {"gather", "transpose"} or view.effect != "pure"
+            or view.inputs != (source.id,) or view.attrs or len(view.index_maps) != 2
+            or (source.type.dtype, source.type.numerical_policy) != (view.type.dtype, view.type.numerical_policy)
+            or view.index_maps[-1] != pointwise_identity_maps(rank, 1)[-1]
+            or (view.op == "transpose" and permutation_axes(source, view) is None)):
+        return None
+    read = view.index_maps[0]
+    try:
+        _flat_map(read, view.type.shape, source.type.shape)
+    except ValueError:
+        return None
+    return read
+
+
+def _dense_read_offset_strides(source, view):
+    mapping = bounded_dense_read_map(source, view)
+    if mapping is None:
+        return None
+    strides = tuple(prod(source.type.shape[i + 1:]) for i in range(len(source.type.shape)))
+    offset = sum(offset * stride for offset, stride in zip(mapping.offsets, strides, strict=True))
+    flat = tuple(sum(row[axis] * stride for row, stride in
+                     zip(mapping.coefficients, strides, strict=True)) for axis in range(len(view.type.shape)))
+    return offset, flat
+
+
+def dense_read_preserves_order(source, view):
+    """Prove that a bounded affine view reads each dense element in order.
+
+    A permutation of unit-extent axes or an identity gather can change shape
+    without changing its bytes. This proves indexing and element encoding only;
+    allocation, ownership and whether aliasing is allowed belong to the caller.
+    """
+    if not 0 < prod(source.type.shape) == prod(view.type.shape):
+        return False
+    flattened = _dense_read_offset_strides(source, view)
+    if flattened is None:
+        return False
+    offset, strides = flattened
+    return offset == 0 and all(extent == 1 or stride == prod(view.type.shape[axis + 1:])
+                              for axis, (extent, stride) in enumerate(zip(view.type.shape, strides, strict=True)))
+
+
+def repeated_dense_read_period(source, view):
+    """Prove that a dense affine read repeats the complete physical sequence.
+
+    Return its period in elements, or None. Unit-extent axes do not affect the
+    flattened address. Ownership, transport and whether caching is worthwhile
+    remain separate caller obligations.
+    """
+    flattened = _dense_read_offset_strides(source, view)
+    period = prod(source.type.shape)
+    if flattened is None or prod(view.type.shape) <= period:
+        return None
+    offset, flat = flattened
+    if offset:
+        return None
+    rank = len(view.type.shape)
+    for first in range(rank + 1):
+        if prod(view.type.shape[first:]) != period:
+            continue
+        expected = tuple(0 if axis < first else prod(view.type.shape[axis + 1:])
+                         for axis in range(rank))
+        if all(extent == 1 or actual == wanted for extent, actual, wanted in
+               zip(view.type.shape, flat, expected, strict=True)):
+            return period
+    return None
+
+
+def render_indexed_slice_copy(source, view, name):
+    """Pack a logical consumer slice through a checked dense affine read map."""
+    mapping = bounded_dense_read_map(source, view)
+    if mapping is None:
+        raise ValueError("slice packing requires a bounded unchanged dense read")
+    coordinates = "\n    ".join(
+        f"size_t d{i}=(linear/{prod(view.type.shape[i + 1:])}u)%{extent}u; (void)d{i};"
+        for i, extent in enumerate(view.type.shape))
+    return _render_slice_copy(source, view, name, coordinates,
+                              _flat_map(mapping, view.type.shape, source.type.shape))
+
+
+def _render_slice_copy(source, view, name, coordinates, index):
+    if not name or not name.isascii() or not name.isidentifier() or not name[0].isalpha():
+        raise ValueError("C helper name must begin with an ASCII letter")
+    width = _element_bytes(source.type.dtype)
+    count, source_count = prod(view.type.shape), prod(source.type.shape)
+    if min(count, source_count) <= 0 or max(count, source_count) * width > 2**63 - 1:
+        raise ValueError("layout exceeds the supported C size domain")
+    return f"""#include <stddef.h>
+#include <stdint.h>
+_Static_assert(SIZE_MAX/{width}u >= {max(count, source_count)}ULL, "layout tensor exceeds host size_t");
+static int {name}(void *destination,const void *source,size_t first,size_t count) {{
+  if (!source || !destination || !count || first>{count}u || count>{count}u-first)
+    return -1;
+  size_t bytes=count*{width}u;
+  uintptr_t input=(uintptr_t)source,output=(uintptr_t)destination;
+  if (input>UINTPTR_MAX-{source_count * width}u || output>UINTPTR_MAX-bytes ||
+      (input<output+bytes && output<input+{source_count * width}u)) return -1;
+  for (size_t j=0;j<count;++j) {{
+    size_t linear=first+j;
+    (void)linear;
+    {coordinates}
+    size_t source_index={index};
+    __builtin_memcpy((unsigned char *)destination+j*{width}u,
+                     (const unsigned char *)source+source_index*{width}u,{width}u);
+  }}
+  return 0;
+}}
+"""
+
+
 def _element_bytes(dtype: str) -> int:
     if dtype in DT_BYTES:
         return DT_BYTES[dtype]
@@ -45,13 +210,64 @@ def _flat_map(mapping: IndexMap, loops: tuple[int, ...], shape: tuple[int, ...])
     return expression
 
 
+def _byte_steps(mapping, loops, shape, width):
+    """Return a map's byte offset at the loop origin and its byte step per loop."""
+    scales = tuple(prod(shape[i + 1:]) * width for i in range(len(shape)))
+    base = sum(offset * scale for offset, scale in zip(mapping.offsets, scales, strict=True))
+    return base, tuple(sum(row[axis] * scale for row, scale in zip(mapping.coefficients, scales, strict=True))
+                       for axis in range(len(loops)))
+
+
+def _copy_levels(loops, read_steps, write_steps, width):
+    """Fold loops into the fewest levels that visit the same bytes in the same order.
+
+    Return outer levels as (count, read step, write step) and the contiguous
+    byte run each innermost iteration copies.
+    """
+    levels = []
+    for level in reversed([row for row in zip(loops, read_steps, write_steps, strict=True) if row[0] > 1]):
+        if levels and level[1:] == (levels[0][0] * levels[0][1], levels[0][0] * levels[0][2]):
+            levels[0] = (level[0] * levels[0][0], levels[0][1], levels[0][2])
+        else:
+            levels.insert(0, level)
+    run = width
+    while levels and levels[-1][1] == run and levels[-1][2] == run:
+        run *= levels.pop()[0]
+    return tuple(levels), run
+
+
 def _indexed_copy(loops, source_shape, source_map, output_shape, output_map, operand, width):
-    read = _flat_map(source_map, loops, source_shape)
-    write = _flat_map(output_map, loops, output_shape)
-    counters = " ".join(f"for (size_t d{i}=0;d{i}<{n}u;++d{i})" for i, n in enumerate(loops))
-    return f"""{counters} {{
-    __builtin_memcpy((unsigned char *)outputs[0]+{width}u*({write}),
-                     (const unsigned char *)inputs[{operand}]+{width}u*({read}),{width}u);
+    _flat_map(source_map, loops, source_shape)  # Proves every read and write in bounds.
+    _flat_map(output_map, loops, output_shape)
+    if not prod(loops):
+        return ""
+    read_base, read_steps = _byte_steps(source_map, loops, source_shape, width)
+    write_base, write_steps = _byte_steps(output_map, loops, output_shape, width)
+    levels, run = _copy_levels(loops, read_steps, write_steps, width)
+    depth = len(levels)
+
+    def nest(text, first, last):
+        for i in range(last - 1, first - 1, -1):
+            count, read, write = levels[i]
+            text = (f"for (size_t n{i}=0;n{i}<{count}u;++n{i},r{i}+=(size_t)({read}LL),w{i}+=(size_t)({write}LL)) {{ "
+                    f"size_t r{i + 1}=r{i},w{i + 1}=w{i}; {text} }}")
+        return text
+
+    leaf = f"__builtin_memcpy(o+w{depth},s+r{depth},{run}u);"
+    if depth and run == width and width in {2, 4, 8}:
+        # A byte-buffer ABI promises no alignment, so whole-element moves need
+        # this check. Only the innermost loop is duplicated, to limit code size.
+        move = nest(f"*(e *)(o+w{depth})=*(const e *)(s+r{depth});", depth - 1, depth)
+        inner = (f"if (aligned) {{ {move} }} else {{ {nest(leaf, depth - 1, depth)} }}")
+        copy = (f"typedef uint{width * 8}_t __attribute__((may_alias)) e; "
+                f"const int aligned=(((uintptr_t)s|(uintptr_t)o)&{width - 1}u)==0;\n"
+                f"  {nest(inner, 0, depth - 1)}")
+    else:
+        copy = nest(leaf, 0, depth)
+    return f"""{{
+  const unsigned char *s=(const unsigned char *)inputs[{operand}]; unsigned char *o=(unsigned char *)outputs[0];
+  size_t r0={read_base}u,w0={write_base}u; (void)r0; (void)w0;
+  {copy}
   }}"""
 
 
@@ -250,7 +466,7 @@ def emit_layout_c(source: KernelRequest, name: str) -> tuple[dict, dict[str, str
     if len(computations) != 1:
         raise ValueError("layout C needs exactly one source computation")
     if computations[0].op == "indexed_insert_slice":
-        from merlin.compiler.lower.c.c_indexed_update import emit_indexed_update_c
+        from merlin.compiler.lower.c.indexed_update import emit_indexed_update_c
 
         return emit_indexed_update_c(source, computations[0], name)
     if computations[0].op == "embedding_lookup":
@@ -296,10 +512,8 @@ def emit_layout_c(source: KernelRequest, name: str) -> tuple[dict, dict[str, str
         and result.type.shape == operand.type.shape[::-1]
         and result.index_maps == (IndexMap(2, ((0, 1), (1, 0)), (0, 0)), IndexMap(2, ((1, 0), (0, 1)), (0, 0)))
     ):
-        rows, columns = result.type.shape
-        body = f"""for (size_t row=0; row<{rows}u; ++row) for (size_t col=0; col<{columns}u; ++col)
-    __builtin_memcpy((unsigned char *)outputs[0]+{width}u*(row*{columns}u+col),
-                     (const unsigned char *)inputs[0]+{width}u*(col*{rows}u+row),{width}u);"""
+        body = _indexed_copy(result.type.shape, operand.type.shape, result.index_maps[0], result.type.shape,
+                             result.index_maps[1], 0, width)
     else:
         raise ValueError("layout C has no implementation for this operation or index map")
     declarations = f"int {name}(void *, const void *const *, void *const *);\n"
