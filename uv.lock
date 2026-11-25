@@ -1526,7 +1526,7 @@ requires-dist = [
     { name = "xdsl", marker = "extra == 'verify'", specifier = ">=0.68" },
     { name = "xdsl", marker = "extra == 'xdsl'", specifier = ">=0.68" },
     { name = "z3-solver", marker = "extra == 'reconstruction'" },
-    { name = "z3-solver", marker = "extra == 'semantic-search'" },
+    { name = "z3-solver", marker = "extra == 'semantic-search'", specifier = "==4.16.0.0" },
     { name = "z3-solver", marker = "extra == 'verify'" },
 ]
 provides-extras = ["dev", "xdsl", "verify", "targetgen", "semantic-search", "board", "kernels-ast", "kernels-exo", "kernels-parquet", "kernels-plots", "telemetry", "experiments", "analysis", "dse", "mining", "bedrock", "chia", "plots", "compiler", "vector", "reconstruction", "replay"]

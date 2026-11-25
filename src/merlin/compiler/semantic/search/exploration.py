@@ -6,6 +6,7 @@ result until target-specific scheduling, emission and execution have passed.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -44,6 +45,11 @@ from merlin.compiler.semantic.search.extraction import (
 from merlin.compiler.semantic.search.verification import check_selection
 
 # ---- search ------------------------------------------------------------------------------------
+
+
+def _time_limit_fired(detail: str) -> None:
+    """Name a wall-clock limit that changed this search's course; the search itself is unchanged."""
+    print(f"merlin search: wall-clock limit fired: {detail}", file=sys.stderr, flush=True)
 
 
 @dataclass(frozen=True)
@@ -224,6 +230,7 @@ def select_and_allocate(
     order_budget_exhausted = False
 
     def timed_out(reason: str) -> SearchResult:
+        _time_limit_fired(f"search deadline of {limits.wall_timeout_s} s: {reason}")
         return finish(
             SearchResult(
                 "search_timeout",
@@ -273,6 +280,11 @@ def select_and_allocate(
                         str(exc),
                         pruned_orders,
                     )
+                )
+            if graph.stop_reason == "time_limit":
+                _time_limit_fired(
+                    f"e-graph runner time limit after {graph.iterations} iterations and {graph.node_count} nodes; "
+                    "extraction continues on that e-graph"
                 )
             explored_budget = (iterations, egraph_nodes)
             extracted_budget = 0
@@ -487,6 +499,10 @@ def select_and_allocate(
                     if result.status == "infeasible_candidate":
                         failed_edges.append(edges)
                     if result.status == "search_timeout":
+                        _time_limit_fired(
+                            f"candidate {candidate_attempts} order {ordering_attempts} allocation solver: "
+                            f"{result.reason}; the search tries the next order or candidate"
+                        )
                         inconclusive = True
                     if result.status == "unqualified_target":
                         unqualified = True

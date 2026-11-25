@@ -29,7 +29,7 @@ from merlin.verification.lean.contract import (
     digest,
     document_digest,
 )
-from merlin.verification.lean.host_checks import UnsupportedLeanIR, equivalence_query, export_scalar
+from merlin.verification.lean.scalar_export import UnsupportedLeanIR, equivalence_query, export_scalar, parse_ir
 
 # ---- lean_obligations --------------------------------------------------------------------------
 
@@ -323,6 +323,7 @@ def semantic_identity(registry: Mapping | None = None) -> str:
         for name in (
             "contract.py",
             "host_checks.py",
+            "scalar_export.py",
             "checker.py",
             "Merlin/Foundation.lean",
         )
@@ -622,8 +623,6 @@ def verify_pipeline_change(
             # General opaque effects have no Lean state interpretation yet.
             # Prove supported scalar programs directly; retain the gap elsewhere.
             from xdsl.dialects.func import FuncOp
-
-            from merlin.verification.lean.host_checks import parse_ir
 
             functions = tuple(op for op in parse_ir(change.before_ir).body.block.ops if isinstance(op, FuncOp))
             if len(functions) != 1:

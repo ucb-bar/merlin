@@ -14,7 +14,7 @@ from typing import Any
 import numpy as np
 
 from merlin.compiler.backend.host import split_isa
-from merlin.runtime.dispatch.executor import DispatchRuntimeError
+from merlin.runtime.dispatch.errors import DispatchRuntimeError
 
 # ---- modelinputs -------------------------------------------------------------------------------
 

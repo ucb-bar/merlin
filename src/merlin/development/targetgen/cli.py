@@ -491,7 +491,7 @@ def _cmd_native_verify(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "verified_artifacts" else 2
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(binding=None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="merlin-targetgen", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -577,14 +577,29 @@ def build_parser() -> argparse.ArgumentParser:
             "_cmd_native_select": _cmd_native_select,
             "_cmd_native_verify": _cmd_native_verify,
         },
+        binding=binding,
     )
 
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
+    selector = argparse.ArgumentParser(add_help=False)
+    selector.add_argument("--support")
+    selected, _ = selector.parse_known_args(argv)
+    binding = None
+    if selected.support:
+        from merlin.compiler.semantic.target_binding import load_native_target_binding
+        binding = load_native_target_binding(selected.support)
+    parser = build_parser(binding=binding)
     args = parser.parse_args(argv)
+    if binding is not None and args.command.startswith("native-"):
+        expand = getattr(binding, "expand_codegen_arguments", None)
+        if expand:
+            expand(args)
+        from merlin.compiler.semantic.codegen import codegen_options, options_from_args
+        with codegen_options(options_from_args(args)):
+            return args.func(args)
     return args.func(args)
 
 

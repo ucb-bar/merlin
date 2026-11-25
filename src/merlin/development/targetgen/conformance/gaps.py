@@ -14,6 +14,7 @@ from merlin.development.targetgen.conformance.requirements import (
     Boundaries,
     Cell,
     CellOrigin,
+    _capsule_paths,
 )
 
 # ---- conformance_scope -------------------------------------------------------------------------
@@ -37,6 +38,7 @@ def _scope_gap(required, corpus_roots, *, labels=None, exclude=None) -> dict:
 
     from merlin.compiler.ir import mlir_query as mq
     from merlin.development.targetgen.applications import operation_plan as SC
+    from merlin.development.targetgen.conformance.requirements import _capsule_paths
 
     labels = set(labels or {"public"})
     exclude = set(exclude or ())

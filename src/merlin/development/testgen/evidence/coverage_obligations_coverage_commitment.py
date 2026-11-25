@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 import yaml
 from merlin.common.digest import is_sha256, sha256_bytes
-from merlin.development.testgen.witness_basis import build_witness_basis
+from merlin.development.testgen.evidence.witness_basis import build_witness_basis
 
 
 # ---- coverage_commitment -----------------------------------------------------------------------
@@ -54,7 +54,7 @@ def _digest(document) -> str:
 
 def selected_inputs(selection, *, accounting: dict, prohibited_roles=()) -> dict:
     """Project only selected immutable documents; never resolve live references."""
-    from merlin.development.testgen.spec_drift import from_selection
+    from merlin.development.testgen.evidence.spec_drift import from_selection
 
     requirement = next(
         (yaml.safe_load(row.content) for row in selection.source_snapshots if row.role == "conformance-spec"), None
@@ -191,7 +191,7 @@ def attestation_failure(application: dict) -> str | None:
     The attestation must pass the issuer gate (which re-reads its bytes) AND name
     exactly this application's selected capture and materialized receipt bytes.
     """
-    from merlin.development.testgen.capture_execution_attestation import (
+    from merlin.development.testgen.sealed_capture.attestation import (
         AttestationNotVerified,
         require_verified_execution,
     )

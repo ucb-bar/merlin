@@ -46,6 +46,7 @@ def implementation_identity() -> dict:
         "merlin.capture.preparation.cache",
         "merlin.capture.preparation.worker",
         "merlin.capture.preparation.arguments",
+        "merlin.capture.preparation.external_quantization",
         "merlin.capture.preparation.values",
         "merlin.compiler.quantization.recipe",
         "merlin.capture.preparation.state",

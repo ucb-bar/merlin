@@ -202,3 +202,15 @@ A selected region's artifact must agree with its callable boundary. A raw binary
 needs an admitted loader/wrapper; LLVM is only one possible output path.
 Numerical fidelity, complete target lowering and observed device execution are
 separate verification obligations, described in [chapter 9](../guides/09-verification.md).
+
+## Scaled FP8 numerical admission
+
+`compiler/quantization/contraction/scaled_fp8.py` owns the target-neutral `ScaledFP8Spec` and `ContractionNumerics` records. They are an admission boundary for a selected numerical route: comparing declarations does not prove that an implementation realizes them, and they confer no device qualification.
+
+An i8 code tensor and a signed i32 power-of-two exponent tensor form one value, `decode_e4m3fn(code_bits) * 2**exponent`. Bytes `0x7f` and `0xff` are reserved NaNs and refuse. Exponent axes are explicit logical code axes in increasing order, and other axes broadcast; there is no E8M0 reinterpretation, hidden transpose, or implicit broadcast. Physical packing stays in the target repository.
+
+`require_same_numerics` admits only exactly equal declarations of accumulation, readout, ordered stages, bias rounding, and activation form. Any difference refuses unless an explicit precision change is authorized.
+
+## Source bias separation
+
+`compiler/semantic/prequantized_bias.py` splits a final BF16 column bias from a prequantized contraction into a readout, an exact column gather, and an `ieee754-bf16-add-rne-v1` addition, without changing constants. An f32 bias stays unsplit. The split receipt records the original nodes and digests, and verification restores and replays the split exactly.

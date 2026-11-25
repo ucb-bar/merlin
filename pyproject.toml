@@ -40,8 +40,9 @@ verify = ["xdsl>=0.68", "z3-solver"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]
 # Semantic selection reads MLIR with xDSL, validates OOT descriptions against
-# JSON Schema, and solves declared local-memory placement with Z3.
-semantic-search = ["xdsl>=0.68", "jsonschema", "z3-solver"]
+# JSON Schema, and solves declared local-memory placement with Z3. Placement
+# counts Z3 work, and the count depends on the Z3 build, so the version is pinned.
+semantic-search = ["xdsl>=0.68", "jsonschema", "z3-solver==4.16.0.0"]
 # Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, â€¦) have
 # NO PyPI deps â€” they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
 # exists as the documented install target + carries the bundled runtime-C sources' consumers; the

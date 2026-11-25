@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from merlin.development.targetgen.applications.demand_inventory import application_demand_inventory
-from merlin.development.targetgen.conformance.gaps import _scope_gap
 
 # ---- conformance_types -------------------------------------------------------------------------
 

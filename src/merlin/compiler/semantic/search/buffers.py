@@ -57,6 +57,7 @@ class BufferAllocation:
     status: str
     addresses: tuple[tuple[str, int], ...] = ()
     reason: str = ""
+    work: int = 0
 
 
 def _normalize(buffers: tuple[Buffer, ...], banks: tuple[StorageBank, ...]):
@@ -218,18 +219,25 @@ def allocate_buffers(
     banks: tuple[StorageBank, ...],
     *,
     reservations: tuple[Reservation, ...] = (),
-    timeout_ms: int = 1000,
+    timeout_ms: int | None = 1000,
+    rlimit: int | None = None,
 ) -> BufferAllocation:
     """Solve this finite interval-placement problem; UNKNOWN is not infeasibility.
 
     Persistent roots reserve storage for the entire invocation. The result is
     a placement component, not executable target lowering or hardware evidence.
+    ``rlimit`` bounds the solver's counted work over every query of this call,
+    and the result reports the work spent.
     """
     import z3
 
-    if type(timeout_ms) is not int or timeout_ms <= 0:
+    if timeout_ms is not None and (type(timeout_ms) is not int or timeout_ms <= 0):
         raise ValueError("positive solver timeout required")
-    deadline = monotonic() + timeout_ms / 1000
+    if rlimit is not None and (type(rlimit) is not int or rlimit <= 0):
+        raise ValueError("positive solver resource limit required")
+    if timeout_ms is None and rlimit is None:
+        raise ValueError("a solver timeout or resource limit is required")
+    deadline = None if timeout_ms is None else monotonic() + timeout_ms / 1000
     storage, items, roots, life = _normalize(buffers, banks)
     for reservation in reservations:
         if (
@@ -237,18 +245,30 @@ def allocate_buffers(
             or reservation.start + reservation.extent > storage[reservation.storage].capacity
         ):
             raise ValueError("reservation has invalid storage bounds")
-    solver = z3.Solver()
+    # A private context keeps counted work independent of earlier Z3 use in this process.
+    context = z3.Context()
+    solver = z3.Solver(ctx=context)
     solver.set(random_seed=0)
 
+    def work():
+        # Z3 accumulates this counter over the solver's checks, while its limit restarts at each check.
+        statistics = solver.statistics()
+        return statistics.get_key_value("rlimit count") if "rlimit count" in statistics.keys() else 0
+
     def query():
-        remaining_ms = int((deadline - monotonic()) * 1000)
-        if remaining_ms <= 0:
-            return z3.unknown, "buffer allocation time budget exhausted"
-        solver.set(timeout=remaining_ms)
+        if deadline is not None:
+            remaining_ms = int((deadline - monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return z3.unknown, "buffer allocation time budget exhausted"
+            solver.set(timeout=remaining_ms)
+        if rlimit is not None:
+            if work() >= rlimit:
+                return z3.unknown, "buffer allocation work budget exhausted"
+            solver.set(rlimit=rlimit - work())
         status = solver.check()
         return status, solver.reason_unknown() if status == z3.unknown else ""
 
-    variables = {name: z3.Int(f"buffer_{index}") for index, name in enumerate(items)}
+    variables = {name: z3.Int(f"buffer_{index}", context) for index, name in enumerate(items)}
     for name, item in items.items():
         bank, variable = storage[item.storage], variables[name]
         solver.add(
@@ -280,9 +300,9 @@ def allocate_buffers(
                 )
     result, reason = query()
     if result == z3.unknown:
-        return BufferAllocation("unknown", reason=reason)
+        return BufferAllocation("unknown", reason=reason, work=work())
     if result == z3.unsat:
-        return BufferAllocation("unsat", reason="bounded buffer-placement constraints are unsatisfiable")
+        return BufferAllocation("unsat", reason="bounded buffer-placement constraints are unsatisfiable", work=work())
     # Lexicographic minimization with explicit bounded queries avoids relying on
     # solver model order. A timeout in any query remains inconclusive.
     for name in items:
@@ -297,7 +317,7 @@ def allocate_buffers(
             decision, reason = query()
             solver.pop()
             if decision == z3.unknown:
-                return BufferAllocation("unknown", reason=reason)
+                return BufferAllocation("unknown", reason=reason, work=work())
             if decision == z3.sat:
                 hi = mid
             else:
@@ -305,8 +325,8 @@ def allocate_buffers(
         solver.add(variable == lo)
     result, reason = query()
     if result != z3.sat:
-        return BufferAllocation("unknown", reason=reason or "final placement was not satisfiable")
+        return BufferAllocation("unknown", reason=reason or "final placement was not satisfiable", work=work())
     model = solver.model()
     addresses = {name: model.eval(variable).as_long() for name, variable in variables.items()}
     check_buffer_allocation(buffers, banks, addresses, reservations=reservations)
-    return BufferAllocation("sat", tuple(addresses.items()))
+    return BufferAllocation("sat", tuple(addresses.items()), work=work())

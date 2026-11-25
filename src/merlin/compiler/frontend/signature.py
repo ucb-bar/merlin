@@ -123,15 +123,16 @@ def _argument_bindings(
             or file not in files
             or kind == "param"
             and file != "weights.safetensors"
-            or kind == "constant"
-            and file != CONSTANT_FILE
+            # Staging binds a constant to weights.safetensors only when it is a
+            # lifted constant whose bytes equal the receipt-checked copy and no
+            # other row names that stored tensor; it refuses every other one.
             or not isinstance(name, str)
             or not name
             or dtype is None
             or not isinstance(row.get("shape"), list)
             or any(type(extent) is not int or extent < 0 for extent in row["shape"])
             or row["shape"] != actual["shape"]
-            or dtype[0] != actual["dtype"]
+            or not (dtype[0] == actual["dtype"] or dtype_name == "uint8" and actual["dtype"] == "i8")
         ):
             raise ValueError("weight argument shape or dtype differs from parsed function")
         stored = headers[file].get(name)
