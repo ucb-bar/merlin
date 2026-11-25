@@ -71,15 +71,20 @@ def _transparent(op):
     return _pointwise(op) and not op.results[0].type.get_shape()
 
 
-def fuse_live_pointwise(module, *, max_scalar_operations=512, max_fusions=4096):
+def fuse_live_pointwise(module, *, max_scalar_operations=512, max_fusions=4096,
+                        integer_output_order=False):
     """Mutate private IR, returning observations of eliminated tensor reads.
 
     Identity bridge maps keep this narrow: producer and consumer enumerate the
     same domain exactly once. Other inputs may broadcast and the integer output
-    may use a different permutation. No arithmetic is cloned or reassociated.
+    may use a different permutation. The optional integer output order composes
+    every indexing map with that permutation's inverse. No arithmetic is cloned
+    or reassociated, and the live floating output remains in its original layout.
     """
     if any(type(n) is not int or n < 0 for n in (max_scalar_operations, max_fusions)):
         raise ValueError("pointwise fusion requires nonnegative scalar and fusion budgets")
+    if type(integer_output_order) is not bool:
+        raise ValueError("pointwise iteration order requires an explicit Boolean selection")
     module.verify()
     rows = []
     for consumer in tuple(module.walk()):
@@ -142,6 +147,14 @@ def fuse_live_pointwise(module, *, max_scalar_operations=512, max_fusions=4096):
             maps = [*producer.indexing_maps.data[:-1], *(
                 mapping for i, mapping in enumerate(consumer.indexing_maps.data[:-1]) if i != index
             ), producer.indexing_maps.data[-1], consumer.indexing_maps.data[-1]]
+            # A tensor-level bijection changes iteration order, not storage or
+            # arithmetic. Compose every map so each output element retains its
+            # original scalar inputs, including the live floating skip value.
+            order = tuple(expr.position for expr in output_map.results)
+            if integer_output_order and order != tuple(range(rank)):
+                inverse = [AffineDimExpr(order.index(i)) for i in range(rank)]
+                maps = [builtin.AffineMapAttr(mapping.data.replace_dims_and_symbols(
+                    inverse, [], rank, 0)) for mapping in maps]
             fused = GenericOp(inputs, outputs, Region(body), maps, consumer.iterator_types,
                               result_types=[value.type for value in outputs])
             fused.attributes.update(consumer.attributes)
@@ -156,28 +169,33 @@ def fuse_live_pointwise(module, *, max_scalar_operations=512, max_fusions=4096):
                 elements *= dim
             rows.append({"shape": list(source.type.get_shape()), "shared_elements": elements,
                          "eliminated_read_bytes": elements * source.type.get_element_type().bitwidth // 8})
+            if integer_output_order:
+                rows[-1]["iteration_order"] = list(order)
+                rows[-1]["integer_output_contiguous"] = True
             break
     module.verify()
     return rows
 
 
-def prepare_host_pointwise_fusion(source, *, enabled=False, serial=True):
+def prepare_host_pointwise_fusion(source, *, enabled=False, serial=True,
+                                  integer_output_order=False):
     """Ordinary opt-in host fusion, before upstream bufferization."""
     from merlin.frontends.linalg_mlir import parse_mlir_text
     from merlin.xdsl_dialects._common import text
 
-    if type(enabled) is not bool or type(serial) is not bool:
+    if any(type(value) is not bool for value in (enabled, serial, integer_output_order)):
         raise ValueError("pointwise fusion requires explicit Boolean selections")
     digest = hashlib.sha256(source.encode()).hexdigest()
     report = {"schema": "merlin.host_pointwise_fusion.v1", "rewrites": 0,
-              "source_sha256": digest, "output_sha256": digest, "regions": []}
+              "source_sha256": digest, "output_sha256": digest, "regions": [],
+              "iteration_policy": "integer_output" if integer_output_order else "source"}
     if not enabled or not serial:
         return source, report
     try:
         module = parse_mlir_text(source)
     except ParseError:
         return source, report
-    rows = fuse_live_pointwise(module)
+    rows = fuse_live_pointwise(module, integer_output_order=integer_output_order)
     output = text(module, generic=True) if rows else source
     report.update(rewrites=len(rows), regions=rows, output_sha256=hashlib.sha256(output.encode()).hexdigest())
     return output, report

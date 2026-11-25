@@ -133,6 +133,30 @@ def test_biased_mixed_rank_group_profile_uses_all_declared_call_buffers():
         assert proc.returncode == 0, proc.stderr
 
 
+def test_unary_pool_profile_retains_both_descriptors_and_rejects_incomplete_abis():
+    buffers = {"pool": [
+        {"role": "input_0", "shape": [12544, 64], "dtype": "i8"},
+        {"role": "out_0", "shape": [3136, 64], "dtype": "i8"},
+    ]}
+    routed = [{"symbol": "pool", "group": 8}]
+    signatures = {"pool": ()}
+    undefined = {"_mlir_ciface_pool"}
+    selected = W.callees(routed, signatures, undefined, buffers)
+    assert len(selected) == 1 and selected[0].buffers == 2 and selected[0].rank is None
+    source = W.render_group_profile(selected, W.group_names(routed))
+    assert "void __wrap__mlir_ciface_pool(void *result, const void *a, const void *b)" in source
+    assert "__real__mlir_ciface_pool(result, a, b)" in source
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is not None:
+        proc = subprocess.run([compiler, "-fsyntax-only", "-x", "c", "-"],
+                              input=source, text=True, capture_output=True)
+        assert proc.returncode == 0, proc.stderr
+    for malformed in (buffers["pool"][:1], list(reversed(buffers["pool"])),
+                      [buffers["pool"][0], {**buffers["pool"][1], "shape": []}]):
+        with pytest.raises(W.ReadbackError, match="complete call-buffer ABI"):
+            W.callees(routed, signatures, undefined, {"pool": malformed})
+
+
 def test_the_profile_lines_parse_into_groups_and_gaps():
     console = "\n".join(
         [

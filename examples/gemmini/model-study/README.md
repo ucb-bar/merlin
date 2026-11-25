@@ -112,6 +112,8 @@ An original bundle with absent payloads or a refused numerical-source identity r
 
 Build each declared program through `full_model.py` with its admitted captured-forward reference before packaging a session. Preserve the control and select each optimization explicitly. `--host-elementwise-fusion` enables the existing host fusion condition; `MERLIN_HOST_BOUNDED_RNE=1` selects the existing bounded conversion condition. Neither is implied by the backend preference file. A typed `--source-route` additionally needs the original normalized source hash and independently inspected borrowed-effect premises. Later derived rounding or quantization variants need their own identities and checks. Model labels identify experiments; production transformation decisions must follow source semantics and target capabilities.
 
+With host elementwise fusion enabled, `MERLIN_HOST_POINTWISE_ORDER=integer_output` makes eligible fused loops traverse the integer output in row-major order. The default is `source`, which preserves the original iteration order. This choice composes every input and output indexing map with the same inverse permutation. It preserves tensor layouts, scalar arithmetic, and the floating output retained for residual connections. Admission remains limited to pure, static, all-parallel tensor operations. The build records the selection and each changed order in `host-pointwise-fusion.json`. Reordering can improve device-buffer locality while worsening floating-buffer locality, so select it using matched complete-model cycle measurements after checking every output.
+
 Expected tensors belong to reference checking and the comparison guest, not the device-compiler input. Retain the actual compiler arguments and imported-module origins. These guards are provenance checks, not a claim of filesystem isolation. Saved session ELFs can embed private inputs, weights and expected arrays; give them the same access restrictions as those payloads rather than publishing them with the source guide.
 
 ### Package verified repeats from completed objects
@@ -179,3 +181,35 @@ Check the emitted implementation before interpreting fewer calls as an improveme
 Expert QK kernels can require pretransposed keys, and combined QKV/gate-up kernels have a different calling contract from separate projections. Include equivalent preparation and outputs in both timed regions. Supplied model ELFs and static CCA records alone do not establish equivalent full-model work or a numerical reference.
 
 Use local correctness checks before hardware. Declare a bounded allocation of serialized FireSim submissions in the run plan, including any explicit amendment, with no automatic retries. Keep complete session latency, per-forward intervals, initial preparation, output transport and instrumentation overhead separate. Retain inputs, compiler versions, build recipes, raw observations and failed attempts. Do not modify the archived compiler, sealed bundles or existing AE records.
+
+## Integer operations between contractions
+
+An explicit numerical-policy experiment can keep residuals and pooling in integer form. This is separate from transformations that preserve an existing quantized program. Start from the selected recipe and construct each condition through the existing policy APIs:
+
+```python
+from merlin.targetgen import quant_recipe as Q
+
+residuals = Q.with_shared_grid_operand_sums(base_recipe)
+stem = Q.with_native_output_quantization(
+    residuals, operators=("conv2d",), reader_policy="non_add_compute"
+)
+mean = Q.with_integer_extension(
+    residuals,
+    key="integer_mean",
+    policy={
+        "schema": "integer_mean_contraction_v1",
+        "max_window_elements": 4096,
+        "max_weight_elements": 4096,
+        "max_macs": 16777216,
+    },
+)
+combined = Q.with_native_output_quantization(
+    mean, operators=("conv2d",), reader_policy="non_add_compute"
+)
+```
+
+These conditions select operators by their computation and readers. They do not select a model name, kernel identifier or expected result. Shared-grid residuals define integer addition and optional activation on a common calibrated scale. Native convolution outputs introduce an integer boundary before supported non-add compute readers. Integer means use an exact spatial sum followed by a declared scaled readout. Adding the mean can also make preceding residuals eligible, so inspect the actual captured operation counts rather than assuming that only one group changed.
+
+Recapture each condition using the same checkpoint, calibration set and selected input. Generate an independent reference for its new arithmetic, check the compiled outputs against it, and evaluate the original floating-model quality thresholds without recalibrating on evaluation inputs. A reference quality pass and a compiled numerical pass establish different facts. Report the input count for each, and distinguish mean quality thresholds from per-input minima. Keep the original recipe, outputs and compiler as controls.
+
+For pooling, preserve the source padding and each quantization boundary. A standalone scale conversion must occur before inserting output-domain padding. An existing convolution-plus-pool route cannot absorb a newly introduced observed intermediate unless it proves the same rounding and saturation. Check both complete-model numerical results and focused pooling cases before measuring hardware performance. Fewer device calls are not required: an additional accelerator call can replace a much larger host tensor loop. Select variants by complete-session hardware cycles, including transfers and synchronization.

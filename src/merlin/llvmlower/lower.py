@@ -413,10 +413,14 @@ def lower_model(
         from .host_pointwise_fusion import prepare_host_pointwise_fusion
         from .impr_features import FUSE_AFTER_GENERALIZE_NAME
 
+        pointwise_order = _env("MERLIN_HOST_POINTWISE_ORDER", "source")
+        if pointwise_order not in ("source", "integer_output"):
+            raise ValueError("MERLIN_HOST_POINTWISE_ORDER must be source or integer_output")
         mlir_text, pointwise_fusion_report = prepare_host_pointwise_fusion(
             mlir_text,
             enabled=FUSE_AFTER_GENERALIZE_NAME in (features or ()),
             serial=serial_rows,
+            integer_output_order=pointwise_order == "integer_output",
         )
         if pointwise_fusion_report["rewrites"]:
             audit.stage("host-pointwise-fused", mlir_text)

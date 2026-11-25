@@ -86,7 +86,53 @@ def test_default_source_is_unchanged():
     assert prepare_host_pointwise_fusion(source(), enabled=True, serial=False)[0] == source()
 
 
-def test_ordinary_native_fusion_preserves_float_bits_and_complete_integer_output(tmp_path):
+@pytest.mark.parametrize("four_dimensions", [False, True])
+def test_integer_output_order_preserves_every_element_and_scalar_program(four_dimensions):
+    from itertools import product
+    from xdsl.ir.affine import AffineMap
+
+    program = source()
+    shape, order = (2, 3, 5), (0, 2, 1)
+    if four_dimensions:
+        program = (program.replace("2x3x5", "2x3x4x5").replace("2x5x3", "2x4x5x3")
+                   .replace("(i,j,k)", "(i,j,k,l)").replace("(i,k,j)", "(i,k,l,j)")
+                   .replace('"parallel","parallel","parallel"',
+                            '"parallel","parallel","parallel","parallel"'))
+        shape, order = (2, 3, 4, 5), (0, 2, 3, 1)
+    baseline = parse_mlir_text(program)
+    candidate = baseline.clone()
+    fuse_live_pointwise(baseline)
+    report = fuse_live_pointwise(candidate, integer_output_order=True)
+    before, = [op for op in baseline.walk() if op.name == "linalg.generic"]
+    after, = [op for op in candidate.walk() if op.name == "linalg.generic"]
+    assert report[0]["iteration_order"] == list(order)
+    assert after.indexing_maps.data[-1].data == AffineMap.identity(len(shape))
+    assert [value.type for value in after.results] == [value.type for value in before.results]
+    assert after.body.is_structurally_equivalent(before.body)
+    # Non-square dimensions and all source/output maps must agree at every
+    # coordinate. Checking only the integer output would miss a wrong skip map.
+    for new in product(*(range(shape[axis]) for axis in order)):
+        old = tuple(new[order.index(axis)] for axis in range(len(shape)))
+        for original, rewritten in zip(before.indexing_maps, after.indexing_maps, strict=True):
+            assert original.data.eval(old, ()) == rewritten.data.eval(new, ())
+
+
+@pytest.mark.parametrize("ordered", [False, True])
+@pytest.mark.parametrize("fault", ["destination_read", "reduction", "effect"])
+def test_iteration_order_does_not_weaken_fusion_admission(ordered, fault):
+    module = parse_mlir_text(source())
+    producer, consumer = [op for op in module.walk() if op.name == "linalg.generic"]
+    if fault == "destination_read":
+        producer.body.block.last_op.operands = [producer.body.block.args[-1]]
+    elif fault == "reduction":
+        from xdsl.dialects.linalg.attrs import IteratorTypeAttr
+        producer.properties["iterator_types"] = builtin.ArrayAttr([IteratorTypeAttr.reduction()] * 3)
+    else:
+        producer.parent.insert_op_before(builtin.UnregisteredOp.with_name("opaque.touch").create(), consumer)
+    assert fuse_live_pointwise(module, integer_output_order=ordered) == []
+
+
+def test_ordinary_native_fusion_preserves_float_bits_and_complete_integer_output(tmp_path, monkeypatch):
     from merlin.llvmlower import toolchain
     from merlin.llvmlower.abi import HostModel, PrivateHostImagePolicy
     from merlin.llvmlower.impr_features import FUSE_AFTER_GENERALIZE_NAME
@@ -102,9 +148,11 @@ def test_ordinary_native_fusion_preserves_float_bits_and_complete_integer_output
     expected_f = np.where(summed < 0, np.float32(0), summed)
     expected_q = np.rint(np.clip(expected_f * np.float32(.5), -128, 127)).astype(np.int8).transpose(0, 2, 1)
     loads = {}
-    for arm, features in (("baseline", ()), ("fused", (FUSE_AFTER_GENERALIZE_NAME,))):
+    for arm, features in (("baseline", ()), ("fused", (FUSE_AFTER_GENERALIZE_NAME,)),
+                          ("ordered", (FUSE_AFTER_GENERALIZE_NAME,))):
+        monkeypatch.setenv("MERLIN_HOST_POINTWISE_ORDER", "integer_output" if arm == "ordered" else "source")
         result = lower_model(source(), tmp_path / arm, targets=("host",), features=features)
-        assert result.stats["host_pointwise_fusion"]["rewrites"] == (arm == "fused")
+        assert result.stats["host_pointwise_fusion"]["rewrites"] == (arm != "baseline")
         loads[arm] = result.ll_path.read_text().count(" = load float")
         invoke = HostModel.load(str(result.host_so),
                                image_policy=PrivateHostImagePolicy(result.host_so.parent.resolve()))
@@ -114,3 +162,4 @@ def test_ordinary_native_fusion_preserves_float_bits_and_complete_integer_output
         np.testing.assert_array_equal(floating.view(np.uint32), expected_f.view(np.uint32))
         np.testing.assert_array_equal(quantized, expected_q)
     assert loads["fused"] < loads["baseline"]
+    assert loads["ordered"] == loads["fused"]

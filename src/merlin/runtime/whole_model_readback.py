@@ -145,6 +145,7 @@ def callees(
             if buffers is not None:
                 roles = [buf.get("role") if isinstance(buf, Mapping) else None for buf in buffers]
                 if not isinstance(buffers, (list, tuple)) or roles not in (
+                    ["input_0", "out_0"],
                     ["input_0", "weight_0", "out_0"],
                     ["input_0", "input_1", "out_0"],
                     ["input_0", "weight_0", "bias_0", "out_0"],
