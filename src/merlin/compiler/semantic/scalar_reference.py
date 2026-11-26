@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from bisect import bisect_left, bisect_right
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fractions import Fraction
 from itertools import product
 from itertools import product as index_product
@@ -267,6 +267,15 @@ def evaluate_scalar_region(node, operands):
             node.type,
             tuple(count if isnan(value := _decode(bits, "f32")) else search(limits, value) for bits in source.elements),
         )
+    if shape and len(node.index_maps) == len(operands) + 1 and any(value.type.shape != shape for value in operands):
+        # A broadcast operand (zero map rows over extent 1) reads the same element along those axes.
+        maps = _checked_f32_pointwise_maps(node, operands)
+        operands = tuple(
+            TensorValue(TensorType(shape, value.type.dtype, value.type.numerical_policy), tuple(
+                value.elements[_flat_index(mapping.apply(index), value.type.shape)]
+                for index in product(*(range(extent) for extent in shape))))
+            for value, mapping in zip(operands, maps, strict=True))
+        node = replace(node, index_maps=pointwise_identity_maps(len(shape), len(operands)))
     if (
         not shape
         or any(value.type.shape != shape for value in operands)
@@ -375,7 +384,6 @@ def evaluate_scalar_region(node, operands):
 
 _I32_MIN = -(1 << 31)
 _I32_MAX = (1 << 31) - 1
-_BF16_RELU_ATTRS = {"input_domain": "finite-normal-or-zero-bf16", "numeric_semantics": "bf16-sign-clamp-v1"}
 
 
 def _i32(value: int) -> int:

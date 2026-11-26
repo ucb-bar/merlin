@@ -139,6 +139,29 @@ def publish_layout(staged, manifest, document):
     return manifest
 
 
+def boundary_abi(selection, binding, request):
+    """The fixed boundary ABI from a JSON file, or from the provider's plan_boundary_abi for `auto`."""
+    if selection == "auto":
+        plan_boundary_abi = getattr(binding, "plan_boundary_abi", None)
+        if plan_boundary_abi is None:
+            raise ValueError("--abi auto needs a provider that plans its boundary ABI")
+        abi = plan_boundary_abi(request)
+    else:
+        abi = json.loads(Path(selection).read_text())
+    if (
+        not isinstance(abi, dict)
+        or set(abi) != {"fixed_inputs", "fixed_outputs"}
+        or not isinstance(abi["fixed_inputs"], dict)
+        or (not isinstance(abi["fixed_outputs"], list))
+    ):
+        raise ValueError("native compile ABI needs fixed_inputs and fixed_outputs")
+    if not all(type(value) is int for value in abi["fixed_inputs"].values()) or (
+        not all(type(value) is int for value in abi["fixed_outputs"])
+    ):
+        raise ValueError("native compile ABI addresses must be integers")
+    return abi
+
+
 def compile_report(args, *, load_request, load_limits, write_status):
     """Build and publish one actual selected native artifact."""
     from merlin.compiler.semantic.linalg.linalg_bridge import LinalgBridgeError
@@ -174,17 +197,7 @@ def compile_report(args, *, load_request, load_limits, write_status):
         output = Path(args.out)
         if args.status_file and Path(args.status_file).resolve().is_relative_to(output.resolve()):
             raise ValueError("native compile status file must be outside the artifact directory")
-        abi = json.loads(Path(args.abi).read_text())
-        if (
-            set(abi) != {"fixed_inputs", "fixed_outputs"}
-            or not isinstance(abi["fixed_inputs"], dict)
-            or (not isinstance(abi["fixed_outputs"], list))
-        ):
-            raise ValueError("native compile ABI needs fixed_inputs and fixed_outputs")
-        if not all(type(value) is int for value in abi["fixed_inputs"].values()) or (
-            not all(type(value) is int for value in abi["fixed_outputs"])
-        ):
-            raise ValueError("native compile ABI addresses must be integers")
+        abi = boundary_abi(args.abi, binding, request)
         limits = load_limits(args.search_limits)
         if output.exists():
             raise FileExistsError(f"fresh native compilation output required: {output}")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from struct import pack, unpack
 
-from merlin.compiler.semantic.model import IndexMap, TensorType, pointwise_identity_maps
+from merlin.compiler.semantic.model import TensorType
 
 # ---- linalg_types ------------------------------------------------------------------------------
 
@@ -106,3 +106,23 @@ def _scalar_f32_bits(op) -> int:
         return unpack("<I", pack("<f", value))[0]
     except OverflowError as exc:
         raise LinalgBridgeError("f32 fill scalar is outside its storage range") from exc
+
+
+def _scalar_bf16_bits(op) -> int:
+    """Read an already typed finite BF16 literal without changing its bits."""
+    from math import isfinite
+
+    from xdsl.dialects.builtin import BFloat16Type, FloatAttr
+
+    literal = op.properties.get("value")
+    if (
+        not isinstance(literal, FloatAttr)
+        or not isinstance(literal.type, BFloat16Type)
+        or literal.type != op.results[0].type
+        or set(op.properties) != {"value"}
+        or any(not key.startswith("prov.") for key in op.attributes)
+        or not isfinite(literal.value.data)
+    ):
+        raise LinalgBridgeError("BF16 scalar needs an exact finite typed literal")
+    op.verify()
+    return int.from_bytes(literal.type.pack((literal.value.data,)), "little")

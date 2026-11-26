@@ -15,6 +15,7 @@ import numpy as np
 
 from merlin.compiler.partition.dispatch_program import _check_dispatch_definition
 from merlin.compiler.partition.outline import OutlineError, _external_declarations
+from merlin.runtime.dispatch.errors import DispatchRuntimeError
 from merlin.runtime.dispatch.whole_model import (
     _classify_mesh_contraction,
     _classify_mesh_matmul,
@@ -100,10 +101,6 @@ def float_boundary_operands(a, b, binding) -> tuple[list, list, float, dict]:
 #
 # These are structural caller requirements, not an issuer of device capabilities,
 # command acceptance/completion, storage ownership or synchronization semantics.
-
-
-class DispatchRuntimeError(RuntimeError):
-    pass
 
 
 def _selection(row):

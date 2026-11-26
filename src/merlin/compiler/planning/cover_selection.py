@@ -323,13 +323,30 @@ def select_application_plan(source, alternatives, *, max_states=10_000):
     raise NativeCompilationError("unsupported_semantics", "no compatible application partition covers every node")
 
 
-def application_plan(source, adapter):
+# Semantic application regions take byte-aligned buffers: build.regions declares every region call with this
+# alignment, so it bounds what a reader of a parameter view may require.
+REGION_BUFFER_ALIGNMENT = 1
+
+
+def application_plan(source, adapter, parameters=None):
     """Use shared selection for region-enumerating providers.
 
     Legacy providers may still supply a complete plan. A failed enumeration
     never falls back to that route or silently changes placement.
+    ``parameters`` names the immutable inputs a storage view may read in place. Their binding checks that
+    each offset is a multiple of its element width and that the payload is aligned to the widest element,
+    and compaction keeps that alignment, so each bound pointer is aligned to its element width.
     """
     enumerate_regions = getattr(adapter, "application_region_alternatives", None)
     if enumerate_regions is not None:
-        return select_application_plan(source, enumerate_regions(source))
-    return adapter.plan(source)
+        plan = select_application_plan(source, enumerate_regions(source))
+    else:
+        plan = adapter.plan(source)
+    from merlin.compiler.semantic.codegen import current_codegen_options
+    if current_codegen_options().application_buffer_views:
+        from merlin.compiler.transforms.dense_views import select_dense_buffer_views
+        from merlin.compiler.lower.c.runtime import DT_BYTES
+
+        guaranteed = {key: DT_BYTES[source.node(key).type.dtype] for key in parameters.node_ids} if parameters else {}
+        plan = select_dense_buffer_views(source, plan, guaranteed, REGION_BUFFER_ALIGNMENT)
+    return plan

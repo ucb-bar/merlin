@@ -15,7 +15,7 @@ def preparation_arguments(parser):
     parser.add_argument("--outer-tile-index", type=int, help="selected outer M/N output tile index")
 
 
-def add_arguments(sub, handlers):
+def add_arguments(sub, handlers, binding=None):
     from merlin.compiler.semantic.search.exploration import SearchAblations
 
     native_build = sub.add_parser("native-build", help="build an offline Merlin-native selection snapshot")
@@ -77,7 +77,7 @@ def add_arguments(sub, handlers):
     native_compile.add_argument(
         "--physical-layouts", help="explicit source/request-bound physical boundary layout JSON"
     )
-    native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON")
+    native_compile.add_argument("--abi", required=True, help="fixed_inputs/fixed_outputs JSON, or auto to ask the provider")
     native_compile.add_argument("--search-limits", help="complete versioned native search-limit JSON")
     native_compile.add_argument("--target-source", required=True, help="selected target source checkout")
     native_compile.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
@@ -121,3 +121,15 @@ def add_arguments(sub, handlers):
     native_verify.add_argument("--mode", choices=("strict-native", "hybrid", "diagnostic"), required=True)
     native_verify.add_argument("--out", required=True, help="external verification status JSON")
     native_verify.set_defaults(func=handlers["_cmd_native_verify"])
+
+    for parser in (native_build, native_select, native_compile, native_verify):
+        for name in ("io_memory_bytes", "program_size_limit_bytes", "execution_instruction_limit", "measured_host_bytes"):
+            parser.add_argument("--" + name.replace("_", "-"), type=lambda value: int(value, 0))
+        parser.add_argument("--memory-budget",
+                            help="derived application budget record (merlin.application_budget.v1); its selected "
+                                 "free range is the device window and capacity")
+        parser.add_argument("--application-buffer-views", action="store_true")
+        parser.add_argument("--application-residency", action="store_true")
+        configure = getattr(binding, "configure_codegen_parser", None)
+        if configure:
+            configure(parser)

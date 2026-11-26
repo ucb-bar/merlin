@@ -40,8 +40,9 @@ verify = ["xdsl>=0.68", "z3-solver"]
 # targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
 targetgen = ["jsonschema"]
 # Semantic selection reads MLIR with xDSL, validates OOT descriptions against
-# JSON Schema, and solves declared local-memory placement with Z3.
-semantic-search = ["xdsl>=0.68", "jsonschema", "z3-solver"]
+# JSON Schema, and solves declared local-memory placement with Z3. Placement
+# counts Z3 work, and the count depends on the Z3 build, so the version is pinned.
+semantic-search = ["xdsl>=0.68", "jsonschema", "z3-solver==4.16.0.0"]
 # Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, â€¦) have
 # NO PyPI deps â€” they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
 # exists as the documented install target + carries the bundled runtime-C sources' consumers; the
@@ -139,6 +140,26 @@ merlin = [
     "runtime/portable_tanh.c",
     "runtime/portable_tanh.LICENSE",
     "runtime/portable_math.provenance.json",
+    "runtime/host_math_supplier/README.md",
+    "runtime/host_math_supplier/hardware_sqrt.c",
+    "runtime/host_math_supplier/host-unary-math-policy.json",
+    "runtime/host_math_supplier/host_math.h",
+    "runtime/host_math_supplier/round_support.c",
+    "runtime/host_math_supplier/supplier_support.h",
+    "runtime/host_math_supplier/third_party/core-math/LICENSE",
+    "runtime/host_math_supplier/third_party/core-math/REVISION",
+    "runtime/host_math_supplier/third_party/core-math/cos.c",
+    "runtime/host_math_supplier/third_party/core-math/cosf.c",
+    "runtime/host_math_supplier/third_party/core-math/erff.c",
+    "runtime/host_math_supplier/third_party/core-math/expf.c",
+    "runtime/host_math_supplier/third_party/core-math/pow/dint.h",
+    "runtime/host_math_supplier/third_party/core-math/pow/pow.c",
+    "runtime/host_math_supplier/third_party/core-math/pow/pow.h",
+    "runtime/host_math_supplier/third_party/core-math/pow/qint.h",
+    "runtime/host_math_supplier/third_party/core-math/powf.c",
+    "runtime/host_math_supplier/third_party/core-math/sin.c",
+    "runtime/host_math_supplier/third_party/core-math/sinf.c",
+    "runtime/host_math_supplier/third_party/core-math/tanhf.c",
     "verification/lean/Merlin/*.lean",
     "compiler/semantic/egg_bridge/Cargo.toml",
     "compiler/semantic/egg_bridge/Cargo.lock",

@@ -39,6 +39,7 @@ _FORMS = {
     "literal_base_pow_f32": (("f32", "f32", "f32"), 1, ("math.powf",)),
     "sigmoid_f32": (("f32", "f32", "f32"), 1, ("math.exp",)),
     "tanh_gelu_f32": (("f32", "f32", "f32"), 4, ("math.tanh",)),
+    "erf_gelu_f32": (("f32", "f32", "f32"), 3, ("math.erf",)),
 }
 _POSITIVE_ONE = "0x3f800000"
 # Exact bounds of the two quantization clamps: FLT_MIN (smallest positive normal f32), and the
@@ -54,6 +55,7 @@ _EXACT_LITERALS = {
 _CMPF_OLT, _CMPF_OGT = 4, 2
 # Public mathematical coefficients, in the exact f32 source operation order.
 _TANH_GELU_LITERALS = ("0x3f000000", _POSITIVE_ONE, "0x3d372713", "0x3f4c422a")
+_ERF_GELU_LITERALS = ("0x3f000000", _POSITIVE_ONE, "0x3f3504f3")
 
 
 def validate_static_composite_math_source_body(declaration: object) -> dict[str, str]:
@@ -386,6 +388,27 @@ def _recognize_tanh_gelu(body, source):
     return "tanh_gelu_f32", bits
 
 
+def _recognize_erf_gelu(body, source):
+    from xdsl.dialects.arith import AddfOp, MulfOp
+    from xdsl.dialects.math import ErfOp
+
+    if len(body) != 9:
+        raise InvalidLinalgPattern("erf GELU body is not the closed erf expression and yield")
+    literals = tuple(_literal(op) for op in body[:3])
+    bits = tuple(value for _, value in literals)
+    if bits != _ERF_GELU_LITERALS:
+        raise InvalidLinalgPattern("erf GELU has different f32 coefficient bits")
+    half, one, scale = (result for result, _ in literals)
+    # x*(1/sqrt(2)), erf, 1+erf, 0.5*x, (0.5*x)*(1+erf), in source order.
+    sequence = ((MulfOp, (source, scale)), (ErfOp, (3,)), (AddfOp, (one, 4)), (MulfOp, (half, source)), (MulfOp, (6, 5)))
+    results: dict[int, object] = {}
+    for index, (expected_class, operands) in enumerate(sequence, start=3):
+        resolved = tuple(results[value] if type(value) is int else value for value in operands)
+        results[index] = _scalar(body[index], expected_class, resolved, "f32", frozenset({"fastmath"}))
+    _yield(body[8], results[7])
+    return "erf_gelu_f32", bits
+
+
 def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
     """Prove one exact typed source form, without admission or numeric claims."""
     shell = _checked_static_linalg_shell(op)
@@ -444,6 +467,10 @@ def recognize_static_composite_math_body(op) -> StaticCompositeMathPattern:
         if types != ("f32", "f32", "f32"):
             raise InvalidLinalgPattern("tanh GELU requires f32 input/init/result")
         operation, literals = _recognize_tanh_gelu(body, shell.args[0])
+    elif names[:4] == ("arith.constant",) * 3 + ("arith.mulf",):
+        if types != ("f32", "f32", "f32"):
+            raise InvalidLinalgPattern("erf GELU requires f32 input/init/result")
+        operation, literals = _recognize_erf_gelu(body, shell.args[0])
     else:
         raise InvalidLinalgPattern("composite math source has no closed recognized body")
     try:
@@ -492,6 +519,8 @@ def validate_serialized_static_composite_math_pattern(record: object) -> StaticC
         _interval_values(bits, int8=operation == "fptosi_i8_of_rounded_literal_interval")
     if operation == "tanh_gelu_f32" and tuple(bits) != _TANH_GELU_LITERALS:
         raise InvalidLinalgPattern("serialized tanh GELU coefficient bits differ")
+    if operation == "erf_gelu_f32" and tuple(bits) != _ERF_GELU_LITERALS:
+        raise InvalidLinalgPattern("serialized erf GELU coefficient bits differ")
     listed = record.get("lowering_intrinsic_obligations")
     if not isinstance(listed, (tuple, list)) or tuple(listed) != obligations:
         raise InvalidLinalgPattern("serialized composite math intrinsic obligations differ")

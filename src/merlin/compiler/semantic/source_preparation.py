@@ -2,19 +2,55 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from merlin.compiler.semantic.constant_folding import fold_source_constants, verify_constant_folding
+from merlin.compiler.semantic.constant_masks import fold_constant_masks, verify_constant_masks
 from merlin.compiler.semantic.constant_math_backend import MathHelper, validate_policy
 from merlin.compiler.semantic.constant_math_precision import prepare_constant_math, verify_constant_math
+
+from merlin.compiler.semantic.prequantized_bias import (
+    split_prequantized_bias, verify_prequantized_bias, is_prequantized_bias_add,
+)
 
 # ---- source_preparation ------------------------------------------------------------------------
 
 _LEGACY_SCHEMA = "merlin.source_preparation.v1"
 SCHEMA = "merlin.source_preparation.v2"
 _VIEWS_SCHEMA = "merlin.source_preparation.v3"
+_BIAS_SCHEMA = "merlin.source_preparation.v6"
+_MASK_SCHEMA = "merlin.source_preparation.v7"
 
 
 def prepare_source(source, *, constant_math_policy=None, include_tensor_constants=True):
+    """Prepare the source, then fold selects gated by a uniform constant mask."""
+    original = source
+    source, prepared = _prepare_biased_source(
+        source, constant_math_policy=constant_math_policy,
+        include_tensor_constants=include_tensor_constants)
+    folded, masks = fold_constant_masks(source)
+    if not masks["rewrites"]:
+        return source, prepared
+    return folded, dict(schema=_MASK_SCHEMA, before_digest=original.digest(),
+                        after_digest=folded.digest(), masks=masks, prepared=prepared,
+                        limits=prepared.get("limits", []))
+
+
+def _prepare_biased_source(source, *, constant_math_policy, include_tensor_constants):
     """Prepare exact indexing before separately selected numerical changes."""
+    original = source
+    source, bias = split_prequantized_bias(source)
+    source, prepared = _prepare_indexed_source(
+        source, constant_math_policy=constant_math_policy,
+        include_tensor_constants=include_tensor_constants)
+    if not bias["changes"]:
+        return source, prepared
+    return source, dict(schema=_BIAS_SCHEMA, before_digest=original.digest(),
+                        after_digest=source.digest(), bias=bias, prepared=prepared,
+                        limits=prepared.get("limits", []))
+
+
+def _prepare_indexed_source(source, *, constant_math_policy, include_tensor_constants):
     from merlin.compiler.semantic.affine_views import fuse_affine_views
 
     original = source
@@ -81,6 +117,30 @@ def _prepare_numerical_source(source, *, constant_math_policy=None, include_tens
 
 def verify_source_preparation(source, record):
     """Reconstruct the source and replay stage order, limits and numerical policy."""
+    if isinstance(record, dict) and record.get("schema") == _MASK_SCHEMA:
+        if (set(record) != {"schema", "before_digest", "after_digest", "masks", "prepared", "limits"}
+                or record["after_digest"] != source.digest()
+                or not isinstance(record["prepared"], dict)
+                or record["prepared"].get("schema") == _MASK_SCHEMA
+                or record["limits"] != record["prepared"].get("limits", [])):
+            raise ValueError("source preparation mask receipt changed")
+        unfolded = verify_constant_masks(source, record["masks"])
+        original = verify_source_preparation(unfolded, record["prepared"])
+        if original.digest() != record["before_digest"]:
+            raise ValueError("source preparation mask original changed")
+        return original
+    if isinstance(record, dict) and record.get("schema") == _BIAS_SCHEMA:
+        if (set(record) != {"schema", "before_digest", "after_digest", "bias", "prepared", "limits"}
+                or record["after_digest"] != source.digest()
+                or not isinstance(record["prepared"], dict)
+                or record["prepared"].get("schema") == _BIAS_SCHEMA
+                or record["limits"] != record["prepared"].get("limits", [])):
+            raise ValueError("source preparation bias receipt changed")
+        expanded = verify_source_preparation(source, record["prepared"])
+        original = verify_prequantized_bias(expanded, record["bias"])
+        if original.digest() != record["before_digest"]:
+            raise ValueError("source preparation bias original changed")
+        return original
     if isinstance(record, dict) and record.get("schema") == _VIEWS_SCHEMA:
         from merlin.compiler.semantic.affine_views import verify_affine_views
 
@@ -135,11 +195,17 @@ def verify_source_preparation(source, record):
 
 
 def preparation_filename(record):
-    composite = record.get("schema") in {SCHEMA, _LEGACY_SCHEMA, _VIEWS_SCHEMA}
+    composite = record.get("schema") in {SCHEMA, _LEGACY_SCHEMA, _VIEWS_SCHEMA, _BIAS_SCHEMA, _MASK_SCHEMA}
     return "source-preparation.json" if composite else "source-constant-folding.json"
 
 
 def preparation_counts(record):
+    if record.get("schema") == _MASK_SCHEMA:
+        return {**preparation_counts(record["prepared"]),
+                "source_constant_mask_folds": len(record["masks"]["rewrites"])}
+    if record.get("schema") == _BIAS_SCHEMA:
+        return {**preparation_counts(record["prepared"]),
+                "source_prequantized_bias_splits": len(record["bias"]["changes"])}
     if record.get("schema") == _VIEWS_SCHEMA:
         return {
             **preparation_counts(record["numerical"]),

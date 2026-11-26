@@ -6,6 +6,8 @@ import argparse
 import math
 import os
 
+from merlin.capture.preparation import external_quantization
+
 
 def parse_arguments(argv=None) -> argparse.Namespace:
     """Read the existing worker options before importing framework packages."""
@@ -31,11 +33,7 @@ def parse_arguments(argv=None) -> argparse.Namespace:
         help="path to a quant_recipe_v1 JSON derived from the target; when given, the "
         "model is quantized under it and --scheme / the dtype default are not used",
     )
-    ap.add_argument(
-        "--already-quantized",
-        action="store_true",
-        help="capture the loader's own materialized numeric graph without applying a TorchAO recipe or scheme",
-    )
+    external_quantization.add_arguments(ap)
     ap.add_argument(
         "--native-integer-source",
         action="store_true",
@@ -86,6 +84,7 @@ def parse_arguments(argv=None) -> argparse.Namespace:
         help="observe actual prepared export effects and source storage for explicit later freeze consent",
     )
     a = argv if isinstance(argv, argparse.Namespace) else ap.parse_args(argv)
+    a.external_selection = external_quantization.select_external(a, ap)
     native_integer_source = getattr(a, "native_integer_source", False)
     if native_integer_source and (
         not a.already_quantized
@@ -105,8 +104,8 @@ def parse_arguments(argv=None) -> argparse.Namespace:
         ap.error("--cpu-threads must be between 1 and 256")
     if not all(math.isfinite(value) and value >= 0 for value in (a.agreement_atol, a.agreement_rtol)):
         ap.error("agreement tolerances must be finite and nonnegative")
-    if a.already_quantized and (a.recipe or a.scheme):
-        ap.error("--already-quantized cannot be combined with --recipe or --scheme")
+    if a.already_quantized and (a.recipe or a.scheme or a.quantize_activation_contractions or a.integer_nonlinear):
+        ap.error("--already-quantized forbids recipes, schemes, and numerical rewrites")
     if a.integer_nonlinear and not a.quantize_activation_contractions:
         # Defined only on top of the int8 contractions (the softmax's int8 numerators are the next
         # contraction's own operand), so it is refused without them rather than mixed into a float program.

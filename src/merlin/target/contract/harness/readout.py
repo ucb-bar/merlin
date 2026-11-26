@@ -48,7 +48,7 @@ from merlin.compiler.ir.logical_abi import (
     logical_interface,
     logical_outputs,
 )
-from merlin.target.contract.harness.render import _COHERENT_OUTPUT_DTYPES, _HOST_STORAGE_BYTES, container_for
+from merlin.target.contract.harness.harness_render import _COHERENT_OUTPUT_DTYPES, _HOST_STORAGE_BYTES, container_for
 
 # ---- harness_render ----------------------------------------------------------------------------
 
@@ -398,7 +398,7 @@ def _compact_caller(cb, prepared, *, abi: LogicalAbi, hooks: HostHooks, warm_pro
     ``binding.base_views()`` and ``derived.target_abi.base_access`` / ``.base_alignments``.
     """
     from merlin.analysis.programs.storage_encoding import GroupedAxesStorage
-    from merlin.target.contract.harness.render import HostHooks, _preamble, container_for
+    from merlin.target.contract.harness.harness_render import HostHooks, _preamble, container_for
 
     verify = getattr(prepared, "verify_identity", None)
     if not callable(verify) or not hasattr(prepared, "compact_contract_json"):

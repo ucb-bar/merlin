@@ -299,6 +299,9 @@ def outline_semantic_regions(
     operation. Explicit representation transitions must be lowered by their
     target emitter; this outliner supports unchanged boundary representations.
     """
+    from merlin.compiler.transforms.dense_views import checked_view_aliases
+    aliases = checked_view_aliases(request, plan)
+    views = {name for name, _, _ in aliases}
     logical = semantic_dispatch(request, entry=entry)
     source_digest = request.digest()
     problems = verify_global_plan(logical, plan)
@@ -339,7 +342,7 @@ def outline_semantic_regions(
         kept.update((*inputs, *outputs))
         calls.append(
             Node(
-                "dispatch",
+                "view" if len(outputs) == 1 and outputs[0] in views else "dispatch",
                 selected[key].implementation,
                 list(inputs),
                 list(outputs),

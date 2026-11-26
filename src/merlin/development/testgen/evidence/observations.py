@@ -16,7 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 import yaml
-from merlin.development.testgen.evidence_output import _materialize_evidence
+from merlin.development.testgen.evidence.evidence_output import _materialize_evidence
 
 
 # ---- evidence ----------------------------------------------------------------------------------

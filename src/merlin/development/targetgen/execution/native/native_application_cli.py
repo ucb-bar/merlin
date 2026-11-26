@@ -13,9 +13,11 @@ def add_arguments(parser, *, compiling, require_application=None):
         required=not compiling if require_application is None else require_application,
         help="compile/replay all selected regions of a staged application",
     )
+    parser.add_argument("--already-quantized", action="store_true", help="require materialized quantization from staged capture")
     parser.add_argument("--application-state", help="source-bound state input/update interface")
     parser.add_argument("--application-parameters", choices=("embedded", "external"), default="embedded")
     if compiling:
+        parser.add_argument("--deterministic-receipts", action="store_true")
         parser.add_argument("--application-name", default="application")
         parser.add_argument("--application-memory-bytes", type=int, help="explicit tensor arena and staging budget")
 

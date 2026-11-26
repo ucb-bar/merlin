@@ -21,7 +21,6 @@ from merlin.compiler.semantic.model import (
     pointwise_identity_maps,
 )
 from merlin.compiler.semantic.scalar_reference import (
-    _BF16_RELU_ATTRS,
     TensorValue,
     _checked_f32_pointwise_maps,
     _f32_add_rne,
@@ -36,6 +35,63 @@ from merlin.compiler.semantic.scalar_reference import (
 # ---- reference ---------------------------------------------------------------------------------
 
 ReferencePrimitive = Callable[[SemanticNode, tuple[TensorValue, ...]], TensorValue]
+
+
+def _evaluate_bf16_batch_norm(node: SemanticNode, operands: tuple[TensorValue, ...]) -> TensorValue:
+    """Exact binary32 per-channel terms and fused element updates, then BF16 RNE; refuse non-finite input."""
+    from merlin.compiler.lower.c.host_ops.batch_norm import channel_terms, element
+    from merlin.compiler.frontend.patterns.linalg_batch_norm import INPUT_DOMAIN, NUMERIC_SEMANTICS
+
+    attrs = dict(node.attrs)
+    roles = tuple(str(attrs.get("channel_operands", "")).split(","))
+    if (attrs.get("numeric_semantics") != NUMERIC_SEMANTICS or attrs.get("input_domain") != INPUT_DOMAIN
+            or len(operands) != 1 + len(roles) or roles[:2] != ("mean", "var")
+            or operands[0].type != node.type or node.type.dtype != "bf16" or len(node.type.shape) < 2):
+        raise ValueError("BF16 batch norm has an unsupported type, operand, or semantic contract")
+    x = operands[0].elements
+    if any((bits & 0x7F80) == 0x7F80 for bits in x):
+        raise ValueError("BF16 batch norm input is outside its finite domain")
+    channels, inner = node.type.shape[1], prod(node.type.shape[2:])
+    terms = [channel_terms({role: (value.elements[c], value.type.dtype) for role, value in zip(roles, operands[1:])},
+                           attrs["epsilon_f32_bits"]) for c in range(channels)]
+    return TensorValue(node.type, tuple(element(bits, *terms[(i // inner) % channels]) for i, bits in enumerate(x)))
+
+
+def _evaluate_bf16_window_max(node: SemanticNode, operands: tuple[TensorValue, ...]) -> TensorValue:
+    """Scan each window in loop order: replace when strictly greater; skip padded reads; refuse NaN."""
+    from merlin.compiler.frontend.patterns.linalg_window_max import INPUT_DOMAIN, NUMERIC_SEMANTICS
+
+    attrs = dict(node.attrs)
+    if (
+        len(operands) != 1 or len(node.index_maps) != 2
+        or set(attrs) != {"input_domain", "numeric_semantics", "window_h", "window_w"}
+        or attrs["numeric_semantics"] != NUMERIC_SEMANTICS or attrs["input_domain"] != INPUT_DOMAIN
+        or operands[0].type.dtype != "bf16" or node.type.dtype != "bf16"
+        or node.type.numerical_policy != "raw-bit-pattern" or len(operands[0].type.shape) != 4
+        or node.index_maps[1] != IndexMap(6, tuple(tuple(int(a == b) for b in range(6)) for a in range(4)), (0,) * 4)
+    ):
+        raise ValueError("BF16 window maximum has an unsupported type, map, or semantic contract")
+    source, source_map = operands[0], node.index_maps[0]
+    if any((bits & 0x7FFF) > 0x7F80 for bits in source.elements):
+        raise ValueError("BF16 window maximum input is outside its non-NaN domain")
+    shape = source.type.shape
+    strides = tuple(prod(shape[axis + 1:]) for axis in range(4))
+
+    def value(bits: int) -> float:
+        return unpack("<f", pack("<I", bits << 16))[0]
+
+    result = []
+    for out in index_product(*(range(extent) for extent in node.type.shape)):
+        best = 0xFF80
+        for window in index_product(range(attrs["window_h"]), range(attrs["window_w"])):
+            at = source_map.apply((*out, *window))
+            if any(not 0 <= index < extent for index, extent in zip(at, shape)):
+                continue
+            bits = source.elements[sum(index * stride for index, stride in zip(at, strides))]
+            if value(bits) > value(best):
+                best = bits
+        result.append(best)
+    return TensorValue(node.type, tuple(result))
 
 
 def evaluate_graph(
@@ -447,11 +503,9 @@ def evaluate_graph(
             if (
                 indices.type.dtype != "i64"
                 or indices.type.numerical_policy != "signed-i64"
-                or table.type.dtype not in {"f32", "f64", "bf16", "fp8_e4m3"}
-                or table.type.numerical_policy != "raw-bit-pattern"
                 or len(table.type.shape) != 2
                 or node.type
-                != TensorType((*indices.type.shape, table.type.shape[1]), table.type.dtype, "raw-bit-pattern")
+                != TensorType((*indices.type.shape, table.type.shape[1]), table.type.dtype, table.type.numerical_policy)
                 or dict(node.attrs)
                 != {
                     "index_domain": "nonnegative-below-table-rows",
@@ -467,20 +521,28 @@ def evaluate_graph(
                 result.extend(table.elements[index * columns : (index + 1) * columns])
             values[node.id] = TensorValue(node.type, tuple(result))
             continue
+        if node.op == "bf16_batch_norm_inference":
+            values[node.id] = _evaluate_bf16_batch_norm(node, operands)
+            continue
+        if node.op == "bf16_window_max":
+            values[node.id] = _evaluate_bf16_window_max(node, operands)
+            continue
         if node.op == "relu" and node.type.dtype == "bf16":
+            from merlin.compiler.frontend.patterns.narrow_float import SELECT_ATTRS
             if (
                 len(operands) != 1
                 or operands[0].type.dtype != "bf16"
                 or operands[0].type.shape != node.type.shape
                 or node.type.numerical_policy != "raw-bit-pattern"
                 or node.index_maps != pointwise_identity_maps(len(node.type.shape), 1)
-                or dict(node.attrs) != _BF16_RELU_ATTRS
+                or dict(node.attrs) != SELECT_ATTRS
             ):
                 raise ValueError("BF16 ReLU has an unsupported type, policy, or semantic contract")
-            source = operands[0].elements
-            if any((bits & 0x7F80) == 0x7F80 or ((bits & 0x7F80) == 0 and (bits & 0x007F) != 0) for bits in source):
-                raise ValueError("BF16 ReLU input is outside finite-normal-or-zero domain")
-            values[node.id] = TensorValue(node.type, tuple(0 if bits & 0x8000 else bits for bits in source))
+            # Compare numerically; NaNs are unordered and ties retain x.
+            values[node.id] = TensorValue(node.type, tuple(
+                0 if bits & 0x8000 and 0 < (bits & 0x7fff) <= 0x7f80 else bits
+                for bits in operands[0].elements
+            ))
             continue
         primitive = (primitives or {}).get((node.op, node.type.numerical_policy))
         if primitive is not None:

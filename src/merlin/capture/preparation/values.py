@@ -314,7 +314,7 @@ def _exported_integer_mm_count(module) -> int:
     return count
 
 
-def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | None:
+def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path, *, exported_program=None) -> str | None:
     """Write manifest-listed ``@forward`` buffers and lifted constants omitted from weights.
 
     Use m2m's bundle layout: ``buf::<dotted name>`` for buffers and the
@@ -341,7 +341,7 @@ def _write_leaf_constants(mdl, inputs, weights_path: str, dest: Path) -> str | N
         from m2m.capture.bundle import _lifted_constants
 
         found: dict = {}
-        _lifted_constants(mdl, tuple(inputs), found)
+        _lifted_constants(mdl, tuple(inputs), found, exported_program=exported_program)
         extra.update({key: value for key, value in found.items() if key in lifted})
     recovered = {"b_" + key[len("buf::") :].replace(".", "_") for key in extra if key.startswith("buf::")}
     missing = sorted(buffers - recovered) + [name for name in lifted if name not in extra]

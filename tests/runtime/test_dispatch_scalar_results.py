@@ -38,7 +38,7 @@ def _native_tools():
 
     selected = os.environ.get("MERLIN_COMPILER_PYTHON")
     if not selected or not Path(selected).is_file() or (not clang().is_file()):
-        pytest.skip("explicit LLVM compiler Python and native clang required")
+        pytest.fail("required prerequisite: explicit LLVM compiler Python and native clang")
 
 
 def _record_outputs(root, actual, expected):

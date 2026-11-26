@@ -23,6 +23,7 @@ if not __package__:
     sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from merlin.capture.preparation.arguments import parse_arguments
+from merlin.capture.preparation import external_quantization as EQ
 
 # ---- _m2m_capture_worker -----------------------------------------------------------------------
 #!/usr/bin/env python3
@@ -305,6 +306,7 @@ def _materialize_session(
 def main(argv=None, *, prepared_program=None, completed=None) -> int:
     a = parse_arguments(argv)
     native_integer_source = getattr(a, "native_integer_source", False)
+    external_selection = a.external_selection
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
         sys.path.insert(0, a.m2m_dir)
@@ -389,7 +391,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             "loader_paper_ready": None,
         }
     )
-    mdl.eval()
+    selected_export, mdl = EQ.prepared_module(mdl, already_quantized=a.already_quantized)
     source_layer_inventory = None
     if a.stage_fp32 and a.recipe:
         from merlin.compiler.quantization.torchao import _recipe_quantizer as RQ
@@ -438,7 +440,10 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         try:
             from m2m.capture.trace import capture_frontend_snapshot
 
-            source_exported = prepared_program.get("source_exported") if a.stage_fp32 and prepared_program else None
+            source_exported = (
+                selected_export if selected_export is not None
+                else prepared_program.get("source_exported") if a.stage_fp32 and prepared_program else None
+            )
             if a.stage_fp32 and source_exported is None:
                 source_exported = torch.export.export(mdl, tuple(inputs))
             original_snapshot = capture_frontend_snapshot(
@@ -452,7 +457,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             }
     elif a.already_quantized:
         original_snapshot["reason"] = "loader supplies an already-quantized graph; the original model was not captured"
-    _scheme, cast = _SCHEME.get(a.dtype, (None, None))
+    _scheme, cast = (None, None) if a.already_quantized else _SCHEME.get(a.dtype, (None, None))
     # THE FLOAT MODEL'S OWN OUTPUT, before any precision cast or quantization rewrites it. The golden
     # below is the transformed model -- what the compiler must reproduce -- and so can say nothing about
     # how far the transformation moved the network; this is the reference that can.
@@ -514,9 +519,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
                 x.to(getattr(torch, cast)) if isinstance(x, torch.Tensor) and x.is_floating_point() else x
                 for x in inputs
             )
-    # PyTorch's public exported-model train/eval helper may return None.
-    # The owned GraphModule remains the conversion source.
-    mdl.eval()
+    # Exported modules already fix their training behavior and refuse eval().
+    if selected_export is None:
+        mdl.eval()
     fp32_staging = None
     if a.stage_fp32:
         from merlin.capture.preparation.reference import freeze_fp32_session_reference
@@ -558,11 +563,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
         if recipe.get("recipe_sha256") != recipe_digest(recipe):
             raise ValueError("selected quantization recipe digest does not match its content")
-    q = None if (recipe is not None or a.already_quantized) else _quant_for(a.dtype, a.scheme or None)
-    quant_stats = (
-        {"applied": False, "why": "the loader declares its numeric graph already materialized"}
-        if a.already_quantized
-        else None
+    q, quant_stats = EQ.quantization(a, external_selection, recipe=recipe, quant_for=_quant_for)
+    original_snapshot = EQ.external_original_snapshot(
+        selected_export, external_selection, q, original_snapshot, trace_supported=trace_supported
     )
     agreement = None
     if recipe is not None:
@@ -627,7 +630,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         else:
             raise ValueError(f"no capture provenance scheme for mixed recipe formats {sorted(formats)}")
         q = QuantizationConfig(scheme=provenance_scheme)
-    elif q is not None:
+    elif q is not None and not a.already_quantized:
         # Apply quantization explicitly so both conversion and the golden run consume
         # the SAME returned module.  Most TorchAO quantize_ schemes mutate in place,
         # which hid the bug here; PT2E correctly returns a new GraphModule, so running
@@ -789,8 +792,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
 
         nl_census = NL.install(mdl)
     trace_options = {"capture_trace": True, "original_frontend_snapshot": original_snapshot} if trace_supported else {}
+    trace_options.update(EQ.normalization_options(loader, external_selection))
     res = m2m.convert(
-        mdl,
+        selected_export if selected_export is not None else mdl,
         inputs,
         backend="fx_importer",
         quantization=q,
@@ -918,7 +922,9 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # An untransformed capture's golden IS the float model's output.
         reference = outputs if float_reference is None else float_reference["outputs"]
         (out / "float_reference.json").write_text(json.dumps(reference), encoding="utf-8")
-    extra_path = _write_leaf_constants(mdl, inputs, weights_path, out / "extra.npz")
+    extra_path = _write_leaf_constants(
+        mdl, inputs, weights_path, out / "extra.npz", exported_program=res.exported_program
+    )
     if export_state is not None:
         if (
             observer_path.read_bytes() != observer_bytes
@@ -1031,7 +1037,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
         # Reuse the actual typed conversion and its prepared ExportedProgram.
         # A second export can reorder lifted constants or sever source lineage.
         write_bundle(
-            mdl,
+            selected_export if selected_export is not None else mdl,
             tuple(inputs),
             out,
             quant=q,
@@ -1040,6 +1046,7 @@ def main(argv=None, *, prepared_program=None, completed=None) -> int:
             source_path=Path(a.loader),
             capture_trace=True,
             conversion_result=res,
+            metadata=EQ.bundle_metadata(res),
         )
     if dynamic_only_reference and a.materialize_bundle:
         dynamic_reference.bind_reference_source(out)
