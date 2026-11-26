@@ -79,6 +79,14 @@ assert not any(path.is_file() for path in td.rglob("*")), f"target-specific data
 rd = p.runtime_dir()
 assert (rd / "c" / "merlin_model.c").is_file(), f"bundled runtime C source missing: {rd}"
 assert (rd / "abi" / "mlir_runtime.c").is_file(), "bundled runtime ABI source missing"
+# Host math: the installed compiler hashes every supplier file it binds, and host emitters embed the
+# pinned CORE-MATH sources, so a wheel without them cannot compile host math.
+from merlin.compiler.semantic import target_binding
+from merlin.runtime import host_math_supplier
+from merlin.runtime.host_math_supplier.embedded import embedded_host_math
+target_binding._compiler_sources()
+host_math_supplier.load_policy(required=host_math_supplier.FUNCTIONS)
+assert "cr_expf" in embedded_host_math(host_math_supplier, ("expf",))[0], "embedded host math lacks expf"
 # entry points registered (import-clean at least at the console-script level)
 from importlib.metadata import entry_points
 console = tuple(entry_points(group="console_scripts"))
@@ -127,7 +135,7 @@ from merlin.target.contract.interfaces.matmul import emit_interface_mlir
 assert 'merlin_iface.target = "probe_device"' in emit_interface_mlir(
     lhs="A", weight="W", out="Y", M=2, K=3, N=4, epilogue=[],
     output_dtype="i32", target="probe_device")
-from merlin.development.targetgen import elf_lanes
+from merlin.development.targetgen.grading import elf_lanes
 assert elf_lanes.LINKED_ELF_EVIDENCE not in elf_lanes.EXECUTED_LANE_EVIDENCE
 assert set(elf_lanes.EXECUTED_LANE_EVIDENCE) < set(elf_lanes.negative_lane_evidence())
 import sys
